@@ -1,7 +1,6 @@
-//! Port of `Controls/RegControl.pas` — `TRegControlObj`, the voltage-regulator
-//! control attached to a Transformer winding. Phase 4 ported the parse-time
-//! surface (properties, reference resolution, `RecalcElementData`'s bus/phase
-//! setup, `TapNum`, `MakeLike`); **WP5.5 adds the behavior** — `Sample` (sense
+//! `RegControl`, the voltage-regulator control attached to a Transformer
+//! winding: its properties, reference resolution, `RecalcElementData`'s bus/phase
+//! setup, `TapNum`, `MakeLike`, and the behavior: `Sample` (sense
 //! the regulated voltage, compute the pending tap change, arm the control
 //! queue) and `DoPendingAction` (apply the tap, per control mode), plus the
 //! `AtLeastOneTap`/`OneInDirectionOf`/`ComputeTimeDelay`/`GetControlVoltage`
@@ -343,7 +342,7 @@ impl RegControl {
         //
         // FPC's out-of-Int64 "integer indefinite" artifact is observable
         // wherever a *raw deck double* reaches a `Round`, and every such site
-        // goes through the Stage F round row's kernel
+        // goes through the FPC-round compat kernel
         // (`dss_parser::compat::round_i32`) rather than a bare saturating cast:
         // `make_integer`, `Set time=`, PstCalc's `CyclesPerSample`, the two
         // `Round(24/stepsize)` day counts, and GrowthShape's base year. A bare
@@ -403,9 +402,9 @@ impl RegControl {
         ((tr.present_tap(w as usize) - mid) / inc).round_ties_even() as i32
     }
 
-    // --- CIM100 export read accessors (WPG.18 Stage E, `ExportCIMXML.pas:4198-
-    // 4270`). Every field maps 1:1 to a `TRegControlObj` property the
-    // `RatioTapChanger`/`TapChangerControl` arm reads; no behavior change. ---
+    // --- CIM100 export read accessors. Every field maps 1:1 to a
+    // `TRegControlObj` property the `RatioTapChanger`/`TapChangerControl` arm
+    // reads. ---
 
     /// Pascal `Vreg` — CIM `RegulatingControl.targetValue`.
     pub(crate) fn vreg(&self) -> f64 {
@@ -487,8 +486,8 @@ impl RegControl {
     /// registry, so the executive calls this at the property-read choke point
     /// (`Dss::refresh_vterminal_if_marked`, alongside the Vterminal reload). A
     /// control action that moved the tap, or a direct `Transformer.X.Taps=` edit,
-    /// otherwise leaves `tap_snap` stale (WP8.5b: `? regcontrol.X.TapNum`
-    /// diverged from the oracle on the IEEE13 geometry decks).
+    /// otherwise leaves `tap_snap` stale, and `? regcontrol.X.TapNum` would report
+    /// the old tap.
     pub(crate) fn sync_tap_snap_from_live(
         &mut self,
         tr: &dyn crate::elements::pd::transformer::ControlledTransformer,
@@ -533,7 +532,7 @@ impl RegControl {
 
     /// Pascal `TRegControlObj.RecalcElementData` (parse-time subset: LDC/bus
     /// flags, phase/conductor counts from the controlled transformer, terminal
-    /// bus). The VBuffer/CBuffer sampling buffers are Phase 5.
+    /// bus). The VBuffer/CBuffer sampling buffers are built per sample.
     fn recalc(&mut self) {
         self.ldc_active = self.r != 0.0 || self.x != 0.0 || self.ldc_z > 0.0;
         self.using_regulated_bus = !self.regulated_bus.is_empty();

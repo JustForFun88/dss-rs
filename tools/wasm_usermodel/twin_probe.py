@@ -3,8 +3,8 @@
 tools/wasm_usermodel/build_native.ps1) through a fixed, fully deterministic
 scenario and record every observable value bit-exactly.
 
-WASM_USERMODELS_PLAN WP-WM.2 item 3/4 pre-stage: the recorded values are the
-numeric spec the wasm fixture port is pinned against --
+The recorded values are the numeric spec the wasm fixture is pinned
+against --
   * evidence copy:  docs/wasm/probes/p6_twin_expected.txt   (default output)
   * test fragment:  tools/wasm_usermodel/models/indmach012a/tests/
                     twin_expected.rs                        (--rust output)

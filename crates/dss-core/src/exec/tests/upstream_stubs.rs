@@ -1,5 +1,5 @@
-//! The r4133 **upstream-stub** property rows (`PropFlags::UPSTREAM_STUB`,
-//! R4133_PROPS_PLAN RP1.1): Generator `Rneut`/`Xneut` and Sensor `Action`.
+//! The r4133 **upstream-stub** property rows (`PropFlags::UPSTREAM_STUB`):
+//! Generator `Rneut`/`Xneut` and Sensor `Action`.
 //!
 //! These are properties EPRI r4133 still *registers* — so they occupy a display
 //! slot and `AllPropertyNames` reports them — but no longer implements. The Edit
@@ -262,7 +262,7 @@ fn generator_neutral_stubs_move_neither_y_nor_the_solution() {
     );
 }
 
-/// The Sensor half of the same acceptance (RP1.1 asks for it *per class*):
+/// The Sensor half of the same check:
 /// `action=` moves neither the sensor's own state nor the circuit.
 ///
 /// A Sensor has no Y contribution of its own, so the discriminating surface is
@@ -322,11 +322,10 @@ fn sensor_action_moves_neither_sensor_state_nor_the_solution() {
 }
 
 /// Display slots. r4133 registers the two Generator stubs immediately after
-/// `conn` (`generator.pas:440-443`) and `action` as the last of `TSensor`'s own
-/// properties (`Sensor.pas:183`), which is what makes the two oracle tables 50
-/// and 16 names long — the `oracle_count` the vendored census records in
-/// `tests/corpus/props_r4133/shape.txt`. Closing that gap is RP1.1's deliverable,
-/// so the positions are pinned, not just the presence.
+/// `conn` and `action` as the last of the Sensor's own properties, which is what
+/// makes the two r4133 tables 50 and 16 names long — the `oracle_count` the
+/// vendored census records in `tests/corpus/props_r4133/shape.txt`. The
+/// positions are pinned, not just the presence.
 #[test]
 fn upstream_stub_display_slots_follow_r4133_registration() {
     let mut dss = dss_with_circuit();

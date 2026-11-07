@@ -1,6 +1,6 @@
-//! Golden generator for the WASM_USERMODELS **WM.4** Storage/PVSystem gate
-//! (recorded decision, same channel as WM.3: the in-house **r4133 bridge**, not
-//! pinned dss-python). Drives each `tools/golden/wasm_decks/wasm_{pv_pflow,
+//! Golden generator for the Storage/PVSystem user-model gate, on the same
+//! channel as the Generator gate: the in-house **r4133 bridge**, not the pinned
+//! dss-python. Drives each `tools/golden/wasm_decks/wasm_{pv_pflow,
 //! storage_dyn}.dss` deck — with `@FIXTURE@` substituted by the **native `.dll`
 //! twin** of the wm4model reference model — through the r4133 engine
 //! (`dss_epri::Engine`) and writes the captured element state-variable surface +
@@ -9,13 +9,17 @@
 //! (`crates/dss-core/tests/wasm_usermodels_wm4.rs`) compares the committed
 //! `.wasm` fixture against these goldens.
 //!
-//! This is a NEW test file (the WM.3 `gen_wasm_usermodels.rs` is untouched); the
-//! wm4model native twin and the wm4model `.wasm` are independent builds of the
-//! SAME model core, so the comparison is a real cross-engine oracle check — never
+//! The wm4model native twin and the wm4model `.wasm` are independent builds of
+//! the SAME model core, so the comparison is a real cross-engine check — never
 //! "Rust agrees with itself".
 //!
-//! **Manual only** (like every golden): env-gated on `WASM_TWIN_DLL`, so
-//! `cargo test` skips it. Regenerate with:
+//! # Knobs
+//!
+//! - `WASM_TWIN_DLL`: path of the native `wm4model.dll` twin. Unset by default,
+//!   and then the generator returns without writing anything.
+//!
+//! **Manual only** (like every golden): `#[ignore]` and gated on
+//! `WASM_TWIN_DLL`. Regenerate with:
 //! ```text
 //! pwsh tools/wasm_usermodel/build_native.ps1   # builds the wm4model.dll twin
 //! WASM_TWIN_DLL="$TEMP/wm4model_native_twin/wm4model.dll" \

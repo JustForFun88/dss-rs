@@ -1,5 +1,5 @@
 program abi_probe_r3723;
-// WASM_USERMODELS WP-WM.0 P2 (twin check) — layouts of the SAME boundary
+// Probe P2 (twin check) — layouts of the SAME boundary
 // records as seen by the canonical example DLL source
 // (.inputs/electricdss-code-r3723-trunk/Version8/Source/IndMach012a/), which
 // compiles against the r3723 headers:
@@ -7,8 +7,8 @@ program abi_probe_r3723;
 //   (TGeneratorVars), Common/DSSCallBackStructDef.pas (TDSSCallBacks incl.).
 // This probe compiles those REAL vendored r3723 units/includes (via -Fu/-Fi)
 // and prints the same size/offset tables as abi_probe.pas: byte-identity of
-// the data records is the load-bearing fact for the plan-A native twin
-// (upstream's own DLL source driven by the dss_capi 0.14.5 oracle host).
+// the data records is the load-bearing fact for the native twin
+// (the OpenDSS example DLL source driven by the dss_capi 0.14.5 host).
 {$MODE DELPHI}
 
 uses

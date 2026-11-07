@@ -116,18 +116,18 @@ new relay.backup type=current monitoredobj=transformer.sub monitoredterm=2
 ~ switchedobj=transformer.sub switchedterm=2 phasetrip=900 groundtrip=450
 ~ delay=1.5 shots=1 recloseintervals=None eventlog=yes
 ! Midline recloser on backbone segment 11->12 (upstream of L6).
-! Explicit A/D curves (r4133 removed the built-in defaults; WP-U2.2 D2) so the
-! ganged recloser is armed on the version-consistent r4133 chain.
+! Explicit A/D curves (r4133 has no built-in default curves) so the
+! ganged recloser is armed on the r4133 protection classes.
 new recloser.r monitoredobj=line.bb11_12 monitoredterm=1
 ~ switchedobj=line.bb11_12 switchedterm=1 numfast=1 shots=3
 ~ phasefast=a phasedelayed=d phasetrip=150 groundtrip=75 recloseintervals=(0.5, 1.0)
-! Lateral fuse at the head of L6. WP-U2.1 (r4133): the fuse default curve moved
-! tlink->none (never blows) and its divisor moved RatedCurrent->CurveMultiplier.
+! Lateral fuse at the head of L6. On r4133 the fuse default curve is
+! none (never blows) and its divisor is CurveMultiplier, not RatedCurrent.
 ! The whole protection rung (Fuse U2.1 / Recloser U2.2 / Relay U2.3) has landed,
 ! so this deck is version-consistent on oracle:"r4133" and the fuse is re-armed
 ! with an explicit curve: fusecurve=tlink + curvemultiplier=50 reproduces the
 ! pre-WP r4088-era RatedCurrent=50 divisor, so the three-tier fuse-save race runs
-! end-to-end at midi scale (WP-U2.1 handoff restore).
+! end-to-end at midi scale.
 new fuse.fz monitoredobj=line.l6a monitoredterm=1
 ~ switchedobj=line.l6a switchedterm=1 fusecurve=tlink curvemultiplier=50
 ! Permanent SLG fault at the very END of the deep lateral (phase 1).

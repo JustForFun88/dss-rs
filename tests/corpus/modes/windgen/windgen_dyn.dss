@@ -1,9 +1,9 @@
-! WP-U1.8 — WindGen WTG3 dynamics (the 50 us trapezoidal sub-cycle). Connected at
+! WindGen WTG3 dynamics (the 50 us trapezoidal sub-cycle). Connected at
 ! 0.69 kV so the WTG3 per-unit measurement (ratedKVll=0.69) is not saturated. One
 ! dynamics solve = 20x1ms outer steps; each corrector iteration runs the full
 ! controller stack (PLL, seq-current PI regs, LVPL/LVQL, MPPT/torque/pitch/inertia,
-! swing) over ~21 x 50 us sub-steps. Gated per §1.7 with compare_variables on all
-! 22 state variables. oracle capi015.
+! swing) over ~21 x 50 us sub-steps. Gated with compare_variables on all
+! 22 state variables.
 Clear
 New Circuit.wtg_dyn basekv=0.69 phases=3 bus1=srcbus
 New Line.l1 bus1=srcbus bus2=wbus phases=3 r1=0.005 x1=0.02 length=1

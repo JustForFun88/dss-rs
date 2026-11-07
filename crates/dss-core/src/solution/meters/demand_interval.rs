@@ -1,4 +1,4 @@
-//! WP8.3 step 4 — Pascal `TSystemMeter` (EnergyMeter.pas l.181) and the
+//! Pascal `TSystemMeter` (EnergyMeter.pas l.181) and the
 //! demand-interval (`DI_`) file machinery: the per-meter/system/totals
 //! demand-interval CSVs plus the overload / voltage-exception reports, written
 //! **during the time-series solve** (opened by `SolveDaily`/`SolveYearly`/…,
@@ -768,7 +768,7 @@ pub(super) fn sample_all_di_tail(ckt: &mut Circuit, store: &mut dyn ElemStore, s
 
 /// Pascal `TEnergyMeter.WriteOverloadReport` (l.3171): one `DI_Overloads` row
 /// per overloaded, non-shunt, enabled PD element. Seasonal ratings (dss_capi
-/// 0.15.x `55400a29`, WP-U1.5 E2): the entry gate uses the element's BASE
+/// 0.15.x `55400a29`): the entry gate uses the element's BASE
 /// `NormAmps`/`EmergAmps`, then the overload test + reported ratings use the
 /// globally-synced season index (`Circuit::seasonal_rating_idx`), guarded by
 /// `0 <= idx < NumAmpRatings` and applied to ANY PDElement — the 0.14.5 baseline

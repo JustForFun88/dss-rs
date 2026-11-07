@@ -1,4 +1,4 @@
-//! Phase 6 golden (PHASE6_PLAN.md WP6.9 / §1.2): command-replay scenarios that
+//! Metering golden gate: command-replay scenarios that
 //! pin the meter / monitor / generator / topology machinery against the pinned
 //! oracle (`tools/golden/gen_metering_monitors.py`). The Rust engine replays each
 //! scenario's command list and must match its file under `tests/golden/metering_monitors/`
@@ -134,7 +134,7 @@ fn run_monitors(sc: &Scenario, dss: &Dss) {
     // Channels are stored f32; the underlying f64 daily trajectory tracks the
     // oracle to ~1e-9 (the load-Yeq restamp fix in `build_y_matrix`), so the
     // narrowed f32 samples match at the feeder class tolerance (1e-6 rel /
-    // 1e-4 abs, PHASE6_PLAN §1.2). Header strings, SampleCount and the discrete
+    // 1e-4 abs). Header strings, SampleCount and the discrete
     // structure are matched exactly; the mode-5 wall-clock channels are skipped
     // via `skip_channels`. Identical comparator as the live corpus gate.
     let tol = tol_for("large");
@@ -144,8 +144,8 @@ fn run_monitors(sc: &Scenario, dss: &Dss) {
 }
 
 fn run_meters(sc: &Scenario, dss: &Dss) {
-    // Registers at the energy-accumulation policy (PORTING_PLAN §4
-    // `energy_rel`/`energy_abs`), names exact, zone branch/end/PCE counts exact.
+    // Registers at the energy-accumulation policy
+    // (`energy_rel`/`energy_abs`), names exact, zone branch/end/PCE counts exact.
     // Identical comparator as the live corpus gate.
     let tol = tol_for("large");
     for m in &sc.meters {

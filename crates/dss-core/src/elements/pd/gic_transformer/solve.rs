@@ -32,8 +32,8 @@ impl GicTransformer {
     /// percent of that winding's own base `ZBase_w = kVLL_w² / MVA`, so
     /// pairing `FZBase2` with `FPctR1` mixes two windings' data.
     ///
-    /// Fixed in both lanes (CLAUDE.md 2026-08-02 — upstream bugs are never
-    /// reproduced) by `GOLDEN_REBASE_PLAN.md` G2.5. The two gated decks that
+    /// Fixed in both lanes (upstream bugs are never reproduced). The two gated
+    /// decks that
     /// see it (`asymmetric/gic/gictransformer_gic.dss` `tg3`,
     /// `asymmetric/gic/gic_midi.dss` `tg5`, both `type=Auto`, where the `BusX`
     /// side effect (`:251`) puts the `G1` and `G2` blocks in *series* on the

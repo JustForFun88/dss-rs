@@ -64,7 +64,7 @@ impl WindGen {
         // Where it is observable: `Edp` feeds `Theta` and `VThevMag`, neither of
         // which is a readable variable, a property or an injection input, so on
         // the five `modes:windgen/*` decks the correction is inert (proven by an
-        // A/B whole-corpus state dump, RP1.3 part B). It is NOT unobservable in
+        // A/B whole-corpus state dump). It is NOT unobservable in
         // general: with a `DynamicEq=` bound, an init-val pairing on the `edp`
         // domain code (9, `dynamic_exp.rs`) seeds a user state variable with
         // `Cang(Edp)` at `:2588` (below), and `DynamicExp` variables ARE readable
@@ -92,8 +92,8 @@ impl WindGen {
             // embedded WTG3 model is 3-phase-only (`Instrumentation`,
             // WTG3_Model.pas:494, and every per-step `CalcDynamic` read
             // `V[1..3]`/`i[1..3]`), so a 1-phase terminal (2 conductors)
-            // over-reads the terminal array = heap UB upstream. Per CLAUDE.md
-            // that UB is NOT reproduced — the port aborts instead (below). A
+            // over-reads the terminal array, undefined behaviour in OpenDSS.
+            // This engine does not reproduce it and aborts instead (below). A
             // model-6 WindGen never touches the WTG3, so its 1-phase dynamics
             // are well defined and ported literally.
             1 if self.gen_model == 6 => {
@@ -178,8 +178,8 @@ impl WindGen {
             // `ComputeIterminal` before this (`:2512`), never `ComputeVterminal`,
             // so the model is seeded from the STALE `Vterminal` buffer left by
             // the power flow's last injection iteration — deliberately NOT
-            // refreshed (the WM.3 D2 finding; the built-in path below is the one
-            // that recomputes). The `ShaftModel.FInit` twin (`:2569`) is
+            // refreshed (the built-in path below is the one that recomputes).
+            // The `ShaftModel.FInit` twin (`:2569`) is
             // unreachable (module doc).
             self.user_model_finit(sys, node_v);
             return;
@@ -304,9 +304,9 @@ impl WindGen {
 
         // The WTG3 model is 3-phase-only: `calc_dynamic` → `instrumentation`
         // reads V[1..3]/i[1..3], so a non-3-phase terminal (e.g. a 1-phase
-        // WindGen's 2 conductors) would over-read the terminal array = heap UB
-        // upstream (WindGen.pas:1868/1905). Per CLAUDE.md that UB is NOT
-        // reproduced. `init_state_vars` already aborts the dynamics entry, but
+        // WindGen's 2 conductors) would over-read the terminal array, undefined
+        // behaviour in OpenDSS that this engine does not reproduce.
+        // `init_state_vars` already aborts the dynamics entry, but
         // an external `solve` clears `solution_abort` (Text_Set_Command reset)
         // before the step loop, so guard the per-step path too — record the
         // error and inject nothing (mirrors Generator `do_dynamic_mode`).

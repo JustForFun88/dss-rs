@@ -1,4 +1,4 @@
-! WP-U1.4 (UPGRADE_PLAN §WP-U1.4, Line.pas:428/2049) — Line-level EpsRMedium.
+! Line-level EpsRMedium.
 ! A LineGeometry OH line with EpsRMedium=2.3 divides the shunt-capacitance
 ! potential factor by the medium permittivity (LineConstants Pfactor /= E0*epsR),
 ! moving Yc/YPrim; the series Z is unchanged. Default EpsRMedium=1 is 0.14.5-exact

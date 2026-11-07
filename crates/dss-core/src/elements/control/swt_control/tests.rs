@@ -1,9 +1,6 @@
-//! RP3.7 A1 pin set: the per-phase state model and r4133
-//! `InterpretSwitchState` mechanics, the per-phase drive of the controlled
-//! element, the ganged/homogeneous equivalence with the pre-change behavior
-//! (every corpus deck is ganged), and the scalar render invariance A2 flips.
-//! Probe transcript: `tmp/rp37/probe.md`; every expected value cites the r4133
-//! Pascal (`Version8/Source/Controls/SwtControl.pas`) line it re-derives from.
+//! The per-phase state model and the r4133 `InterpretSwitchState` mechanics,
+//! the per-phase drive of the controlled element, the ganged/homogeneous
+//! equivalence (every corpus deck is ganged), and the per-phase render.
 
 use super::*;
 
@@ -112,7 +109,7 @@ impl Scratch {
 }
 
 /// A control wired to a `MockSwitch`-shaped snapshot so `recalc`'s per-phase
-/// drive has a phase count to bound itself by (the probe's 3-phase default).
+/// drive has a phase count to bound itself by.
 fn sw_with_snap(nphases: usize) -> SwtControl {
     let mut sw = SwtControl::new("sw1");
     sw.ccd.controlled_element = Some(ElemId::new(0, 0));
@@ -175,8 +172,8 @@ fn render(sw: &SwtControl, name: &str) -> String {
 #[test]
 fn default_is_3ph_all_closed_arrays() {
     // r4133 Create (:287-307): NPhases/Nconds 3, both state arrays all-CLOSED
-    // (:302-305), NormalStateSet = FALSE (:307). Reverting the arrays to the
-    // pre-RP3.7 scalar (present Close / normal None) breaks every slot assert.
+    // (:302-305), NormalStateSet = FALSE (:307). A scalar state (present Close /
+    // normal None) breaks every slot assert.
     let sw = SwtControl::new("sw1");
     assert_eq!(sw.ccd.cd.nphases, 3);
     assert_eq!(sw.ccd.cd.nconds, 3);
@@ -238,12 +235,10 @@ fn interpreter_quoted_list_leaves_unlisted_slots_unchanged() {
 
 #[test]
 fn interpreter_per_phase_caps_at_five_tokens() {
-    // r4133 loop bound `i < SWTCONTROLMAXDIM` (:461): at most FIVE tokens are
-    // honored, a 6th is silently dropped (probe §11.2 — the plan's reading of
-    // :453-480 did not call this out). Reverting the bound to `<=` writes the
-    // 6th slot and fails the final assert. That bound is a reproduced r4133
-    // off-by-one (upstream report 75): RETRO_FIXES RF-D01-01 AC3-1 flips this
-    // pin to the 6th slot written (see
+    // Loop bound `i < SWTCONTROLMAXDIM`: at most FIVE tokens are honored, a 6th
+    // is silently dropped. Reverting the bound to `<=` writes the 6th slot and
+    // fails the final assert. That bound reproduces an r4133 off-by-one, a known
+    // defect whose fix flips this pin to the 6th slot written (see
     // `the_property_seam_caps_the_per_phase_parse_at_five_tokens`).
     let mut sw = SwtControl::new("sw1");
     sw.interpret_switch_state(
@@ -267,7 +262,7 @@ fn interpreter_per_phase_caps_at_five_tokens() {
 fn interpreter_tokens_match_first_char_only() {
     // r4133 `case LowerCase(DataStr2)[1] of 'o': CTRL_OPEN; 'c': CTRL_CLOSE`
     // with NO else arm (:464-467): any other first character leaves the slot
-    // unchanged (probe §9: `state=bogus` silent, untouched).
+    // unchanged (`state=bogus` is silent, the slot untouched).
     let mut sw = SwtControl::new("sw1");
     sw.interpret_switch_state(SwtStateProp::State, "o xyz c open bogus closed", true);
     assert_eq!(sw.present_state[1], ControlAction::Open);
@@ -286,7 +281,7 @@ fn interpreter_tokens_match_first_char_only() {
     // 6th token ('closed') dropped by the 5-token cap — slot 6 untouched. It
     // equals `Create`'s slot 6, so this line holds with or without the cap
     // (the cap's pin is `interpreter_per_phase_caps_at_five_tokens`).
-    // RETRO_FIXES RF-D01-01 AC3-1 turns the token to `open` with the fix.
+    // The fix of the known five-token defect turns the token to `open`.
     assert_eq!(sw.present_state[6], ControlAction::Close);
 }
 
@@ -330,11 +325,8 @@ fn interpreter_lock_guard_follows_the_property_name() {
     // r4133 (:416-417): `if Locked and ((LowerCase(property_name[1]) = 'a')
     // or (... = 's')) Then Exit` — "Only allowed to change normal state if
     // locked". Action/State writes exit untouched; Normal applies, ganged AND
-    // quoted per-phase (probe P3: locked `normal=open` and
-    // `normal=(open, closed, open)` both apply). RP3.7 A1 ports the guard as
-    // r4133 reads it; the observable property seam keeps the scalar-era
-    // all-three refusal until A2 re-points it (the `locked_ignores_*` pins
-    // below). Probe §10 (a2), plan §RP3.7 acceptance.
+    // quoted per-phase (locked `normal=open` and
+    // `normal=(open, closed, open)` both apply).
     let mut sw = SwtControl::new("sw1");
     sw.locked = true;
     sw.interpret_switch_state(SwtStateProp::State, "open", false);
@@ -385,7 +377,7 @@ fn per_phase_write_drives_each_conductor_of_the_controlled_element() {
     // r4133 RecalcElementData (:347-355) drives `ControlledElement.Closed[i]`
     // per phase from FPresentState at end of Edit. One open slot must open
     // exactly its own conductor — reverting the drive to the whole-terminal
-    // `SetSwitchClosed` (pre-RP3.7) opens all three and fails the per-phase
+    // `SetSwitchClosed` opens all three and fails the per-phase
     // asserts.
     let mut sw = sw_with_snap(3);
     let mut ms = MockSwitch::new(3);
@@ -419,19 +411,17 @@ fn recalc_redrives_after_a_phase_count_change() {
     // What this pin proves: the BOUND ARITHMETIC. `recalc` drives
     // `1..state_size()` off the controlled-element snapshot, so once the
     // snapshot says one phase the drive is one conductor while the array keeps
-    // its other slots (the makeposseq shape, probe §6).
+    // its other slots (the makeposseq shape).
     //
-    // What it does NOT prove (RP3.7 FIX-A1, verify-A1 finding F8): r4133's
-    // LIVE re-read. `RecalcElementData` reads `ControlledElement.NPhases`
-    // itself on every run (`SwtControl.pas:333/:347`); the port's stand-in is
+    // What it does NOT prove: r4133's LIVE re-read. `RecalcElementData` reads
+    // `ControlledElement.NPhases` itself on every run. This engine's stand-in is
     // `ctrl_snap`, refreshed when `switchedobj=` is (re-)resolved and by
-    // `make_pos_sequence` — which is why this test has to assign the snapshot
-    // by hand. The live-count path is covered end-to-end by
-    // `the_render_bound_follows_makeposseq`; the residual staleness (a bare
+    // `make_pos_sequence`, which is why this test has to assign the snapshot by
+    // hand. The live-count path is covered end-to-end by
+    // `the_render_bound_follows_makeposseq`. The residual staleness (a bare
     // `edit line.x phases=N` on the controlled element, with no touch of the
-    // control, leaves the old bound) is a recorded, architecture-level
-    // divergence shared with Relay — zero corpus exposure, no deck edits a
-    // controlled element's phase count after wiring the control.
+    // control, leaves the old bound) is an architecture-level divergence shared
+    // with Relay, with zero corpus exposure.
     let mut sw = sw_with_snap(3);
     let mut ms = MockSwitch::new(3);
     sw.interpret_switch_state(SwtStateProp::State, "open, closed, closed", true);
@@ -490,14 +480,9 @@ fn reset_yes_drives_the_conductors_per_phase_from_normal() {
     assert_eq!(sw.present_state[3], ControlAction::Open);
 }
 
-/// The probe's P1 micro-deck (`tmp/rp37/decks/p1_perphase.dss`): a 3-phase
-/// switched line feeding a grounded-wye load — each phase is an independent
-/// line-neutral path, so opening ONE conductor zeros exactly that phase's
-/// current. RP3.7 A1 drives the r4133 mechanics on the arena object (A2 wires
-/// them into the property parser) and applies the deferred force exactly like
-/// the executive; the expected currents are the r4133 DLL's solved values
-/// (`tmp/rp37/probe.md` §3): phase 1 = 0.0, phases 2/3
-/// `-6.953452-12.035939j` / `-6.935750+12.030079j` (|I| 13.90016 / 13.88623).
+/// A 3-phase switched line feeding a grounded-wye load: each phase is an
+/// independent line-neutral path, so opening ONE conductor zeros exactly that
+/// phase's current and leaves the other two carrying load.
 #[test]
 fn per_phase_open_zeros_only_its_phase_currents_on_a_micro_deck() {
     let mut dss = Dss::new();
@@ -574,18 +559,12 @@ fn per_phase_open_zeros_only_its_phase_currents_on_a_micro_deck() {
         .find(|s| s.name.eq_ignore_ascii_case("Line.swk"))
         .expect("line.swk in the snapshot");
     let mag = |k: usize| (s.currents[k].re.powi(2) + s.currents[k].im.powi(2)).sqrt();
-    // Phase 1 open → its current is zero (r4133 probe: '0.000000 +0.000000j');
-    // a ganged drive (pre-RP3.7) would zero ALL six entries, and a wrong-phase
+    // Phase 1 open → its current is zero. A ganged drive would zero ALL six
+    // entries, and a wrong-phase
     // drive would leave phase 1 at its balanced ~13.89 A.
-    // **Band** (RP3.7 FIX-A1, verify-A1 finding F7): the calibrated element-current
-    // floor `abs 1e-6` (`tests/TOLERANCE_NOTES.md` §tiers, "element currents /
-    // powers", tight tier), which also brackets the transcript's own resolution —
-    // the r4133 DLL prints each component to six decimals, so a magnitude derived
-    // from it carries up to `sqrt(2)*5e-7 = 7.1e-7` of print quantization.
-    // MEASURED on this tree: phase 1 = 7.20e-9 (r4133 prints exactly
-    // `0.000000 +0.000000j`), phase 2 |Δ| = 3.66e-7, phase 3 |Δ| = 2.75e-7 — the
-    // largest is 2.6e-8 RELATIVE. This replaced an ad-hoc `5e-4` relative band
-    // (~4 orders looser than the floor, blind to a ~7 mA per-phase drive error).
+    // **Band**: `abs 1e-6` on each magnitude. It brackets the r4133 print
+    // resolution (six decimals per component give up to `sqrt(2)*5e-7 = 7.1e-7`
+    // on a magnitude) and still catches a mA-level per-phase drive error.
     const IFLOOR: f64 = 1e-6;
     assert!(
         mag(0) < IFLOOR,
@@ -621,7 +600,7 @@ fn per_phase_open_zeros_only_its_phase_currents_on_a_micro_deck() {
         assert_eq!(sw.normal_state[3], ControlAction::Close);
     }
     // The switch operated at edit time, not through the queue (r4133 has no
-    // Sample-time queue for state writes — no OPENED event, probe §3).
+    // Sample-time queue for state writes — no OPENED event).
     assert!(
         !dss.event_log().iter().any(|s| s.contains("Action=OPENED")),
         "per-phase force applies at edit time; log = {:?}",
@@ -629,16 +608,8 @@ fn per_phase_open_zeros_only_its_phase_currents_on_a_micro_deck() {
     );
 }
 
-/// The executive twin of the pin above: the SAME probe deck and the SAME r4133
-/// solved currents, but driven end-to-end by
-/// `edit swtcontrol.sw1 state=(open, closed, closed)` through
-/// [`Dss::command`] — parser `WasQuoted` → `set_enum_array_raw` →
-/// `InterpretSwitchState` → the end-of-Edit `RecalcElementData` drive → the
-/// executive's `SetConductorsClosed` application → `SystemYChanged` → solve.
-/// A1 could only assert this on the arena object because the property seam was
-/// still scalar; RP3.7 A2 makes the script path the real one, so the pin now
-/// covers the plumbing A1 had to bypass. r4133 (`tmp/rp37/probe.md` §3):
-/// phase 1 = 0, phases 2/3 |I| = 13.90016 / 13.88623 A.
+/// The executive twin of the pin above: `edit swtcontrol.sw1 state=(open, closed,
+/// closed)` through [`Dss::command`] opens only phase 1 of the solved circuit.
 #[test]
 fn per_phase_state_write_through_the_executive_opens_only_its_phase() {
     let mut dss = Dss::new();
@@ -672,15 +643,9 @@ fn per_phase_state_write_through_the_executive_opens_only_its_phase() {
         .find(|s| s.name.eq_ignore_ascii_case("Line.swk"))
         .expect("line.swk in the snapshot");
     let mag = |k: usize| (s.currents[k].re.powi(2) + s.currents[k].im.powi(2)).sqrt();
-    // **Band** (RP3.7 FIX-A1, verify-A1 finding F7): the calibrated element-current
-    // floor `abs 1e-6` (`tests/TOLERANCE_NOTES.md` §tiers, "element currents /
-    // powers", tight tier), which also brackets the transcript's own resolution —
-    // the r4133 DLL prints each component to six decimals, so a magnitude derived
-    // from it carries up to `sqrt(2)*5e-7 = 7.1e-7` of print quantization.
-    // MEASURED on this tree: phase 1 = 7.20e-9 (r4133 prints exactly
-    // `0.000000 +0.000000j`), phase 2 |Δ| = 3.66e-7, phase 3 |Δ| = 2.75e-7 — the
-    // largest is 2.6e-8 RELATIVE. This replaced an ad-hoc `5e-4` relative band
-    // (~4 orders looser than the floor, blind to a ~7 mA per-phase drive error).
+    // **Band**: `abs 1e-6` on each magnitude. It brackets the r4133 print
+    // resolution (six decimals per component give up to `sqrt(2)*5e-7 = 7.1e-7`
+    // on a magnitude) and still catches a mA-level per-phase drive error.
     const IFLOOR: f64 = 1e-6;
     assert!(
         mag(0) < IFLOOR,
@@ -731,11 +696,8 @@ fn term1_max_current(dss: &mut Dss, name: &str) -> f64 {
     m
 }
 
-/// WP-U2.4 D6 (EPRI r4133 `SwtControl.pas`): the deprecated `Action=open`
-/// forces the switched element open **immediately at parse time** — like
-/// `State=open` — with NO control-queue delay and NO `OPENED` event. The
-/// per-phase rewrite keeps this ganged observable bit-identical (r4133
-/// `action=` is always ganged, :419-429).
+/// The deprecated `Action=open` forces the switched element open **immediately at
+/// parse time**, like `State=open`, with NO control-queue delay and NO `OPENED` event.
 #[test]
 fn action_open_forces_line_open_at_parse_no_event() {
     let mut dss = Dss::new();
@@ -758,7 +720,7 @@ fn action_open_forces_line_open_at_parse_no_event() {
     assert!(dss.errors().is_empty(), "engine errors: {:?}", dss.errors());
     assert!(
         term1_max_current(&mut dss, "Line.l1") < 1.0,
-        "action=open should force the switch open at parse (D6)"
+        "action=open should force the switch open at parse"
     );
     assert!(
         term1_max_current(&mut dss, "Line.l2") > 1.0,
@@ -766,7 +728,7 @@ fn action_open_forces_line_open_at_parse_no_event() {
     );
     assert!(
         !dss.event_log().iter().any(|s| s.contains("Action=OPENED")),
-        "D6: action forces at parse, so no queued OPENED event; log = {:?}",
+        "action forces at parse, so no queued OPENED event; log = {:?}",
         dss.event_log()
     );
 }
@@ -799,8 +761,7 @@ fn state_open_forces_line_open_at_parse() {
 
 /// `Reset` (DoResetControls) drives the dispatch Reset arm: it restores the
 /// switch to `NormalState` per phase and re-forces the controlled element.
-/// With `normal=closed`, a line opened via `state=open` is re-closed by
-/// `reset` (oracle-probed: `reset` ⇒ l1 closed again).
+/// With `normal=closed`, a line opened via `state=open` is re-closed by `reset`.
 #[test]
 fn reset_restores_switch_to_normal_via_dispatch() {
     let mut dss = Dss::new();
@@ -832,10 +793,8 @@ fn reset_restores_switch_to_normal_via_dispatch() {
 }
 
 // ---------------------------------------------------------------------------
-// The r4133 per-phase render (RP3.7 A2). Every expected byte string below is
-// quoted from the live r4133 DLL transcript (`tmp/rp37/probe.md` §4/§5/§6,
-// `tmp/rp37/out_nil_controlled.txt`, `tmp/rp37/out_a2a.txt`) — never from this
-// port's own output.
+// The r4133 per-phase render. The expected byte strings below are r4133's,
+// never this engine's own output.
 // ---------------------------------------------------------------------------
 
 /// Build a circuit with one `switch=y` line of `nphases` phases and a
@@ -859,16 +818,9 @@ fn ask(dss: &mut Dss, q: &str) -> String {
     dss.result().trim().to_string()
 }
 
-/// r4133 `GetPropertyValue` 6/7 (`SwtControl.pas:573-623`): `'['` + one
-/// `open`/`closed` token **plus a trailing `', '`** per controlled-element
-/// phase + `']'`. Measured on the r4133 DLL for 1, 3 and 4 phases (probe §4
-/// table, P2(iii)/P2(i)/P2(iv-b)). A fresh control renders the all-CLOSED
-/// array for `Normal` too — `Create` initializes it (`:299-307`) — which is
-/// where the pre-RP3.7 port's `''` (scalar `None`) was wrong against BOTH
-/// oracles (probe §11.5). Reverting the array render, the trailing `', '`, or
-/// the `Create` initialization each breaks a literal here. One token per phase
-/// holds up to six phases; past six the port clips
-/// (`a_seven_phase_controlled_element_renders_six_tokens`).
+/// The render is `'['` + one `open`/`closed` token **plus a trailing `', '`** per
+/// controlled-element phase + `']'`, and a fresh control renders the all-CLOSED array
+/// for `Normal` too.
 #[test]
 fn render_is_one_token_per_controlled_element_phase() {
     let mut dss = micro_dss(3);
@@ -891,11 +843,9 @@ fn render_is_one_token_per_controlled_element_phase() {
     assert_eq!(ask(&mut dss1, "? swtcontrol.sw1.state"), "[open, ]");
 
     // Four phases: r4133 renders four tokens off a 4-phase controlled element
-    // (probe P2(iv-b)) even though `Create` allocated three (`:299-305`) — the
-    // port answers the same four from its six in-bounds slots. The COUNT is the
-    // pinned observable; the 4th token's VALUE is an out-of-bounds heap read
-    // upstream, which happens to read `closed` on this shape (re-measured
-    // 2026-09-02) but is not a defined r4133 answer.
+    // even though `Create` allocated three. This engine answers the same four
+    // from its six in-bounds slots. The COUNT is the pinned observable. The 4th
+    // token's VALUE is an out-of-bounds heap read in r4133, not a defined answer.
     let mut dss4 = micro_dss(4);
     assert_eq!(
         ask(&mut dss4, "? swtcontrol.sw1.state"),
@@ -913,33 +863,8 @@ fn render_is_one_token_per_controlled_element_phase() {
     );
 }
 
-/// RP3.7 retro audit AT2-1 — past six phases the render stops at six tokens
-/// where r4133 does not. `GetPropertyValue` 6/7 loop
-/// `ControlledElement.NPhases` uncapped (`SwtControl.pas:591`/`:602`), so the
-/// 7th token reads `FPresentState^[7]` past `StateArray =
-/// Array[1..SWTCONTROLMAXDIM]` (`:14`/`:19`, six slots) and past `Create`'s
-/// 3-entry allocation (`:299-300`): an out-of-bounds read, never reproduced
-/// (2026-08-02 policy), so [`SwtControl::state_size`] clips at six.
-///
-/// Measured on the r4133 DLL 11.0.0.1 (RF-D01-01 probe (b), deck
-/// `b_swtcontrol7.dss`, whose circuit/line/control lines this test replays;
-/// identical with and without a `solve`): State and Normal render SEVEN
-/// tokens fresh, all `closed`; after the ganged `state=open` (slots
-/// `1..SWTCONTROLMAXDIM` only, `:435`) State reads
-/// `[open, open, open, open, open, open, closed, ]`, the 7th token being the
-/// never-written slot; `state=closed` then gives seven `closed` and Normal
-/// keeps the first write's six `open` plus a 7th `closed`. Each of those edits
-/// also raised warning #384 "Number of phases > Max SwtControl dimension"
-/// (`:334`); the port's missing warning is `ORPHANED_GAPS.md` §1.15 and is
-/// deliberately not asserted here either way. The port answers six tokens at
-/// every step, each assert naming the r4133 bytes.
-///
-/// The probe transcript is local-only (gitignored `tmp/retro_fix/`). To
-/// re-derive it, compile this test's four commands plus the deck's
-/// `new load.ld bus1=b1 phases=3 kv=115 kw=2000 pf=0.95 model=1`,
-/// `set voltagebases=[115]` and `calcvoltagebases` in a fresh
-/// `tools/opendss/epri_worker.py` worker on the r4133 DLL, then send the edits
-/// and `?` reads below.
+/// Past six phases the render stops at six tokens, where r4133 reads past its
+/// six-slot state array, an out-of-bounds read this engine does not reproduce.
 #[test]
 fn a_seven_phase_controlled_element_renders_six_tokens() {
     let mut dss = Dss::new();
@@ -985,32 +910,10 @@ fn a_seven_phase_controlled_element_renders_six_tokens() {
     );
 }
 
-/// RF-D01-01 settlement round 2 (SA-1) — r4133's `Else`-without-`Begin`
-/// fall-through (defect 1 of [`SwtControl::interpret_switch_state`]'s doc) is
-/// not reproduced. Only `AuxParser.CmdString := param` (`:455`) sits under the
-/// `Else` (`:453`); the reads and the per-phase `While` (`:457-480`) run on the
-/// unquoted path too and re-read the GLOBAL AuxParser, and the quoted branch
-/// stops without applying a list's sixth token (`:461`). So a 7-token quoted
-/// list leaves its seventh token behind, and the NEXT bare `state=` write
-/// applies it to slot 1 after its ganged fill.
-///
-/// Measured on the r4133 DLL 11.0.0.1 (RF-D01-01 part 2 residue probe, a
-/// 3-phase line so every read is in bounds): from the ganged `state=closed`
-/// baseline, `state=(closed, closed, closed, closed, closed, closed, open)`
-/// reads `[closed, closed, closed, ]`, the next `state=closed` reads
-/// `[open, closed, closed, ]` and a second one `[closed, closed, closed, ]`
-/// (the AuxParser drained). The port parses every write with a fresh parser,
-/// so it reads `[closed, closed, closed, ]` at every step; the assert on the
-/// divergent step names r4133's bytes. The pin holds across the pending
-/// sixth-token fix (AC3-1): a 5- or a 6-token bound drops the seventh token
-/// alike.
-///
-/// The probe transcript is local-only (gitignored `tmp/retro_fix/`). To
-/// re-derive it, compile this test's four commands plus
-/// `new load.ld bus1=b1 phases=3 kv=115 kw=2000 pf=0.95 model=2`,
-/// `set voltagebases=[115]`, `calcvoltagebases` and `solve` in a fresh
-/// `tools/opendss/epri_worker.py` worker on the r4133 DLL, then send the edits
-/// and `?` reads below.
+/// A 7-token quoted list leaves no parser residue for the next bare `state=`
+/// write, since every write gets a fresh parser. r4133 re-reads that residue, an
+/// `Else`-without-`Begin` fall-through this engine does not reproduce
+/// ([`SwtControl::interpret_switch_state`]).
 #[test]
 fn a_seven_token_list_leaves_no_residue_for_the_next_bare_write() {
     let mut dss = Dss::new();
@@ -1039,11 +942,9 @@ fn a_seven_token_list_leaves_no_residue_for_the_next_bare_write() {
     assert!(dss.errors().is_empty(), "errors: {:?}", dss.errors());
 }
 
-/// `ControlledElement = NIL` renders the bare `'[]'` — r4133's getters skip
-/// the loop entirely (`:589`/`:600`), measured on the orphan control
-/// (`tmp/rp37/out_nil_controlled.txt`: `'[]'` for both `state` and `normal`,
-/// after the #387 create error). A render bound that fell back to the
-/// control's own 3 phases would print three tokens here.
+/// `ControlledElement = NIL` renders the bare `'[]'` for both `state` and `normal`.
+/// A render bound that fell back to the control's own 3 phases would print three
+/// tokens here.
 #[test]
 fn nil_controlled_element_renders_the_empty_array() {
     let mut dss = Dss::new();
@@ -1054,15 +955,8 @@ fn nil_controlled_element_renders_the_empty_array() {
     assert_eq!(ask(&mut dss, "? swtcontrol.orphan.normal"), "[]");
 }
 
-/// A QUOTED value goes phase by phase, a BARE token is ganged — including for
-/// a single token, which is the only place the two shapes are visually
-/// identical. Measured on the r4133 DLL (`tmp/rp37/out_a2a.txt` A2a(1)):
-/// `state=(open)` on an all-closed 3-phase control gives
-/// `[open, closed, closed, ]` while `state=open` gives `[open, open, open, ]`,
-/// and `normal=(closed)` over an all-open normal gives `[closed, open, open, ]`.
-/// Dropping the `WasQuoted` plumbing (`exec/command.rs` →
-/// [`PropEngine::was_quoted`](crate::obj::props::PropEngine::was_quoted)) makes
-/// the first and third assertions read like the ganged ones.
+/// A QUOTED value goes phase by phase and a BARE token is ganged, also for a single
+/// token, the only place the two shapes look identical.
 #[test]
 fn a_quoted_single_token_is_per_phase_a_bare_one_is_ganged() {
     let mut dss = micro_dss(3);
@@ -1098,10 +992,8 @@ fn a_quoted_single_token_is_per_phase_a_bare_one_is_ganged() {
 }
 
 /// The heterogeneous write through both real seams: the executive
-/// (`edit swtcontrol.sw1 state=(open, closed, closed)`) and the property
-/// applier called directly with `was_quoted = true`. Expected bytes: r4133
-/// probe §4 / P1 (`'[open, closed, closed, ]'`, Normal following on the first
-/// state write).
+/// (`edit swtcontrol.sw1 state=(open, closed, closed)`) and the property applier
+/// called directly with `was_quoted = true`, Normal following on the first write.
 #[test]
 fn per_phase_write_renders_the_r4133_bytes_through_both_seams() {
     let mut dss = micro_dss(3);
@@ -1122,26 +1014,10 @@ fn per_phase_write_renders_the_r4133_bytes_through_both_seams() {
     assert_eq!(render(&sw, "Normal"), "[open, closed, closed, ]");
 }
 
-/// The per-phase parse honors at most FIVE tokens (`:461`
-/// `While (Length(DataStr2)>0) and (i<SWTCONTROLMAXDIM)`) while the render
-/// prints one token per controlled-element phase: r4133's getters loop
-/// `NPhases` uncapped (`:591`/`:602`); the six-token ceiling is the port's own
-/// clip ([`SwtControl::state_size`], pinned by
-/// `a_seven_phase_controlled_element_renders_six_tokens`).
-/// Driven through the property seam (`was_quoted = true`), so a regression that
-/// re-routed the write to the generic `array_size`-bounded tokenizer would let
-/// the sixth token through.
-///
-/// **A reproduced upstream bug, pending its fix.** The five-token bound is an
-/// r4133 off-by-one — the ganged arm (`:435`) and `StateArray` (`:19`) span
-/// six slots — reported upstream in
-/// `investigations/to_opendss/75-per-phase-state-list-drops-the-sixth-phase.md`
-/// (local-only), and the 2026-08-02 policy says it is not reproduced. The port
-/// still reproduces it in `interpret_switch_state` and in the ordinal twin
-/// `set_enum_array`, which must move together
-/// (`the_ordinal_array_setter_matches_the_interpreter` asserts they agree):
-/// RETRO_FIXES RF-D01-01 AC3-1 flips this pin, that test's row 2 and
-/// `interpreter_per_phase_caps_at_five_tokens` to the sixth token landing.
+/// The per-phase parse through the property seam honors at most five tokens, an
+/// r4133 off-by-one this engine still reproduces (a known defect). A regression that
+/// re-routed the write to the generic `array_size`-bounded tokenizer would let the
+/// sixth token through.
 #[test]
 fn the_property_seam_caps_the_per_phase_parse_at_five_tokens() {
     let mut sw = sw_with_snap(6);
@@ -1172,21 +1048,15 @@ fn a_multi_token_value_without_the_quote_flag_is_still_per_phase() {
     edit_prop(&mut sw2, "State", "[open, closed, closed, ]", false);
     assert_eq!(render(&sw2, "State"), "[open, closed, closed, ]");
     // …and a single bare token stays ganged (`normal=closed`, `action=o` — the
-    // only spelling any corpus deck writes, probe §7).
+    // only spelling any corpus deck writes).
     let mut sw3 = sw_with_snap(3);
     edit_prop(&mut sw3, "State", "open", false);
     assert_eq!(render(&sw3, "State"), "[open, open, open, ]");
 }
 
-/// The render bound follows the controlled element through `MakePosSequence`,
-/// which is plan §RP3.7(b)'s resync arriving for free on the SwtControl side:
-/// r4133's getters loop the LIVE `ControlledElement.NPhases`, so on the
-/// `p4_makeposseq.dss` shape (`tmp/rp37/decks/`) the control renders
-/// `'[closed, closed, closed, ]'` before `makeposseq` and `'[closed, ]'` after
-/// (probe §6/§11.4, measured on the r4133 DLL). The trailing `edit`+`?` is the
-/// staleness guard: `recalc` re-reads the controlled-element snapshot, so a
-/// `make_pos_sequence` that refreshed only `Nphases` and left the snapshot
-/// frozen would resurrect the three-token render on the next edit.
+/// The render bound follows the controlled element through `MakePosSequence`: three
+/// tokens before `makeposseq`, one after, and still one after a later `edit`, whose
+/// `recalc` re-reads the refreshed snapshot.
 #[test]
 fn the_render_bound_follows_makeposseq() {
     let mut dss = Dss::new();
@@ -1223,23 +1093,9 @@ fn the_render_bound_follows_makeposseq() {
     assert_eq!(ask(&mut dss, "? swtcontrol.swc.state"), "[closed, ]");
 }
 
-/// The ordinal twin [`DssObject::set_enum_array`] — unreachable in production
-/// (the raw hook consumes every write) but kept semantically identical, so a
-/// future caller cannot silently get ganged-vs-per-phase or the lock rule
-/// wrong. Same three rules: per-phase fill, five-slot cap, `Keep` = unchanged.
-///
-/// **RP3.7 audit settlement (2026-09-02): the identity is ENFORCED here, not
-/// claimed in prose.** Each row below drives two identical controls — one
-/// through the ordinal setter, one through
-/// [`SwtControl::interpret_switch_state`] with the equivalent quoted spelling —
-/// and asserts BOTH the r4133 bytes and that the two renders agree. The
-/// previous version asserted literals only: mutating the interpreter's lock
-/// guard to a whole-object `if self.locked { return; }` left it green while
-/// the two paths disagreed about `Normal`.
-///
-/// The `Keep` ordinal's spelling on the interpreter side is any token whose
-/// first character is neither `o` nor `c` — r4133's `case` has no else arm
-/// (`:464-467`), so such a slot is left unchanged exactly as `Keep` is.
+/// The ordinal twin [`DssObject::set_enum_array`] re-implements the per-phase fill,
+/// the five-slot cap and the `Keep` rule, so each row drives it and
+/// [`SwtControl::interpret_switch_state`] on identical controls and asserts both agree.
 #[test]
 fn the_ordinal_array_setter_matches_the_interpreter() {
     /// phases, locked, property, ordinals, the quoted spelling, r4133 bytes.
@@ -1255,9 +1111,8 @@ fn the_ordinal_array_setter_matches_the_interpreter() {
             "open, keep, open",
             "[open, closed, open, ]",
         ),
-        // The five-slot cap on both paths (`take(SW_MAX - 1)` vs `:461`): a
-        // reproduced r4133 off-by-one (upstream report 75) that RETRO_FIXES
-        // RF-D01-01 AC3-1 flips (see
+        // The five-slot cap on both paths (`take(SW_MAX - 1)`): a reproduced
+        // r4133 off-by-one, a known defect whose fix flips this row (see
         // `the_property_seam_caps_the_per_phase_parse_at_five_tokens`).
         (
             6,
@@ -1317,13 +1172,8 @@ fn the_ordinal_array_setter_matches_the_interpreter() {
     }
 }
 
-/// r4133 authority over the scalar seam (2026-08-02 policy): a non-matching
-/// bare token (`state=bogus`) leaves the state unchanged, silently — the
-/// `Keep` default the registry now carries (r4133's `case` has no else arm,
-/// probe §9). Pre-RP3.7 the port raised `Could not match enum`; capi silently
-/// closes (its DefaultValue=CTRL_CLOSE) — both refused for r4133's no-op. The
-/// Edit supplemental still latches Normal from Present on the (no-op) first
-/// State write, exactly as r4133 runs it outside the interpreter (:221-228).
+/// A non-matching bare token (`state=bogus`) leaves the state unchanged, silently,
+/// while the Edit supplemental still latches Normal from Present on that first write.
 #[test]
 fn non_matching_state_token_leaves_the_state_untouched() {
     let mut dss = Dss::new();
@@ -1361,17 +1211,9 @@ fn non_matching_state_token_leaves_the_state_untouched() {
 // state if locked"), NOT 0.14.5's `ConditionalReadOnly` refusal of all three.
 // ---------------------------------------------------------------------------
 
-/// RP3.7 (a2), the plan's headline fix, in both lanes. Byte-for-byte the r4133
-/// DLL sequence of `tmp/rp37/probe.md` §5 on a locked 3-phase control:
-/// `normal=open` APPLIES (`[open, open, open, ]`) and so does a quoted
-/// per-phase `normal=(open, closed, open)` (`[open, closed, open, ]`), while
-/// `state=open` and `action=open` move nothing — the switch stays closed
-/// throughout. Then `lock=no` lets `state=open` through, and `reset=yes`
-/// restores State from Normal per phase.
-///
-/// Reverting to the scalar-era gate (a locked write to any of the three is
-/// dropped, `docs/upgrade/DIVERGENCES.md` §D12's old claim) fails on the very
-/// first `normal=` assertion.
+/// On a locked control `normal=` applies, ganged or quoted per-phase, while
+/// `state=` and `action=` move nothing. `lock=no` then lets `state=open` through,
+/// and `reset=yes` restores State from Normal per phase.
 #[test]
 fn locked_normal_applies_locked_state_and_action_do_not() {
     let mut dss = micro_dss(3);
@@ -1436,18 +1278,9 @@ fn locked_normal_applies_locked_state_and_action_do_not() {
     assert!(dss.errors().is_empty(), "{:?}", dss.errors());
 }
 
-/// The Edit supplemental (`SwtControl.pas:219-228`) runs even when the lock
-/// guard refused the write — it sits OUTSIDE `InterpretSwitchState`, in the
-/// `{Supplemental Actions} case ParamPointer of 3, 7:` block.
-///
-/// The discriminator, measured on the r4133 DLL: with a lock in place, a
-/// refused `state=open` (and likewise `action=open`) still latches
-/// `NormalStateSet`, so the LATER unlocked `state=open` may not copy Present
-/// into Normal — `Normal` stays `[closed, closed, closed, ]`
-/// (`tmp/rp37/out_a2a2.txt` A2a(4), `tmp/rp37/out_a2a.txt` A2a(3)) — whereas
-/// the identical sequence with no lock carries it to `[open, open, open, ]`
-/// (A2a(5)). Restoring the old `if self.locked { return; }` early-return in
-/// `side_effects` flips the locked case onto the unlocked answer.
+/// The Edit supplemental runs even when the lock guard refused the write, so a
+/// refused `state=open` or `action=open` latches `NormalStateSet` and a LATER unlocked
+/// `state=open` leaves `Normal` closed, where the unlocked sequence carries it open.
 #[test]
 fn a_locked_state_write_still_runs_the_normal_defaults_supplemental() {
     for refused in ["state=open", "action=open"] {
@@ -1474,7 +1307,7 @@ fn a_locked_state_write_still_runs_the_normal_defaults_supplemental() {
             "the refused {refused} already latched NormalStateSet"
         );
     }
-    // A2a(5): the same first-write sequence with no lock DOES carry Normal.
+    // The same first-write sequence with no lock DOES carry Normal.
     let mut dss = micro_dss(3);
     dss.command("edit swtcontrol.sw1 state=open");
     assert_eq!(
@@ -1532,7 +1365,7 @@ fn sample_does_not_arm_when_matching() {
 
 #[test]
 fn sample_stays_inert_after_a_state_write() {
-    // The D6 invariant on the per-phase model: after a State/Action write the
+    // The inert-queue invariant on the per-phase model: after a State/Action write the
     // side effect syncs `current_action` to the arrays' ganged view, so the
     // queue branch is false (r4133's Sample is inert anyway; the capi-lane
     // swtcontrol_lock deck pins exactly this absence of an action push).
@@ -1545,34 +1378,10 @@ fn sample_stays_inert_after_a_state_write() {
     assert!(sc.queue.is_empty(), "no action push after a state write");
 }
 
-/// The other side of the D6 invariant, and a **tripwire on a live divergence
-/// from the behavioral authority** (RP3.7 FIX-A1, verify-A1 finding F2): after
-/// a plain `normal=open` the retained 0.14.5 glue leaves
-/// `current_action = Open` against an all-CLOSED `present_state`, which is
-/// exactly [`SwtControl::sample`]'s arming condition — so the port queues an
-/// action and OPENS a switch that r4133 leaves closed (r4133 comments out both
-/// `Sample` and `DoPendingAction`; measured end-to-end in
-/// `tmp/rp37/out_port_probe10.txt` vs the r4133 DLL in
-/// `tmp/rp37/out_fixa1.txt` §F2).
-///
-/// The **locked** write arms it too, and that half is new with RP3.7 (audit
-/// settlement, 2026-09-02): before (a2) a locked `normal=` was refused outright
-/// by the scalar-era `ConditionalReadOnly` gates in `set_i32`/`side_effects`, so
-/// it could not reach the glue; r4133's own guard lets `n`ormal through
-/// (`:416-417`), the port now applies it, and `side_effects(NORMAL)` runs with
-/// it. The switch still does not move — [`SwtControl::do_pending_action`] is
-/// `!locked`-guarded — but the queue push and the `armed` latch happen, and the
-/// control queue is a compared surface (`compare_ctrlqueue`). Corpus exposure
-/// stays zero on this path as well: `swtcontrol_lock.dss` types
-/// `normal=closed` BEFORE `lock=yes` on the same `New`.
-///
-/// This pin asserts the CURRENT, divergent behavior on purpose: corpus exposure
-/// is zero (every corpus `normal=` is a ganged `normal=closed` over an
-/// all-closed state, so the ganged views agree and nothing arms), and retiring
-/// the 0.14.5 `Sample` body needs `swtcontrol_lock.dss` re-gated off the capi
-/// channel (`ORPHANED_GAPS.md` §1.16). When that happens this test must be
-/// DELETED, not re-baselined — it exists so the gap cannot be forgotten or
-/// deepened silently.
+/// After a plain `normal=open` the retained dss_capi 0.14.5 glue arms
+/// [`SwtControl::sample`], and the queue opens a switch that r4133 leaves closed: a
+/// known defect pinned as a tripwire. When the 0.14.5 `Sample` body goes, this test
+/// is deleted, not re-baselined.
 #[test]
 fn sample_arms_on_a_normal_write_the_retained_capi_channel() {
     let mut sw = sw_with_snap(3);
@@ -1695,12 +1504,12 @@ fn lock_side_effect_queues_lock_command_pushed_on_sample() {
 }
 
 // ---------------------------------------------------------------------------
-// The property side effects (D12/D6 shape on the per-phase model)
+// The property side effects on the per-phase model
 // ---------------------------------------------------------------------------
 
 #[test]
 fn normal_side_effect_syncs_current_action_from_normal_state() {
-    // D12 (WP-U1.6) + the capi015 props golden: `Normal=` latches
+    // The capi015 props golden: `Normal=` latches
     // `NormalStateSet` (r4133 Edit arm 6 tail, SwtControl.pas:203) and syncs
     // the 0.14.5 `CurrentAction` glue the `Action` readback renders — while
     // leaving the present array untouched (r4133 normal= never drives).
@@ -1748,17 +1557,17 @@ fn state_side_effect_latches_normal_per_phase_and_syncs() {
 
 #[test]
 fn d6_action_forces_present_state_and_element_like_state() {
-    // WP-U2.4 D6 on the per-phase model: `Action` is r4133's ganged `States`
-    // write — present slots flip, the first-set supplemental latches Normal,
-    // and the end-of-Edit drive forces the element. Reverting D6 (action
-    // writes only Normal) leaves the present slots closed.
+    // `Action` is r4133's ganged `States` write — present slots flip, the
+    // first-set supplemental latches Normal, and the end-of-Edit drive forces
+    // the element. An action that writes only Normal leaves the present slots
+    // closed.
     let mut sw = sw_with_snap(3);
     sw.set_i32(prop::ACTION, ControlAction::Open.ordinal());
     sw.side_effects(prop::ACTION, 0);
     assert_eq!(
         sw.present_state[1..=SW_MAX],
         [ControlAction::Open; SW_MAX],
-        "D6 ganged slots"
+        "ganged slots"
     );
     assert_eq!(sw.normal_state[1], ControlAction::Open); // first-set default
     assert!(sw.normal_state_set);
@@ -1774,7 +1583,7 @@ fn d6_action_forces_present_state_and_element_like_state() {
 
 #[test]
 fn d6_action_after_declared_normal_leaves_normal_unchanged() {
-    // r4133-probed: `normal=closed` then `action=open` leaves normal closed
+    // `normal=closed` then `action=open` leaves normal closed
     // (NormalStateSet already latched on the normal= write) while the present
     // flips. Mirrors the civanlar/swtcontrol_time pattern.
     let mut sw = sw_with_snap(3);
@@ -1798,9 +1607,8 @@ fn d6_action_after_declared_normal_leaves_normal_unchanged() {
 
 #[test]
 fn d6_locked_action_does_not_force_element() {
-    // r4133-probed: with `lock=yes`, `action=open` is ignored — the switch
-    // stays closed, no element force queued (A1's scalar seam gate; A2's r4133
-    // guard refuses it for the same observable on this property).
+    // With `lock=yes`, `action=open` is ignored — the switch stays closed, no
+    // element force queued.
     let mut sw = sw_with_snap(3);
     sw.locked = true;
     sw.set_i32(prop::ACTION, ControlAction::Open.ordinal()); // ignored
@@ -1818,7 +1626,7 @@ fn d6_locked_action_does_not_force_element() {
 
 #[test]
 fn d12_normal_and_state_readbacks_are_independent() {
-    // D12 feature-sensitivity on the per-phase model: set `State=open` then
+    // Feature-sensitivity on the per-phase model: set `State=open` then
     // `Normal=closed`; both scalar readbacks survive independently.
     let mut sw = sw_with_snap(3);
     edit_prop(&mut sw, "State", "open", false);
@@ -1932,7 +1740,7 @@ fn make_like_copies_switch_state() {
     assert_eq!(sw.normal_state[1], ControlAction::Open);
     assert_eq!(sw.current_action, ControlAction::Open);
     // The flag copies with the arrays (the accessors' doc: r4133's omission is
-    // an upstream oversight; the capi015 `swtcontrol_makelike` props golden
+    // an OpenDSS oversight; the capi015 `swtcontrol_makelike` props golden
     // renders the carried normal). Reverting the copy makes the clone's
     // `Normal` readback render the unset view.
     assert!(sw.normal_state_set);
@@ -1963,8 +1771,7 @@ fn make_like_fresh_clone_keeps_the_unset_normal_latch() {
 
 #[test]
 fn rated_current_parses_and_reads_back() {
-    // WP-U2.4 C4 (r4133 `SwtControl.pas` prop 9): informational continuous
-    // rating. Untouched by the per-phase rewrite.
+    // r4133 `RatedCurrent`: informational continuous rating.
     let mut dss = Dss::new();
     dss.command("clear");
     dss.command("new circuit.c");
@@ -1986,11 +1793,8 @@ mod make_pos_seq_tests {
     use crate::elements::traits::{CktElement, ElemId};
     use crate::obj::base::DssObject;
 
-    /// Pascal `TSwtControlObj.MakePosSequence` (SwtControl.pas:367-375):
-    /// phases, conds and bus from the controlled (switched) element at
-    /// ElementTerminal. The state arrays are NOT touched — the render resync
-    /// the probe measured is purely the getter's live phase count (probe §6,
-    /// A2's render bound).
+    /// `MakePosSequence` takes phases, conds and bus from the controlled
+    /// (switched) element at ElementTerminal and leaves the state arrays untouched.
     #[test]
     fn resyncs_to_controlled() {
         let mut sw = SwtControl::new("sw1");

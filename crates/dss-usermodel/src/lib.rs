@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 //! `dss-usermodel` — the WASM user-model host: the sandboxed replacement for
-//! the upstream user-written-DLL mechanism (`WASM_USERMODELS_PLAN.md`).
+//! the upstream user-written-DLL mechanism.
 //!
 //! Upstream loads user models as native DLLs
 //! (`LoadLibrary`/`GetProcAddress`, Stdcall — `PCElements/GenUserModel.pas`,
@@ -13,9 +13,8 @@
 //! shared-record semantics via an explicit copy-in/copy-out shuttle, and the
 //! same warn-and-fallback failure behavior. The wire contract is frozen in
 //! **`docs/wasm/USERMODEL_ABI.md`**; the implementation template is the
-//! vendored typst plugin host
-//! (`.inputs/typst/crates/typst-library/src/foundations/plugin.rs`), cited at
-//! each ported pattern like Pascal is cited elsewhere.
+//! typst plugin host (`typst-library` `foundations/plugin.rs`), cited at
+//! each ported pattern.
 //!
 //! Crate shape (the `dss-sparse` pattern — a pure-Rust dependency behind a
 //! Pascal-shaped surface; leaf crate, no dss-core dependency):

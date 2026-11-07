@@ -3,9 +3,8 @@ resolver = "3"
 members = ["crates/dss-cli", "crates/dss-compat", "crates/dss-core", "crates/dss-epri", "crates/dss-metis", "crates/dss-parser", "crates/dss-sparse", "crates/dss-test-harness", "crates/dss-usermodel", "tools/gate-kind"]
 
 [workspace.dependencies]
-# Stage F / F-FMT step 2 (DE_PASCALIZE Part IV.2): the default lane renders the
-# fixed-width `Show` tables through a table crate instead of hand-measured
-# `Pad` widths. Chosen over `tabled` by the plan's own criterion — the whole
+# The default lane renders the fixed-width `Show` tables through a table crate
+# instead of hand-measured `Pad` widths. Chosen over `tabled` because its whole
 # closure (comfy-table, unicode-width, unicode-segmentation) is
 # `forbid`/`deny(unsafe_code)`, while `tabled`'s mandatory `papergrid` is not.
 # `default-features = false` drops the crossterm/tty/colour stack; only the
@@ -14,25 +13,24 @@ comfy-table = { version = "7", default-features = false }
 num-complex = "0.4"
 regex = "1"
 thiserror = "2"
-# Diagnostics protocol (DE_PASCALIZE P5). Protocol only — the `fancy`
-# terminal-render handler is pulled in by `dss-cli` alone (P5c), the library
-# crates carry structured `Diagnostic` data with default features off.
+# Diagnostics protocol only. The `fancy` terminal-render handler is pulled in
+# by `dss-cli` alone. The library crates carry structured `Diagnostic` data
+# with default features off.
 miette = { version = "7", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 # Test-only: the `dss-epri` bridge crate loads the official EPRI OpenDSSDirect.dll
-# (the r4133 live-oracle channel) via `libloading`. Product crates never depend on
+# (the r4133 comparison channel) via `libloading`. Product crates never depend on
 # this — `dss-epri` is `publish = false` and the sole `#![forbid(unsafe_code)]`
-# carve-out (UNIFIED_GATE_PLAN.md §2, Phase A).
+# carve-out.
 libloading = "0.8"
-# UUID v4 generation for the CIM UUID plumbing (Pascal `NamedObject.CreateUUID4`,
-# PHASE8_PLAN WP8.6 step 6). Random v4s are never oracle-pinnable; the goldens
-# preload every UUID via the `Uuids` command.
+# UUID v4 generation for the CIM UUID plumbing. Random v4s cannot match an
+# OpenDSS engine, so the goldens preload every UUID via the `Uuids` command.
 uuid = { version = "1", features = ["v4"] }
-# WASM user-model host interpreter (WASM_USERMODELS_PLAN §2.1): pure-Rust wasmi,
-# pinned exactly per tools/wasm_usermodel/PIN.txt (the typst-verified release —
-# .inputs/typst/Cargo.toml). `default-features = false` + "simd" is the typst
-# feature set; the dependency closure is pure Rust (no C, no JIT — probe P4).
+# WASM user-model host interpreter: pure-Rust wasmi, pinned exactly per
+# tools/wasm_usermodel/PIN.txt (the release typst ships). `default-features =
+# false` + "simd" is the typst feature set. The dependency closure is pure Rust
+# (no C, no JIT).
 wasmi = { version = "=1.0.9", default-features = false, features = ["simd"] }
 
 # Runtime speed for the mandatory gate: `cargo test` (dev/test profile) runs
@@ -79,14 +77,14 @@ overflow-checks = true
 debug-assertions = true
 
 # The WASM user-model host: the wasmi interpreter executes guest models inside
-# the gate's tests (and, from WM.3, inside golden/corpus runs) — keep it
-# optimized like the engine crates. Safety knobs kept at dev defaults.
+# the gate's tests and golden runs, so it is optimized like the engine crates.
+# Safety knobs kept at dev defaults.
 [profile.dev.package.dss-usermodel]
 opt-level = 3
 overflow-checks = true
 debug-assertions = true
 
-# The test-only EPRI bridge (UNIFIED_GATE_PLAN.md §7 Data/config): optimize it
+# The test-only EPRI bridge: optimize it
 # with the engine crates so the `epri-worker` marshalling / ByteStream decode is
 # not opt-0 slow on the corpus sweep. Safety knobs kept at dev defaults.
 [profile.dev.package.dss-epri]

@@ -1,6 +1,6 @@
-//! Golden generator for the WASM_USERMODELS WM.3 Generator gate (recorded
-//! decision 2026-07-19: the oracle channel is the in-house **r4133 bridge**,
-//! not pinned dss-python). Drives each `tools/golden/wasm_decks/*.dss` deck —
+//! Golden generator for the Generator user-model gate. The reference channel
+//! is the in-house **r4133 bridge**, not the pinned dss-python. Drives each
+//! `tools/golden/wasm_decks/*.dss` deck —
 //! with `@FIXTURE@` substituted by the **native `.dll` twin** of the reference
 //! model — through the r4133 engine (`dss_epri::Engine`) and writes the captured
 //! Generator state-variable surface + node voltages as the committed golden
@@ -8,8 +8,13 @@
 //! (`crates/dss-core/tests/wasm_usermodels.rs`) compares the committed `.wasm`
 //! fixture against these goldens at the harness tier floors.
 //!
-//! **Manual only** (like every golden): env-gated on `WASM_TWIN_DLL`, so
-//! `cargo test` skips it. Regenerate with:
+//! # Knobs
+//!
+//! - `WASM_TWIN_DLL`: path of the native `.dll` twin. Unset by default, and
+//!   then the generator returns without writing anything.
+//!
+//! **Manual only** (like every golden): `#[ignore]` and gated on
+//! `WASM_TWIN_DLL`. Regenerate with:
 //! ```text
 //! pwsh tools/wasm_usermodel/build_native.ps1   # builds the r4133 twin
 //! WASM_TWIN_DLL="$TEMP/indmach012a_native_twin/IndMach012a.dll" \
@@ -30,7 +35,7 @@ fn workspace_root() -> PathBuf {
 /// self-contained and ends with its own final `Solve` (a snapshot power-flow, or
 /// a completed dynamics run), so the capture reads the post-run state directly —
 /// the generator never issues an extra solve (which would advance a dynamics deck
-/// one step past its intended endpoint). Both the oracle capture here and the
+/// one step past its intended endpoint). Both the r4133 capture here and the
 /// hermetic Rust replay (`crates/dss-core/tests/wasm_usermodels.rs`) run the deck
 /// verbatim and read the same surface, so the comparison stays symmetric.
 const DECKS: &[&str] = &[

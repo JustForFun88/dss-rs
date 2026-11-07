@@ -27,9 +27,7 @@ impl Line {
         // from while `? line.x.linecode` answers `''` (`:1357`). dss_capi 0.14.5
         // has no `CondCode` at all and renders the live object instead (`if
         // LineCodeObj <> NIL then LineCodeObj.Name else ''`), so it prints
-        // nothing there; r4133 is the behavioral authority (CLAUDE.md
-        // 2026-08-02). Both readings measured on the two DLLs, RP3.6 probe
-        // deck C.
+        // nothing there. This engine follows r4133.
         out.push_str(&format!(
             "~ {}={}\n",
             name(prop::LINECODE),

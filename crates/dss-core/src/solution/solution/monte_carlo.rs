@@ -7,8 +7,8 @@
 //! draw collapses to a deterministic constant — `Load.Randomize(0)` and
 //! `Fault.Randomize`'s `else` set `RandomMult := 1.0`, and Monte2/Monte3's
 //! `case Randomtype of` has no `none` branch so `LoadMultiplier` is left
-//! unchanged — which is the only oracle-pinnable configuration (GAPS_PLAN.md
-//! §2.1; the RNG generator itself is gated by the `rng.rs` fixed-seed tests).
+//! unchanged — which is the only oracle-pinnable configuration (the RNG
+//! generator itself is gated by the `rng.rs` fixed-seed tests).
 //!
 //! Upstream's `Randomize` for the per-load Monte1 multiplier lives inside
 //! `SetNominalLoad` (the `MONTECARLO1` arm); here [`randomize_all_loads`] hoists
@@ -299,7 +299,7 @@ mod tests {
     //! **externally** from the RNG draw sequence pinned in
     //! [`crate::support::mathutil`]`::rng` (the canonical MT19937 stream for seed
     //! 12345, independently verified there against `mt19937ar.out` / CPython),
-    //! never captured from these functions' own output (GAPS_PLAN.md §2.1).
+    //! never captured from these functions' own output.
 
     use super::*;
     use crate::elements::general::load_shape::{self, LoadShapeObj};
@@ -390,8 +390,8 @@ mod tests {
     /// the FPC MT19937 stream the port shares with dss_capi 0.14.5 its first
     /// draw for seed 12345 is `G01·0.4 + 0.4` = 0.4692743974737823 against the
     /// port's 0.4. r4133's Delphi-built `Random` is another generator and draws
-    /// another `G01` for the same seed. Not reproduced in either lane
-    /// (GOLDEN_REBASE G2.1a; `issue-11`), and pinned here because no gated deck
+    /// another `G01` for the same seed. Not reproduced in either lane, and
+    /// pinned here because no gated deck
     /// reaches this path: every Monte deck runs `random=none`.
     #[test]
     fn draw_load_multiplier_gaussian_with_single_point_default_daily_is_the_mean() {
@@ -627,7 +627,7 @@ mod tests {
     #[test]
     fn pick_a_fault_single_is_always_first_but_consumes_a_draw() {
         // The montefault.dss configuration: one fault, always idx 0 — yet the
-        // RNG draw is still consumed (GAPS_PLAN.md §2.1), so the stream advances.
+        // RNG draw is still consumed, so the stream advances.
         let mut store = n_faults(1);
         store.fault_mut(0).cd_mut().set_enabled(false);
         let mut ckt = Circuit::new("mc", 60.0);

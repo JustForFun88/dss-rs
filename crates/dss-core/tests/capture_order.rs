@@ -1,9 +1,8 @@
-//! Source gate for the **capture-order contract** (`GOLDEN_REBASE_PLAN.md`
-//! §1.1(a), coordinator decision **D3**): on both live-oracle transports, every
-//! *cache-aware* read of an element (group **A**) must be issued **before**
-//! every read that computes the element's currents into a scratch buffer
-//! (group **B**); everything else (selectors, discrete state, the node-voltage
-//! reads) is order-free (group **C**).
+//! Source gate for the **capture-order contract**: on both live-oracle
+//! transports, every *cache-aware* read of an element (group **A**) must be
+//! issued **before** every read that computes the element's currents into a
+//! scratch buffer (group **B**); everything else (selectors, discrete state, the
+//! node-voltage reads) is order-free (group **C**).
 //!
 //! # Why the order is a contract and not a habit
 //!
@@ -13,9 +12,8 @@
 //! and then stamps that count **without** filling the cache. So a group-B read
 //! issued first can make a following group-A read (`Losses`, `Powers`, both
 //! computed from the cached terminal current) answer from a stale cache. That
-//! is the mechanism behind the upstream harmonics `Powers`-after-`Currents`
-//! defect this project never reproduces
-//! (CLAUDE.md §"Known upstream bugs"), and it is why a capture must never be
+//! is the mechanism behind the OpenDSS harmonics `Powers`-after-`Currents`
+//! bug this engine never reproduces, and it is why a capture must never be
 //! free to reorder its reads.
 //!
 //! # What this gate checks
@@ -26,12 +24,11 @@
 //! 1. every marker's group is [`dss_epri::modes::capture_group_of`]'s — the
 //!    **one** home of that mapping, where each group comes from
 //!    `ModeEffect::capture_group()` of that read's row in the mode table
-//!    (G1.3a spec amendment item 1: no second, competing order
-//!    table may exist in the repo);
+//!    (no second, competing order table may exist in the repo);
 //! 2. the parsed marker sequence is exactly the transport's declared sequence
 //!    (so a read that appears, disappears or moves is visible here);
 //! 3. every group-A marker precedes every group-B marker;
-//! 4. no read line inside a capture body is unmarked — a later sub-step cannot
+//! 4. no read line inside a capture body is unmarked — a later change cannot
 //!    add an invisible read. A read is any of ([`reads_by_line`]): a
 //!    capitalized Python member on any receiver (the dss-python API
 //!    convention) or a `gc.capture_*` delegation; a member of a Rust receiver
@@ -54,8 +51,7 @@
 //!    helper's own order, and the declaration is cross-checked against the
 //!    helper body itself. This is what covers
 //!    `tools/golden/gen_checkpoints.py::capture_element`, which carries no
-//!    markers because GOLDEN_REBASE WP-G1 may not edit the golden generators
-//!    at all (`GOLDEN_REBASE_PLAN.md` §1.2): its reads are recovered
+//!    markers because the golden generators are frozen: its reads are recovered
 //!    structurally instead and must match the composite marker at its call
 //!    site;
 //! 6. every other marker names the read it sits on ([`marker_names_read`]):
@@ -65,7 +61,7 @@
 //!    NAME, so a read labelled with another quantity would borrow that
 //!    quantity's group.
 //!
-//! G1.7's topology surface is group C — the six order-free `Topology` rows
+//! The topology surface is group C — the six order-free `Topology` rows
 //! (`NumLoops`, `NumIsolatedBranches`, `NumIsolatedLoads`, `AllLoopedPairs`,
 //! `AllIsolatedBranches`, `AllIsolatedLoads`) never move the active circuit
 //! element — but it carries its own two constraints, and both are asserted
@@ -82,7 +78,7 @@
 //!   rows. On both channels every one of them moves the active circuit
 //!   element and would poison the per-element capture of the same step.
 //!
-//! G1.8's flat incidence surface (`Solution.IncMatrix` / `Laplacian` /
+//! The flat incidence surface (`Solution.IncMatrix` / `Laplacian` /
 //! `IncMatrixRows` / `IncMatrixCols`) is the one capture that comes after the
 //! topology read, i.e. **strictly last in the step**, and it is not a pure read
 //! at all: it issues the executive pair `CalcIncMatrix` + `CalcLaplacian` first.
@@ -93,19 +89,19 @@
 //!   iterates the reactor class, which moves the active class and the active
 //!   circuit element. It must therefore follow every per-element, reliability
 //!   and property read — and it must follow the topology read too, because
-//!   G1.7's two decline censuses are defined on a branch list nothing else has
+//!   the topology capture's two decline censuses are defined on a branch list nothing else has
 //!   touched;
 //! * **the pair, in that order** — r4133's `CalcLaplacian` multiplies the
 //!   transposed incidence matrix by the matrix without checking that it exists,
 //!   so issuing it first dereferences a null pointer inside the DLL. capi
-//!   refuses the same command with error 8877 and so does the port, which is
+//!   refuses the same command with error 8877 and so does this engine, which is
 //!   why the swap is pinned from the sources here rather than driven live;
 //! * **`CalcIncMatrix_O` and `Solution.BusLevels` are never touched** — the
 //!   ordered builder builds the topology tree when none is memoized yet, which
 //!   would memoize that same branch list, and `SolutionV(2)` writes one element
 //!   past its own array on r4133 (on the bridge's `modes::DO_NOT_CALL`
 //!   register). Both keep their `tests/golden/inc_matrix/` `org_*` byte goldens
-//!   instead (`GOLDEN_REBASE_PLAN.md` §G1.8 / §G3.2c);
+//!   instead;
 //! * **no other command mid-step** — the r4133 transport calls a
 //!   command-issuing `Engine` method only at the sites of
 //!   [`R4133_COMMAND_SITES`], fn by fn: the run itself, ahead of the step's
@@ -149,9 +145,9 @@
 //! order-free by construction, and the two live bodies really do declare
 //! `TotalPowers` ahead of `Currents`. No file on disk is ever mutated.
 //!
-//! # The second ordering rule: the per-step call order (G1.9, folded in here)
+//! # The second ordering rule: the per-step call order
 //!
-//! The rules above govern the reads *inside* one element capture. The G1.9
+//! The rules above govern the reads *inside* one element capture. The
 //! circuit aggregates (`Circuit.Losses`, `LineLosses`, `SubstationLosses`,
 //! `TotalPower`, `AllElementLosses`) are group **A** too, but they live in
 //! their own body, so what has to hold for them is the order of the CALLS
@@ -161,19 +157,18 @@
 //! aggregate walks its element list to exhaustion and leaves its cursor at the
 //! end). [`check_order`] and its two channel anchor sets carry that rule, and
 //! [`the_gate_rejects_a_swapped_or_renamed_capture`] shows it has
-//! teeth. Folded here from the G1.9 lane's own `capture_order.rs` at the D7
-//! lane merge (2026-09-05), which D3 always assigned to this file.
+//! teeth.
 //!
-//! # The third ordering rule: the per-RUN read (G1.10a, D33(3))
+//! # The third ordering rule: the per-RUN read
 //!
-//! G1.10a's surface is not a model read at all: it is the SET of files the run
+//! This surface is not a model read at all: it is the SET of files the run
 //! created under the case's DataPath, classified by the very `CorpusGuard` pass
 //! that sweeps the corpus clean. Being per-**run**, its contract is a position
 //! rather than a capture group, and [`check_run_tail_order`] asserts all of it
 //! from both transports' source text:
 //!
 //! * **strictly last of the run** — after every per-step capture above and after
-//!   the WPG.5 `autoadd_log` read, which reads one of the created files
+//!   the `autoadd_log` read, which reads one of the created files
 //!   (`<CircuitName_>AutoAddLog.csv`) off disk. A report writer of the last step
 //!   must already have hit the disk when the set is classified;
 //! * **a direct statement of the guard scope** — not nested in the retry loop,
@@ -183,25 +178,25 @@
 //!   classification returns, so reading outside it would report a set nothing
 //!   removed (the Python guard raises on that by design; the Rust one cannot
 //!   express it, `finish()` consuming the guard);
-//! * **the demand-interval read sits in front of it** (G1.10c) — see the fourth
+//! * **the demand-interval read sits in front of it** — see the fourth
 //!   rule below;
-//! * **nothing but the teardown after it, to the end of `run_case`** (D33(3)) —
+//! * **nothing but the teardown after it, to the end of `run_case`** —
 //!   no command and no `capture_*` read anywhere after it; inside the guard
-//!   scope only the G1.10b contents copy and the teardown, past the scope only
+//!   scope only the contents copy and the teardown, past the scope only
 //!   the declared sweep report and a reply built from names already bound. The
-//!   one statement the capi transport may still run is the D32(2)(a) teardown
+//!   one statement the capi transport may still run is the teardown
 //!   `clear`, which releases dss_capi's Storage trace stream, held open until
 //!   the element is destroyed. r4133 closes its own as soon as it writes the
 //!   header and needs no counterpart, so its tail is empty. A teardown is not a
 //!   read: it comes after the classification, so the compared surface stays the run
 //!   `clear → Set DefaultBaseFrequency=60 → compile → post → n × solve` (plus
 //!   the last step's `RelCalc` on a reliability case) on both channels, where
-//!   the r4133 bridge's `clear` also re-asserts the D39 report switches, which
+//!   the r4133 bridge's `clear` also re-asserts the report switches, which
 //!   no compared value reads.
 //!
-//! # The fourth ordering rule: the demand-interval read (G1.10c, D42(6))
+//! # The fourth ordering rule: the demand-interval read
 //!
-//! G1.10c compares the CONTENTS of the run-created demand-interval tree, read
+//! This rule compares the CONTENTS of the run-created demand-interval tree, read
 //! from the same guard in the same tail. Its slot — **after the `autoadd_log`
 //! read, before `created()` and before the capi teardown `clear`** — is
 //! contractual, not cosmetic, and [`check_run_tail_order`] asserts it from both
@@ -209,13 +204,10 @@
 //!
 //! * **before the teardown `clear`** — that `clear` destroys the circuit, which
 //!   FLUSHES the in-flight demand-interval cycle over the file on the capi
-//!   channel: the R part measured all 8 file digests moving on
-//!   `123Bus/Run_YearlySim.dss`, 7 of 8 on `StoCtrl_Current_PeakShave/master.dss`
-//!   and 4 of 6 on `StoCtrl_SeasonTarget/Run_example.dss`, while r4133's `clear`
-//!   moves none. A DI read after the teardown would compare capi's *next* cycle
-//!   against the port's *previous* one — a guaranteed red with a pure-ordering
-//!   cause;
-//! * **before `created()`** — which stays the LAST read of the run (D33(3));
+//!   channel, while r4133's `clear` does not. A DI read after the teardown would
+//!   compare capi's *next* cycle against this engine's *previous* one — a
+//!   guaranteed red with a pure-ordering cause;
+//! * **before `created()`** — which stays the LAST read of the run;
 //! * **inside the guard scope, a direct statement of it** — the sweep removes
 //!   exactly the files whose contents were just copied out, and a read nested in
 //!   the retry loop would describe an attempt that was thrown away;
@@ -233,7 +225,7 @@
 //! `crates/dss-epri/src/lib.rs`). On any other platform the r4133 channel, and
 //! with it the capture-order contract it shares with the capi channel, does not
 //! exist; the gate compiles away rather than checking half a contract against a
-//! table it cannot see. The full five-command gate runs on Windows.
+//! table it cannot see. The full gate runs on Windows.
 #![cfg(windows)]
 
 use std::fs;
@@ -257,10 +249,8 @@ const SELECTORS: &[&str] = &["ActiveCktElement", "AllElementNames", "SetActiveEl
 /// Python attribute names that look like an API read (capitalized) but are not
 /// one. `DSSException` is the dss-python exception class caught by the priming
 /// retry `oracle_server.capture_all_elements` delegates to
-/// (`_tolerant_read`, shared with `capture_aggregates` since the D7 lane merge
-/// of 2026-09-05 — before that the retry was inlined in the gated body, which
-/// is why the exemption exists). Kept as the standing exemption for either
-/// spelling: an inlined `except _dss.DSSException` inside a gated body must
+/// (`_tolerant_read`, shared with `capture_aggregates`). The exemption holds
+/// for either spelling: an inlined `except _dss.DSSException` inside a gated body must
 /// not read as an undeclared quantity read.
 const PY_NOT_A_READ: &[&str] = &["DSSException"];
 
@@ -283,8 +273,8 @@ struct CaptureBody {
     lang: Lang,
     /// The DDLL family the markers resolve in.
     family: &'static str,
-    /// `false` for a body that may not carry markers (a golden generator WP-G1
-    /// is forbidden to edit): its reads are recovered structurally and only
+    /// `false` for a body that may not carry markers (a frozen golden
+    /// generator): its reads are recovered structurally and only
     /// [`CaptureBody::declared`] and the A-before-B rule are enforced.
     marked: bool,
     /// The engine handles the body is given. In both languages one of them —
@@ -308,14 +298,14 @@ struct CaptureBody {
 /// **before** delegating to `gen_checkpoints.capture_element` (which reads
 /// `Powers` then `Currents`): three group-A reads followed by the group-B one.
 /// `dss.rs::element_phase_losses` + `element_total_powers` + `element_pcl` are
-/// the r4133 mirror of exactly that, `element_polar` adds the three G1.3a
-/// derived channels, `element_seq` the three G1.3b symmetrical-component ones,
-/// `element_cplx_seq` the two G1.3c complex ones, and `element_extras` the nine
-/// unconditional G1.3d discrete scalars — the four of part (i) plus the five
+/// the r4133 mirror of exactly that, `element_polar` adds the three polar
+/// derived channels, `element_seq` the three symmetrical-component ones,
+/// `element_cplx_seq` the two complex ones, and `element_extras` the nine
+/// unconditional discrete scalars — the four of part (i) plus the five
 /// control-derived ones of part (ii) (`NodeOrder`, the conditional tenth, stays
 /// at the call site).
 ///
-/// `TotalPowers` (G1.3c) is the second conditional group-**A** read and gets its
+/// `TotalPowers` is the second conditional group-**A** read and gets its
 /// own helper for the same reason `PhaseLosses` did: it must be issued at the
 /// head of the element, ahead of `element_pcl`'s group-B `Currents`, while
 /// `element_pcl` itself is unconditional.
@@ -366,8 +356,7 @@ const BODIES: &[CaptureBody] = &[
         func: "capture_element",
         lang: Lang::Python,
         family: "CktElement",
-        // The golden generators are frozen for the whole of WP-G1
-        // (`GOLDEN_REBASE_PLAN.md` §1.2), so this body carries no markers and
+        // The golden generators are frozen, so this body carries no markers and
         // is checked structurally instead — and its call site's composite
         // marker is checked against it (rule 5).
         marked: false,
@@ -1456,7 +1445,7 @@ fn check(b: &CaptureBody, text: &str) -> Vec<String> {
             if b.marked && markers.is_empty() {
                 bad.push(format!(
                     "unmarked: {}:{} read `{member}` carries no `capture-order:` marker — every \
-                     read inside a capture body must declare its D3 group",
+                     read inside a capture body must declare its group",
                     b.file,
                     no + 1
                 ));
@@ -1592,14 +1581,14 @@ fn check(b: &CaptureBody, text: &str) -> Vec<String> {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn every_capture_body_honours_the_d3_capture_order() {
+fn every_capture_body_reads_cache_aware_before_scratch_buffer() {
     let mut bad = Vec::new();
     for b in BODIES {
         bad.extend(check(b, &body_text(b)));
     }
     assert!(
         bad.is_empty(),
-        "capture-order contract violated (GOLDEN_REBASE_PLAN.md §1.1(a), D3):\n  {}",
+        "capture-order contract violated:\n  {}",
         bad.join("\n  ")
     );
 }
@@ -1617,7 +1606,7 @@ fn the_declared_selectors_are_not_quantity_reads() {
     }
 }
 
-/// G1.4b: the three `DistFromMeter` views are **group C** in the ONE mode table.
+/// The three `DistFromMeter` views are **group C** in the ONE mode table.
 ///
 /// `crates/dss-core/tests/corpus_gate.rs` pins WHERE each of them is read —
 /// `Bus.Distance` between the bus's other scalar and the value arrays of the
@@ -1642,7 +1631,7 @@ fn the_distance_surface_is_order_free_in_the_mode_table() {
     }
 }
 
-/// G1.4d: the two at-bus lists are **group C** in the ONE mode table — "impure
+/// The two at-bus lists are **group C** in the ONE mode table — "impure
 /// but order-free".
 ///
 /// `crates/dss-core/tests/corpus_gate.rs::AT_BUS_READ_ORDER` pins that both
@@ -1755,7 +1744,7 @@ fn assert_silent(bad: &[String], kind: &str) {
 fn the_gate_fires_when_a_group_a_read_moves_after_a_group_b_read() {
     let (b, text) = capi();
     assert!(check(b, &text).is_empty(), "the real body must be clean");
-    // `Losses` back where it sat before G1.3a — after `capture_element`, i.e.
+    // `Losses` moved after `capture_element`, i.e.
     // after the group-B `Currents` read.
     let bad = check(
         b,
@@ -1768,7 +1757,7 @@ fn the_gate_fires_when_a_group_a_read_moves_after_a_group_b_read() {
 /// group-**C** read is order-free *by construction* (`ModeEffect::Pure` — it
 /// reads a field and never touches the terminal-current cache or computes
 /// currents), so moving one into the middle of the A/B block cannot violate the
-/// D3 order. Moving the G1.3d(i) `NumPhases` read (`CktElementI(2)`) to sit
+/// A-before-B order. Moving the `NumPhases` read (`CktElementI(2)`) to sit
 /// between the group-A `Losses` and the group-A/B `capture_element` delegation
 /// raises only the declaration-bookkeeping violation — proof the
 /// mutation really landed — and never an `order:` one.
@@ -1788,7 +1777,7 @@ fn a_group_c_read_may_sit_between_a_group_a_and_a_group_b_read() {
 }
 
 /// Both directions of rule 4: stripping a marker off an existing read, and —
-/// the one that matters for a later sub-step — smuggling a brand-new read into
+/// the one that matters for a later change — smuggling a brand-new read into
 /// a capture body without declaring it, in every shape the rule names: a
 /// member, a free function handed the receiver (both transports; also with a
 /// space, a turbofish or a macro `!` before its parenthesis), a bridge read
@@ -1804,8 +1793,7 @@ fn the_gate_fires_on_an_unmarked_read() {
     assert_fires(&bad, "unmarked");
 
     // A new capi read, silently added. `Voltages` (`CktElementV(4)`) is a read
-    // this body genuinely does not perform — G1.3c turned `TotalPowers`, the
-    // old stand-in here, into a real declared read.
+    // this body genuinely does not perform.
     let bad = check(
         b,
         &insert_after(&text, "el.Enabled", "        probe = el.Voltages"),
@@ -2053,13 +2041,13 @@ fn the_gate_fires_when_a_read_disappears() {
     assert_fires(&bad, "sequence");
 }
 
-/// The A-before-B rule stated for the surface GOLDEN_REBASE G1.3d(ii) adds:
+/// The A-before-B rule for `PhaseLosses`:
 /// `PhaseLosses` (`CktElementV(6)`) starts, on both oracles, by reading through
 /// the terminal-current cache, which is recomputed only when its solution count
 /// is stale — so it is group **A** and must precede the group-B `Currents`.
 ///
 /// The mistake this guards is the natural one: appending the read to the
-/// `element_extras` tail, where the other nine G1.3d scalars live, instead of
+/// `element_extras` tail, where the other nine discrete scalars live, instead of
 /// hoisting it to the head of the element. Moving it past the `capture_element`
 /// delegation on the capi transport, and past `element_pcl` on the r4133 one,
 /// must fire `order:` on both.
@@ -2079,7 +2067,7 @@ fn the_gate_fires_when_phase_losses_moves_after_the_currents_read() {
     assert_fires(&check(r, &moved), "order");
 }
 
-/// The member GOLDEN_REBASE G1.3c adds to the A-before-B rule: `TotalPowers`
+/// The A-before-B rule for `TotalPowers`:
 /// (`CktElementV(20)` on r4133, `Alt_CE_Get_TotalPowers` on capi) is the
 /// per-terminal sum of the phase powers, and on an enabled element the oracle
 /// starts that sum by reading through the terminal-current cache, which is
@@ -2428,7 +2416,7 @@ mod inline {
 }
 
 // ---------------------------------------------------------------------------
-// The per-step call order (GOLDEN_REBASE G1.9, folded in at the D7 lane merge)
+// The per-step call order
 // ---------------------------------------------------------------------------
 
 /// The seven call sites the call-order gate locates inside one transport's
@@ -2436,23 +2424,23 @@ mod inline {
 struct Anchors {
     /// Start of the per-step capture function itself.
     run: &'static str,
-    /// The G1.9 group-A read.
+    /// The circuit aggregates, a group-A read.
     aggregates: &'static str,
     /// The per-element capture — the group-B (`Currents`) read.
     elements: &'static str,
     /// The discrete-state capture, which drives `Transformers.First/Next`.
     discrete: &'static str,
-    /// G1.6(i)'s reliability capture — driven between the meter walk and
+    /// The reliability capture — driven between the meter walk and
     /// the PD-element walk (its own slot gate lives in
     /// `crates/dss-core/tests/reliability_pins.rs`); named here so the
     /// topology-last rule below covers it too.
     reliability: &'static str,
-    /// The WP8.5b property sweep, read after every established capture.
+    /// The property sweep, read after every established capture.
     properties: &'static str,
-    /// G1.7's topology capture — read after `properties`, i.e. last of the
+    /// The topology capture — read after `properties`, i.e. last of the
     /// order-free *reads*.
     topology: &'static str,
-    /// G1.8's flat incidence capture — after `topology` and every other
+    /// The flat incidence capture — after `topology` and every other
     /// capture, the reliability one included, i.e. strictly last in the step.
     /// It is the only capture that writes solution state. The once-per-case
     /// `RelCalc`, which writes state too, is no capture: `run_case` issues it
@@ -2473,8 +2461,7 @@ fn offset_after(hay: &str, needle: &str, from: usize, rel: &str) -> Result<usize
     hay[from..].find(needle).map(|i| from + i).ok_or_else(|| {
         format!(
             "{rel}: the capture-order gate could not find `{needle}`. If the call was \
-             renamed, update this gate — do not delete the ordering it protects \
-             (GOLDEN_REBASE_PLAN.md §1.1(a))."
+             renamed, update this gate — do not delete the ordering it protects."
         )
     })
 }
@@ -2490,14 +2477,14 @@ fn check_order(src: &str, a: &Anchors, rel: &str) -> Result<(), String> {
 
     if aggregates >= elements {
         return Err(format!(
-            "{rel}: the G1.9 aggregates (byte {aggregates}) are read AFTER the element \
+            "{rel}: the aggregates (byte {aggregates}) are read AFTER the element \
              capture (byte {elements}), whose `Currents` read is group B — group A must \
              come first"
         ));
     }
     if aggregates >= discrete {
         return Err(format!(
-            "{rel}: the G1.9 aggregates (byte {aggregates}) are read AFTER the discrete \
+            "{rel}: the aggregates (byte {aggregates}) are read AFTER the discrete \
              capture (byte {discrete}), which drives Transformers.First/Next — the \
              aggregates must precede every First/Next walk"
         ));
@@ -2511,8 +2498,8 @@ fn check_order(src: &str, a: &Anchors, rel: &str) -> Result<(), String> {
 /// (`tools/golden/gen_checkpoints.py`, Powers then Currents).
 ///
 /// The element anchor is the bare call `capture_all_elements(` rather than
-/// `…(ckt`: G1.3a's `derived` argument wrapped the call over three lines, and an
-/// anchor that names the first argument would have gone silently unfindable —
+/// `…(ckt`: the `derived` argument wraps the call over three lines, and an
+/// anchor that names the first argument would go silently unfindable —
 /// which `offset_after` turns into a loud failure, not a pass, but is still a
 /// gate that has to be edited for a reformat. Its `def` is outside the search
 /// window (the scan starts at `def run_case(`), and the one prose mention
@@ -2556,7 +2543,7 @@ fn r4133_capture_reads_the_aggregates_before_any_currents_read() {
     check_order(&read_source(rel), &R4133_CALLS, rel).unwrap_or_else(|e| panic!("{e}"));
 }
 
-/// Non-vacuity (§1.1(f)): the two gates above pass on the real sources, so this
+/// Non-vacuity: the two gates above pass on the real sources, so this
 /// one shows the rule they apply is not trivially satisfiable. Same predicate,
 /// synthetic sources — an in-order one is accepted; the same text with the
 /// aggregates moved after the element capture, after the discrete capture, or
@@ -2593,12 +2580,12 @@ fn the_gate_rejects_a_swapped_or_renamed_capture() {
 }
 
 // ---------------------------------------------------------------------------
-// G1.7 — the topology surface: read strictly last, and only its six
-// order-free rows (`GOLDEN_REBASE_PLAN.md` §G1.7, brief B16).
+// The topology surface: read strictly last, and only its six
+// order-free rows.
 // ---------------------------------------------------------------------------
 
 /// The topology capture must follow every other READ of the step on both
-/// transports — the four below. Since G1.8 exactly one capture comes after it,
+/// transports — the four below. Exactly one capture comes after it,
 /// the incidence pair, and that ordering is [`check_inc_matrix_last`]'s.
 ///
 /// Two reasons, the stronger first: the first `Topology` read is what BUILDS
@@ -2610,19 +2597,19 @@ fn check_topology_last(src: &str, a: &Anchors, rel: &str) -> Result<(), String> 
     let run = offset_after(src, a.run, 0, rel)?;
     let topology = offset_after(src, a.topology, run, rel)?;
     for (what, needle) in [
-        ("the WP8.5b property sweep", a.properties),
-        ("the G1.6(i) reliability capture", a.reliability),
+        ("the property sweep", a.properties),
+        ("the reliability capture", a.reliability),
         ("the per-element capture", a.elements),
         ("the discrete-state capture", a.discrete),
-        ("the G1.9 aggregates", a.aggregates),
+        ("the aggregates", a.aggregates),
     ] {
         let other = offset_after(src, needle, run, rel)?;
         if topology <= other {
             return Err(format!(
-                "{rel}: the G1.7 topology capture (byte {topology}) is read BEFORE {what} \
+                "{rel}: the topology capture (byte {topology}) is read BEFORE {what} \
                  (byte {other}). The first `Topology` read builds the memoized branch list \
                  and rewrites the checked and isolated flags of every element and bus, so it \
-                 must follow every other read of the step (only G1.8's incidence pair may come \
+                 must follow every other read of the step (only the incidence pair may come \
                  after it)."
             ));
         }
@@ -2832,7 +2819,7 @@ fn expected_r4133_accessors() -> Vec<String> {
 
 fn set_error(rel: &str, what: &str, found: &[String], want: &[String]) -> String {
     format!(
-        "{rel}: {what} is {found:?}, but the G1.7 capture reads exactly {want:?}. \
+        "{rel}: {what} is {found:?}, but the topology capture reads exactly {want:?}. \
          The other twelve `ITopology` members move the active circuit element on both \
          channels and would poison the per-element capture of the same step. Three of \
          them are also the documented B16 parity gap. If the surface really changed, change \
@@ -2949,8 +2936,7 @@ fn r4133_capture_never_calls_a_topology_cursor_accessor() {
 }
 
 /// The bridge cannot call a cursor row it never bound: `dss.rs` exposes exactly
-/// the six order-free accessors (D2's mode-capability record, `TESTING.md`
-/// §"The r4133 bridge"). Second half of the same rail — the check above says
+/// the six order-free accessors. Second half of the same rail — the check above says
 /// the capture calls only these six, this one says only these six exist to be
 /// called.
 #[test]
@@ -2964,7 +2950,7 @@ fn the_r4133_bridge_exposes_only_the_six_order_free_topology_rows() {
     .unwrap_or_else(|e| panic!("{e}"));
 }
 
-/// Non-vacuity (§1.1(f)) for the five gates above: same predicates, synthetic
+/// Non-vacuity for the five gates above: same predicates, synthetic
 /// sources. The accepted cases name forbidden rows in *comments* — which is
 /// exactly why the real sources pass — and every rejected case differs from
 /// them by moving that text into code, or by moving the capture.
@@ -3068,7 +3054,7 @@ fn capture_topology(engine: &Engine) -> Result<TopologyCap, EngineError> {
     let err = check_topology_last(early, &a, "synthetic").expect_err("topology ran first");
     assert!(err.contains("property sweep"), "{err}");
 
-    // ...and the same rule now covers the G1.6(i) slot: a topology read placed
+    // ...and the same rule covers the reliability slot: a topology read placed
     // before the reliability capture would take that capture's `Meters.Totals`
     // tail on a tree-rewritten circuit, so it is rejected too.
     let before_rel = "fn run_case( capture_aggregates(x); capture_discrete(x); \
@@ -3094,12 +3080,12 @@ fn capture_topology(engine: &Engine) -> Result<TopologyCap, EngineError> {
 }
 
 // ---------------------------------------------------------------------------
-// G1.8 — the flat incidence surface: issued and read strictly last, as the pair
+// The flat incidence surface: issued and read strictly last, as the pair
 // `CalcIncMatrix` + `CalcLaplacian`, and never `CalcIncMatrix_O` /
-// `Solution.BusLevels` (`GOLDEN_REBASE_PLAN.md` §G1.8 / §G3.2c, decision D3).
+// `Solution.BusLevels`.
 // ---------------------------------------------------------------------------
 
-/// The two executive commands the G1.8 capture may issue, in this order.
+/// The two executive commands the incidence capture may issue, in this order.
 ///
 /// The order is a contract, not a style: r4133's `CalcLaplacian` multiplies the
 /// transposed incidence matrix by the matrix without checking that it exists,
@@ -3116,8 +3102,8 @@ const INCIDENCE_READS: [&str; 4] = ["IncMatrix", "Laplacian", "IncMatrixRows", "
 
 /// Executive commands no capture may ever issue. `CalcIncMatrix_O` builds the
 /// topology tree when none is memoized yet, which memoizes the very branch list
-/// G1.7's two decline censuses are defined on. Its coverage stays byte-golden
-/// (`tests/golden/inc_matrix/` `org_*`), per the §G3.2c re-scope.
+/// the topology capture's two decline censuses are defined on. Its coverage
+/// stays byte-golden (`tests/golden/inc_matrix/` `org_*`).
 const FORBIDDEN_COMMANDS: [&str; 1] = ["CalcIncMatrix_O"];
 
 /// `Solution.BusLevels` — `SolutionV(2)` on r4133 sizes its reply one shorter
@@ -3132,10 +3118,10 @@ const FORBIDDEN_READS: [&str; 2] = ["BusLevels", "bus_levels"];
 ///
 /// `run_case` drives the run (`clear`, `compile`, `post`, `solve`) and the one
 /// sanctioned extra command, the reliability surface's once-per-case `RelCalc`:
-/// on the last step of a reliability case, after the solve and before the G1.9
+/// on the last step of a reliability case, after the solve and before the
 /// aggregates, so every capture of that checkpoint reads the post-`RelCalc`
 /// state. The probe and property captures issue `?` property queries through
-/// `raw_command` (each checked to be one), and the G1.8 capture issues its
+/// `raw_command` (each checked to be one), and the incidence capture issues its
 /// [`INCIDENCE_PAIR`] through `exec_wait`. A command anywhere else would drive
 /// the engine mid-step ([`check_r4133_command_sites`]).
 const R4133_COMMAND_SITES: [(&str, &str); 10] = [
@@ -3167,17 +3153,17 @@ fn check_inc_matrix_last(src: &str, a: &Anchors, rel: &str) -> Result<(), String
     let run = offset_after(src, a.run, 0, rel)?;
     let inc = offset_after(src, a.inc_matrix, run, rel)?;
     for (what, needle) in [
-        ("the G1.7 topology capture", a.topology),
-        ("the WP8.5b property sweep", a.properties),
-        ("the G1.6(i) reliability capture", a.reliability),
+        ("the topology capture", a.topology),
+        ("the property sweep", a.properties),
+        ("the reliability capture", a.reliability),
         ("the per-element capture", a.elements),
         ("the discrete-state capture", a.discrete),
-        ("the G1.9 aggregates", a.aggregates),
+        ("the aggregates", a.aggregates),
     ] {
         let other = offset_after(src, needle, run, rel)?;
         if inc <= other {
             return Err(format!(
-                "{rel}: the G1.8 incidence capture (byte {inc}) runs BEFORE {what} \
+                "{rel}: the incidence capture (byte {inc}) runs BEFORE {what} \
                  (byte {other}). `CalcIncMatrix` rewrites solution state and moves the \
                  active circuit element, and it must not precede the topology read that \
                  memoizes the branch list — so it comes strictly last in the step."
@@ -3213,7 +3199,7 @@ fn py_def_span(text: &str, header: &str, rel: &str) -> Result<(usize, usize), St
 ///
 /// The line terminator is read as LF **or** CRLF: this repo checks Rust out with
 /// `core.autocrlf`, so a CRLF working copy must not make the gate claim the
-/// closing brace is missing (it did, at the G1.8 lane merge).
+/// closing brace is missing.
 fn rust_fn_body<'a>(text: &'a str, header: &str, rel: &str) -> Result<&'a str, String> {
     let (start, end) = rust_fn_span(text, header, rel)?;
     Ok(&text[start..end])
@@ -3478,7 +3464,7 @@ fn is_property_query(args: &str) -> bool {
 /// The r4133 transport calls a command-issuing `Engine` method only at the
 /// sites of `register` ([`R4133_COMMAND_SITES`] for the real source): the same
 /// `(fn, method)` multiset, every `raw_command` a `?` property query, every run
-/// command of `run_case` ahead of the G1.9 aggregates (the step's first
+/// command of `run_case` ahead of the aggregates (the step's first
 /// capture), and the `RelCalc` between the step's solve and those aggregates.
 fn check_r4133_command_sites(
     src: &str,
@@ -3525,7 +3511,7 @@ fn check_r4133_command_sites(
             "{rel}: the command-issuing `Engine` calls are not the registered ones: \
              unregistered {extra:?}, missing {missing:?}. A capture may not drive the \
              engine mid-step; the run, the once-per-case `RelCalc`, the `?` queries and \
-             the G1.8 pair are the only commands (`R4133_COMMAND_SITES`). If the run \
+             the incidence pair are the only commands (`R4133_COMMAND_SITES`). If the run \
              really changed, change the register with it."
         ));
     }
@@ -3539,7 +3525,7 @@ fn check_r4133_command_sites(
         .find(|s| s.func == "run_case" && s.method != "relcalc" && s.at > aggregates)
     {
         return Err(format!(
-            "{rel}: `run_case` calls `{}` (char {}) after the G1.9 aggregates (char \
+            "{rel}: `run_case` calls `{}` (char {}) after the aggregates (char \
              {aggregates}), i.e. among the captures of a step. The run's commands all come \
              ahead of the step's first capture, or a capture reads an engine the command \
              changed mid-step.",
@@ -3555,7 +3541,7 @@ fn check_r4133_command_sites(
         if solve.is_some_and(|s| r.at < s) || r.at > aggregates {
             return Err(format!(
                 "{rel}: `RelCalc` (char {}) is not issued between the step's solve and \
-                 the G1.9 aggregates (char {aggregates}). It writes the meter and bus \
+                 the aggregates (char {aggregates}). It writes the meter and bus \
                  reliability state, so it must run after the solve and ahead of every \
                  capture of the checkpoint.",
                 r.at
@@ -3609,12 +3595,12 @@ fn member_reads_in_order(body: &str, handle: &str) -> Vec<String> {
 
 fn incidence_error(rel: &str, what: &str, found: &[String], want: &[String]) -> String {
     format!(
-        "{rel}: {what} is {found:?}, but the G1.8 capture does exactly {want:?}. \
+        "{rel}: {what} is {found:?}, but the incidence capture does exactly {want:?}. \
          The pair's ORDER is a contract (r4133's `CalcLaplacian` has no guard against \
          a missing incidence matrix and would crash the worker, while capi and the port \
          raise 8877), the read order is what both channels must share, and `CalcIncMatrix_O` / \
-         `Solution.BusLevels` are out of the live gate by decision \
-         (`GOLDEN_REBASE_PLAN.md` §G1.8 / §G3.2c). If the surface really changed, \
+         `Solution.BusLevels` are out of the live gate by decision. If the surface really \
+         changed, \
          change these constants and the comparator with them — never just this list."
     )
 }
@@ -3757,9 +3743,9 @@ fn check_no_forbidden_incidence_use(
         if commands.iter().any(|c| c == bad) {
             return Err(format!(
                 "{rel}: the transport issues `{bad}`. It builds the topology tree, which \
-                 memoizes the branch list G1.7's `TOPOLOGY_STALE_DECLINES` / \
+                 memoizes the branch list the topology capture's `TOPOLOGY_STALE_DECLINES` / \
                  `LOOPED_PAIR_WINDOW_DECLINES` censuses are defined on — it is out of \
-                 the live gate by decision (`GOLDEN_REBASE_PLAN.md` §G1.8 / §G3.2c) and \
+                 the live gate by decision and \
                  keeps its `org_*` byte goldens instead."
             ));
         }
@@ -3814,8 +3800,8 @@ fn check_do_not_call_still_refuses_bus_levels(src: &str, rel: &str) -> Result<()
 /// were not written for.
 ///
 /// `_inc_ints` implements rule N1 — drop the one trailing cell capi allocates and
-/// never writes — and the sub-step's KILL CRITERION is that the cell is 0 and
-/// the length is `3·NZero + 1` (`GOLDEN_REBASE_PLAN.md` §G1.8). Both are
+/// never writes — and the contract is that the cell is 0 and
+/// the length is `3·NZero + 1`. Both are
 /// enforced in Python, where no Rust test reaches them; an edit that kept the strip and dropped the zero-check
 /// (`return xs[:-1]` unconditionally) would leave every existing test green,
 /// because the gate-side `assert_transport_shape` only re-asserts the fixpoint
@@ -3825,7 +3811,6 @@ fn check_do_not_call_still_refuses_bus_levels(src: &str, rel: &str) -> Result<()
 /// (`sentinel_ok`), and any other blank raises. The r4133 twins have real unit
 /// tests (`crates/dss-epri/src/capture.rs`); this is their capi counterpart,
 /// written as a source-text gate for the reason every rule in this file is.
-/// (G1.8 audit settlement, finding G18-T2.)
 fn check_capi_incidence_normalizers(src: &str, rel: &str) -> Result<(), String> {
     for (header, needles) in [
         (
@@ -3846,10 +3831,10 @@ fn check_capi_incidence_normalizers(src: &str, rel: &str) -> Result<(), String> 
         for needle in needles {
             if !body.contains(needle) {
                 return Err(format!(
-                    "{rel}: `{header}…` no longer contains `{needle}`. The G1.8 \
+                    "{rel}: `{header}…` no longer contains `{needle}`. The incidence \
                      transport normalizations must RAISE on a shape they were not \
                      written for, never repair it silently: the trailing-cell \
-                     contract is this sub-step's kill criterion, and the empty \
+                     contract is what the capture relies on, and the empty \
                      name sentinel may be dropped only where the engine can reach \
                      it."
                 ));
@@ -4137,7 +4122,7 @@ fn the_r4133_transport_issues_commands_only_at_its_registered_sites() {
             "let aggregates = capture_aggregates(engine, warn)?;",
         ),
         "the RelCalc moved past the aggregates",
-        "between the step's solve and the G1.9 aggregates",
+        "between the step's solve and the aggregates",
     );
     red(
         move_line_after(
@@ -4146,7 +4131,7 @@ fn the_r4133_transport_issues_commands_only_at_its_registered_sites() {
             "for step in 0..req.n_steps {",
         ),
         "the RelCalc moved ahead of the solve",
-        "between the step's solve and the G1.9 aggregates",
+        "between the step's solve and the aggregates",
     );
     red(
         src.replacen(
@@ -4180,7 +4165,7 @@ fn neither_capture_calls_calcincmatrix_o_or_reads_buslevels() {
         .unwrap_or_else(|e| panic!("{e}"));
 }
 
-/// Non-vacuity (§1.1(f)) for the four gates above: same predicates, synthetic
+/// Non-vacuity for the four gates above: same predicates, synthetic
 /// sources. The accepted cases name the forbidden command and the forbidden read
 /// in *prose* — which is exactly what the real sources do — and every rejected
 /// case differs from them by moving that text into code, swapping the pair,
@@ -4389,9 +4374,8 @@ pub const DO_NOT_CALL: &[(&str, ModeKind, i32, &str)] = &[
 }
 
 // ---------------------------------------------------------------------------
-// G1.10a — the run-file set: a per-RUN read, strictly last, inside the guard
-// scope, with nothing but the D32(2)(a) teardown after it
-// (`GOLDEN_REBASE_PLAN.md` §G1.10; coordinator decisions D32(2)(a) and D33(3)).
+// The run-file set: a per-RUN read, strictly last, inside the guard
+// scope, with nothing but the capi teardown after it.
 // ---------------------------------------------------------------------------
 
 /// Where one transport classifies the run's created-file set, and the scope
@@ -4403,7 +4387,7 @@ pub const DO_NOT_CALL: &[(&str, ModeKind, i32, &str)] = &[
 /// spellings and [`check_run_tail_order`] resolves the end accordingly.
 struct RunFileRule {
     lang: Lang,
-    /// The G1.10c demand-interval read: the statement that copies the
+    /// The demand-interval read: the statement that copies the
     /// run-created `DI_yr_*` tree out of the case directory. It must appear
     /// exactly once in the transport's **code**, after the `autoadd_log` read
     /// and before both [`Self::created`] and [`Self::teardown`].
@@ -4414,7 +4398,7 @@ struct RunFileRule {
     ///
     /// The clause counts the literal spelling below, so the DI read's own
     /// classification pass (`created_di_files` → `classify`, one statement
-    /// earlier) is not one of them (G1.10c audit settlement, finding AT3-6).
+    /// earlier) is not one of them.
     /// That door is bounded rather than closed: a DI file appearing BETWEEN the
     /// two passes lands in `created()` and in the sweep but not in the sidecar,
     /// which reaches the gate as a file-set or row-count RED, never as a silent
@@ -4430,37 +4414,34 @@ struct RunFileRule {
     /// (the explicit sweep, Rust side). `None` on the Python side, where the
     /// scope is the `with` block and its end is found by indentation.
     guard_close: Option<&'static str>,
-    /// The name the classification binds — the created-file SET. The G1.10b
+    /// The name the classification binds — the created-file SET. The
     /// contents copy must CONSUME it, so it can never hand back a file the set
     /// does not name.
     created_var: &'static str,
-    /// `GOLDEN_REBASE_PLAN.md` G1.10b, coordinator decision D40(6) — the
-    /// CONTENTS copy, as line prefixes in order (a call wrapped over several
+    /// The CONTENTS copy, as line prefixes in order (a call wrapped over several
     /// lines is several entries, because the check below reads the tail line by
     /// line). It is the ONE thing that may sit between the classification and
     /// the teardown, it consumes [`Self::created_var`], and it copies bytes —
     /// it issues no command and performs no model read, so the classification is
-    /// still the last READ of the run (D33(3)).
+    /// still the last READ of the run.
     /// [`check_run_file_contents_read_with_the_set`] states that relation on its
     /// own; declaring it here is what keeps the statement whitelist exact.
     contents: &'static [&'static str],
     /// Whether the contents copy comes BEFORE this transport's teardown.
     ///
     /// True on r4133, which has no teardown at all. **False on capi, and that is
-    /// MEASURED** (G1.10b F1): dss_capi 0.14.5 holds a Storage `debugtrace`
+    /// measured**: dss_capi 0.14.5 holds a Storage `debugtrace`
     /// stream open for the life of the object with a share mode that denies
     /// READ, so before the teardown `clear` the file cannot be opened at all
-    /// (`PermissionError: [Errno 13]`), and after it reads whole (28 777 bytes on
-    /// `Storage_price.dss`). Moving the copy past the teardown is safe for every
-    /// other selected report because the export writers close their file as they
-    /// return — `fbs_EXP_VOLTAGES.csv` is byte-identical before and after the
-    /// teardown (349 bytes, sha256:0e8329e54fab84ee, measured on the same probe).
+    /// (`PermissionError: [Errno 13]`), and after it reads whole. Moving the copy
+    /// past the teardown is safe for every other selected report because the
+    /// export writers close their file as they return.
     contents_first: bool,
     /// The EXACT statement sequence this transport may still run after the
-    /// classification AND its contents copy, as line prefixes, in order
-    /// (D33(3)). Empty for a
+    /// classification AND its contents copy, as line prefixes, in order.
+    /// Empty for a
     /// transport that needs no teardown. Pinning the sequence rather than a
-    /// membership set is what states F4c's half of the rule: the teardown
+    /// membership set is what states this half of the rule: the teardown
     /// `clear` is the sole statement of its `try` block, because the statement
     /// before it is that `try:` and the one after it is the `except`.
     teardown: &'static [&'static str],
@@ -4479,12 +4460,12 @@ struct RunFileRule {
     reply: (&'static str, &'static str),
 }
 
-/// The capi channel. Its teardown is D32(2)(a): dss_capi opens a Storage
+/// The capi channel. Its teardown: dss_capi opens a Storage
 /// `debugtrace` stream at edit time and keeps it open until the element is
 /// re-edited or destroyed, so the circuit is released with one `clear` — after
 /// the classification — or the guard's
 /// `os.remove` raises and the next producer of the same case snapshots the
-/// leaked file as pre-existing. D33(1) wraps that `clear` in `try:` because the
+/// leaked file as pre-existing. The transport wraps that `clear` in `try:` because the
 /// pinned 0.14.5 faults on it after an AutoAdd solve; the recording arms are on
 /// the whitelist for exactly that reason.
 const CAPI_RUN_FILES: RunFileRule = RunFileRule {
@@ -4588,7 +4569,7 @@ fn py_block_end(text: &str, at: usize) -> usize {
 }
 
 /// The whole run-TAIL rule as a pure function of one transport's source text —
-/// G1.10a's created-file classification and G1.10c's demand-interval read, whose
+/// the created-file classification and the demand-interval read, whose
 /// slots are defined against each other — so it can be shown to have teeth
 /// ([`the_run_file_gate_rejects_an_early_escaped_or_nested_classification`],
 /// [`the_run_tail_gate_rejects_a_misplaced_di_read`]).
@@ -4612,21 +4593,21 @@ fn check_run_tail_order(src: &str, a: &Anchors, r: &RunFileRule, rel: &str) -> R
     // 2. after every per-step capture: a report a LATER step writes must already
     //    be on disk when the set is classified.
     for (what, needle) in [
-        ("the G1.8 incidence capture", a.inc_matrix),
-        ("the G1.7 topology capture", a.topology),
-        ("the WP8.5b property sweep", a.properties),
-        ("the G1.6(i) reliability capture", a.reliability),
+        ("the incidence capture", a.inc_matrix),
+        ("the topology capture", a.topology),
+        ("the property sweep", a.properties),
+        ("the reliability capture", a.reliability),
         ("the per-element capture", a.elements),
         ("the discrete-state capture", a.discrete),
-        ("the G1.9 aggregates", a.aggregates),
+        ("the aggregates", a.aggregates),
     ] {
         let other = offset_after(src, needle, run, rel)?;
         if created <= other {
             return Err(format!(
-                "{rel}: the G1.10a run-file classification (byte {created}) runs BEFORE \
+                "{rel}: the run-file classification (byte {created}) runs BEFORE \
                  {what} (byte {other}). It is a per-RUN read of the filesystem and must \
                  follow every per-step read, or a file a later step writes is missing \
-                 from the compared set (`GOLDEN_REBASE_PLAN.md` §G1.10)."
+                 from the compared set."
             ));
         }
     }
@@ -4636,14 +4617,14 @@ fn check_run_tail_order(src: &str, a: &Anchors, r: &RunFileRule, rel: &str) -> R
     let autoadd = offset_after(src, r.autoadd, run, rel)?;
     if created <= autoadd {
         return Err(format!(
-            "{rel}: the run-file classification (byte {created}) runs BEFORE the WPG.5 \
+            "{rel}: the run-file classification (byte {created}) runs BEFORE the \
              `autoadd_log` read (byte {autoadd}). The classification is the LAST read of \
-             the run (D33(3)); the AutoAddLog is one of the files it classifies."
+             the run; the AutoAddLog is one of the files it classifies."
         ));
     }
 
     // The guard's scope and the indentation of its own statements — the frame
-    // both the classification (clauses 4/5) and the G1.10c demand-interval read
+    // both the classification (clauses 4/5) and the demand-interval read
     // (clause 3b) are placed in.
     let scope_end = match r.guard_close {
         Some(close) => line_start_at(src, offset_after(src, close, guard_open, rel)?),
@@ -4654,9 +4635,8 @@ fn check_run_tail_order(src: &str, a: &Anchors, r: &RunFileRule, rel: &str) -> R
         Lang::Rust => indent_at(src, guard_open),
     };
 
-    // 3b. GOLDEN_REBASE G1.10c (coordinator decision D42(6)): the
-    //     demand-interval tree's CONTENTS are copied out in this same tail, and
-    //     their slot is measured, not cosmetic — see this file's fourth
+    // 3b. The demand-interval tree's CONTENTS are copied out in this same
+    //     tail, and their slot is contractual, not cosmetic — see this file's fourth
     //     ordering rule. The frame is checked first (exactly once, inside the
     //     scope, not nested), then the three slot comparisons in the order a
     //     read can drift through them, so every mistake reports its own
@@ -4673,7 +4653,7 @@ fn check_run_tail_order(src: &str, a: &Anchors, r: &RunFileRule, rel: &str) -> R
     }
     if di <= guard_open || di >= scope_end {
         return Err(format!(
-            "{rel}: the G1.10c demand-interval read (byte {di}) sits OUTSIDE the guard \
+            "{rel}: the demand-interval read (byte {di}) sits OUTSIDE the guard \
              scope (bytes {guard_open}..{scope_end}). The guard sweeps the very tree \
              it copies out; outside the scope the files are already gone."
         ));
@@ -4681,7 +4661,7 @@ fn check_run_tail_order(src: &str, a: &Anchors, r: &RunFileRule, rel: &str) -> R
     let di_indent = indent_at(src, di);
     if di_indent != scope_indent {
         return Err(format!(
-            "{rel}: the G1.10c demand-interval read is indented {di_indent} where the \
+            "{rel}: the demand-interval read is indented {di_indent} where the \
              guard scope's own statements are indented {scope_indent} — it is nested. \
              The retry loop recompiles in-process; a read inside it copies out the \
              tree of an attempt that was thrown away."
@@ -4689,7 +4669,7 @@ fn check_run_tail_order(src: &str, a: &Anchors, r: &RunFileRule, rel: &str) -> R
     }
     if di <= autoadd {
         return Err(format!(
-            "{rel}: the G1.10c demand-interval read (byte {di}) runs BEFORE the WPG.5 \
+            "{rel}: the demand-interval read (byte {di}) runs BEFORE the \
              `autoadd_log` read (byte {autoadd}). It belongs to the run TAIL, after \
              every per-step read and after the AutoAddLog, or it describes a \
              filesystem the run had not finished writing."
@@ -4703,8 +4683,8 @@ fn check_run_tail_order(src: &str, a: &Anchors, r: &RunFileRule, rel: &str) -> R
         let teardown = offset_after(src, first, guard_open, rel)?;
         if di >= teardown {
             return Err(format!(
-                "{rel}: the G1.10c demand-interval read (byte {di}) runs AFTER this \
-                 transport's D32(2)(a) teardown (byte {teardown}). The teardown \
+                "{rel}: the demand-interval read (byte {di}) runs AFTER this \
+                 transport's capi teardown (byte {teardown}). The teardown \
                  `clear` destroys the circuit, which FLUSHES the in-flight \
                  demand-interval cycle over the file on the capi channel (measured: \
                  8/8, 7/8 and 4/6 file digests move on the three DI cases whose run \
@@ -4716,9 +4696,9 @@ fn check_run_tail_order(src: &str, a: &Anchors, r: &RunFileRule, rel: &str) -> R
     }
     if di >= created {
         return Err(format!(
-            "{rel}: the G1.10c demand-interval read (byte {di}) runs AFTER the \
+            "{rel}: the demand-interval read (byte {di}) runs AFTER the \
              run-file classification (byte {created}), which is the LAST read of the \
-             run (D33(3)). The DI contents are read in front of it, from the same \
+             run. The DI contents are read in front of it, from the same \
              guard, while the tree is still on disk."
         ));
     }
@@ -4746,8 +4726,8 @@ fn check_run_tail_order(src: &str, a: &Anchors, r: &RunFileRule, rel: &str) -> R
         ));
     }
 
-    // 6. D33(3): the classification is the last READ of the run. To the end of
-    //    `run_case` no command but the D32(2)(a) teardown and no capture may
+    // 6. The classification is the last READ of the run. To the end of
+    //    `run_case` no command but the capi teardown and no capture may
     //    follow it; inside the guard scope only the contents copy and that
     //    teardown, past the scope only the declared epilogue and the reply.
     let tail_start = src[created..]
@@ -4768,7 +4748,7 @@ fn check_run_tail_order(src: &str, a: &Anchors, r: &RunFileRule, rel: &str) -> R
         return Err(format!(
             "{rel}: the commands issued after the run-file classification, to the end of \
              `run_case`, are {cmds:?}, but the only thing allowed to follow it is the \
-             D32(2)(a) teardown {:?} (D33(3)). Any other command changes the run whose \
+             capi teardown {:?}. Any other command changes the run whose \
              filesystem effect was just classified.",
             r.teardown_commands
         ));
@@ -4779,7 +4759,7 @@ fn check_run_tail_order(src: &str, a: &Anchors, r: &RunFileRule, rel: &str) -> R
         return Err(format!(
             "{rel}: `{read}` is called AFTER the run-file classification (inside the guard \
              scope or past it, before `run_case` returns). The classification is the LAST \
-             read of the run (D33(3)); a capture that follows it reads a model the \
+             read of the run; a capture that follows it reads a model the \
              reported file set no longer describes."
         ));
     }
@@ -4789,7 +4769,7 @@ fn check_run_tail_order(src: &str, a: &Anchors, r: &RunFileRule, rel: &str) -> R
         .map(|l| code_of(l, r.lang).trim())
         .filter(|s| !s.is_empty())
         .collect();
-    // G1.10b: the contents copy and the D32(2)(a) teardown, in this transport's
+    // The contents copy and the capi teardown, in this transport's
     // measured order ([`RunFileRule::contents_first`]). Nothing else, ever.
     let allowed: Vec<&str> = if r.contents_first {
         r.contents
@@ -4810,8 +4790,8 @@ fn check_run_tail_order(src: &str, a: &Anchors, r: &RunFileRule, rel: &str) -> R
             _ => {
                 return Err(format!(
                     "{rel}: statement {i} after the run-file classification is `{stmt}`, \
-                     but D33(3) + D40(6) allow exactly the G1.10b contents copy and then \
-                     the D32(2)(a) teardown, in this order: {allowed:?}. The \
+                     but the contract allows exactly the contents copy and then \
+                     the capi teardown, in this order: {allowed:?}. The \
                      classification is the last READ of the run; the copy moves bytes \
                      and the teardown is not a read, and that `clear` is the SOLE \
                      statement of its `try` block. If either changed, change this rule \
@@ -4823,10 +4803,10 @@ fn check_run_tail_order(src: &str, a: &Anchors, r: &RunFileRule, rel: &str) -> R
     if stmts.len() != allowed.len() {
         return Err(format!(
             "{rel}: the guard scope ends after {} statement(s) following the run-file \
-             classification, but the declared G1.10b contents copy plus the D32(2)(a) \
+             classification, but the declared contents copy plus the capi \
              teardown have {}: {allowed:?}. A teardown that shrank silently is the leak \
-             D32(2)(a) closed (dss_capi's Storage trace stream) coming back, and a \
-             contents copy that vanished silently is the G1.10b surface comparing nothing.",
+             the teardown closed (dss_capi's Storage trace stream) coming back, and a \
+             contents copy that vanished silently is the contents surface comparing nothing.",
             stmts.len(),
             allowed.len(),
         ));
@@ -4839,7 +4819,7 @@ fn check_run_tail_order(src: &str, a: &Anchors, r: &RunFileRule, rel: &str) -> R
 /// equal to its entry (so nothing can be folded onto it), then the reply
 /// literal [`RunFileRule::reply`], every entry of which [`is_reply_entry`]
 /// admits. All of it runs after the run-file classification, the LAST read of
-/// the run (D33(3)).
+/// the run.
 fn check_run_epilogue(after: &str, r: &RunFileRule, rel: &str) -> Result<(), String> {
     let stmts: Vec<&str> = after
         .lines()
@@ -4853,7 +4833,7 @@ fn check_run_epilogue(after: &str, r: &RunFileRule, rel: &str) -> Result<(), Str
                 return Err(format!(
                     "{rel}: statement {i} after the guard scope is {found:?}, but `run_case` \
                      runs exactly its epilogue {:?} there and then replies. The run-file \
-                     classification is the LAST read of the run (D33(3)); anything past the \
+                     classification is the LAST read of the run; anything past the \
                      scope runs after it.",
                     r.epilogue
                 ));
@@ -4869,14 +4849,14 @@ fn check_run_epilogue(after: &str, r: &RunFileRule, rel: &str) -> Result<(), Str
             format!(
                 "{rel}: after its epilogue `run_case` must end in the reply `{open} … {close}`, \
                  found `{reply}` — a statement after the guard scope runs after the run-file \
-                 classification, the LAST read of the run (D33(3))."
+                 classification, the LAST read of the run."
             )
         })?;
     for entry in inner.split(',').map(str::trim).filter(|e| !e.is_empty()) {
         if !is_reply_entry(entry) {
             return Err(format!(
                 "{rel}: the reply entry `{entry}` is not a bound name. The reply is built \
-                 after the run-file classification, the LAST read of the run (D33(3)), so \
+                 after the run-file classification, the LAST read of the run, so \
                  it hands back values read before it — it reads nothing itself."
             ));
         }
@@ -4918,10 +4898,10 @@ fn r4133_capture_classifies_the_run_files_last() {
         .unwrap_or_else(|e| panic!("{e}"));
 }
 
-/// `GOLDEN_REBASE_PLAN.md` G1.10b, coordinator decision D40(6) — the CONTENTS
-/// copy is read WITH the set, from the set, inside the guard scope.
+/// The CONTENTS copy is read WITH the set, from the set, inside the guard
+/// scope.
 ///
-/// The set comparator (G1.10a) and the contents comparator must describe the
+/// The set comparator and the contents comparator must describe the
 /// same instant of the filesystem, so the copy has to sit at the same strictly
 /// last point as the classification. Four clauses, each a pure function of one
 /// transport's source text so they can be shown to have teeth
@@ -4941,10 +4921,11 @@ fn check_run_file_contents_read_with_the_set(
     r: &RunFileRule,
     rel: &str,
 ) -> Result<(), String> {
-    let head =
-        r.contents.first().copied().ok_or_else(|| {
-            format!("{rel}: this transport declares no G1.10b contents copy at all")
-        })?;
+    let head = r
+        .contents
+        .first()
+        .copied()
+        .ok_or_else(|| format!("{rel}: this transport declares no contents copy at all"))?;
     let run = offset_after(src, a.run, 0, rel)?;
     let created = offset_after(src, r.created, run, rel)?;
     let copy = offset_after(src, head, run, rel)?;
@@ -4969,7 +4950,7 @@ fn check_run_file_contents_read_with_the_set(
     };
     if copy <= guard_open || copy >= scope_end {
         return Err(format!(
-            "{rel}: the G1.10b contents copy (byte {copy}) sits OUTSIDE the guard scope \
+            "{rel}: the contents copy (byte {copy}) sits OUTSIDE the guard scope \
              (bytes {guard_open}..{scope_end}). The guard sweeps exactly the files it \
              classified; outside its scope they are already gone."
         ));
@@ -4995,10 +4976,10 @@ fn check_run_file_contents_read_with_the_set(
     let at = tail.iter().position(|s| s.starts_with(head));
     if at != Some(want) {
         return Err(format!(
-            "{rel}: the G1.10b contents copy `{head}` is statement {at:?} of the tail \
+            "{rel}: the contents copy `{head}` is statement {at:?} of the tail \
              after the run-file classification, but this transport declares it as \
              statement {want} ({tail:?}). The SET and the BYTES describe the same \
-             instant of the filesystem, so only the declared D32(2)(a) teardown may \
+             instant of the filesystem, so only the declared capi teardown may \
              stand between them — on capi it MUST, because its held Storage \
              `debugtrace` stream denies READ until \
              that `clear` closes it, and on r4133 there is no teardown to stand there."
@@ -5016,7 +4997,7 @@ fn check_run_file_contents_read_with_the_set(
     let stmt = &src[line_start_at(src, copy)..stmt_end];
     if !stmt.contains(r.created_var) {
         return Err(format!(
-            "{rel}: the G1.10b contents copy does not consume `{}` — the name the \
+            "{rel}: the contents copy does not consume `{}` — the name the \
              classification binds. It must, or the selection stops being a pure \
              function of the created-file set and a transport can hand back a file the \
              set does not name (or miss one it does).",
@@ -5170,7 +5151,7 @@ def run_case(d, req):
 
 /// The r4133 `run_case` in the real transport's shape — the Rust spelling of the
 /// guard scope, where the guard is consumed by an explicit `finish()` and the
-/// tail holds the G1.10b contents copy alone (that transport has no teardown).
+/// tail holds the contents copy alone (that transport has no teardown).
 /// Shared by the two
 /// mutation tests below so both run against the SAME [`R4133_CALLS`] /
 /// [`R4133_RUN_FILES`] constants the real gate applies.
@@ -5201,7 +5182,7 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
 }
 ";
 
-/// Non-vacuity (§1.1(f)) for the capi half of the run-file rule: the gate above
+/// Non-vacuity for the capi half of the run-file rule: the gate above
 /// passes on the real source, so this one shows each of its six clauses rejects
 /// the corresponding mistake. No file on disk is mutated.
 #[test]
@@ -5259,8 +5240,8 @@ fn the_run_file_gate_rejects_an_early_escaped_or_nested_classification() {
     assert!(err.contains("run_files.sort()"), "{err}");
 
     // (6d) the teardown's `clear` hoisted out of its `try:` block — the shape
-    // D33(1) needs (the pinned 0.14.5 faults on that `clear` after an AutoAdd
-    // solve) and F4c asked this rule to state. Same statements, wrong order.
+    // the transport needs (the pinned 0.14.5 faults on that `clear` after an
+    // AutoAdd solve). Same statements, wrong order.
     let unguarded = move_line_after(ok, "d.Text.Command", "teardown_error = None");
     let err = check_run_tail_order(&unguarded, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
         .expect_err("the teardown clear left its try block");
@@ -5346,7 +5327,7 @@ fn the_run_file_gates_have_teeth_on_the_real_transport_sources() {
         .expect_err("classified after the guard scope closed");
     assert!(err.contains("OUTSIDE the guard scope"), "{err}");
 
-    // G1.10c: the same two claims for the demand-interval read, on the real capi
+    // The same two claims for the demand-interval read, on the real capi
     // source — hoisted in front of the `autoadd_log` read it must follow, and
     // pushed past the guard scope whose sweep removes the tree it copies out.
     let hoisted_di = move_line_after(
@@ -5356,7 +5337,7 @@ fn the_run_file_gates_have_teeth_on_the_real_transport_sources() {
     );
     let err = check_run_tail_order(&hoisted_di, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
         .expect_err("the DI read was hoisted in front of the autoadd read");
-    assert!(err.contains("runs BEFORE the WPG.5"), "{err}");
+    assert!(err.contains("runs BEFORE the `autoadd_log`"), "{err}");
     let escaped_di = move_line_after(
         &src,
         "di = capture_di(guard",
@@ -5395,7 +5376,7 @@ fn the_run_file_gates_have_teeth_on_the_real_transport_sources() {
         .expect_err("classified after the sweep");
     assert!(err.contains("OUTSIDE the guard scope"), "{err}");
 
-    // G1.10c on the real r4133 source: the DI read hoisted in front of the
+    // On the real r4133 source: the DI read hoisted in front of the
     // `autoadd_log` read, and the same read issued twice.
     let hoisted_di = move_line_after(
         &src,
@@ -5404,7 +5385,7 @@ fn the_run_file_gates_have_teeth_on_the_real_transport_sources() {
     );
     let err = check_run_tail_order(&hoisted_di, &R4133_CALLS, &R4133_RUN_FILES, rel)
         .expect_err("the DI read was hoisted in front of the autoadd read");
-    assert!(err.contains("runs BEFORE the WPG.5"), "{err}");
+    assert!(err.contains("runs BEFORE the `autoadd_log`"), "{err}");
     let twice_di = insert_after(
         &src,
         "let di = if req.di",
@@ -5425,9 +5406,9 @@ fn the_run_file_gates_have_teeth_on_the_real_transport_sources() {
     assert!(err.contains("statement 1 after the guard scope"), "{err}");
 }
 
-/// Non-vacuity for the G1.10c half of the rule on the capi transport: the DI
-/// read's slot — after `autoadd_log`, before the classification and before the
-/// D32(2)(a) teardown — is asserted, so each way of losing it must be rejected.
+/// Non-vacuity for the demand-interval half of the rule on the capi transport:
+/// the DI read's slot — after `autoadd_log`, before the classification and
+/// before the capi teardown — is asserted, so each way of losing it must be rejected.
 ///
 /// Four drives, each moving the ONE statement the real transport runs: past the
 /// classification, past the teardown `clear` (the measured hazard — that `clear`
@@ -5456,7 +5437,7 @@ fn the_run_tail_gate_rejects_a_misplaced_di_read() {
     );
     let err = check_run_tail_order(&after_teardown, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
         .expect_err("the DI read followed the teardown");
-    assert!(err.contains("D32(2)(a) teardown"), "{err}");
+    assert!(err.contains("capi teardown"), "{err}");
 
     // (3) read after the guard scope closed — the tree is already swept.
     let escaped = move_line_after(
@@ -5535,7 +5516,7 @@ fn the_r4133_run_tail_gate_rejects_a_misplaced_di_read() {
 
 /// The r4133 half: the same rule against the Rust spelling of the scope, where
 /// the guard is consumed by an explicit `finish()` and the tail carries the
-/// G1.10b contents copy and nothing else (that transport has no teardown —
+/// contents copy and nothing else (that transport has no teardown —
 /// r4133 closes its own trace file as it writes the header).
 #[test]
 fn the_run_file_gate_rejects_a_classification_after_the_sweep() {

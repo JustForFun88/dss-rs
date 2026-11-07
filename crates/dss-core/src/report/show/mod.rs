@@ -1,23 +1,23 @@
 //! Per-report formatters for `Show` (Pascal `Common/ShowResults.pas`). Each takes
 //! a read view of the (solved) circuit and returns the report text; no formatter
-//! mutates electrical state (PHASE8_PLAN §2.1). Coverage grows per WP8.4 step.
+//! mutates electrical state.
 //!
 //! Unlike the `Export` CSV formatters, `Show` emits Pascal's fixed-width text
 //! tables (`Pad`/`PadDots` columns, `Format('%W.Df', …)` widths). The targeted
 //! text golden (`golden_reports.rs`) diffs them after tokenizing on whitespace +
-//! commas (PHASE8_PLAN §2.3), so the exact padding is not gate-load-bearing — but
+//! commas, so the exact padding is not gate-load-bearing — but
 //! the field structure and the number formats are ported faithfully.
 //!
-//! **Stage F (F-FMT step 2, `DE_PASCALIZE_PLAN.md` Part IV.2).** Those tables are
-//! built as **row data** ([`crate::report::table`]) and rendered by the lane's
-//! kernel: the parity lane replays Pascal's `Pad`/`PadDots`/`Format` in order
-//! (byte for byte), the default lane hands each run to the table crate, which
+//! Those tables are built as **row data** ([`crate::report::table`]) and
+//! rendered by the lane's kernel: the parity lane replays Pascal's
+//! `Pad`/`PadDots`/`Format` in order (byte for byte), the default lane hands
+//! each run to the table crate, which
 //! sizes every column from its own content. Only the padding moves — the module
 //! keeps every field, in order, in both lanes (`Cell::sep` enforces it
 //! structurally). Section *headers* stay free text wherever a Pascal label spans
 //! several data columns (`Show Voltages`' `Mag:`, `Show Currents`' `(Real)`/
-//! `(Imag)` pair, `Show Buses`' two-line `Coord` banner); a v2 re-layout of them
-//! is plan §F-FMT step 4, a separate decision.
+//! `(Imag)` pair, `Show Buses`' two-line `Coord` banner); a re-layout of them
+//! is a separate decision.
 
 mod bus_powers;
 mod buses;
@@ -98,16 +98,13 @@ use crate::exec::registry::DssClass;
 ///   there sees the honest width.
 ///
 /// So this is a second capi-only shadowing defect, deterministic and with two
-/// reachable values — **not** the "nondeterministic, no single value reproduces
-/// it" reading recorded at the WP8.8 exit sweep, which this sub-step's G2.6
-/// settle corrected against the Pascal and the captures above. The disposition is
-/// unchanged and now rests on the 2026-08-02 policy rather than on the UB rule:
-/// an upstream defect the authority does not share is not reproduced in any lane,
-/// so the honest source value stays. It stays *unobservable* as well — the width
+/// reachable values. It is an OpenDSS bug r4133 does not share, and no lane
+/// reproduces it, so the honest source value stays. It stays *unobservable* as
+/// well — the width
 /// only ever feeds name-column padding, i.e. space pads (invisible to the
 /// whitespace-tokenizing golden) or `PadDots` runs (`harness::split_fields` drops
-/// pure dot-runs) — which is why, unlike the device-name column, it never needed
-/// a lane row to tear down: no oracle-compared token can see it.
+/// pure dot-runs) — which is why, unlike the device-name column, no golden
+/// comparison has to account for it: no oracle-compared token can see it.
 pub(crate) fn max_bus_name_length(ckt: &Circuit) -> usize {
     let mut m = 4;
     for i in 0..ckt.buses.len() {
@@ -127,11 +124,9 @@ pub(crate) fn max_bus_name_length(ckt: &Circuit) -> usize {
 ///
 /// # The width every `Show` table uses, in both lanes
 ///
-/// Until `GOLDEN_REBASE_PLAN.md` G2.6 the parity lane discarded this number and
-/// padded to **0** instead (`compat::max_device_name_length`), because that is
-/// what the pinned dss_capi 0.14.5 backend does. That was a **defect**, not a
-/// rendering convention, and since the 2026-08-02 policy no upstream defect is
-/// reproduced in any lane:
+/// The pinned dss_capi 0.14.5 backend pads to **0** instead. That is a
+/// **defect**, not a rendering convention, and no upstream defect is reproduced
+/// in any lane:
 ///
 /// * dss_capi's `SetMaxDeviceNameLength` zeroes the *unit* variable
 ///   (`.inputs/dss_capi/src/Common/ShowResults.pas:116`, declared `:82`) and
@@ -154,10 +149,9 @@ pub(crate) fn max_bus_name_length(ckt: &Circuit) -> usize {
 /// so at width 0 the terminal number lands on the closing quote
 /// (`"Capacitor.cap1"1  …`) and at the honest width it is a column. Every other
 /// consumer pads with spaces or `PadDots` runs, which the goldens' tokenizer
-/// drops. The three `show_busflow*` goldens are therefore compared — in **both**
-/// lanes since G2.6 — through an enumerated expectation that splits that one
-/// token (`golden_reports.rs::busflow_expected`); no golden byte was
-/// re-baselined. Pinned by
+/// drops. The three `show_busflow*` goldens are therefore compared in **both**
+/// lanes through an enumerated expectation that splits that one token
+/// (`golden_reports.rs::busflow_expected`). Pinned by
 /// `exec::tests::compat_quirks::device_name_column_is_sized_from_its_content`.
 pub(crate) fn device_name_width(classes: &[DssClass], ckt: &Circuit) -> usize {
     ckt.ckt_elements

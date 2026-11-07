@@ -2,7 +2,7 @@
 //! (`Solution.pas` l.2146) and `Utilities.DoResetFaults` (l.984). Free functions
 //! over the registry: each Fault is borrowed from the class store while the
 //! disjoint `Solution` fields (`node_v`/`event_log`) are borrowed from the
-//! circuit (the WP5.7 control-sweep borrow split).
+//! circuit (the control-sweep borrow split).
 
 use crate::circuit::Circuit;
 use crate::elements::pd::fault::{Fault, FaultStatusCtx};

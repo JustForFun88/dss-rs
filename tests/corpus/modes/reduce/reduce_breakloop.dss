@@ -1,5 +1,5 @@
-// Reduce coverage (PHASE8_PLAN WP8.7): the BREAKLOOP strategy
-// (DoBreakLoops, ReduceAlgs.pas:69): at a branch flagged IsLoopedHere the
+// Reduce coverage: the BREAKLOOP strategy
+// (DoBreakLoops): at a branch flagged IsLoopedHere the
 // LoopLineObj partner line is disabled (no merge) - the loop l4 (b3->b1)
 // is opened.
 clear

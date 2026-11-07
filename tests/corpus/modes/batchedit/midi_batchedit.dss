@@ -118,7 +118,7 @@ new load.ld22 bus1=l9e.3 phases=1 conn=wye model=5 kv=7.2 kw=420 pf=0.85 vminpu=
 new load.ld23 bus1=bb6 phases=3 conn=wye model=3 kv=12.47 kw=280 pf=0.94 vminpu=0.85
 new load.ld24 bus1=bb11.2 phases=1 conn=wye model=1 kv=7.2 kw=160 pf=0.93 vminpu=0.85
 
-! BatchEdit family (PHASE8_PLAN WP8.6): the TRegExpr selection at scale.
+! BatchEdit family: the TRegExpr selection at scale.
 ! Pattern `ld1` is UNANCHORED + case-insensitive -> ld1 AND ld10..ld19;
 ! `^ld2$` is anchored -> ld2 only; `^l4` -> the l4a/l4b/l4c lateral run.
 batchedit load.ld1 kw=150

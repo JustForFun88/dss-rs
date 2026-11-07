@@ -7,7 +7,7 @@
 //!
 //! Pascal's `WriteElem*` guards each element on `IsSolved` (error 222001) and
 //! exits early, so an **unsolved** circuit yields a header-only file; the router
-//! records the 222001 error once (PHASE8_PLAN §1 — no silent fake output).
+//! records the 222001 error once (no silent fake output).
 
 use num_complex::Complex64;
 

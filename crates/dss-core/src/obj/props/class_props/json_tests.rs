@@ -1,5 +1,5 @@
-//! Synthetic per-`PropType` arm tests for [`ClassProps::get_json_value`]
-//! (JSON_EXPORT_PLAN §3.1). The golden byte tests (`golden_json.rs`) pin the
+//! Synthetic per-`PropType` arm tests for [`ClassProps::get_json_value`].
+//! The golden byte tests (`golden_json.rs`) pin the
 //! arms that real classes exercise against the oracle; these cover the remaining
 //! arms and the value-shaping edge cases (NaN→null, integer `value_offset`,
 //! `MappedIntEnum`, `AllowNone`→null, `IntegerArray`/`StringList` shape,
@@ -15,7 +15,7 @@ use crate::report::export::json::{JsonOpts, serialize};
 ///
 /// These arm tests pin the *shape* a `PropType` renders — `null` vs a scalar vs
 /// a flat array vs a nested one, and where the brackets and commas fall — not
-/// how F-FMT spells a number, so their expectations are built from the seam
+/// how the lane spells a number, so their expectations are built from the seam
 /// rather than from one lane's literals (which is what
 /// `report::export::json::tests::json_float_is_the_lane_kernel` pins).
 fn f(v: f64) -> String {

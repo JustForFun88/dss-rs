@@ -1,66 +1,66 @@
-//! **The r4133 property-value normalization engine** (`R4133_PROPS_PLAN.md`
-//! §1.2, sub-step RP2.1) — the second link of the r4133 props claim chain
+//! **The r4133 property-value normalization engine**, the second link of the
+//! r4133 props claim chain
 //! *shape allowlist → **normalization** → echo table → display floor*.
+//!
+//! Knob: `DSS_GATE_ONLY` (set by a filtered partial run) silences this module's
+//! fail-on-stale and fail-on-nothing-ran assertions, because a partial run
+//! cannot make a whole-population claim. Default unset: the assertions run.
 //!
 //! # What it is
 //!
 //! [`PROPS_NORM_R4133`] is a table of `(class, prop)` rows, each carrying one
 //! **typed** rule ([`NormRule`]). When the property comparator runs on the
 //! [`R4133`](super::PropsChannel::R4133) channel it consults the table for the
-//! cell it is about to assert on; a rule that recognises the two spellings as
-//! the SAME value re-spells the oracle side as ours, and the assert then sees
+//! cell it is about to assert on. A rule that recognises the two spellings as
+//! the SAME value re-spells the r4133 side as ours, and the assert then sees
 //! two identical strings. On the `capi_v0145` channel the table is never
-//! consulted at all (plan mechanic (b), capi-invariance).
+//! consulted at all.
 //!
 //! The module owns the chain's third link too:
 //! [`PROPS_ECHO_R4133`], the *echo-exclusion* table. Where a rule re-spells,
-//! an echo row **drops the value compare** of its `(class, prop)` — the name
-//! and index order still assert — because the two sides do not spell one value
+//! an echo row **drops the value compare** of its `(class, prop)` (the name
+//! and index order still assert), because the two sides do not spell one value
 //! and no value-preserving rule could claim them. It is consulted after the
 //! normalization seam, on the r4133 channel only, and every row carries the
 //! r4133 site that proves its category plus the witness that still holds the
-//! port's value (capi coverage or a named expected-value pin — and a capi
+//! engine's value (capi coverage or a named expected-value pin, and a capi
 //! witness alone is not enough for a row whose cells reach `engines: "r4133"`
-//! cases, [`ECHO_ROWS_ON_R4133_ONLY_CASES`]). 61 of the 82 rows are pair-scoped
-//! minus their [`ECHO_CARVE_OUTS`]: the one measured cell whose divergence its
-//! citation does not explain stays comparable. The other 21 are **per cell**:
-//! the 20 that also carry a [`PROPS_NORM_R4133`] row, plus `generator.model` —
-//! [`ECHO_NARROWED`] lists the 67 spellings they cover, and any other cell of
+//! cases, [`ECHO_ROWS_ON_R4133_ONLY_CASES`]). Most rows are pair-scoped minus
+//! their [`ECHO_CARVE_OUTS`]. The rows whose pair also carries a
+//! [`PROPS_NORM_R4133`] row, plus `generator.model`, are **per cell**:
+//! [`ECHO_NARROWED`] lists the spellings they cover, and any other cell of
 //! such a pair is compared, not masked.
 //!
 //! It owns the chain's fourth and last link as well:
-//! [`R4133_DISPLAY_FLOOR`], the *display floor*. Where a rule re-spells and an
-//! echo row excludes, the floor **claims a numeric cell whose two sides agree
-//! to within `2e-4` relative AND whose r4133 side is our value rounded to the
-//! digits r4133 printed** ([`display_is_render`]) — a Delphi
-//! `Format('%[-].Ng', …)` render of the shared double, or of the one command
-//! string an upstream round trip wrote. It is consulted last, on the r4133
-//! channel only, and its derivation (measured worst 6.431124e-05, the empty band
-//! up to 1.374769e-03, the `%[-].Ng` site table, and the 55 spellings the
-//! mechanism clause refuses) lives on the constant.
+//! [`R4133_DISPLAY_FLOOR`], the *display floor*. The floor **claims a numeric
+//! cell whose two sides agree to within the floor AND whose r4133 side is our
+//! value rounded to the digits r4133 printed** ([`display_is_render`]): a
+//! Delphi `Format('%[-].Ng', …)` render of the shared double, or of the one
+//! command string an r4133 round trip wrote. It is consulted last, on the
+//! r4133 channel only, and its derivation lives on the constant.
 //!
 //! That statement has to hold at **three** seams, because the tables have two
 //! callers each and the floor a third, and each carries its own channel gate:
 //!
-//! * the live comparator — [`normalize_r4133`], [`echo_excluded_r4133`] and
+//! * the live comparator: [`normalize_r4133`], [`echo_excluded_r4133`] and
 //!   [`under_display_floor_r4133`], reached only from
 //!   `PropsPolicy::normalize`/`::echo_excluded`/`::under_display_floor`'s
 //!   r4133 arms (`PropsPolicy::is_r4133`, pinned by
 //!   `props_policy_tests::the_capi_channel_never_normalizes`,
 //!   `::the_capi_channel_never_excludes` and
 //!   `::the_capi_channel_never_applies_the_display_floor`);
-//! * the offline/measurement query — [`claim_value`], which the claims census
+//! * the offline/measurement query: [`claim_value`], which the claims census
 //!   asks about the rows of **both** channels and which therefore takes the
 //!   channel itself and answers `None` on capi (pinned by
-//!   [`tests::the_capi_channel_claims_nothing`]).
+//!   `tests::the_capi_channel_claims_nothing`).
 //!
-//! # The contract: value-preserving normalization ONLY (plan mechanic (c))
+//! # The contract: value-preserving normalization ONLY
 //!
-//! A rule may change how a value is **spelled**; it may never change **which**
-//! value it is — the
+//! A rule may change how a value is **spelled**. It may never change **which**
+//! value it is: the
 //! [`lane::expected_rerounded`](super::lane::expected_rerounded) discipline
 //! transplanted to property cells. Everything that
-//! cannot satisfy that is an **exclusion** — [`PROPS_ECHO_R4133`] — never a
+//! cannot satisfy that is an **exclusion** ([`PROPS_ECHO_R4133`]), never a
 //! rule here.
 //!
 //! Structurally the contract reduces to the per-kind predicate
@@ -69,165 +69,135 @@
 //! a divergence that is real still reaches the assert with both original
 //! spellings in the message. Three consequences the tests below pin:
 //!
-//! * the rules are **typed, never regexes** — each kind names one upstream
+//! * the rules are **typed, never regexes**: each kind names one r4133
 //!   rendering mechanism, cited on the kind;
-//! * `''` is not a boolean and not an array — an empty render is the
+//! * `''` is not a boolean and not an array: an empty render is the
 //!   `PropertyValue[]` echo of bin 5, which this table must not claim
 //!   (the chain hands those cells to [`PROPS_ECHO_R4133`]);
 //! * a token-count difference is a value difference: `[400]` and
 //!   `(400, 400, 400)` are a one- and a three-element array and never fold.
 //!
-//! # Evidence (plan mechanic (a))
+//! # Evidence
 //!
 //! Every row cites a row of the vendored census at `tests/corpus/props_r4133/`
 //! by the triple *(pair, bin, cells)*: [`NormRow::bin`] and [`NormRow::cells`]
 //! reproduce that pair's `bins.tsv` columns, and [`NormRow::src`] says which
-//! vendored file the line lives in — `bins.tsv` for the 2026-08-08 census, or
-//! the `README.md` §"Pairs the WP-RP1 shape closures make live" record of the
-//! sub-step that created the pair (those pairs cannot exist in the frozen
-//! extracts: while a class carried a `shape_count` row the walk never reached
-//! the props behind it). The replay test of `props_r4133_replay` re-reads the
-//! vendored files and cross-checks the triple, so a mis-transcribed row fails a test rather than
-//! silently widening the table.
+//! vendored file the line lives in: `bins.tsv`, or the vendored `README.md`
+//! record of the shape closure that made the pair live (such a pair cannot
+//! exist in the frozen extracts: while a class carried a `shape_count` row the
+//! walk never reached the props behind it). The replay test of
+//! `props_r4133_replay` re-reads the vendored files and cross-checks the
+//! triple, so a mis-transcribed row fails a test rather than silently widening
+//! the table.
 //!
-//! # Population (RP2.1, bins 1/2/4 of plan §1.1; RP2.2 bin 3; RP2.3 off-bin)
+//! # Population
 //!
-//! | kind | rows | derivation |
-//! |---|---|---|
-//! | [`BoolFold`](NormRule::BoolFold) | 77 | bin 1's 75 pairs **minus the five pure-echo pairs** (`capcontrol.reset`, `recloser.debugtrace`, `regcontrol.idleforward`, `regcontrol.idlereverse`, `upfccontrol.enabled` — no foldable cell at all, vendored `README.md` §"Bin 1 carries nine echo pairs, not three"), plus 7 WP-RP1 pairs |
-//! | [`CaseFold`](NormRule::CaseFold) | 65 | bin 2 whole (59 case-only + 2 trailing-space), plus 2 WP-RP1 pairs, **minus** `invcontrol.voltage_curvex_ref` (re-typed by RP2.2, next row), **plus 3 RP2.3 off-bin rows** |
-//! | [`ArrayForm`](NormRule::ArrayForm) | 21 | bin 4's 21 pairs minus 4 no typed rule may claim (below) and minus the 2 RP4.1 dropped (`swtcontrol.normal`/`state`, below), **plus 6 RP2.3 off-bin rows** |
-//! | [`EnumSynonym`](NormRule::EnumSynonym) | 5 | RP2.2: the four source sequence-selector pairs of bin 3 ([`SCAN_TYPE_SYNONYMS`] / [`SEQUENCE_TYPE_SYNONYMS`]) plus [`VOLTAGE_CURVEX_REF_SYNONYMS`]; the other four bin-3 pairs are NOT synonyms — see below |
+//! | kind | what it holds |
+//! |---|---|
+//! | [`BoolFold`](NormRule::BoolFold) | bin 1's pairs **minus the five pure-echo pairs** (`capcontrol.reset`, `recloser.debugtrace`, `regcontrol.idleforward`, `regcontrol.idlereverse`, `upfccontrol.enabled`: no foldable cell at all, vendored `README.md` §"Bin 1 carries nine echo pairs, not three"), plus the pairs the shape closures made live |
+//! | [`CaseFold`](NormRule::CaseFold) | bin 2 whole (case-only plus two trailing-space pairs), plus the pairs the shape closures made live, **minus** `invcontrol.voltage_curvex_ref` (an [`EnumSynonym`](NormRule::EnumSynonym) row), **plus three bin-5 pairs** (below) |
+//! | [`ArrayForm`](NormRule::ArrayForm) | bin 4's pairs minus the four no typed rule may claim (below) and minus `swtcontrol.normal`/`state` (below), **plus six bin-5 pairs** (below) |
+//! | [`EnumSynonym`](NormRule::EnumSynonym) | the four source sequence-selector pairs of bin 3 ([`SCAN_TYPE_SYNONYMS`] / [`SEQUENCE_TYPE_SYNONYMS`]) plus [`VOLTAGE_CURVEX_REF_SYNONYMS`]. The other four bin-3 pairs are NOT synonyms (below) |
 //!
-//! # RP2.3's nine off-bin rows (bin 5 pairs carrying comparable cells)
+//! # Nine bin-5 pairs that carry comparable cells
 //!
-//! RP2.3 fills [`PROPS_ECHO_R4133`], and an exclusion is pair-scoped. The census
-//! measured 6 446 cells (6 370 in scope) on ten of the 86 bucket pairs that a
-//! typed rule can fold value-preservingly, so nine of them take a row here
-//! FIRST, and `props_r4133_replay::MIXED_PAIR_NORM_ROWS` counts them (135
-//! example rows over 20 pairs).
+//! An exclusion in [`PROPS_ECHO_R4133`] is pair-scoped, and ten bin-5 pairs
+//! carry cells that a typed rule can fold value-preservingly. Nine of them take
+//! a row here FIRST, and `props_r4133_replay::MIXED_PAIR_NORM_ROWS` counts
+//! them.
 //!
 //! **What that buys, precisely:** the chain order decides which link *claims*
-//! the cell, so those 6 446 cells are dispositioned `normalized-by-<rule>`
-//! rather than `echo-row`, and each of the nine rows proves itself live through
-//! its own hit counter. At the seam ([`echo_excluded_r4133`]),
-//! [`ECHO_NARROWED`] gives each of the twenty mixed pairs the 66 measured
-//! spellings its citation explains, and the seam excludes only those: every
-//! other cell of those pairs is compared on r4133 too, so a genuine regression
-//! on one of them (a wrong resolved loadshape name, a wrong ZIPV vector) reds
-//! on both channels.
+//! the cell, so those cells are dispositioned `normalized-by-<rule>` rather
+//! than `echo-row`, and each of the nine rows proves itself live through its
+//! own hit counter. At the seam ([`echo_excluded_r4133`]), [`ECHO_NARROWED`]
+//! gives each mixed pair the measured spellings its citation explains, and the
+//! seam excludes only those: every other cell of those pairs is compared on
+//! r4133 too, so a genuine regression on one of them (a wrong resolved
+//! loadshape name, a wrong ZIPV vector) reds on both channels.
 //!
-//! * `load.yearly` `CaseFold` (5 995 cells) — arm 7 answers the LIVE
-//!   `Yearlyshape` string (`PCElements/Load.pas:2346`), so a case-only
-//!   difference names the same shape (`THashList` lowercases both sides); the
-//!   `''`-vs-value half stays the echo row's, which is why RP2.2's routing note
-//!   says one `CaseFold` row is not *sufficient* for the pair;
-//! * `reactor.bus2` `CaseFold` (37) — the stale `GetBus(2)` snapshot happens to
-//!   agree with our live terminal on every cell but the four the echo row keeps
-//!   (`'b2.0'` vs `'b2.0.0.0'`, the shape a later `phases=` creates);
-//! * `invcontrol.monvoltagecalc` `CaseFold` (15) — the deck's own `'MAX'`/
-//!   `'AVG'` token against our registry spelling;
-//! * `line.wires` (2), `load.zipv` (342), `generator.userdata` (3),
-//!   `storage.dynadata` (2), `storagecontroller.seasontargets` (25) and
-//!   `seasontargetslow` (25) `ArrayForm` — same tokens, different delimiters
-//!   (r4133's paren wrapper, its bare space-separated list, its trailing-comma
-//!   bracket form).
+//! * `load.yearly` `CaseFold`: r4133 answers the LIVE `Yearlyshape` string, so
+//!   a case-only difference names the same shape (the hash list lowercases both
+//!   sides). The `''`-vs-value half stays the echo row's, so one `CaseFold` row
+//!   alone is not *sufficient* for the pair.
+//! * `reactor.bus2` `CaseFold`: the stale `GetBus(2)` snapshot agrees with our
+//!   live terminal on every cell but the ones the echo row keeps (`'b2.0'` vs
+//!   `'b2.0.0.0'`, the shape a later `phases=` creates).
+//! * `invcontrol.monvoltagecalc` `CaseFold`: the deck's own `'MAX'`/`'AVG'`
+//!   token against our registry spelling.
+//! * `line.wires`, `load.zipv`, `generator.userdata`, `storage.dynadata`,
+//!   `storagecontroller.seasontargets` and `seasontargetslow` `ArrayForm`: same
+//!   tokens, different delimiters (r4133's paren wrapper, its bare
+//!   space-separated list, its trailing-comma bracket form).
 //!
 //! The tenth, `swtcontrol.action`, takes **no** row: its only foldable spelling
-//! is `'close'`/`'Close'`, 6 cells and **0 in scope**, so the row would buy no
-//! live compare at all while contradicting RP2.2's recorded routing of the pair
-//! (`the_pairs_routed_elsewhere_have_no_row`). RP2.3 recorded the measurement
-//! instead of landing a dead row.
+//! is `'close'`/`'Close'` with no cell in scope, so the row would buy no live
+//! compare at all (`the_pairs_routed_elsewhere_have_no_row`).
 //!
-//! All nine sit on pairs whose `bins.tsv` LABEL is 5 — the vendored
+//! All nine sit on pairs whose `bins.tsv` LABEL is 5. The vendored
 //! `README.md` §"A pair's bin is a label, not a per-cell classification" is the
-//! doctrine, and [`tests::every_row_cites_a_bin_its_rule_owns`] keeps every
+//! doctrine, and `tests::every_row_cites_a_bin_its_rule_owns` keeps every
 //! such row in one enumerated, counted exception list.
 //!
-//! # RP2.2's routing of bin 3 (why only four of the eight pairs take a row)
+//! # Bin 3: why only four of the eight pairs take a row
 //!
-//! RP2.2 read all eight bin-3 getters. Exactly four print a **spelling of the
-//! same live value** and take an [`EnumSynonym`](NormRule::EnumSynonym) row here
-//! — `vsource.scantype` / `vsource.sequence` / `isource.scantype` /
-//! `isource.sequence`. The other four are not synonyms and were routed instead
-//! (the citations live in `props_r4133_replay::RP22_ROUTING`, which is the
-//! record of the whole dossier):
+//! Exactly four bin-3 getters print a **spelling of the same live value** and
+//! take an [`EnumSynonym`](NormRule::EnumSynonym) row here: `vsource.scantype`
+//! / `vsource.sequence` / `isource.scantype` / `isource.sequence`. The other
+//! four are not synonyms (their citations live in
+//! `props_r4133_replay::RP22_ROUTING`):
 //!
-//! * `swtcontrol.action` — an `EchoParse` of the deck token, stored
-//!   *unconditionally* before the CASE (`Version8/Source/Controls/
-//!   SwtControl.pas:192-193`) and left stale when `Locked` refuses the write
-//!   (`:417`), so `'close'` vs `'open'` is a stale STRING, not a state
-//!   disagreement → RP2.3;
-//! * `monitor.mode` — the deck's RPN source text `mode=(1 16 +)` echoed back
-//!   with the parser's parens stripped (`Meters/Monitor.pas:359`, no
-//!   `GetPropertyValue` override) → RP2.3;
-//! * `storagecontroller.modedischarge` — both engines hold `MODESCHEDULE`;
-//!   r4133's `GetModeString` has no arm for it and falls to
-//!   `'UNKNOWN'` (`Controls/StorageController.pas:1200-1214`). `'UNKNOWN'` is
-//!   the catch-all for *every* unnamed mode, so mapping it to `'Schedule'`
-//!   would not be injective — an exclusion plus a pin, never a row here → RP2.3;
-//! * `line.units` — a **live-state** divergence (r4133 renders
-//!   `LineUnitsStr(LengthUnits)`, `PDElements/Line.pas:1404`), root-caused to
-//!   the port's matrix-branch merge order → RP3.5.
+//! * `swtcontrol.action`: an echo of the deck token, stored *unconditionally*
+//!   and left stale when `Locked` refuses the write, so `'close'` vs `'open'`
+//!   is a stale STRING, not a state disagreement. An echo row.
+//! * `monitor.mode`: the deck's RPN source text `mode=(1 16 +)` echoed back
+//!   with the parser's parens stripped. An echo row.
+//! * `storagecontroller.modedischarge`: both engines hold `MODESCHEDULE`.
+//!   r4133's mode-string getter has no arm for it and falls to `'UNKNOWN'`, the
+//!   catch-all for *every* unnamed mode, so mapping it to `'Schedule'` would not
+//!   be injective. An exclusion plus a pin, never a row here.
+//! * `line.units`: a **live-state** divergence (r4133 renders the live length
+//!   units), not a spelling.
 //!
 //! Closing bin 3 also means closing its **cells**, not only its pairs: three
 //! bin-2-labelled pairs carry enum-spelling cells (vendored `README.md` §"A
-//! pair's bin is a label, not a per-cell classification"). RP2.2 read those
-//! getters too — `capcontrol.type` (`'pf'`/`'volt'`, 30 cells) and `fault.bus2`
-//! (`'b2.0'` vs `'b2.0.0.0'`, 1 cell) are `PropertyValue[]` echoes and go to
-//! RP2.3 beside their untouched `CaseFold` rows (the mixed-pair pattern the
-//! chain order exists for), while `invcontrol.voltage_curvex_ref` is a live
-//! getter and became this table's fifth `EnumSynonym` row.
+//! pair's bin is a label, not a per-cell classification"). `capcontrol.type`
+//! (`'pf'`/`'volt'`) and `fault.bus2` (`'b2.0'` vs `'b2.0.0.0'`) are
+//! `PropertyValue[]` echoes and take echo rows beside their untouched
+//! `CaseFold` rows (the mixed-pair pattern the chain order exists for), while
+//! `invcontrol.voltage_curvex_ref` is a live getter and takes this table's
+//! fifth `EnumSynonym` row.
 //!
-//! The four bin-4 pairs that take **no** row, each with the sub-step that owns
-//! it — all four are named by the plan itself, so the RP2.1 kill criterion
-//! ("a bins-1/2/4 row no typed rule can claim") does **not** fire:
+//! # The bin-4 pairs that take no row
 //!
-//! * `expcontrol.derlist` (`[PVSystem.pv]` vs `[pv]` — element vs bare name),
-//!   `relay.normal`, `relay.state` (`[closed, closed, closed, ]` vs
-//!   `[closed, ]` — the per-phase array render): all three were on RP2.2's
-//!   enumerated S6 singleton list, and RP2.2 routed them — `derlist` to RP2.3
-//!   (r4133 answers the bare PVSystem list for BOTH properties,
-//!   `Version8/Source/Controls/ExpControl.pas:696` + `:702-715`), the two Relay
-//!   rows to **RP3.7** (a live per-phase-state divergence, not a spelling);
+//! * `expcontrol.derlist` (`[PVSystem.pv]` vs `[pv]`, element vs bare name):
+//!   r4133 answers the bare PVSystem list for both properties. An echo row.
+//! * `relay.normal`, `relay.state` (`[closed, closed, closed, ]` vs
+//!   `[closed, ]`): a per-phase-state render, not a spelling, so no typed rule
+//!   can claim it.
 //! * `sensor.kvs` (`[ 0 0 0]` vs `[7.2, 7.2, 7.2]`): a **real** value delta,
-//!   and out of scope — all 61 cells sit on `engines: "capi_v0145"` cases
-//!   (plan §RP2.1's own note and §1.3).
+//!   and out of scope: every cell sits on `engines: "capi_v0145"` cases.
+//! * `swtcontrol.normal`, `swtcontrol.state`: the engine renders one token per
+//!   controlled-element phase like r4133's per-phase state array, so the two
+//!   sides spell every cell identically and a row would fold **nothing**. A rule
+//!   that folds nothing exempts a spelling difference that is not there, and
+//!   `check_rows_are_live` reds it. The pairs' frozen example rows are
+//!   accounted as superseded by `props_r4133_replay`'s `RP37_SUPERSEDED`.
 //!
 //! Two more populations stay unclaimed **inside** rows this table does hold,
 //! by design: the echo cells of the four mixed bin-1 pairs
 //! (`recloser.eventlog`, `regcontrol.idle`, `relay.distreverse`,
 //! `relay.reset`) and the off-bin cells of the heterogeneous pairs the vendored
 //! `README.md` §"A pair's bin is a label" enumerates. Claiming is **per cell**,
-//! first match in the chain, so a row here and an RP2.3 echo row can coexist on
-//! one pair — the rule fires on the foldable cells and the echo row masks the
-//! rest.
+//! first match in the chain, so a row here and an echo row can coexist on one
+//! pair: the rule fires on the foldable cells and the echo row masks the rest.
 //!
-//! # Two `ArrayForm` rows sit on RP2.2's S6 list
+//! `invcontrol.monbus` and `invcontrol.monbusesvbase` take `ArrayForm` rows:
+//! **every** census spelling folds (bracketed vs bare, token for token, equal
+//! counts). The mechanism is an echo either way: r4133 answers the deck's own
+//! bus list while the engine renders the live one, the same list in two
+//! delimiter styles.
 //!
-//! The exclusion list above says which S6 pairs take no row; the converse is
-//! worth stating too, because a claimed cell does not discharge the *dossier*
-//! obligation (read the r4133 getter). The four getters say:
-//!
-//! * `invcontrol.monbus`, `invcontrol.monbusesvbase` — **every** census
-//!   spelling folds (bracketed vs bare, token for token, equal counts), so
-//!   nothing is left to route. The mechanism is an echo either way:
-//!   `TInvControlObj.GetPropertyValue` has no arm for 26/27
-//!   (`Version8/Source/Controls/InvControl.pas:3226-3285`) and
-//!   `InitPropertyValues` never writes 25..27 (`:2806-2839`), so r4133 answers
-//!   the deck's own bus list while the port renders the live one — same list,
-//!   two delimiter styles;
-//! * `swtcontrol.normal`, `swtcontrol.state` — **no row**. The port renders
-//!   one token per controlled-element phase like r4133's per-phase
-//!   `pStateArray` (`Controls/SwtControl.pas:37-38`, `:299-307`, arm 6
-//!   `:589-599` / arm 7 `:600-610`), so the two sides spell every cell
-//!   identically and a row would fold **nothing**: a rule that folds nothing
-//!   exempts a spelling difference that is not there, and
-//!   `check_rows_are_live` reds it. The pairs' five frozen example rows are
-//!   accounted as superseded by `props_r4133_replay`'s `RP37_SUPERSEDED`. Same
-//!   as their twins `relay.normal`/`state`.
-//!
-//! Pinned by `the_pairs_routed_elsewhere_have_no_row` (the two pairs take no
+//! Pinned by `the_pairs_routed_elsewhere_have_no_row` (the pairs take no
 //! row), by `arrayform_folds_delimiters_not_contents` (the rule's own
 //! bare-vs-delimited and token-count behaviour, shown on rows the table still
 //! holds) and by `props_r4133_replay`'s `RP22_S6`/`RP22_ROUTING` accounting.
@@ -242,105 +212,91 @@ use EchoCategory::{EchoDefault, EchoParse, EmptyCollectionRender, LiveSemanticsD
 use EchoWitness::{Capi, CapiAndPin, Pin};
 use NormRule::{ArrayForm, BoolFold, CaseFold, EnumSynonym};
 
-/// One typed normalization rule. **Typed, not a regex** — each variant names a
-/// single upstream rendering mechanism and is proven value-preserving by its
+/// One typed normalization rule. **Typed, not a regex**: each variant names a
+/// single r4133 rendering mechanism and is proven value-preserving by its
 /// own unit tests below.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NormRule {
-    /// **Boolean rendering** (plan §1.1 bin 1). The port renders FPC
-    /// `Yes`/`No` (`.inputs/dss_capi/src/Common/Utilities.pas:173-177`,
-    /// `StrYOrN`); r4133 answers with one of eleven Delphi spellings — for the
-    /// `enabled` property literally
-    /// `If Enabled Then Result := 'true' Else Result := 'false'`
-    /// (`Version8/Source/Common/CktElement.pas:1313-1320`), for a class getter
-    /// such as AutoTrans `XRConst` `'YES'`/`'NO'`
-    /// (`Version8/Source/PDElements/AutoTrans.pas:1861`).
+    /// **Boolean rendering** (bin 1). The engine renders `Yes`/`No`. r4133
+    /// answers with one of eleven Delphi spellings: `'true'`/`'false'` for the
+    /// `enabled` property, `'YES'`/`'NO'` for a class getter such as AutoTrans
+    /// `XRConst`.
     ///
     /// Folds `{yes, y, true}` to one boolean and `{no, n, false}` to the other,
     /// case-insensitively and after trimming outer whitespace. **`''` is NOT a
     /// boolean**: an empty render is the `PropertyValue[]` echo of a class
-    /// whose `GetPropertyValue` has no arm for the index
-    /// (`Version8/Source/General/DSSObject.pas:112-115`), which bin 5 and
-    /// [`PROPS_ECHO_R4133`] own — folding it would claim a cell whose value we
+    /// whose `GetPropertyValue` has no arm for the index, which bin 5 and
+    /// [`PROPS_ECHO_R4133`] own. Folding it would claim a cell whose value we
     /// cannot even read.
     BoolFold,
-    /// **Case-only spelling, plus the two literal trailing blanks** (plan §1.1
-    /// bin 2). Compares after `trim()` and ASCII-case-insensitively.
+    /// **Case-only spelling, plus the two literal trailing blanks** (bin 2).
+    /// Compares after `trim()` and ASCII-case-insensitively.
     ///
     /// Value-preserving because DSS identifiers are case-insensitive **in both
-    /// engines by construction**: `THashList` lowercases every key on `Add`
-    /// *and* on `Find` — r4133 `Version8/Source/Shared/HashList.pas:263-289`
-    /// (`SS := LowerCase(S)`, and the lowercased copy is what is stored) and
-    /// dss_capi `src/Shared/HashList.pas:219-252` — so a case-only difference
-    /// in a name-valued property provably names the same object, and in an
-    /// enum-valued property is one spelling of one ordinal.
+    /// OpenDSS engines by construction**: their hash list lowercases every key
+    /// on insert *and* on lookup, so a case-only difference in a name-valued
+    /// property provably names the same object, and in an enum-valued property
+    /// is one spelling of one ordinal.
     ///
-    /// The trim half exists for exactly **two** rows, both an upstream literal
-    /// with a trailing blank in the `Conn` getter:
-    /// `0: Result := 'wye '; 1: Result := 'Delta ';` at
-    /// `Version8/Source/PDElements/Transformer.pas:1762-1763` and
-    /// `Version8/Source/PDElements/AutoTrans.pas:1818-1819`.
+    /// The trim half exists for exactly **two** rows: the r4133 Transformer and
+    /// AutoTrans `Conn` getters print `'wye '` and `'Delta '` with a trailing
+    /// blank.
     CaseFold,
-    /// **Array form** (plan §1.1 bin 4). The port renders the dss_capi
-    /// `GetDSSArray` form `'[' + ' %g'×n + ']'`
-    /// (`.inputs/dss_capi/src/Common/Utilities.pas:1529-1552`); r4133 renders
-    /// per class in comma, paren or bare forms — e.g. EnergyMeter wraps its
-    /// answer in its own parens, `4,7: Result := '(' … Result + ')'`
-    /// (`Version8/Source/Meters/EnergyMeter.pas:2637-2664`).
+    /// **Array form** (bin 4). The engine renders the dss_capi array form
+    /// `'[' + ' %g'×n + ']'`. r4133 renders per class in comma, paren or bare
+    /// forms (EnergyMeter, for one, wraps its answer in its own parens).
     ///
-    /// Tokenizes both sides — `[`, `]`, `(`, `)`, `,` and whitespace are all
-    /// separators — and compares token for token: numeric tokens by **value**
-    /// (`f64`, through [`numbers_match`], which is where RP2.4's display floor
-    /// hangs — that compare is *within* [`R4133_DISPLAY_FLOOR`] and
-    /// a render of our token at the oracle's printed precision, not exact),
-    /// other tokens ASCII-case-insensitively. The token **count**
-    /// must match, so a one-element array never folds into a three-element one.
+    /// Tokenizes both sides (`[`, `]`, `(`, `)`, `,` and whitespace are all
+    /// separators) and compares token for token: numeric tokens by **value**
+    /// (`f64`, through [`numbers_match`], which is where the display floor
+    /// hangs: that compare is *within* [`R4133_DISPLAY_FLOOR`] and a render of
+    /// our token at r4133's printed precision, not exact), other tokens
+    /// ASCII-case-insensitively. The token **count** must match, so a
+    /// one-element array never folds into a three-element one.
     ///
     /// Because *every* delimiter is a separator, a **bare** render folds against
-    /// a delimited one at any length — that is the census's own bin-4 shape, not
+    /// a delimited one at any length. That is the census's own bin-4 shape, not
     /// an accident: `invcontrol.monbus` `'[A.1, A.2, A.3]'` vs `'A.1 A.2 A.3'`
     /// (three tokens) and `'[r.1.2.3]'` vs `'r.1.2.3'` (one), and the mirror
     /// case `storage.dynadata` `'file=DESSModel_Test.TxT'` vs
     /// `'(file=DESSModel_Test.TxT)'`, where the **bare** side is ours. A
     /// single-token side is therefore a one-element array whichever way round
-    /// the brackets sit; what it still never folds into is a three-element one
-    /// (`sensor.kws` `'[ 0]'` vs `'[0.0, 0.0, 0.0]'` stays unclaimed — a
+    /// the brackets sit. What it still never folds into is a three-element one
+    /// (`sensor.kws` `'[ 0]'` vs `'[0.0, 0.0, 0.0]'` stays unclaimed: a
     /// token-count difference is a value difference).
     ///
     /// A side that yields no token is refused (`''`, `'[]'`, `'()'`): an empty
-    /// render carries no value to preserve and is bin 5's echo territory —
-    /// `GetDSSArray` itself returns `''` for a NIL pointer
-    /// (`src/Common/Utilities.pas:1533-1537`), which is exactly the
-    /// `''`-vs-`[]` shape the vendored README records for
+    /// render carries no value to preserve and is bin 5's echo territory. The
+    /// dss_capi array render itself returns `''` for an unset array, which is
+    /// exactly the `''`-vs-`[]` shape the vendored README records for
     /// `generator.dynout`/`autotrans.bhcurrent`/`windgen.dynout`.
     ArrayForm,
-    /// **Enum spelling** (plan §1.1 bin 3) — an explicit, closed per-row map of
+    /// **Enum spelling** (bin 3): an explicit, closed per-row map of
     /// `(our spelling, r4133 spelling)` pairs. Each mapping must cite the
-    /// r4133 source line that prints its right-hand side; the map never
-    /// contains a wildcard and never derives a synonym, so it can only claim
-    /// the exact pairs a human read off the Pascal.
+    /// r4133 site that prints its right-hand side. The map never contains a
+    /// wildcard and never derives a synonym, so it can only claim the exact
+    /// pairs a human read off r4133.
     ///
-    /// **Five** rows (RP2.2) — the four
-    /// source sequence-selector properties ([`SCAN_TYPE_SYNONYMS`],
-    /// [`SEQUENCE_TYPE_SYNONYMS`]) plus the one pair whose bin-2 *label* hides
-    /// genuine enum-spelling cells, `invcontrol.voltage_curvex_ref`
-    /// ([`VOLTAGE_CURVEX_REF_SYNONYMS`]). The kind's
-    /// behavior is pinned both against the shipped maps and against a synthetic
-    /// one, the way `EVENTLOG_MASKS`' r4133 row set is pinned against an
-    /// injected table (`harness/mod.rs`, `eventlog_mask_tests`).
+    /// **Five** rows: the four source sequence-selector properties
+    /// ([`SCAN_TYPE_SYNONYMS`], [`SEQUENCE_TYPE_SYNONYMS`]) plus the one pair
+    /// whose bin-2 *label* hides genuine enum-spelling cells,
+    /// `invcontrol.voltage_curvex_ref` ([`VOLTAGE_CURVEX_REF_SYNONYMS`]). The
+    /// kind's behavior is pinned both against the shipped maps and against a
+    /// synthetic one, the way `EVENTLOG_MASKS`' r4133 row set is pinned against
+    /// an injected table (`harness/mod.rs`, `eventlog_mask_tests`).
     ///
     /// The map is **directional and per-pair**: `(ours, theirs)`, matched after
     /// `trim()` and ASCII-case-insensitively, with no reverse implication. A map
     /// must also be **injective in BOTH directions**, because either collision
     /// equates two different values:
     ///
-    /// * one r4133 token naming two of our spellings — our two values would
-    ///   both fold onto one upstream render;
-    /// * one of our spellings naming two r4133 tokens — our single value would
-    ///   fold against two upstream renders, so if those denote different
-    ///   upstream values one of the folds masks a real disagreement.
+    /// * one r4133 token naming two of our spellings: our two values would
+    ///   both fold onto one r4133 render;
+    /// * one of our spellings naming two r4133 tokens: our single value would
+    ///   fold against two r4133 renders, so if those denote different r4133
+    ///   values one of the folds masks a real disagreement.
     ///
-    /// [`tests::enumsynonym_maps_are_injective`] enforces both directions on
+    /// `tests::enumsynonym_maps_are_injective` enforces both directions on
     /// every shipped map, and pins each map's contents literally so a widening
     /// entry cannot ride in on a row that folds nothing in today's population.
     EnumSynonym(&'static [(&'static str, &'static str)]),
@@ -349,20 +305,19 @@ pub enum NormRule {
 /// Which vendored file carries the census line a [`NormRow`] cites.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Evidence {
-    /// `tests/corpus/props_r4133/bins.tsv` — the frozen 2026-08-08 census.
+    /// `tests/corpus/props_r4133/bins.tsv`, the frozen census.
     /// [`NormRow::bin`] and [`NormRow::cells`] are that row's `bin` and `cells`
     /// columns.
     BinsTsv,
-    /// `tests/corpus/props_r4133/README.md` §"Pairs the WP-RP1 shape closures
-    /// make live", **RP1.1** (Generator `Rneut`/`Xneut`, Sensor `Action`;
-    /// 12 new pairs).
+    /// The vendored `tests/corpus/props_r4133/README.md` record of the pairs
+    /// the Generator `Rneut`/`Xneut` and Sensor `Action` shape closures make
+    /// live.
     Rp11,
-    /// The same section, **RP1.2** (AutoTrans `XfmrCode`; 9 new pairs).
+    /// The same record, the AutoTrans `XfmrCode` shape closure.
     Rp12,
-    /// The same section, **RP1.3** (WindGen `UserModel`/`UserData`; 2 new
-    /// pairs).
+    /// The same record, the WindGen `UserModel`/`UserData` shape closure.
     Rp13,
-    /// The same section, **RP1.4** (GenDispatcher `weights`; 1 new pair).
+    /// The same record, the GenDispatcher `weights` shape closure.
     Rp14,
 }
 
@@ -378,7 +333,7 @@ pub struct NormRow {
     pub prop: &'static str,
     /// The rule.
     pub rule: NormRule,
-    /// The pair's census bin (plan §1.1) — 1, 2 or 4 in RP2.1.
+    /// The pair's census bin.
     pub bin: u8,
     /// The pair's census cell count, full census.
     pub cells: u32,
@@ -387,12 +342,12 @@ pub struct NormRow {
 }
 
 // ---------------------------------------------------------------------------
-// RP2.2's `EnumSynonym` maps. Two of them, NOT one: the two properties are
+// The `EnumSynonym` maps. Two of them, NOT one: the two properties are
 // spelled by two DIFFERENT registries.
 // ---------------------------------------------------------------------------
 
 /// **`ScanType=` — the closed synonym set** for `vsource.scantype` and
-/// `isource.scantype` (plan §1.1 bin 3; `bins.tsv` 2 042 and 137 cells).
+/// `isource.scantype` (bin 3).
 ///
 /// **Why the two sides spell one value.** r4133 has no `GetPropertyValue` arm
 /// for either index — `TVsourceObj.GetPropertyValue` covers 1, 4, 7, 8, 11..16,
@@ -435,7 +390,7 @@ pub struct NormRow {
 const SCAN_TYPE_SYNONYMS: &[(&str, &str)] = &[("Positive", "Pos"), ("Zero", "Zero")];
 
 /// **`Sequence=` — the closed synonym set** for `vsource.sequence` and
-/// `isource.sequence` (bin 3; 2 042 and 137 cells).
+/// `isource.sequence` (bin 3).
 ///
 /// Same mechanism, same two writers, one index over: `PropertyValue[18]`/`[7]`
 /// frozen `'Pos'`/`'pos'` (`Vsource.pas:1301`, `Isource.pas:627`) against
@@ -459,7 +414,7 @@ const SEQUENCE_TYPE_SYNONYMS: &[(&str, &str)] = &[("Positive", "Pos"), ("Negativ
 /// 257 cells (all 3 in scope) are a genuine enum-spelling difference — the
 /// vendored `README.md` §"A pair's bin is a label, not a per-cell
 /// classification" lists it among the "case-or-empty pairs carrying
-/// enum-spelling cells", and its own §1 spells out that admissibility is per
+/// enum-spelling cells", and the README spells out that admissibility is per
 /// cell.
 ///
 /// A [`CaseFold`](NormRule::CaseFold) row would claim `'Rated'`/`'rated'` (241
@@ -491,7 +446,7 @@ const SEQUENCE_TYPE_SYNONYMS: &[(&str, &str)] = &[("Positive", "Pos"), ("Negativ
 /// * **Narrower** on everything outside the three named ordinals: a case-only
 ///   difference a `CaseFold` row would fold — say a future `'Vref'` vs
 ///   `'vref'` — reaches the assert raw (that exact refusal is pinned in
-///   [`tests::enumsynonym_folds_the_shipped_scan_and_sequence_spellings`],
+///   `tests::enumsynonym_folds_the_shipped_scan_and_sequence_spellings`,
 ///   beside two cross-ordinal ones).
 /// * **Wider** by exactly the 3 `'RAvg'`/`'avgrated'` cells (all 3 in scope),
 ///   which a `CaseFold` row refuses and which this map deliberately claims.
@@ -499,11 +454,11 @@ const SEQUENCE_TYPE_SYNONYMS: &[(&str, &str)] = &[("Positive", "Pos"), ("Negativ
 /// The 3 cells only this map folds are value-preserving by the argument above
 /// (one live field, one ordinal, two spellings) — not a coverage loss. What
 /// would be a loss is folding them *silently*, which is why the count is named
-/// here and in the vendored `README.md` §"What RP2.2 moved".
+/// here.
 const VOLTAGE_CURVEX_REF_SYNONYMS: &[(&str, &str)] =
     &[("Rated", "rated"), ("Avg", "avg"), ("RAvg", "avgrated")];
 
-/// Table constructor, so the 161 rows below read as data.
+/// Table constructor, so the rows below read as data.
 const fn row(
     class: &'static str,
     prop: &'static str,
@@ -528,7 +483,7 @@ const fn row(
 ///
 /// Read the module doc for the derivation; each row's `(class.prop, bin, cells,
 /// src)` is its citation into `tests/corpus/props_r4133/`.
-// The 161 rows are DATA — one census pair per line, columns aligned so the
+// The rows are DATA — one census pair per line, columns aligned so the
 // table diffs against `tests/corpus/props_r4133/bins.tsv` by eye. rustfmt's
 // 60-char call width would explode 50 of them into eight lines each, which is
 // why this item opts out. It and [`PROPS_ECHO_R4133`] are the only two
@@ -705,149 +660,117 @@ pub const PROPS_NORM_R4133: &[NormRow] = &[
     row("windgen",           "enabled",            BoolFold,  1, 5, Evidence::Rp13),
 ];
 
-/// **Count lock, total** — asserted as an EQUALITY in both lanes
-/// (`props_roundtrip.rs:62-68,238` pattern), so the table is fail-on-stale in
-/// both directions: a dropped row shrinks the compare silently, an added row
-/// widens what the engine is allowed to spell differently. Moving it belongs in
-/// the commit that argues for the new population.
+/// **Count lock, total**, asserted as an EQUALITY in both lanes, so the table
+/// is fail-on-stale in both directions: a dropped row shrinks the compare
+/// silently, an added row widens what the engine is allowed to spell
+/// differently. Moving it belongs in the commit that argues for the new
+/// population.
 ///
-/// **168**: the two `swtcontrol` `ArrayForm` pairs (`normal`/`state`) take no
-/// row, because the port renders `Normal`/`State` per controlled phase, so a
-/// row would fold nothing on the live r4133 property run (module doc §"Two
-/// `ArrayForm` rows sit on RP2.2's S6 list").
+/// The two `swtcontrol` `ArrayForm` pairs (`normal`/`state`) take no row,
+/// because the engine renders `Normal`/`State` per controlled phase, so a row
+/// would fold nothing on the live r4133 property run (module doc §"The bin-4
+/// pairs that take no row").
 pub const NORM_ROWS: usize = 168;
-/// Count lock, [`NormRule::BoolFold`]: bin 1's 75 pairs − 5 pure-echo + 7
-/// WP-RP1.
+/// Count lock, [`NormRule::BoolFold`]: bin 1's pairs minus the pure-echo
+/// pairs, plus the pairs the shape closures made live.
 const NORM_BOOL_FOLD_ROWS: usize = 77;
-/// Count lock, [`NormRule::CaseFold`]: bin 2's 61 pairs (59 case + 2 trail) + 2
-/// WP-RP1, **− 1** for `invcontrol.voltage_curvex_ref`, which RP2.2 re-typed as
-/// an `EnumSynonym` row ([`VOLTAGE_CURVEX_REF_SYNONYMS`]), **+ 3** RP2.3
-/// off-bin rows (`load.yearly`, `reactor.bus2`, `invcontrol.monvoltagecalc`).
+/// Count lock, [`NormRule::CaseFold`]: bin 2's pairs plus the pairs the shape
+/// closures made live, **minus** `invcontrol.voltage_curvex_ref` (an
+/// `EnumSynonym` row, [`VOLTAGE_CURVEX_REF_SYNONYMS`]), **plus** three bin-5
+/// rows (`load.yearly`, `reactor.bus2`, `invcontrol.monvoltagecalc`).
 const NORM_CASE_FOLD_ROWS: usize = 65;
-/// Count lock, [`NormRule::ArrayForm`]: bin 4's 21 pairs − 4 (module doc),
-/// **+ 6** RP2.3 off-bin rows (`line.wires`, `load.zipv`, `generator.userdata`,
-/// `storage.dynadata`, `storagecontroller.seasontargets`/`seasontargetslow`),
-/// **− 2** RP4.1 (`swtcontrol.normal`/`state`, dropped as dead — module doc).
-/// The live claims census corroborates the number independently: it measures
-/// **201** `normalized-by-ArrayForm` spellings on the r4133 channel.
+/// Count lock, [`NormRule::ArrayForm`]: bin 4's pairs minus the four no typed
+/// rule may claim and minus `swtcontrol.normal`/`state` (module doc), **plus**
+/// six bin-5 rows (`line.wires`, `load.zipv`, `generator.userdata`,
+/// `storage.dynadata`, `storagecontroller.seasontargets`/`seasontargetslow`).
 const NORM_ARRAY_FORM_ROWS: usize = 21;
-/// Count lock, [`NormRule::EnumSynonym`]: **5** — bin 3's 8 pairs
-/// minus the 4 the dossier routed elsewhere (module doc §"RP2.2's routing of
-/// bin 3"; the routing itself is `props_r4133_replay::RP22_ROUTING`), plus the
+/// Count lock, [`NormRule::EnumSynonym`]: bin 3's pairs minus the four that are
+/// not synonyms (module doc §"Bin 3: why only four of the eight pairs take a
+/// row", the routing itself is `props_r4133_replay::RP22_ROUTING`), plus the
 /// one bin-2-labelled pair whose off-bin cells are a real enum spelling
 /// ([`VOLTAGE_CURVEX_REF_SYNONYMS`]).
 const NORM_ENUM_SYNONYM_ROWS: usize = 5;
 
-/// **The r4133 props display floor — RP2.4's derived value: `2e-4` relative.**
+/// **The r4133 props display floor, relative.**
+///
+/// It exists because r4133 prints some property values at a fixed number of
+/// significant digits, so a value both engines hold differs from our
+/// full-precision render by that print precision alone, and the floor sits in
+/// the empty band the vendored census shows between the widest such print gap
+/// and the nearest genuine value difference.
 ///
 /// The chain's fourth and last link. A numeric property cell whose two sides
 /// agree to within this relative gap is claimed as ONE value differently
-/// *printed*; anything above it still fails, raw, with both spellings in the
-/// message. It is the **only** tolerance `R4133_PROPS_PLAN.md` introduces, it
-/// is r4133-only by construction (below), and it is never read by `tol_for`
-/// and touches no [`Tolerances`] field (plan §1.2 last bullet, §1.3 "No
-/// tolerance tier moves").
+/// *printed*. Anything above it still fails, raw, with both spellings in the
+/// message. It is the **only** tolerance of the r4133 props claim chain, it is
+/// r4133-only by construction (below), and it is never read by `tol_for` and
+/// touches no [`Tolerances`] field.
 ///
 /// [`Tolerances`]: super::Tolerances
 ///
-/// # Derivation (RP2.4 part A — measured, not assumed)
+/// # Derivation
 ///
-/// Measured over the vendored evidence at `tests/corpus/props_r4133/` —
-/// `examples_full.txt` + `examples_supplement.txt`, i.e. **every distinct
+/// Measured over the vendored evidence at `tests/corpus/props_r4133/`
+/// (`examples_full.txt` + `examples_supplement.txt`, i.e. **every distinct
 /// `(rust, r4133)` spelling of every census pair**, so the worst *spelling* is
-/// the worst *cell*. Each row's gap is [`display_rel`], the same metric the
-/// floor applies.
+/// the worst *cell*). Each row's gap is [`display_rel`], the same metric the
+/// floor applies. The band between the worst display cell and the nearest row
+/// above it is **empty**, and every cut inside it partitions the population the
+/// same way. That emptiness, not a chosen number, is what makes the floor a
+/// classification rather than a fudge, and it is the same argument `bins.tsv`'s
+/// own bin cut rests on (vendored `README.md` §"Numeric pairs (bins 6-7)").
 ///
-/// | quantity | value | what it is |
-/// |---|---|---|
-/// | worst cell the floor claims | **6.431124e-05** | `load.pf` `'0.747651914485831'` vs `'0.7477'`, 33 cells, in scope |
-/// | floor | **2e-4** | 3.110x above that worst |
-/// | nearest row ABOVE the band | **1.374769e-03** | `storagecontroller.kwneed` `'-4387.3616098756'` vs `'-4381.33'` — 6.874x above the floor |
-/// | nearest genuine value jump | **4.404256e-03** | `generator.kvar`, the GenDispatcher `weights` registration decks — 22.02x above the floor |
-/// | smallest **in-scope** genuine jump | **5.524501e-02** | `regcontrol.remoteptratio` — 276.2x above the floor |
+/// The census's own metric reports the ABSOLUTE difference for a zero expected
+/// value (`harness::value_verdict`'s `max_rel`). Under this floor's symmetric
+/// metric a `'0.001'` vs `'0.0'` cell is rel **1**, so a 0-vs-nonzero pair can
+/// never be claimed.
 ///
-/// So the band `(6.431124e-05, 1.374769e-03)` is **empty**: 21.38x wide, and
-/// every cut inside it partitions the population the same way. That emptiness
-/// — not a chosen number — is what makes the floor a classification rather
-/// than a fudge, and it is the same argument `bins.tsv`'s own 1e-4 bin cut
-/// rests on (vendored `README.md` §"Numeric pairs (bins 6-7)").
-///
-/// **Two recalibrations against the plan's provisional numbers**, both recorded
-/// because the plan asked for a re-derivation and got a different second half:
-///
-/// * the worst display cell is confirmed exactly — the plan's `6.43e-5` on
-///   `load.pf` is this table's `6.431124e-05`;
-/// * the plan's "smallest genuine jump `1.00e-3`, `invcontrol.lpftau`" is a
-///   number in the **census's** metric, which for a zero expected value reports
-///   the ABSOLUTE difference (`harness::value_verdict`'s `max_rel`). Under this
-///   floor's symmetric metric that same cell (`'0.001'` vs `'0.0'`) is rel
-///   **1.0**, not 1e-3 — a 0-vs-nonzero pair can never be claimed. The
-///   re-derived neighbours above the band are the three rows in the table.
-///
-/// # Mechanism, checked per cell — not a family named in prose
+/// # Mechanism, checked per cell, not a family named in prose
 ///
 /// **The mechanism is a CLAUSE of this predicate**, [`display_is_render`]: every
-/// number of the r4133 side must be the port's number rounded to the significant
-/// digits r4133 itself printed. Two upstream mechanisms satisfy that and nothing
-/// else does — r4133 *printing* the double both engines hold through a
-/// fixed-significant-digit `Format`, and r4133 *holding* a double that is itself
-/// the re-parse of one such `%.Ng` command-string write (`MakePosSequence`, the
-/// `Save`/`PropertyValue[]` round-trips) while the port sets the value directly.
-/// In the first the two engines hold the SAME double and only the renders
-/// differ; in the second they hold different doubles, one rounding step apart,
-/// and the port's is the exact one.
+/// number of the r4133 side must be the engine's number rounded to the
+/// significant digits r4133 itself printed. Two r4133 mechanisms satisfy that
+/// and nothing else does: r4133 *printing* the double both engines hold through
+/// a fixed-significant-digit `Format`, and r4133 *holding* a double that is
+/// itself the re-parse of one such `%.Ng` command-string write
+/// (`MakePosSequence`, the `Save`/`PropertyValue[]` round-trips) while the
+/// engine sets the value directly. In the first the two engines hold the SAME
+/// double and only the renders differ. In the second they hold different
+/// doubles, one rounding step apart, and the engine's is the exact one.
 ///
-/// Not every claimed cell is r4133 printing a live double in its own
-/// `GetPropertyValue`: 55 vendored spellings over 27 pairs — `load.kva`, `vsource.puz*`,
-/// `line.b0`/`b1`, `reactor.lmh`, `transformer.normamps`… — are gaps NO single
-/// `%.Ng` render can produce, because a round trip happened upstream of a
-/// derived quantity (r4133's kVA recomputed from an already round-tripped `pf`,
-/// its `puZ*` from a round-tripped Z) or because the two engines simply differ.
-/// They are refused, and owned by RP3.9 (`props_r4133_replay::RP39_ROUTING`).
+/// Some vendored spellings (`load.kva`, `vsource.puz*`, `line.b0`/`b1`,
+/// `reactor.lmh`, `transformer.normamps`…) are gaps NO single `%.Ng` render can
+/// produce, because r4133 round-tripped a value before deriving another from it
+/// (its kVA recomputed from an already round-tripped `pf`, its `puZ*` from a
+/// round-tripped Z) or because the two engines simply differ. They are refused
+/// (`props_r4133_replay::RP39_ROUTING`).
 ///
-/// The getters that print at a fixed precision, for the reader tracing a cell
-/// (the floor reads the precision off the r4133 spelling itself, never off this
-/// table). `%.Ng` rounds a normalized mantissa `m in [1,10)` to N significant
-/// digits, so its class ceiling is `0.5*10^(1-N)/m <= 0.5*10^(1-N)`:
+/// The floor reads the printed precision off the r4133 spelling itself. `%.Ng`
+/// rounds a normalized mantissa `m in [1,10)` to N significant digits, so its
+/// class ceiling is `0.5*10^(1-N)/m <= 0.5*10^(1-N)`. `vsource.basekv` is an
+/// echoed command-string token whose precision is whatever wrote it, and the
+/// render clause holds for it all the same.
 ///
-/// | formatter | ceiling | r4133 sites (`Version8/Source/`) |
-/// |---|---|---|
-/// | `%-.4g` | 5.0e-4 | `PCElements/Load.pas:2345` (`pf`), `:2353` (`CFactor`, no census row) — the only 4-digit property getters in the surface |
-/// | `%-.5g` | 5.0e-5 | `PCElements/Vsource.pas:1327-1335` (`angle`/`mvasc3`/`mvasc1`/`isc3`/`isc1`/`r1`/`x1`/`r0`/`x0`) and `:1343` (`basemva`), `PDElements/Transformer.pas:1842-1843` + `PDElements/AutoTrans.pas:1886-1887` (`normamps`/`emergamps`), and the `MakePosSequence` command-string round-trips `Transformer.pas:1982-1991`, `AutoTrans.pas:2021-2030`, `Reactor.pas:1145-1201` |
-/// | `%.6g` | 5.0e-6 | `PCElements/Storage.pas:1531-1562` + the PVSystem analogues, and `Common/Utilities.pas:2600-2607` `GetDSSArray_Real` (`'[' + ' %-.6g'xn + ']'`) |
-/// | `%-.7g` | 5.0e-7 | `PDElements/Line.pas:1358-1365` (`length`/`r*`/`x*`/`c*`), `:1406-1407` (`b1`/`b0`) |
-/// | `%-.8g` | 5.0e-8 | `Vsource.pas:1337-1342` (`Z*`/`puZ*`) and `:1344` (`puzideal`), `PDElements/Reactor.pas:1091-1098` (`r`/`x`/`z*`/`lmh`) |
-///
-/// `vsource.basekv` is deliberately NOT in that table although the floor claims
-/// its cells: it is Vsource property **2** (`Vsource.pas:171`), the `Case` above
-/// has no arm for it, and it therefore falls through to `Inherited` and returns
-/// the stored `PropertyValue[]` string — an echoed command-string token whose
-/// precision is whatever wrote it. The render clause reads that precision off
-/// the spelling and holds all the same.
-///
-/// **The floor is derived from the MEASUREMENT, not from that ceiling column**,
-/// and the difference is load-bearing. `load.pf`'s theoretical `%-.4g` ceiling
-/// is 5e-4, which is 2.75x under the band's upper neighbour — it would not fit
-/// the band at all. What the census actually contains is 293 `load.pf`
-/// spellings with a smallest mantissa of **5.653** (`pf = 0.5653`), i.e. a
-/// population ceiling of **8.845e-05**, and the floor sits 2.26x above THAT.
-/// The residual is stated rather than absorbed: a future in-scope load with
-/// `pf` in `[0.1, 0.25)` could print a cell up to 5e-4 and the floor would
-/// **refuse** it, reddening the gate. That is the safe direction — a loud
-/// failure with the row in the message and this derivation to re-run — and it
-/// is why the number is not widened to the class ceiling today. Widening it to
-/// make such a cell pass is exactly what the tolerance discipline forbids
-/// (CLAUDE.md, `tests/TOLERANCE_NOTES.md`).
+/// **The floor is derived from the MEASUREMENT, not from the class ceiling**,
+/// and the difference is load-bearing. `load.pf`'s theoretical four-digit
+/// ceiling lies above the band, so it would not fit the band at all. The
+/// census's `load.pf` spellings have a much smaller population ceiling, and
+/// the floor sits above THAT. The residual is stated rather than absorbed: a
+/// future in-scope load with a small `pf` could print a cell above the floor
+/// and the floor would **refuse** it, reddening the gate. That is the safe
+/// direction (a loud failure with the row in the message and this derivation
+/// to re-run), and widening the floor to make such a cell pass is a loosened
+/// tolerance.
 ///
 /// # What it does NOT claim
 ///
 /// * anything whose two sides do not share a numeric skeleton, or carry
-///   different counts of numbers — an enum, a boolean, an array of another
+///   different counts of numbers: an enum, a boolean, an array of another
 ///   length, `''` against a value. Those keep failing raw ([`display_rel`]);
 /// * a 0-vs-nonzero pair, at any magnitude (rel is 1 by construction);
 /// * a non-finite number on either side unless both sides are literally equal;
-/// * **a gap no single `%.Ng` render of the port's value explains**, however
-///   small ([`display_is_render`]) — the mechanism clause above;
+/// * **a gap no single `%.Ng` render of the engine's value explains**, however
+///   small ([`display_is_render`]): the mechanism clause above;
 /// * **anything at all on the `capi_v0145` channel.** Both callers are
 ///   r4133-only: [`NormRule::ArrayForm`]'s per-token compare is reached only
 ///   from `PropsPolicy::normalize`'s r4133 arm, [`under_display_floor_r4133`]
@@ -855,20 +778,18 @@ const NORM_ENUM_SYNONYM_ROWS: usize = 5;
 ///   refuses every channel but [`PropsChannel::R4133`].
 ///
 /// What it still cannot tell apart is a display artifact from a *genuine*
-/// difference that is BOTH under 2e-4 and shaped exactly like a rounding of our
-/// value to the digits r4133 printed — a floor never can, and the mechanism
-/// clause narrows that residue without closing it. What bounds it is the rest of
-/// the gate: on every `engines: "both"` case the same properties are value-
-/// compared on the `capi_v0145` channel, where this floor is unreachable and the
-/// compare runs at the case's tier floors (`tol_for`: 1e-9/1e-6 `micro`,
-/// 1e-7/1e-5 `feeder` — orders under this floor; the loosest kinds in the corpus
-/// are `midi` at 1e-6/1e-4 and `micro_wtg3_dynamics` at 2e-5/1e-4, where a small
-/// enough value can pass at both), and the model gate (Y/V/I/P) runs at tier
-/// floors on the `r4133`-only ones. That is a bound, not a zero tolerance.
+/// difference that is BOTH under the floor and shaped exactly like a rounding
+/// of our value to the digits r4133 printed. A floor never can, and the
+/// mechanism clause narrows that residue without closing it. What bounds it is
+/// the rest of the gate: on every `engines: "both"` case the same properties
+/// are value-compared on the `capi_v0145` channel, where this floor is
+/// unreachable and the compare runs at the case's tier floors (`tol_for`), and
+/// the model gate (Y/V/I/P) runs at tier floors on the `r4133`-only ones. That
+/// is a bound, not a zero tolerance.
 const R4133_DISPLAY_FLOOR: Option<f64> = Some(2e-4);
 
-/// **The floor slot, read back** — the RP2.1 part-C replay's chain needs a
-/// *named* fourth link (`shape allowlist → normalization → echo table → display
+/// **The floor slot, read back.** The offline replay's chain needs a *named*
+/// fourth link (`shape allowlist → normalization → echo table → display
 /// floor`) and reads the real slot rather than restating a literal, so the
 /// replay's floor link claims through the same constant the comparator uses.
 pub fn display_floor() -> Option<f64> {
@@ -895,7 +816,7 @@ impl NormRule {
         }
     }
 
-    /// Stable tag for messages and for the RP2.1 part-C replay accounting.
+    /// Stable tag for messages and for the offline replay accounting.
     pub fn tag(&self) -> &'static str {
         match self {
             BoolFold => "BoolFold",
@@ -993,33 +914,33 @@ fn decimal_shape(text: &str) -> Option<(u32, i32)> {
 
 /// Slack on the half-step, for the last ulp of the decimal→binary conversion and
 /// for a tie the printer may break either way (`%g` rounds half away from zero,
-/// the shortest-round-trip renderer half to even). Nine orders of magnitude
+/// the shortest-round-trip renderer half to even). It sits orders of magnitude
 /// under the smallest gap it could hide.
 const RENDER_TIE_MARGIN: f64 = 1.0 + 1e-9;
 
-/// **The floor's MECHANISM clause, per number**: is `oracle` the port's number
-/// rounded to the significant digits r4133 printed?
+/// **The floor's MECHANISM clause, per number**: is `oracle` the engine's
+/// number rounded to the significant digits r4133 printed?
 ///
 /// This is what makes "a display divergence" a checkable property of the cell
-/// rather than a family named in prose (RP2.4 audit settlement —
-/// both majors). Two upstream mechanisms satisfy it and nothing else does:
+/// rather than a family named in prose. Two r4133 mechanisms satisfy it and
+/// nothing else does:
 ///
 /// * r4133 **printing** the double both engines hold through a
 ///   fixed-significant-digit `Format` in its `GetPropertyValue` — then `oracle`
 ///   is that double rounded to N digits, by definition of the printer;
 /// * r4133 **holding** a double that is itself the re-parse of one such `%.Ng`
-///   command string an upstream kernel wrote (`MakePosSequence`, the `Save` /
-///   `PropertyValue[]` round-trips) while the port sets the value directly —
-///   then `oracle` prints its own full value, which is still the port's value
+///   command string an r4133 kernel wrote (`MakePosSequence`, the `Save` /
+///   `PropertyValue[]` round-trips) while the engine sets the value directly.
+///   Then `oracle` prints its own full value, which is still the engine's value
 ///   rounded to the digits of that one write.
 ///
 /// What it REFUSES is a gap no single N-digit rounding explains: a chained or
 /// derived round-trip (`load.kva`, whose kVA is recomputed from an already
 /// round-tripped `pf`; `vsource.puz*`, recomputed from a round-tripped Z), and
 /// a plain value difference that happens to be small. Those are real state
-/// divergences — the two engines hold different doubles further apart than one
-/// print can account for — and RP2.4 hands them to RP3.9 rather than claiming
-/// them (`props_r4133_replay::RP39_ROUTING`).
+/// divergences (the two engines hold different doubles further apart than one
+/// print can account for), refused here and accounted in
+/// `props_r4133_replay::RP39_ROUTING`.
 ///
 /// The bound is the class ceiling of the printed precision, `0.5·10^(e-N+1)`,
 /// plus two documented slacks: [`RENDER_TIE_MARGIN`], and half a unit of the
@@ -1120,9 +1041,9 @@ pub fn display_rel(rust: &str, oracle: &str) -> Option<f64> {
 /// Two clauses, both necessary: the gap is inside [`R4133_DISPLAY_FLOOR`] in the
 /// [`display_rel`] metric (the *size* of the divergence), and every number of
 /// the r4133 side is the port number rounded to the digits r4133 printed
-/// ([`display_is_render`] — its *mechanism*). The second is what keeps the floor
-/// a classification: a cell 1e-6 apart whose two engines simply hold different
-/// doubles is refused at any floor value (RP2.4 audit settlement).
+/// ([`display_is_render`], its *mechanism*). The second is what keeps the floor
+/// a classification: a cell whose two engines simply hold different doubles is
+/// refused at any floor value, however close.
 ///
 /// `false` whenever the floor is `None`, whenever the cell is not a numeric
 /// divergence ([`display_rel`]), whenever the gap exceeds the floor, and
@@ -1141,10 +1062,10 @@ pub fn under_display_floor(rust: &str, oracle: &str) -> bool {
 /// It answers what [`under_display_floor`] answers and additionally records
 /// what the gate saw: a **visit** is a cell that reached the seam at all, a
 /// **hit** is a cell the floor actually claimed. Unlike the two tables above
-/// the floor has no rows, so there is no per-row staleness to guard; the
-/// counters exist so RP4.1 can measure the link's live population against the
-/// replay's `CLAIMED_DISPLAY_FLOOR`, and so [`display_floor_counters`] can
-/// prove to the offline tests that a query moved nothing.
+/// the floor has no rows, so there is no per-row staleness to guard. The
+/// counters exist to measure the link's live population against the replay's
+/// `CLAIMED_DISPLAY_FLOOR`, and so [`display_floor_counters`] can prove to the
+/// offline tests that a query moved nothing.
 pub fn under_display_floor_r4133(rust: &str, oracle: &str) -> bool {
     FLOOR_VISITS.fetch_add(1, AtomicOrd::Relaxed);
     let claimed = under_display_floor(rust, oracle);
@@ -1170,7 +1091,7 @@ static FLOOR_HITS: AtomicUsize = AtomicUsize::new(0);
 /// A snapshot of the global totals around the test body cannot answer it:
 /// `cargo test` runs the binary's tests concurrently, and sibling tests
 /// deliberately drive the real comparator
-/// ([`tests::the_echo_seam_counts_visits_and_hits`],
+/// (`tests::the_echo_seam_counts_visits_and_hits`,
 /// `harness::props_policy_tests::the_r4133_channel_folds_the_documented_spellings`,
 /// …), so the totals move under the assertion's feet.
 ///
@@ -1292,7 +1213,7 @@ fn lookup_claim(
 /// **The offline claim query** — which row of [`PROPS_NORM_R4133`] claims this
 /// cell, if any.
 ///
-/// This is what the RP2.1 part-C replay drives its accounting from: it answers
+/// This is what the offline replay drives its accounting from: it answers
 /// the same question the live seam answers, through the same
 /// [`lookup_claim`]/[`NormRule::claims`] code (never a parallel
 /// reimplementation — a drifting copy would make the replay's completeness
@@ -1351,7 +1272,7 @@ static NORM_VISITS: [AtomicUsize; PROPS_NORM_R4133.len()] =
 static NORM_HITS: [AtomicUsize; PROPS_NORM_R4133.len()] =
     [const { AtomicUsize::new(0) }; PROPS_NORM_R4133.len()];
 
-/// **Fail-on-stale for [`PROPS_NORM_R4133`]** — plan mechanic (d), the live
+/// **Fail-on-stale for [`PROPS_NORM_R4133`]**, the live
 /// half of "liveness both ways", modeled on
 /// [`lane::assert_reround_cells_are_live`](super::lane::assert_reround_cells_are_live).
 ///
@@ -1389,8 +1310,8 @@ pub fn assert_norm_rows_are_live() {
 /// statics with no way to make them stale from a test, and this guard is the
 /// sole live anti-rot guard for all 168 rows. With the counters as
 /// parameters the two directions are pinned offline
-/// ([`tests::the_liveness_guard_is_silent_when_dormant_or_live`] and
-/// [`tests::the_liveness_guard_fires_on_a_stale_row`]), so the guard is proven
+/// (`tests::the_liveness_guard_is_silent_when_dormant_or_live` and
+/// `tests::the_liveness_guard_fires_on_a_stale_row`), so the guard is proven
 /// before it is relied on.
 fn check_rows_are_live(table: &[NormRow], visits: &[usize], hits: &[usize]) {
     assert_eq!(
@@ -1428,19 +1349,17 @@ fn check_rows_are_live(table: &[NormRow], visits: &[usize], hits: &[usize]) {
 /// Why a `(class, prop)` is excluded from the r4133 VALUE compare rather than
 /// normalized — the category tag every [`EchoRow`] carries.
 ///
-/// The 86 pairs of RP2.3's bucket hold **five** mechanisms (`rp23_dossier.md`
-/// §2). Four of them take a row here; the fifth — the dss_capi 0.14.5
-/// `SilentReadOnly` text surface, where r4133 renders a live computed read-only
-/// quantity — is **not** an exclusion at all under the 2026-08-02
-/// r4133-authority policy (the kill ruling): the engine renders the live value
-/// in both lanes (`PropFlags::RENDERS_LIVE_RESULT`, RP3.8), the 0.14.5
-/// capture's `''` is `harness::SKIP_PROPS` row group (g) with its three pins,
-/// and the five census rows are accounted `props_r4133_replay::RP38_SUPERSEDED`.
+/// The census's echo bucket holds **five** mechanisms. Four of them take a row
+/// here. The fifth, the dss_capi 0.14.5 `SilentReadOnly` text surface where
+/// r4133 renders a live computed read-only quantity, is **not** an exclusion at
+/// all: the engine renders the live value in both lanes
+/// (`PropFlags::RENDERS_LIVE_RESULT`), the 0.14.5 capture's `''` is
+/// `harness::SKIP_PROPS` row group (g) with its three pins, and the five census
+/// rows are accounted `props_r4133_replay::RP38_SUPERSEDED`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EchoCategory {
     /// r4133's `GetPropertyValue` has no arm for the index, so it answers the
-    /// `InitPropertyValues` **default** string that no code ever refreshed
-    /// (`Version8/Source/General/DSSObject.pas:112-115`).
+    /// `InitPropertyValues` **default** string that no code ever refreshed.
     EchoDefault,
     /// Same fallthrough, but the store holds a string the deck's own parse (or
     /// a derived snapshot taken during `Edit`) wrote, which the live value has
@@ -1449,14 +1368,11 @@ pub enum EchoCategory {
     /// `PropertyValue[2] := GetBus(2)` snapshot (`PDElements/Reactor.pas:
     /// 419-420`), which a later `phases=` never refreshes.
     EchoParse,
-    /// **New in RP2.3.** Not an echo: r4133's getter arm IS live, and for an
-    /// unset or degenerate collection it renders the *other* empty convention —
-    /// `'[]'` from a `for i := 1 to NumPointsBH` loop over zero points
-    /// (`PDElements/Transformer.pas:1820-1827`), `'()'` from a paren wrapper
-    /// around an empty store (`PCElements/Storage.pas:1574`), or a bare `''`
-    /// from a getter that exits early (`Controls/StorageController.pas:
-    /// 2445-2449`, `PCElements/Load.pas:2354-2357`) — where the port renders
-    /// `''`, `[]` or the materialised default vector.
+    /// Not an echo: r4133's getter arm IS live, and for an unset or degenerate
+    /// collection it renders the *other* empty convention: `'[]'` from a loop
+    /// over zero points, `'()'` from a paren wrapper around an empty store, or a
+    /// bare `''` from a getter that exits early, where the engine renders `''`,
+    /// `[]` or the materialised default vector.
     ///
     /// What all 14 rows share, and all this tag asserts: **neither side is a
     /// `PropertyValue[]` echo** (so [`EchoDefault`]/[`EchoParse`] would be
@@ -1469,14 +1385,13 @@ pub enum EchoCategory {
     /// **Twelve of the 14 also render the same thing on both sides**
     /// (`''`/`[]`/`()` against an empty port render). The other two,
     /// `storagecontroller.seasontargets` and `seasontargetslow`, do not: with
-    /// `Seasons = 1` r4133's `ReturnSeasonTarget` exits before it emits anything
-    /// (`Controls/StorageController.pas:2445-2449`) while the port prints the
-    /// live single-season target — `'[ 8000]'` / `'[ 4000]'` on 237 cells each.
-    /// The *value* behind those renders is identical on both engines
-    /// (`SeasonTargets[0] := FkWTarget`, `:883-884`, and `:1470` reads it back
-    /// as the dispatch target), which is why the tag still fits and
-    /// [`LiveSemanticsDiffer`] would not; what the port adds is a render where
-    /// r4133 has none. Both rows carry the capi witness AND
+    /// `Seasons = 1` r4133's season-target getter exits before it emits
+    /// anything, while the engine prints the live single-season target
+    /// (`'[ 8000]'` / `'[ 4000]'`). The *value* behind those renders is
+    /// identical on both engines (r4133 stores the single target as season 0
+    /// and reads it back as the dispatch target), which is why the tag still
+    /// fits and [`LiveSemanticsDiffer`] would not. What the engine adds is a
+    /// render where r4133 has none. Both rows carry the capi witness AND
     /// `storagecontroller_seasontargets_render_the_live_targets`.
     ///
     /// [`LiveSemanticsDiffer`]: EchoCategory::LiveSemanticsDiffer
@@ -1487,7 +1402,7 @@ pub enum EchoCategory {
     /// property, and the port's meaning is the correct one. **Every row of this
     /// category owes an expected-value pin** — the claim "ours is the right
     /// value" is not something a citation alone can carry
-    /// ([`tests::every_live_semantics_row_names_a_pin`]).
+    /// (`tests::every_live_semantics_row_names_a_pin`).
     LiveSemanticsDiffer,
 }
 
@@ -1503,13 +1418,13 @@ impl EchoCategory {
     }
 }
 
-/// What holds the port's value where an [`EchoRow`] stops the r4133 compare —
-/// the *witness* half of CLAUDE.md's exclusion discipline ("each divergence is
-/// excluded field-by-field and pinned by its own expected-value test").
+/// What holds the engine's value where an [`EchoRow`] stops the r4133
+/// compare: the *witness* half of the exclusion discipline (each divergence is
+/// excluded field by field and pinned by its own expected-value test).
 ///
 /// A row without one is a mask with nothing behind it, so the type makes the
 /// two possible witnesses explicit and countable instead of leaving them in
-/// prose ([`tests::every_echo_row_carries_a_witness`]).
+/// prose (`tests::every_echo_row_carries_a_witness`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EchoWitness {
     /// The **capi_v0145 channel value-compares this pair** on `n` gating cases
@@ -1530,12 +1445,12 @@ pub enum EchoWitness {
     /// * it presupposes the capi channel really compares the pair — a row whose
     ///   pair is masked off capi by `SKIP_PROPS`, `PROPS_015X` or the whole-
     ///   element skip would be claiming a witness that cannot exist
-    ///   ([`tests::a_capi_witness_is_a_pair_the_capi_channel_can_compare`]);
+    ///   (`tests::a_capi_witness_is_a_pair_the_capi_channel_can_compare`);
     /// * it says **nothing about cells on `engines: "r4133"` cases**, where the
     ///   capi channel never runs at all. 60 of the 82 pairs mask such cells
     ///   ([`ECHO_ROWS_ON_R4133_ONLY_CASES`]), and each of them must therefore
     ///   also name a pin
-    ///   ([`tests::every_row_exposed_on_r4133_only_cases_names_a_pin`]).
+    ///   (`tests::every_row_exposed_on_r4133_only_cases_names_a_pin`).
     Capi(u32),
     /// **No capi coverage of the excluded cells** — the capture has no such
     /// property (`PROPS_015X`), a `SKIP_PROPS` row masks it, the capi walk
@@ -1545,8 +1460,8 @@ pub enum EchoWitness {
     Pin(&'static str),
     /// Both: the capi channel covers `n` cases AND a pin holds the value. Used
     /// where the pin is mandatory whatever capi says — every
-    /// [`EchoCategory::LiveSemanticsDiffer`] row, plus the rows the plan names
-    /// (`energymeter.peakcurrent`).
+    /// [`EchoCategory::LiveSemanticsDiffer`] row, plus
+    /// `energymeter.peakcurrent`.
     CapiAndPin(u32, &'static str),
 }
 
@@ -1585,19 +1500,19 @@ pub struct EchoRow {
     /// It counts the pair's DIVERGENT cells, not the cells this row masks: on a
     /// mixed pair a `PROPS_NORM_R4133` row claims some of them first (the chain
     /// order), and the per-cell split is the census's, measured live. That
-    /// split is also what the row MASKS on those 20 pairs (RP4.1 P1) — see
-    /// [`ECHO_NARROWED`].
+    /// split is also what the row MASKS on the mixed pairs (see
+    /// [`ECHO_NARROWED`]).
     pub cells: u32,
     /// The r4133 `Version8/Source` unit:line that proves the category — the
     /// missing `GetPropertyValue` arm (i.e. the `DSSObject.pas:112-115`
     /// fallthrough) and/or the `InitPropertyValues` line, or the live getter
     /// arm for the two non-echo categories.
     pub cite: &'static str,
-    /// What holds the port's value instead (plan §1.2's witness obligation).
+    /// What holds the engine's value instead (the witness obligation).
     pub witness: EchoWitness,
 }
 
-/// Table constructor, so the 82 rows below read as data.
+/// Table constructor, so the rows below read as data.
 const fn echo(
     class: &'static str,
     prop: &'static str,
@@ -1616,67 +1531,57 @@ const fn echo(
     }
 }
 
-/// **The echo-exclusion table — created EMPTY by RP2.1, filled by RP2.3.**
-///
-/// RP2.1 shipped it empty on purpose (plan §0: "`PROPS_ECHO_R4133` is created
-/// **empty** in RP2.1; its rows land in RP2.3"), because that emptiness is what
-/// proves the *normalization* half claims bins 1/2/4 with no exclusion helping
-/// it. RP2.3 fills it from the closed population part C's replay had declared
-/// by name: `Owner::Rp23`, **450 example rows over 86 pairs**.
+/// **The echo-exclusion table.** Its rows come from the closed population the
+/// offline replay declares by name (`Owner::Rp23`).
 ///
 /// # What a row does, and what it does not do
 ///
 /// A row drops the VALUE compare of its `(class, prop)` on the **r4133 channel
 /// only** — the property's name and index order are still asserted, exactly
-/// `SKIP_PROPS`' shape (plan §1.2 prescribes that shape). It is consulted
-/// *after* [`PROPS_NORM_R4133`] (the chain order
-/// `shape allowlist → normalization → echo → floor`), so on a **mixed** pair
-/// the typed rule sees the cell first: 20 of the 82 pairs below also hold a
-/// normalization row, and 135 of their example rows are claimed by it
-/// (`props_r4133_replay::MIXED_PAIR_NORM_ROWS`) — the 66 they leave are what
-/// [`ECHO_NARROWED`] holds those 20 rows to.
+/// `SKIP_PROPS`' shape. It is consulted *after* [`PROPS_NORM_R4133`] (the
+/// chain order `shape allowlist → normalization → echo → floor`), so on a
+/// **mixed** pair the typed rule sees the cell first: some pairs below also
+/// hold a normalization row, whose claimed example rows
+/// `props_r4133_replay::MIXED_PAIR_NORM_ROWS` counts, and the spellings they
+/// leave are what [`ECHO_NARROWED`] holds those rows to.
 ///
-/// **Nine of those 20 rows are RP2.3's** (`load.yearly`, `reactor.bus2`,
-/// `invcontrol.monvoltagecalc` `CaseFold`; `line.wires`, `load.zipv`,
-/// `generator.userdata`, `storage.dynadata`,
-/// `storagecontroller.seasontargets`/`seasontargetslow` `ArrayForm`), and they
-/// hold 6 446 cells (6 370 in scope).
+/// Nine of those mixed pairs carry a bin-5 label (`load.yearly`,
+/// `reactor.bus2`, `invcontrol.monvoltagecalc` `CaseFold`; `line.wires`,
+/// `load.zipv`, `generator.userdata`, `storage.dynadata`,
+/// `storagecontroller.seasontargets`/`seasontargetslow` `ArrayForm`).
 ///
 /// # What the order buys, and what it does not
 ///
 /// The chain order decides **which link claims a cell**, and that is a real
-/// property: those 6 446 cells are dispositioned `normalized-by-<rule>` in the
-/// claims census rather than `echo-row`, each of the nine rows records its own
-/// hit and can therefore be proved live by `assert_norm_rows_are_live`.
+/// property: those cells are dispositioned `normalized-by-<rule>` in the
+/// claims census rather than `echo-row`, and each of the nine rows records its
+/// own hit and can therefore be proved live by `assert_norm_rows_are_live`.
 ///
 /// Claiming is not masking: a pair-scoped exclusion answering on row presence
 /// would skip the value assert for EVERY divergent cell of a named pair, the
 /// ones the rule refused too, so a genuine regression on a mixed pair (a wrong
 /// resolved loadshape name, a wrong ZIPV vector, a wrong `Bus2` terminal
 /// spelling) would be caught on the capi channel only. [`ECHO_NARROWED`] gives
-/// each of those 20 rows the 66 measured spellings its citation explains and
-/// the seam excludes only those, so a refused cell of a mixed pair is compared
-/// on r4133 as well. The other rows keep the pair scope §1.2 prescribes, bar
-/// the pure pairs of [`ECHO_NARROWED_PURE_PAIRS`].
+/// each mixed row the measured spellings its citation explains and the seam
+/// excludes only those, so a refused cell of a mixed pair is compared on r4133
+/// as well. The other rows keep the pair scope, bar the pure pairs of
+/// [`ECHO_NARROWED_PURE_PAIRS`].
 ///
-/// # The 82 rows — RP2.3's 81, plus RP3.3's one
+/// # The rows
 ///
 /// | category | rows | mechanism |
 /// |---|---|---|
 /// | [`EchoDefault`](EchoCategory::EchoDefault) | 50 | a missing getter arm over an `InitPropertyValues` default |
 /// | [`EchoParse`](EchoCategory::EchoParse) | 8 | …over the deck's own token or a derived snapshot |
 /// | [`EmptyCollectionRender`](EchoCategory::EmptyCollectionRender) | 14 | a LIVE arm rendering the other empty-collection convention |
-/// | [`LiveSemanticsDiffer`](EchoCategory::LiveSemanticsDiffer) | 10 | a real divergence whose port answer is the correct one |
+/// | [`LiveSemanticsDiffer`](EchoCategory::LiveSemanticsDiffer) | 10 | a real divergence whose engine answer is the correct one |
 ///
-/// **81 of them** come from the `Owner::Rp23` bucket, and 86 − 81 = the **five** `SilentReadOnly`
-/// pairs the kill criterion keeps out (`indmach012.pf`,
-/// `storagecontroller.kwhtotal`/`kwtotal`/`kwhactual`/`kwactual`): r4133 renders
-/// a live computed read-only quantity there
-/// (`Version8/Source/PCElements/IndMach012.pas:1790`,
-/// `Version8/Source/Controls/StorageController.pas:991-994`), and so does the
-/// engine, so they take NO row here. dss_capi 0.14.5 renders `''`, because it
-/// leaves their `PropertyOffset` at `-1` and `GetObjPropertyValue`
-/// short-circuits (`DSSObjectHelper.pas:2203-2204`).
+/// All rows but one come from the `Owner::Rp23` bucket. The bucket's **five**
+/// `SilentReadOnly` pairs (`indmach012.pf`,
+/// `storagecontroller.kwhtotal`/`kwtotal`/`kwhactual`/`kwactual`) take NO row:
+/// r4133 renders a live computed read-only quantity there, and so does the
+/// engine. dss_capi 0.14.5 renders `''`, because it never registers a value
+/// offset for them.
 ///
 /// `PropFlags::RENDERS_LIVE_RESULT` rides alongside `SILENT_READ_ONLY` on
 /// exactly those five `PropDef`s, and the ONE render site that consults it
@@ -1688,24 +1593,21 @@ const fn echo(
 /// comparing all five — and pinned by
 /// `props_r4133_pins::{indmach012_pf_renders_the_live_power_factor,
 /// storagecontroller_fleet_aggregates_render_the_live_fleet,
-/// the_silent_readonly_capture_cells_are_empty}`. Live census
-/// (`DSS_PROPS_CENSUS=claims`, 27 cases): on r4133 the five leave 105 divergent
-/// cells (89 in scope), 103 of them claimed by RP2.4's display floor (worst
-/// 4.03e-08 rel) and 2 out of scope on a `capi_v0145`-only case. Their 181
-/// frozen census example rows are accounted **superseded**
-/// (`props_r4133_replay::{RP38_SUPERSEDED, SUPERSEDED_RP38}`), not declared.
+/// the_silent_readonly_capture_cells_are_empty}`. On r4133 the display floor
+/// claims their divergent cells. Their frozen census example rows are
+/// accounted **superseded** (`props_r4133_replay::{RP38_SUPERSEDED,
+/// SUPERSEDED_RP38}`), not declared.
 ///
-/// **The 82nd is `generator.model`** — the one row that does not come out of
-/// RP2.3's declared bucket. Its pair is a bin-7 value jump
-/// (`'4'` vs `'3'`, rel 3.33e-01) whose mechanism is this table's:
-/// r4133's `TGeneratorObj.GetPropertyValue` has no arm 6, so `model`
-/// answers the deck's own typed token while the NCIM PV→PQ conversion moves the
-/// live `GenModel` 3 → 4 and never moves it back. Unlike RP2.3's rows it is
-/// therefore counted here as a *new* claim rather than a re-disposition, and it
+/// **The one other row is `generator.model`**, which does not come out of the
+/// declared bucket. Its pair is a bin-7 value jump (`'4'` vs `'3'`) whose
+/// mechanism is this table's: r4133's Generator getter has no arm for
+/// `model`, so it answers the deck's own typed token while the NCIM PV→PQ
+/// conversion moves the live model 3 → 4 and never moves it back. It is
+/// therefore counted as a *new* claim rather than a re-disposition, and it
 /// moves `props_r4133_replay::CLAIMED_ECHO` and `DECLARED_RP3` together.
 ///
 /// Sorted by `(class, prop)` — [`find_echo_row`] binary-searches it.
-// The 82 rows are DATA, in the same aligned-columns style as PROPS_NORM_R4133
+// The rows are DATA, in the same aligned-columns style as PROPS_NORM_R4133
 // (whose `rustfmt::skip` note applies here for the same reason: rustfmt's
 // 60-char call width would explode every row).
 #[rustfmt::skip]
@@ -1958,15 +1860,15 @@ pub const PROPS_ECHO_R4133: &[EchoRow] = &[
          Pin("windgen_dynout_renders_empty_when_unset")),
 ];
 
-/// Count lock, total — the same fail-on-stale equality [`NORM_ROWS`] carries.
-/// **82 = the RP2.3 bucket's 86 pairs − the 5 the kill criterion re-routed, +1
-/// for RP3.3's `generator.model`**.
+/// Count lock, total: the same fail-on-stale equality [`NORM_ROWS`] carries.
+/// The declared echo bucket's pairs minus its five `SilentReadOnly` pairs, plus
+/// `generator.model`.
 const ECHO_ROWS: usize = 82;
 /// Count lock, [`EchoCategory::EchoDefault`].
 const ECHO_DEFAULT_ROWS: usize = 50;
 /// Count lock, [`EchoCategory::EchoParse`].
 const ECHO_PARSE_ROWS: usize = 8;
-/// Count lock, [`EchoCategory::EmptyCollectionRender`] — RP2.3's new category.
+/// Count lock, [`EchoCategory::EmptyCollectionRender`].
 const ECHO_EMPTY_COLLECTION_ROWS: usize = 14;
 /// Count lock, [`EchoCategory::LiveSemanticsDiffer`]; every one owes a pin.
 const ECHO_LIVE_SEMANTICS_ROWS: usize = 10;
@@ -1975,9 +1877,9 @@ const ECHO_LIVE_SEMANTICS_ROWS: usize = 10;
 /// closed exemption list [`check_echo_rows_are_live`] needs so that its
 /// fail-on-stale half does not fire on a row that is doing its job.
 ///
-/// Both pairs' echo cells sit on `engines: "capi_v0145"` cases, which plan §1.3
-/// keeps uncompared on r4133 — **0 in-scope echo cells** each, measured by the
-/// claims census (RP2.3 part A, finding F5). The distinction that
+/// Both pairs' echo cells sit on `engines: "capi_v0145"` cases, which the r4133
+/// channel never compares, so neither has an in-scope echo cell. The distinction
+/// that
 /// makes the exemption necessary rather than merely tidy is `fault.bus2`: the
 /// PAIR does compare on r4133 (its ten `'b3.0'`/`'B3.0'` cells are claimed by a
 /// `CaseFold` row), so its echo row will be *visited* and can never *hit*,
@@ -1989,16 +1891,13 @@ const ECHO_ROWS_WITH_NO_IN_SCOPE_CELL: &[(&str, &str)] = &[("fault", "bus2"), ("
 /// **The echo rows that mask cells on `engines: "r4133"` cases** — where the
 /// capi channel does not run at all — as `(class, prop, cells, cases)`.
 ///
-/// Plan mechanic (c) requires a pin for "every exclusion whose ours-value has no
-/// capi witness (r4133-only classes/**cases**)"; the *cases* half is a rule over
-/// the whole measured population
-/// ([`tests::every_row_exposed_on_r4133_only_cases_names_a_pin`], RP2.3 audit
-/// settlement).
+/// Every exclusion whose engine value has no capi witness (an r4133-only class
+/// or **case**) owes a pin. The *cases* half is a rule over the whole measured
+/// population (`tests::every_row_exposed_on_r4133_only_cases_names_a_pin`).
 ///
-/// **Measured** — the claims census (`DSS_PROPS_CENSUS=claims`) over the 87
-/// r4133-only cases (RF-D07-07 settlement): 60 of the 82
-/// rows carry such cells, 35 024 in total, and each one therefore names a pin.
-/// The MEMBERSHIP is re-derived on every run by `props_r4133_replay::
+/// **Measured** by the claims census (`DSS_PROPS_CENSUS=claims`) over the
+/// r4133-only cases: each row here carries such cells, and each one therefore
+/// names a pin. The MEMBERSHIP is re-derived on every run by `props_r4133_replay::
 /// the_r4133_only_exposure_list_is_derived_from_the_corpus`, which reds on an
 /// echo row whose class an r4133-only case declares and which sits neither here
 /// nor in [`ECHO_ROWS_UNEXPOSED_ON_R4133_ONLY_CASES`] — complete against every
@@ -2006,16 +1905,15 @@ const ECHO_ROWS_WITH_NO_IN_SCOPE_CELL: &[(&str, &str)] = &[("fault", "bus2"), ("
 /// not against a deck edit: a covered cell that starts to differ on a case whose
 /// class set is unchanged is found by a re-census, never by that test.
 ///
-/// **`generator.model` is RP3.3's row, and it is the extreme case
-/// of the rule**: *both* of its cells sit on r4133-only cases
+/// **`generator.model` is the extreme case of the rule**: *both* of its cells sit on r4133-only cases
 /// (`modes:ncim/ncim_pv_pq.dss`, `modes:ncim/ncim_midi.dss` — the only corpus
 /// cases in the census population that run `Set algorithm=NCIM` with a
 /// generator), so a `Capi` witness could not have covered a single one. Its
 /// `(2, 2)` is derived per case from the frozen extracts crossed with the
 /// manifests by `props_r4133_replay::the_rp33_census_decomposition_is_read_off_the_corpus`,
 /// which reads **this entry** back through [`r4133_only_exposure`] and asserts
-/// both columns against its own derivation (RP3.3 audit settlement; see
-/// [`tests::every_row_exposed_on_r4133_only_cases_names_a_pin`] for what the
+/// both columns against its own derivation (see
+/// `tests::every_row_exposed_on_r4133_only_cases_names_a_pin` for what the
 /// table as a whole is held to).
 #[rustfmt::skip]
 const ECHO_ROWS_ON_R4133_ONLY_CASES: &[(&str, &str, u32, u32)] = &[
@@ -2097,12 +1995,12 @@ const R4133_ONLY_CASES: u32 = 850;
 /// pair the table does not list (all of whose masked cells are on
 /// `both`/`capi_v0145` cases).
 ///
-/// The table is data, not a claim, for most of its rows: the numbers are a dated
+/// The table is data, not a claim, for most of its rows: the numbers are a
 /// claims-census measurement. This accessor exists so that a row whose split IS
 /// derived from the corpus can tie its own entry to the derivation instead of
 /// asserting the tie in prose — `props_r4133_replay::
 /// the_rp33_census_decomposition_is_read_off_the_corpus` does exactly that for
-/// `generator.model` (RP3.3 audit settlement).
+/// `generator.model`.
 pub fn r4133_only_exposure(class: &str, prop: &str) -> Option<(u32, u32)> {
     ECHO_ROWS_ON_R4133_ONLY_CASES
         .iter()
@@ -2113,7 +2011,7 @@ pub fn r4133_only_exposure(class: &str, prop: &str) -> Option<(u32, u32)> {
 /// **One cell an echo row deliberately does NOT claim** — the narrowing valve
 /// for a pair whose mask would otherwise be wider than its citation.
 ///
-/// An [`EchoRow`] is pair-scoped (plan §1.2 fixes that shape), so a pair whose
+/// An [`EchoRow`] is pair-scoped, so a pair whose
 /// cells are echoes *except one* would mask that one too. A carve-out names the
 /// exact `(rust, r4133)` spelling the row does not cover; the cell then leaves
 /// the exclusion and is claimed — or declared — by whoever really owns it
@@ -2126,9 +2024,8 @@ pub fn r4133_only_exposure(class: &str, prop: &str) -> Option<(u32, u32)> {
 /// seen must stay inside the cited exclusion rather than silently fall out of
 /// it.
 ///
-/// **That conservative rule holds for the 61 pair-scoped rows only.** On the 21
-/// narrowed ones (RP4.1 P1's 20 MIXED pairs, plus `generator.model`) it is
-/// inverted — [`ECHO_NARROWED`] lists the spellings a row covers, and an unseen
+/// **That conservative rule holds for the pair-scoped rows only.** On the
+/// narrowed ones (the MIXED pairs, plus `generator.model`) it is inverted: [`ECHO_NARROWED`] lists the spellings a row covers, and an unseen
 /// spelling there falls OUT of the exclusion and is compared, because on a mixed
 /// pair the unseen spelling is exactly the cell the typed rule refused. The two
 /// mechanisms are complementary: a carve-out removes one cited counterexample
@@ -2148,31 +2045,26 @@ pub struct EchoCarveOut {
     pub why: &'static str,
 }
 
-/// **The carve-outs — one (RP2.3 audit settlement).**
+/// **The carve-outs: one.**
 ///
-/// `reactor.kvar`'s row cites the frozen `PropertyValue[4]` default `'1200'`
-/// (`Reactor.pas:1113`), and that explains 606 of the pair's 607 census cells.
-/// The 607th is not an echo at all: on `modes/makeposseq/makeposseq_shunt.dss`
-/// r4133 renders its own LIVE `kvarRating`, because `TReactorObj.
-/// MakePosSequence` (`Version8/Source/PDElements/Reactor.pas:1145-1201`) builds
-/// the command string `Format(' kV=%-.5g kvar=%-.5g', [PhasekV, kvarPerPhase])`
-/// and runs it back through `Parser[ActorID].CmdString := S; Edit(ActorID)`
-/// (`:1200-1201`) — so 200/3 becomes `66.667` in the engine itself, five
-/// significant digits and all. The
-/// port sets the double directly (`elements/pd/reactor/solve.rs`), as does
-/// dss_capi 0.14.5, whose `MakePosSequence` uses `SetDouble` and never a string
-/// (`.inputs/dss_capi/src/PDElements/Reactor.pas`) — which is why the capi
-/// channel compares that cell and the port matches it exactly.
+/// `reactor.kvar`'s row cites the frozen `PropertyValue[4]` default `'1200'`,
+/// and that explains every census cell of the pair but one. That one is not an
+/// echo at all: on `modes/makeposseq/makeposseq_shunt.dss` r4133 renders its
+/// own LIVE `kvarRating`, because its Reactor `MakePosSequence` builds a
+/// five-significant-digit command string and runs it back through the parser,
+/// so 200/3 becomes `66.667` in r4133 itself. The engine sets the double
+/// directly (`elements/pd/reactor/solve.rs`), as does dss_capi 0.14.5, which is
+/// why the capi channel compares that cell and the engine matches it exactly.
 ///
-/// So the 607th cell is a genuine ~5.0e-06 divergence of two live values, i.e.
-/// RP2.4's display class — where its sibling `reactor.kv`, the other output of
-/// the very same round-trip, already sits (`bins.tsv`: `reactor.kv` numeric bin
-/// 6, `max_rel` 5.85e-06). Masking it under an `EchoDefault` citation would be a
-/// mask wider than its evidence, so the row does not cover it. It has **no live
-/// effect today**: the only deck that produces it is `engines: "capi_v0145"`
-/// (`population.lock.json`), so the cell is out of r4133 scope — the point is
-/// that a future r4133-gated deck with a `kvar=`-specified reactor and a
-/// `MakePosSeq` will now be compared instead of silently masked.
+/// So that cell is a genuine divergence of two live values in the display-floor
+/// class, where its sibling `reactor.kv`, the other output of the very same
+/// round-trip, already sits (`bins.tsv`: `reactor.kv` numeric bin 6). Masking
+/// it under an `EchoDefault` citation would be a mask wider than its evidence,
+/// so the row does not cover it. The only deck that produces it is
+/// `engines: "capi_v0145"` (`population.lock.json`), so the cell is out of
+/// r4133 scope: the point is that a future r4133-gated deck with a
+/// `kvar=`-specified reactor and a `MakePosSeq` is compared instead of silently
+/// masked.
 pub const ECHO_CARVE_OUTS: &[EchoCarveOut] = &[EchoCarveOut {
     class: "reactor",
     prop: "kvar",
@@ -2180,8 +2072,8 @@ pub const ECHO_CARVE_OUTS: &[EchoCarveOut] = &[EchoCarveOut {
     oracle: "66.667",
     why: "Reactor.pas:1145-1201 MakePosSequence round-trips kvarPerPhase through \
           Format(' kvar=%-.5g') + Parser/Edit, so r4133's LIVE kvarRating really is 66.667 \
-          (5 significant digits) — a display divergence of two live values (RP2.4's class, \
-          like the same round-trip's reactor.kv), not the row's frozen '1200' echo",
+          (5 significant digits) — a display divergence of two live values (the display-floor \
+          class, like the same round-trip's reactor.kv), not the row's frozen '1200' echo",
 }];
 
 /// Count lock for [`ECHO_CARVE_OUTS`] — the same fail-on-stale equality every
@@ -2191,7 +2083,7 @@ const ECHO_CARVE_OUT_CELLS: usize = 1;
 /// **One narrowed pair's measured echo spellings** — the per-cell narrowing of
 /// a pair that also holds a typed rule.
 ///
-/// 20 of [`PROPS_ECHO_R4133`]'s 82 pairs also hold a [`PROPS_NORM_R4133`] row.
+/// Some of [`PROPS_ECHO_R4133`]'s pairs also hold a [`PROPS_NORM_R4133`] row.
 /// On those a pair-scoped exclusion would be wider than its citation: the chain
 /// order hands the cell to the typed rule first, but a cell the rule *refused*
 /// — a wrong resolved loadshape name, a wrong ZIPV vector, a wrong `Bus2`
@@ -2206,12 +2098,12 @@ const ECHO_CARVE_OUT_CELLS: usize = 1;
 /// the typed [`PROPS_NORM_R4133`] rule does not claim, i.e. exactly the cells
 /// that rule refused. So on the population this table was derived from, the
 /// narrowed exclusion covers cell for cell what a pair-scoped one would. **What
-/// the narrowing buys is prospective**: a *new* spelling on one of these 20
+/// the narrowing buys is prospective**: a *new* spelling on one of these
 /// pairs is compared instead of silently inheriting the pair's citation. Each spelling
 /// is evidenced by its own frozen census row (the `src` file:line every
-/// [`EchoRow`] carries), not by a per-cell re-reading of the Pascal getter; the
+/// [`EchoRow`] carries), not by a per-cell re-reading of the r4133 getter. The
 /// citation that explains the pair's *shape* is the `EchoRow`'s, and a spelling
-/// that turns out not to fit it is a finding this table cannot catch — the
+/// that turns out not to fit it is a finding this table cannot catch: the
 /// value compare it leaves unmasked is what would.
 ///
 /// # Provenance
@@ -2224,22 +2116,22 @@ const ECHO_CARVE_OUT_CELLS: usize = 1;
 /// test rather than trusted —
 /// `props_r4133_replay::the_narrowed_echo_rows_carry_exactly_the_spellings_the_
 /// typed_rules_leave` recomputes it from the corpus and compares it to this
-/// table both ways — and it is cross-checked against the live claims census
-/// (`DSS_PROPS_CENSUS=claims`, 440 cases): all 66 spellings appear
-/// there with disposition `echo-row`, and the census reports no `echo-row`
-/// spelling on these 20 pairs that this table lacks.
+/// table both ways. It is cross-checked against the live claims census
+/// (`DSS_PROPS_CENSUS=claims`): every spelling appears there with disposition
+/// `echo-row`, and the census reports no `echo-row` spelling on these pairs
+/// that this table lacks.
 ///
 /// # Why this INVERTS [`ECHO_CARVE_OUTS`]' rule, deliberately, for these rows
 ///
 /// A carve-out is conservative by design: "a spelling the census has not seen
 /// must stay inside the cited exclusion rather than silently fall out of it".
 /// A narrowed row is the opposite: an unseen spelling on one of these pairs
-/// falls **out** of the exclusion and is compared. That inversion is the whole
-/// content of RP4.1's precondition — on a mixed pair the unseen spelling is
-/// precisely the regression a typed rule would have caught — and it is bounded:
-/// it applies to the 20 mixed pairs and the closed [`ECHO_NARROWED_PURE_PAIRS`]
-/// list only, the other 61 keep the conservative pair-scoped rule, and a new
-/// spelling that is an echo after all lands here with its own citation.
+/// falls **out** of the exclusion and is compared. On a mixed pair the unseen
+/// spelling is precisely the regression a typed rule would have caught. The
+/// inversion is bounded: it applies to the mixed pairs and the closed
+/// [`ECHO_NARROWED_PURE_PAIRS`] list only, the other rows keep the conservative
+/// pair-scoped rule, and a new spelling that is an echo after all lands here
+/// with its own citation.
 #[derive(Debug)]
 pub struct EchoNarrowedRow {
     /// Class, as the census spells it (matched case-insensitively).
@@ -2254,7 +2146,7 @@ pub struct EchoNarrowedRow {
     pub src: &'static str,
 }
 
-/// Table constructor, so the 21 rows below read as data.
+/// Table constructor, so the rows below read as data.
 const fn narrowed(
     class: &'static str,
     prop: &'static str,
@@ -2269,7 +2161,7 @@ const fn narrowed(
     }
 }
 
-/// **The 21 narrowed rows and their 67 measured spellings** (RP4.1 P1, RF-D07-07).
+/// **The narrowed rows and their measured spellings.**
 ///
 /// Sorted by `(class, prop)` — [`narrowed_row`] binary-searches it, and the
 /// order is asserted by `tests::the_narrowed_table_is_sorted_and_unique`.
@@ -2384,15 +2276,16 @@ pub const ECHO_NARROWED: &[EchoNarrowedRow] = &[
     ], "examples_full.txt:949"),
 ];
 
-/// Count lock for [`ECHO_NARROWED`]: the 20 mixed pairs — derived, not chosen:
-/// `props_r4133_replay::the_typed_rules_and_the_echo_rows_split_their_shared_pairs_offline`
-/// measures exactly 20 pairs of [`PROPS_ECHO_R4133`] with a non-zero normalization
-/// count and the narrowing covers all of them — plus [`ECHO_NARROWED_PURE_PAIRS`]'
-/// one pure echo pair, `generator.model` (RF-D07-07).
+/// Count lock for [`ECHO_NARROWED`]: the mixed pairs, derived, not chosen
+/// (`props_r4133_replay::the_typed_rules_and_the_echo_rows_split_their_shared_pairs_offline`
+/// measures the pairs of [`PROPS_ECHO_R4133`] with a non-zero normalization
+/// count and the narrowing covers all of them), plus [`ECHO_NARROWED_PURE_PAIRS`]'
+/// one pure echo pair, `generator.model`.
 const ECHO_NARROWED_PAIRS: usize = 21;
-/// Count lock, spellings — the sum of the table's third column: the 66 census
-/// example rows the 20 mixed pairs leave to their echo rows (the same 66 the split
-/// literal's second column sums to) plus `generator.model`'s one `('4', '3')`.
+/// Count lock, spellings: the sum of the table's third column, i.e. the census
+/// example rows the mixed pairs leave to their echo rows (the same number the
+/// split literal's second column sums to) plus `generator.model`'s one
+/// `('4', '3')`.
 const ECHO_NARROWED_SPELLINGS: usize = 67;
 
 /// Index of [`ECHO_NARROWED`]'s row for `(class, prop)`, case-insensitively.
@@ -2414,8 +2307,8 @@ pub fn narrowed_spellings(
 /// **Does this pair's echo row cover this exact cell?** — the per-cell half of
 /// the exclusion, asked after [`find_echo_row`] has said the pair is cited.
 ///
-/// `true` for every cell of the 61 pair-scoped rows (that is what pair-scoped
-/// means), and for a cell of one of the 21 [`ECHO_NARROWED`] rows only when the
+/// `true` for every cell of the pair-scoped rows (that is what pair-scoped
+/// means), and for a cell of one of the [`ECHO_NARROWED`] rows only when the
 /// spelling is one the row measured.
 fn row_covers(class: &str, prop: &str, rust: &str, oracle: &str) -> bool {
     match narrowed_row(class, prop) {
@@ -2434,8 +2327,8 @@ fn find_echo_row(table: &[EchoRow], class: &str, prop: &str) -> Option<usize> {
 /// Does [`PROPS_ECHO_R4133`] hold a row for `(class, prop)` at all?
 ///
 /// The **pair-scoped** question, which differs from [`echo_excluded`]'s by the
-/// carve-outs and by the 20 mixed rows narrowed per cell ([`ECHO_NARROWED`],
-/// RP4.1 P1): this one is for the tests and the
+/// carve-outs and by the mixed rows narrowed per cell ([`ECHO_NARROWED`]):
+/// this one is for the tests and the
 /// accounting that ask "does the table name this pair", never for deciding a
 /// cell.
 pub fn has_echo_row(class: &str, prop: &str) -> bool {
@@ -2445,20 +2338,20 @@ pub fn has_echo_row(class: &str, prop: &str) -> bool {
 /// Is `(class, prop)`'s cell `(rust, oracle)` value-excluded on the r4133
 /// channel? — the offline twin of [`echo_excluded_r4133`], counters aside.
 ///
-/// **Pair-scoped for 61 rows, per-cell for the other 21.** Pair-scoped is the
-/// shape plan §1.2 prescribes (`SKIP_PROPS`'), and the guard against
+/// **Pair-scoped for most rows, per-cell for the [`ECHO_NARROWED`] ones.**
+/// Pair-scoped is `SKIP_PROPS`' shape, and the guard against
 /// over-breadth is what every row carries — the r4133 citation and the witness —
 /// plus two narrowing valves:
 ///
 /// * [`ECHO_CARVE_OUTS`] takes back the one measured cell a row's citation does
 ///   not explain (`reactor.kvar`'s `MakePosSequence` round trip);
-/// * [`ECHO_NARROWED`] holds the 20 **mixed** pairs — those that also carry a
-///   [`PROPS_NORM_R4133`] row — to the 66 spellings their citations explain, so
-///   a cell the typed rule *refused* is compared on r4133 instead of swallowed
-///   (RP4.1's precondition 1), and `generator.model` to its one NCIM spelling,
-///   so its agreeing r4133-only cells are compared too (RF-D07-07).
+/// * [`ECHO_NARROWED`] holds the **mixed** pairs (those that also carry a
+///   [`PROPS_NORM_R4133`] row) to the spellings their citations explain, so
+///   a cell the typed rule *refused* is compared on r4133 instead of swallowed,
+///   and `generator.model` to its one NCIM spelling, so its agreeing
+///   r4133-only cells are compared too.
 ///
-/// For a cell of one of the other 61 pairs the two values are read *only* by the
+/// For a cell of one of the pair-scoped rows the two values are read *only* by the
 /// carve-out lookup: the answer is `true` whatever they say, which is exactly
 /// what makes this an exclusion and not a normalization rule.
 ///
@@ -2486,23 +2379,22 @@ fn carved_out(class: &str, prop: &str, rust: &str, oracle: &str) -> bool {
 /// what the gate saw: a **visit** is a cell the row COVERS that reached the
 /// seam, a **hit** is a visit whose two sides really differed, i.e. a compare
 /// this row actually stopped. A cell the row does not cover is neither — it is
-/// not excluded, so it never reaches the counters. That is the rule RP2.3's
-/// carve-out set (`the liveness accounting must not credit the row for a cell
-/// it let through`), generalized by RP4.1 P1 to [`ECHO_NARROWED`]'s per-cell
-/// rows: "covered" now gates the exclusion and the counters alike.
+/// not excluded, so it never reaches the counters. The liveness accounting
+/// must not credit a row for a cell it let through, for a carve-out and for
+/// [`ECHO_NARROWED`]'s per-cell rows alike: "covered" gates the exclusion and
+/// the counters.
 ///
 /// A consequence worth stating, because it changes what the liveness guard can
-/// prove for those 21 rows: every covered spelling is divergent by construction
+/// prove for the narrowed rows: every covered spelling is divergent by construction
 /// (the census records divergent cells only), so a narrowed row's visits equal
 /// its hits and `check_echo_rows_are_live`'s `visits > 0 && hits == 0` arm can
 /// never fire on one. Two things replace it. Static: a narrowed row literally
 /// cannot mask a cell outside its measured list, and the list is re-derived
 /// from the corpus by `props_r4133_replay::
 /// the_narrowed_echo_rows_carry_exactly_the_spellings_the_typed_rules_leave`.
-/// Live (RP4.1 audit settlement): the mirror image of that arm — a narrowed row
-/// that is **never visited** in a run whose seam ran at all has stopped
-/// excluding anything, which is the same rot the `hits == 0` arm reports for
-/// the 61 pair-scoped rows. Without it a narrowed row whose spelling the engine
+/// Live: the mirror image of that arm. A narrowed row that is **never
+/// visited** in a run whose seam ran at all has stopped excluding anything,
+/// which is the same rot the `hits == 0` arm reports for the pair-scoped rows. Without it a narrowed row whose spelling the engine
 /// stops producing would go dead and no live guard would say so, because the
 /// offline derivation reads the FROZEN census, which still carries the obsolete
 /// spelling.
@@ -2564,12 +2456,12 @@ pub fn echo_counters(class: &str, prop: &str) -> Option<(usize, usize)> {
     ))
 }
 
-/// **Fail-on-stale for [`PROPS_ECHO_R4133`]** — the echo table's half of plan
-/// mechanic (d), modeled on [`assert_norm_rows_are_live`].
+/// **Fail-on-stale for [`PROPS_ECHO_R4133`]**, the echo table's half of
+/// "liveness both ways", modeled on [`assert_norm_rows_are_live`].
 ///
 /// A row that was VISITED on r4133 and never excluded a differing cell is
 /// masking a divergence that is not there: drop it, or re-measure it. It is
-/// **silent when the row was never visited** — except for the 21
+/// **silent when the row was never visited** — except for the
 /// [`ECHO_NARROWED`] rows, where "never visited" IS the rot signal (see the
 /// second arm in [`check_echo_rows_are_live`]) — and silent for the two rows the
 /// census measured as having no in-scope cell at all
@@ -2591,16 +2483,15 @@ pub fn assert_echo_rows_are_live() {
 /// The staleness rule itself, over **injected** counters — the split exists for
 /// the same reason [`check_rows_are_live`]'s does: the shipped statics cannot
 /// be made stale from a test, so both directions are proven offline
-/// ([`tests::the_echo_liveness_guard_is_silent_when_dormant_or_live`],
-/// [`tests::the_echo_liveness_guard_fires_on_a_stale_row`],
-/// [`tests::the_echo_liveness_guard_fires_on_an_unvisited_narrowed_row`]).
+/// (`tests::the_echo_liveness_guard_is_silent_when_dormant_or_live`,
+/// `tests::the_echo_liveness_guard_fires_on_a_stale_row`,
+/// `tests::the_echo_liveness_guard_fires_on_an_unvisited_narrowed_row`).
 ///
-/// **Two arms, because the 21 [`ECHO_NARROWED`] rows count differently**
-/// (RP4.1 audit settlement):
+/// **Two arms, because the [`ECHO_NARROWED`] rows count differently**:
 ///
-/// * pair-scoped row (61 of them) — `visits > 0 && hits == 0`: it was asked
-///   about compared cells and stopped excluding any of them;
-/// * narrowed row (21) — `visits == 0` in a run whose seam ran at all: a
+/// * pair-scoped row: `visits > 0 && hits == 0`, it was asked about compared
+///   cells and stopped excluding any of them;
+/// * narrowed row: `visits == 0` in a run whose seam ran at all: a
 ///   narrowed row only ever counts a *covered* (hence divergent) cell, so
 ///   `visits == hits` by construction and the first arm cannot fire on it; what
 ///   rot looks like there is the counter staying at zero while the rest of the
@@ -2609,10 +2500,10 @@ pub fn assert_echo_rows_are_live() {
 /// The `seam_ran` qualifier keeps the second arm from firing on a process that
 /// never compared a property at all — that case is the global guard's
 /// ([`check_r4133_props_compare_ran`], invoked first in the gate epilogue), and
-/// it deserves its own one-line diagnosis rather than 20 row messages.
+/// it deserves its own one-line diagnosis rather than one message per row.
 ///
 /// The statics are process-global, and in the gate's process the second arm
-/// counts the gate's own visits: the harness's drives of the 21 narrowed pairs
+/// counts the gate's own visits: the harness's drives of the narrowed pairs
 /// run in its lib test binary, and the gate binary's property pilot compares on
 /// the capi channel only.
 fn check_echo_rows_are_live(table: &[EchoRow], visits: &[usize], hits: &[usize]) {
@@ -2672,7 +2563,7 @@ fn check_echo_rows_are_live(table: &[EchoRow], visits: &[usize], hits: &[usize])
 }
 
 // ---------------------------------------------------------------------------
-// The GLOBAL guard: did the r4133 property compare run at all? (plan §RP4.1)
+// The GLOBAL guard: did the r4133 property compare run at all?
 // ---------------------------------------------------------------------------
 
 /// Gating r4133 property walks this process has run — one per
@@ -2706,12 +2597,11 @@ pub fn r4133_props_walk_counters() -> (usize, usize) {
     )
 }
 
-/// **Fail-on-nothing-ran for the whole r4133 property compare** — plan §RP4.1's
-/// global assertion: "it asserts **globally** that the r4133 props compare
-/// visited at least one case per full-gate run (`visits > 0`, not the
-/// visits-gated silent form; the assert lives beside the tables in
-/// `props_norm.rs` and is invoked once from the corpus gate's epilogue, the way
-/// `lane.rs`'s reround accounting is checked)".
+/// **Fail-on-nothing-ran for the whole r4133 property compare.** It asserts
+/// **globally** that the r4133 props compare visited at least one case per
+/// full-gate run (`visits > 0`, not the visits-gated silent form). It lives
+/// beside the tables and is invoked once from the corpus gate's epilogue, the
+/// way `lane.rs`'s reround accounting is checked.
 ///
 /// **Why it exists.** `population.lock.json` fingerprints manifest flags and
 /// per-case ledger tags but no scheduler code (`population_lock.rs::rigor` — the
@@ -2729,8 +2619,8 @@ pub fn r4133_props_walk_counters() -> (usize, usize) {
 ///
 /// **What it does NOT see: a PARTIAL re-mask.** It is a boolean — `walks > 0` —
 /// so re-adding a channel
-/// predicate to `force_properties` (say `gates_capi()`, which drops the 87
-/// `engines: "r4133"` cases while the 310 `both` ones keep ~1 300 walks) passes
+/// predicate to `force_properties` (say `gates_capi()`, which drops the
+/// `engines: "r4133"` cases while the `both` ones keep their walks) passes
 /// it. Two other guards catch that, and both are load-bearing:
 ///
 /// * `corpus_gate::scheduler::the_property_forcing_rule_is_every_live_non_large_case`
@@ -2738,12 +2628,12 @@ pub fn r4133_props_walk_counters() -> (usize, usize) {
 ///   **is** the live non-`large` population, with the (both, r4133-only,
 ///   capi-only) split pinned. It fails on any re-mask, partial included, and is
 ///   the one that does not depend on which entries happen to be in the ledger.
-/// * `ledger::assert_all_hit` — six of the ledger's eight `property`-scoped
-///   `r4133` entries sit on `engines: "r4133"` cases and two on `both` cases, so
-///   either half of a partial re-mask makes an entry NEVER APPLIED. That
-///   coupling is *implicit*: retiring or re-homing those six entries would
-///   silently remove this detector for the r4133-only half, which is why the
-///   scheduler test above exists and does not rely on them.
+/// * `ledger::assert_all_hit`: the ledger's `property`-scoped `r4133` entries
+///   sit on both `engines: "r4133"` and `both` cases, so either half of a
+///   partial re-mask makes an entry NEVER APPLIED. That coupling is *implicit*:
+///   retiring or re-homing the r4133-only entries would silently remove this
+///   detector for that half, which is why the scheduler test above exists and
+///   does not rely on them.
 ///
 /// Silent under `DSS_GATE_ONLY` for the reason its two neighbours are
 /// ([`assert_norm_rows_are_live`]): a filtered run may legitimately hold no
@@ -2759,8 +2649,8 @@ pub fn assert_r4133_props_compare_ran() {
 /// The rule itself, over **injected** counters — the split exists for the same
 /// reason [`check_rows_are_live`]'s does: the shipped statics cannot be zeroed
 /// from a test once the gate has moved them, so both directions are pinned
-/// offline ([`tests::the_global_props_compare_guard_is_silent_when_the_walk_ran`]
-/// and [`tests::the_global_props_compare_guard_fires_when_nothing_compared`]).
+/// offline (`tests::the_global_props_compare_guard_is_silent_when_the_walk_ran`
+/// and `tests::the_global_props_compare_guard_fires_when_nothing_compared`).
 fn check_r4133_props_compare_ran(walks: usize, elements: usize) {
     assert!(
         walks > 0 && elements > 0,
@@ -2775,9 +2665,9 @@ fn check_r4133_props_compare_ran(walks: usize, elements: usize) {
 /// **The echo rows whose CLASS the r4133-only cases declare, yet none of whose
 /// covered cells differs there** — `(class, prop, cases, why)`, where `cases`
 /// counts the r4133-only census cases whose deck declares an element of the
-/// class (RF-D07-07). "r4133-only" is where the r4133 channel runs
-/// and the capi channel does not: `engines: "r4133"`, or a `both` case whose
-/// capi channel a ledger `skip` drops (RF-D07-07 settlement).
+/// class. "r4133-only" is where the r4133 channel runs and the capi channel
+/// does not: `engines: "r4133"`, or a `both` case whose capi channel a ledger
+/// `skip` drops.
 ///
 /// A case that moves to `r4133` (the GIC decks are such cases) can make an echo
 /// row mask cells no channel compares, which a check of
@@ -2796,13 +2686,12 @@ fn check_r4133_props_compare_ran(walks: usize, elements: usize) {
 ///   but no cell the row COVERS differs there ([`echo_excluded`]'s predicate:
 ///   the measured spellings of an [`ECHO_NARROWED`] row, the pair minus its
 ///   [`ECHO_CARVE_OUTS`] otherwise). That half is a measurement (the claims
-///   census over the 87 r4133-only cases, RF-D07-07 settlement: 0 `echo-row`
-///   cells on every row below), so the exact count is
-///   its fingerprint: an r4133-only case that gains or loses the class reds
+///   census over the r4133-only cases finds no `echo-row` cell on any row
+///   below), so the exact count is its fingerprint: an r4133-only case that gains or loses the class reds
 ///   until the row is re-measured and moved or re-counted;
 /// * nowhere, when no r4133-only case declares the class at all — derived.
 ///
-/// **What the list does not say** (RF-D07-07 settlement). A row here still
+/// **What the list does not say.** A row here still
 /// matches cells on those cases: the six pair-scoped ones (`line.spacing`,
 /// `monitor.mode`, `regcontrol.remoteptratio`, `storage.dynadll`,
 /// `storagecontroller.modedischarge`, `vsource.yearly`) skip every cell of
@@ -2818,7 +2707,7 @@ fn check_r4133_props_compare_ran(walks: usize, elements: usize) {
 /// inclusion.
 ///
 /// Sorted by `(class, prop)`; the literal and the count are pinned by
-/// [`tests::the_unexposed_row_list_is_pinned`].
+/// `tests::the_unexposed_row_list_is_pinned`.
 #[rustfmt::skip]
 pub const ECHO_ROWS_UNEXPOSED_ON_R4133_ONLY_CASES: &[(&str, &str, u32, &str)] = &[
     ("capcontrol", "type", 1,
@@ -2861,18 +2750,17 @@ pub fn echo_rows_with_no_in_scope_cell() -> &'static [(&'static str, &'static st
 }
 
 /// **The pure echo pairs narrowed on purpose** — the [`ECHO_NARROWED`] rows whose
-/// pair holds NO [`PROPS_NORM_R4133`] row (RF-D07-07).
+/// pair holds NO [`PROPS_NORM_R4133`] row.
 ///
-/// RP4.1 narrowed only the mixed pairs and left every pure echo row the pair
-/// scope plan §1.2 prescribes. That scope costs nothing while a capi witness
-/// still compares the pair's other cells; on `engines: "r4133"` cases nothing
-/// does. `generator.model` is that case: its row cites two cells — the NCIM PV→PQ
-/// conversion's live `'4'` against r4133's echoed store `'3'`
-/// (`Version8/Source/PCElements/generator.pas:3007-3038`, no arm 6) — both on
-/// r4133-only cases, while the pair scope also masked the 41 cells the four
-/// other r4133-only generator decks carry, compared by no channel at all.
-/// Narrowed to its one measured spelling (`examples_full.txt:1435`), every other
-/// cell of the pair is compared on r4133.
+/// A pure echo row keeps the pair scope everywhere else. That scope costs
+/// nothing while a capi witness still compares the pair's other cells, but on
+/// `engines: "r4133"` cases nothing does. `generator.model` is that case: its
+/// row cites two cells (the NCIM PV→PQ conversion's live `'4'` against r4133's
+/// echoed store `'3'`), both on r4133-only cases, while the pair scope would
+/// also mask the cells the other r4133-only generator decks carry, compared by
+/// no channel at all. Narrowed to its one measured spelling
+/// (`examples_full.txt:1435`), every other cell of the pair is compared on
+/// r4133.
 ///
 /// Closed: `tests::the_narrowed_rows_are_sorted_well_formed_and_actually_narrow`
 /// accepts a non-mixed narrowed row only from here, and
@@ -2882,15 +2770,14 @@ pub fn echo_rows_with_no_in_scope_cell() -> &'static [(&'static str, &'static st
 pub const ECHO_NARROWED_PURE_PAIRS: &[(&str, &str)] = &[("generator", "model")];
 
 /// **The normalization rows whose pair has no cell on an r4133-gating case** —
-/// the [`PROPS_NORM_R4133`] analogue of [`ECHO_ROWS_WITH_NO_IN_SCOPE_CELL`]
-/// (RF-D07-07).
+/// the [`PROPS_NORM_R4133`] analogue of [`ECHO_ROWS_WITH_NO_IN_SCOPE_CELL`].
 ///
 /// [`check_rows_are_live`] reports a row only when it was visited and folded
 /// nothing, so a row the gate never visits is silent forever. These eight are
 /// never visited: every corpus deck that declares a `GenDispatcher` or a
 /// `Sensor` gates `capi_v0145` only, so their pairs carry `cells_in_scope = 0`
-/// in the frozen census — `bins.tsv` for six of them, the WP-RP1 README records
-/// for the two `enabled` rows (`gendispatcher.enabled`'s own `(0)`,
+/// in the frozen census: `bins.tsv` for six of them, the README's shape-closure
+/// records for the two `enabled` rows (`gendispatcher.enabled`'s own `(0)`,
 /// `sensor.enabled` through `shape_in_scope.txt`'s `rows_in_scope=0` for its
 /// class). The live anti-rot guard cannot fire on them; the offline replay
 /// (every row claims a vendored example) is all that holds them. Declared here
@@ -2898,7 +2785,7 @@ pub const ECHO_NARROWED_PURE_PAIRS: &[(&str, &str)] = &[("generator", "model")];
 /// `props_r4133_replay::the_norm_rows_with_no_in_scope_cell_are_exactly_the_declared_ones`:
 /// a listed row that gains an in-scope cell, or an unlisted row that has none,
 /// reds there. Gating a sensor or gendispatcher deck on r4133 would make the
-/// eight live — a corpus change, recorded as an RF follow-up, not done here.
+/// eight live, which is a corpus change.
 pub const NORM_ROWS_WITH_NO_IN_SCOPE_CELL: &[(&str, &str)] = &[
     ("gendispatcher", "element"),
     ("gendispatcher", "enabled"),
@@ -2915,14 +2802,14 @@ const NORM_NO_IN_SCOPE_ROWS: usize = 8;
 
 /// Which link of the r4133 **value** chain claims one divergent cell.
 ///
-/// The chain of plan §1.2 is *shape allowlist → normalization → echo table →
+/// The chain is *shape allowlist → normalization → echo table →
 /// display floor → ledger*. Two of its five links are not here, and neither
 /// omission is a gap:
 ///
 /// * the **shape allowlist** is upstream of every value compare — `filter_015x`
 ///   drops an allowlisted prop from the walk before a value exists to diverge,
-///   so on a value cell it can only ever answer "no" (the RP2.1 replay measures
-///   the same structural zero, `CLAIMED_SHAPE_ALLOWLIST`). Its own population is
+///   so on a value cell it can only ever answer "no" (the offline replay
+///   measures the same structural zero, `CLAIMED_SHAPE_ALLOWLIST`). Its own population is
 ///   the census's `shape_count` rows, which the claims census dispositions
 ///   separately;
 /// * the **ledger** lives in `corpus_gate/ledger.rs`, not in the harness, and is
@@ -2932,17 +2819,17 @@ const NORM_NO_IN_SCOPE_ROWS: usize = 8;
 pub enum ValueClaim {
     /// [`PROPS_NORM_R4133`] recognises the two spellings as one value.
     Normalization(NormRule),
-    /// [`PROPS_ECHO_R4133`] excludes the pair's value compare (RP2.3), because
+    /// [`PROPS_ECHO_R4133`] excludes the pair's value compare, because
     /// the two renderings are not two spellings of one value.
     Echo,
     /// The two sides are numbers within [`R4133_DISPLAY_FLOOR`] whose r4133
-    /// render is our value at the digits it printed (RP2.4).
+    /// render is our value at the digits it printed.
     DisplayFloor,
 }
 
 impl ValueClaim {
-    /// The disposition tag the census artifacts print (plan RP0.2's vocabulary:
-    /// `normalized-by-<rule>` / `echo-row` / `under-floor`).
+    /// The disposition tag the census artifacts print (`normalized-by-<rule>` /
+    /// `echo-row` / `under-floor`).
     pub fn tag(self) -> String {
         match self {
             ValueClaim::Normalization(rule) => format!("normalized-by-{}", rule.tag()),
@@ -2955,22 +2842,21 @@ impl ValueClaim {
 /// **The value chain, resolved for one cell — first match wins.**
 ///
 /// This is the query the census knob's disposition mode
-/// (`DSS_PROPS_CENSUS=claims`, plan RP0.2/RP2.1) annotates every divergent value
-/// cell with, and it is deliberately built out of the **shipped** predicates
+/// (`DSS_PROPS_CENSUS=claims`) annotates every divergent value cell with, and
+/// it is deliberately built out of the **shipped** predicates
 /// ([`claiming_row`], [`echo_excluded`], [`display_floor`]) rather than a
-/// re-implementation of them: RP0.2 fixed that a claims run must read the same
-/// policy the live gate applies, because a drifting copy would corrupt RP4.1's
-/// zero-UNCLAIMED acceptance silently.
+/// re-implementation of them: a claims run must read the same policy the live
+/// gate applies, because a drifting copy would corrupt the zero-UNCLAIMED
+/// acceptance silently.
 ///
-/// It answers `None` for a cell no link claims — the `UNCLAIMED` bucket, which
-/// is exactly the population RP2.2/RP2.3/RP2.4 still owe rows for.
+/// It answers `None` for a cell no link claims: the `UNCLAIMED` bucket.
 ///
 /// It does **not** touch [`NORM_VISITS`]/[`NORM_HITS`]: those stay the exclusive
 /// record of what the live gate saw, so a census run can never make a stale row
 /// look live (`assert_norm_rows_are_live`).
 ///
 /// **It takes the channel, and answers `None` for every channel but
-/// [`PropsChannel::R4133`]** — plan mechanic (b) applied to the *measurement*
+/// [`PropsChannel::R4133`]**: capi-invariance applied to the *measurement*
 /// layer, not only to the comparator. The live seam is channel-gated by
 /// `PropsPolicy::is_r4133`, but this query has a second caller that is not: the
 /// claims census annotates the rows of **both** channels
@@ -2978,8 +2864,8 @@ impl ValueClaim {
 /// would report a capi divergence whose spelling an r4133 rule folds as
 /// `normalized-by-<rule>` while the live capi comparator still fails on it,
 /// and "capi normalizes nothing" would be a property of today's data instead of
-/// the contract. With the parameter it is the contract (RP2.1 audit), pinned by
-/// [`tests::the_capi_channel_claims_nothing`].
+/// the contract. With the parameter it is the contract, pinned by
+/// `tests::the_capi_channel_claims_nothing`.
 pub fn claim_value(
     channel: PropsChannel,
     class: &str,
@@ -3008,10 +2894,8 @@ pub fn claim_value(
 ///
 /// Every fold case below is a **real census spelling** from
 /// `tests/corpus/props_r4133/examples_full.txt`, so these are not synthetic
-/// exercises of the predicate — they are the population RP2.1 claims. The
-/// FULL-path proofs (a corrupted value still failing through
-/// `compare_prop_lists`) are RP2.1 part D's scratch-tree probes; the capi-side
-/// no-op is pinned in `harness/mod.rs`, `props_policy_tests`.
+/// exercises of the predicate: they are the population the table claims. The
+/// capi-side no-op is pinned in `harness/mod.rs`, `props_policy_tests`.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3143,11 +3027,11 @@ mod tests {
         // The documented exceptions, kept as a list so they stay countable: a
         // pair whose `bins.tsv` LABEL is one bin while the cells this row
         // claims are another's (vendored README §"A pair's bin is a label, not
-        // a per-cell classification"). One from RP2.2 — the live enum getter
-        // behind a bin-2 label (`VOLTAGE_CURVEX_REF_SYNONYMS`) — and RP2.3's
-        // nine on bin-5 pairs, so that the echo table cannot mask a cell
-        // a typed rule still compares (module doc §"RP2.3's nine off-bin
-        // rows"). Anything else must match its bin.
+        // a per-cell classification"). One is the live enum getter behind a
+        // bin-2 label (`VOLTAGE_CURVEX_REF_SYNONYMS`), and nine sit on bin-5
+        // pairs, so that the echo table cannot mask a cell a typed rule still
+        // compares (module doc §"Nine bin-5 pairs that carry comparable
+        // cells"). Anything else must match its bin.
         const RULE_ON_AN_OFF_BIN_PAIR: &[(&str, &str, u8, &str)] = &[
             ("generator", "userdata", 5, "ArrayForm"),
             ("invcontrol", "monvoltagecalc", 5, "CaseFold"),
@@ -3182,8 +3066,8 @@ mod tests {
                 3 => "EnumSynonym",
                 4 => "ArrayForm",
                 other => panic!(
-                    "{}.{}: bin {other} is not this table's — bins 5/6/7 are \
-                     RP2.3's/RP2.4's/RP3's",
+                    "{}.{}: bin {other} is not this table's — bins 5/6/7 belong to \
+                     the echo table, the display floor and the value compare",
                     r.class, r.prop
                 ),
             };
@@ -3217,13 +3101,12 @@ mod tests {
         );
     }
 
-    /// The rows RP2.1 deliberately does **not** hold, and the sub-step that
-    /// owns each. If a later pass adds one of these here, the exclusion
-    /// argument in the module doc has to be rewritten first.
+    /// The rows the table deliberately does **not** hold. Adding one of these
+    /// here means rewriting the exclusion argument in the module doc first.
     #[test]
     fn the_pairs_routed_elsewhere_have_no_row() {
-        // Bin 1, pure echo — no foldable cell exists (vendored README
-        // §"Bin 1 carries nine echo pairs, not three") → RP2.3, wholesale.
+        // Bin 1, pure echo: no foldable cell exists (vendored README
+        // §"Bin 1 carries nine echo pairs, not three"), an echo row wholesale.
         for (class, prop) in [
             ("capcontrol", "reset"),
             ("recloser", "debugtrace"),
@@ -3233,11 +3116,11 @@ mod tests {
         ] {
             assert!(
                 find_row(PROPS_NORM_R4133, class, prop).is_none(),
-                "{class}.{prop} is a pure-echo bin-1 pair: RP2.3's row, not a BoolFold row"
+                "{class}.{prop} is a pure-echo bin-1 pair: an echo row, not a BoolFold row"
             );
         }
-        // Bin 4, unclaimable by any typed rule → RP2.3 / RP3.7 (RP2.2's routing)
-        // or out of scope (plan §1.3).
+        // Bin 4, unclaimable by any typed rule (an echo, a per-phase state
+        // render) or out of scope.
         for (class, prop) in [
             ("expcontrol", "derlist"),
             ("relay", "normal"),
@@ -3246,7 +3129,7 @@ mod tests {
         ] {
             assert!(
                 find_row(PROPS_NORM_R4133, class, prop).is_none(),
-                "{class}.{prop} takes no ArrayForm row (module doc: RP2.3 / RP3.7 / out of scope)"
+                "{class}.{prop} takes no ArrayForm row (module doc: echo, per-phase, out of scope)"
             );
         }
         // Bin 4, no row: the port renders `Normal`/`State` one token per
@@ -3259,11 +3142,11 @@ mod tests {
                  spelling difference the engines do not have"
             );
         }
-        // Bin 3, read by RP2.2 and routed AWAY from this table: an echo of the
-        // deck's own text, a non-injective `'UNKNOWN'`, or a live-state
-        // divergence — none of them a spelling of the same value (module doc
-        // §"RP2.2's routing of bin 3"). Adding an `EnumSynonym` row for any of
-        // these would be the value-preservation violation (c) forbids.
+        // Bin 3, kept AWAY from this table: an echo of the deck's own text, a
+        // non-injective `'UNKNOWN'`, or a live-state divergence, none of them a
+        // spelling of the same value (module doc §"Bin 3: why only four of the
+        // eight pairs take a row"). Adding an `EnumSynonym` row for any of these
+        // would break value preservation.
         for (class, prop) in [
             ("swtcontrol", "action"),
             ("monitor", "mode"),
@@ -3272,7 +3155,7 @@ mod tests {
         ] {
             assert!(
                 find_row(PROPS_NORM_R4133, class, prop).is_none(),
-                "{class}.{prop} is a bin-3 pair RP2.2 routed elsewhere, not a synonym"
+                "{class}.{prop} is a bin-3 pair that is not a synonym"
             );
         }
     }
@@ -3307,7 +3190,7 @@ mod tests {
         assert!(claimed("gendispatcher", "enabled", "Yes", "true"));
         assert!(claimed("windgen", "enabled", "Yes", "true"));
         assert!(claimed("sensor", "enabled", "Yes", "true"));
-        // The single-letter Delphi spellings of plan §1.1 bin 1.
+        // The single-letter Delphi spellings of bin 1.
         assert!(claimed("relay", "eventlog", "Yes", "y"));
         assert!(claimed("relay", "eventlog", "No", "n"));
         assert!(claimed("relay", "eventlog", "Yes", "Y"));
@@ -3315,7 +3198,7 @@ mod tests {
         assert!(!claimed("capacitor", "enabled", "Yes", "false"));
         assert!(!claimed("capacitor", "enabled", "No", "true"));
         assert!(!claimed("monitor", "ppolar", "Yes", "NO"));
-        // `''` is NOT a boolean — it is the bin-5 echo RP2.3 owns. These four
+        // `''` is NOT a boolean: it is the bin-5 echo the echo table owns. These four
         // pairs are the census's genuinely MIXED bin-1 pairs: their foldable
         // cells fold, their echo cells do not.
         assert!(claimed("recloser", "eventlog", "Yes", "true"));
@@ -3332,22 +3215,22 @@ mod tests {
         assert_eq!(fold_bool("   "), None, "blank is not a boolean");
     }
 
-    /// **The accepted set is CLOSED** — the guard the per-kind fold tests above
-    /// do not give, and the RP2.1 audit round's one major finding.
+    /// **The accepted set is CLOSED**: the guard the per-kind fold tests above
+    /// do not give.
     ///
     /// Those tests are sample-based: real census spellings on the accept side, a
     /// handful of hand-picked negatives on the refuse side. Nothing in them says
     /// the accepted set has a *boundary*, so a widening that no sample happens to
-    /// touch is invisible — measured, not supposed: adding `"on"`/`"off"` to
-    /// [`fold_bool`]'s two lists left the whole suite green.
+    /// touch is invisible: adding `"on"`/`"off"` to [`fold_bool`]'s two lists
+    /// would leave every sample test green.
     ///
     /// That matters because `fold_bool` is where "spelling, never value" is
-    /// decided for 77 rows and ~294 500 cells. `on`/`off` is the sharp case: it
+    /// decided for every `BoolFold` row. `on`/`off` is the sharp case: it
     /// is not one of the eleven Delphi boolean spellings r4133's getters print
     /// (vendored `README.md` §"Bin 1 carries nine echo pairs, not three", and
     /// `props_r4133_replay::BOOL_SPELLINGS`), so admitting it would let the table
     /// fold a rendering neither engine produces for a boolean — and, in a mixed
-    /// bin-1 pair, could swallow a `PropertyValue[]` echo that RP2.3 must
+    /// bin-1 pair, could swallow a `PropertyValue[]` echo that an echo row must
     /// exclude with a citation instead.
     ///
     /// So the universe below is walked EXHAUSTIVELY: every string in it is
@@ -3455,8 +3338,8 @@ mod tests {
         assert!(claimed("autotrans", "conn", "wye", "wye "));
         // DISCRIMINATION: a genuinely different spelling is NOT a case fold —
         // these are bin-3 cells inside a bin-2 pair (vendored README §"A pair's
-        // bin is a label"). RP2.2 read all three getters: `capcontrol.type` and
-        // `fault.bus2` are `PropertyValue[]` echoes and go to RP2.3
+        // bin is a label"). `capcontrol.type` and `fault.bus2` are
+        // `PropertyValue[]` echoes that take echo rows
         // (`props_r4133_replay::RP22_ROUTING`), so they must still reach the
         // assert raw HERE; `invcontrol.voltage_curvex_ref` is a live enum
         // rendering and its whole pair moved to an `EnumSynonym` row, which is
@@ -3474,20 +3357,16 @@ mod tests {
 
     /// **`CaseFold` may drop CASE and OUTER BLANKS — never a character.**
     ///
-    /// The companion of [`boolfold_accepts_a_closed_set_of_spellings`], and the
-    /// second half of the RP2.1 audit round's major finding: a
-    /// character-dropping widening of this predicate passes every other test in
-    /// the tree. Measured — `rust.trim().trim_start_matches('-')` on both sides
-    /// left the whole suite green.
+    /// The companion of [`boolfold_accepts_a_closed_set_of_spellings`]: a
+    /// character-dropping widening of this predicate (say
+    /// `rust.trim().trim_start_matches('-')` on both sides) passes every other
+    /// test in the tree.
     ///
-    /// The live cost of that particular widening is exact and large:
+    /// The live cost of that particular widening is large:
     /// `regcontrol.revthreshold` is literally `'-100'` (ours) against `'100'`
-    /// (r4133) on 864 cells — 861 an `EchoDefault` frozen at
-    /// `Version8/Source/Controls/RegControl.pas:1448`, 3 a deck's own
-    /// `revThreshold=100` token (stored by the `Edit` loop, `:420`) — and
-    /// `'-800'` against the deck's own token `'800'` on the other 24:
-    /// **888 cells**, vendored in `examples_supplement.txt` and owed
-    /// a cited exclusion row plus a pin by RP2.3. A sign-blind `CaseFold` would
+    /// (r4133, an `EchoDefault` or the deck's own token) and `'-800'` against
+    /// the deck's own `'800'`, cells vendored in `examples_supplement.txt` and
+    /// held by a cited exclusion row plus a pin. A sign-blind `CaseFold` would
     /// fold exactly that class of real divergence into silence.
     ///
     /// The pin is written on the **predicate**, not on a table row, so it holds
@@ -3594,14 +3473,11 @@ mod tests {
             "file=DESSModel_Test.TxT",
             "(file=DESSModel_Test.TxT)"
         ));
-        // `swtcontrol.normal`/`state` were the other two S6 pairs this table
-        // held, for the one-token spelling only. RP4.1 dropped both rows —
-        // RP3.7(a) made the port render one token per controlled phase, so they
-        // folded nothing on the first live r4133 property run — and both
-        // spellings now reach the assert RAW, the end state their twins
-        // `relay.normal`/`relay.state` were always in. Asserted rather than
-        // deleted: this is what fails if a later pass re-adds a row without
-        // rewriting the module doc's S6 note.
+        // `swtcontrol.normal`/`state` take no row: the engine renders one token
+        // per controlled phase, so a row would fold nothing, and both spellings
+        // reach the assert RAW, like their twins `relay.normal`/`relay.state`.
+        // This is what fails if a row is re-added without rewriting the module
+        // doc's note on the bin-4 pairs that take no row.
         assert!(!claimed("swtcontrol", "state", "closed", "[closed, ]"));
         assert!(!claimed(
             "swtcontrol",
@@ -3627,18 +3503,16 @@ mod tests {
         // outside `R4133_DISPLAY_FLOOR` **or** not a render of our value at the
         // precision the oracle printed: `ArrayForm` compares its numeric
         // elements through [`numbers_match`], which the floor widens under both
-        // clauses. The first two gaps are 2.5e-3 and 2.5e-3; the third is
-        // 1.0e-5, INSIDE the floor, and is refused by the mechanism clause
-        // alone — `700.007` is not `700` rounded to anything (RP2.4 audit
-        // settlement; this row was RP2.1's discrimination and the widening
-        // briefly took it).
+        // clauses. The first two gaps lie outside the floor. The third lies
+        // INSIDE it and is refused by the mechanism clause alone: `700.007` is
+        // not `700` rounded to anything.
         assert!(!claimed("line", "ratings", "[ 400]", "[401,]"));
         assert!(!claimed("line", "ratings", "[ 600 700]", "[600,701.75,]"));
         assert!(!claimed("line", "ratings", "[ 600 700]", "[600,700.007,]"));
         // …while the display shape it must still fold is the other direction:
-        // OUR full value against the oracle's shorter render of it, 4.3e-8
-        // apart. This is the one that dies if the floor is dropped from
-        // `tokens_match` (the ArrayForm half of RP2.4's wiring).
+        // OUR full value against r4133's shorter render of it. This is the
+        // one that dies if the floor is dropped from `tokens_match` (the
+        // ArrayForm half of the floor's wiring).
         assert!(claimed("line", "ratings", "[ 600 700.00003]", "[600,700,]"));
         assert!(!claimed(
             "recloser",
@@ -3663,17 +3537,15 @@ mod tests {
         assert!(!claimed("line", "ratings", "[ 400]", ""));
         assert!(!array_forms_match("[]", "()"));
         assert!(!array_forms_match("", ""));
-        // The display floor, at the ONE function it widens — the deliberate
-        // successor of RP2.1's `R4133_DISPLAY_FLOOR.is_none()` guard, which
-        // said only that the slot was empty. This says what is IN it, both
-        // ways: the literal derived value, and the predicate's two sides of
-        // the boundary. `R4133_DISPLAY_FLOOR`'s doc carries the derivation.
+        // The display floor, at the ONE function it widens. This says what is
+        // IN the slot, both ways: the literal derived value, and the
+        // predicate's two sides of the boundary. `R4133_DISPLAY_FLOOR`'s doc
+        // carries the derivation.
         assert_eq!(
             R4133_DISPLAY_FLOOR,
             Some(2e-4),
-            "RP2.4's derived floor: 3.110x above the worst display cell \
-             (load.pf, 6.431124e-05) and 6.874x under the nearest row above the \
-             empty band (storagecontroller.kwneed, 1.374769e-03)"
+            "the display floor derived from the vendored census: inside the empty band \
+             between the worst display cell and the nearest genuine divergence"
         );
         // The boundary, both ways, in the shape the mechanism produces: OUR
         // long value against the oracle's shorter render of it (1000.19 printed
@@ -3776,11 +3648,10 @@ mod tests {
     }
 
     /// **The five shipped rows fold exactly their cited census spellings, and
-    /// nothing else** (RP2.2). The census population, pair by pair
+    /// nothing else.** The census population, pair by pair
     /// (`examples_full.txt`): `vsource.scantype`/`sequence` `'Positive'` vs
-    /// `'Pos'` (2 042 cells each), `isource.scantype` `'Positive'`/`'pos'` 136
-    /// and `'Zero'`/`'zero'` 1, `isource.sequence` `'Positive'`/`'pos'` 118 and
-    /// `'Negative'`/`'neg'` 19.
+    /// `'Pos'`, `isource.scantype` `'Positive'`/`'pos'` and `'Zero'`/`'zero'`,
+    /// `isource.sequence` `'Positive'`/`'pos'` and `'Negative'`/`'neg'`.
     #[test]
     fn enumsynonym_folds_the_shipped_scan_and_sequence_spellings() {
         // Accept — every census cell of all four pairs.
@@ -3871,8 +3742,7 @@ mod tests {
     /// The literal `assert_eq!`s below are the second half of the guarantee.
     /// Injectivity plus the accept/refuse test only constrain entries that fold
     /// *something in today's frozen population*; an entry that folds nothing
-    /// today — the RP2.1 audit's major finding, one level down — changes no
-    /// other test and would ship green. Pinning each map's exact contents is
+    /// today changes no other test and would ship green. Pinning each map's exact contents is
     /// what makes a widening entry a reviewed diff. All three maps are pinned,
     /// and [`NORM_ENUM_SYNONYM_ROWS`] closes the set of rows that may carry one.
     #[test]
@@ -3921,13 +3791,12 @@ mod tests {
         // contents — the trap DISCRIMINATION 3 above pins that behaviorally,
         // this pins it structurally. The third map is pinned for the reason the
         // doc gives: nothing else constrains an entry that folds nothing in
-        // today's frozen population. Both shapes were re-measured against these
-        // asserts (RP2.2 audit settlement): `("Rated", "ravg")` — r4133 *parses*
-        // `'ravg'` to ordinal 2 (`InvControl.pas:837`) while our `'Rated'` is
-        // ordinal 0 — reds on the mirror-injectivity assert above, and the
-        // injective-but-still-widening `("Vref", "vref")` reds here (the
-        // accept/refuse test catches that second one either way; the FIRST one
-        // is the audit's measured survivor and shipped the whole suite green).
+        // today's frozen population. Two widening shapes, checked against these
+        // asserts: `("Rated", "ravg")` (r4133 *parses* `'ravg'` to ordinal 2
+        // while our `'Rated'` is ordinal 0) reds on the mirror-injectivity
+        // assert above, and the injective-but-still-widening `("Vref", "vref")`
+        // reds here. The accept/refuse test catches the second one either way,
+        // but nothing else catches the first.
         assert_eq!(
             SCAN_TYPE_SYNONYMS,
             &[("Positive", "Pos"), ("Zero", "Zero")][..]
@@ -3951,7 +3820,7 @@ mod tests {
                 VOLTAGE_CURVEX_REF_SYNONYMS,
             ),
         ] {
-            let i = find_row(PROPS_NORM_R4133, class, prop).expect("an RP2.2 row");
+            let i = find_row(PROPS_NORM_R4133, class, prop).expect("an EnumSynonym row");
             assert_eq!(
                 PROPS_NORM_R4133[i].rule,
                 EnumSynonym(want),
@@ -3992,7 +3861,7 @@ mod tests {
         );
     }
 
-    /// The offline query part C's replay reads: same verdicts as the live seam,
+    /// The offline query the replay reads: same verdicts as the live seam,
     /// naming the row that claimed the cell — and no counter moved by it (the
     /// liveness assert stays silent, i.e. the replay cannot forge live
     /// coverage).
@@ -4100,10 +3969,10 @@ mod tests {
                 "66.66",
                 Some("echo-row"),
             ),
-            // **The chain's fourth link** (RP2.4): a pair with no row of either
-            // table, claimed by the floor alone. The worst cell it takes
-            // (`load.pf`, 6.431124e-05) and a matrix render, so the census
-            // disposition is exercised on both shapes.
+            // **The chain's fourth link**: a pair with no row of either table,
+            // claimed by the floor alone. The worst cell it takes (`load.pf`)
+            // and a matrix render, so the census disposition is exercised on
+            // both shapes.
             (
                 "Load",
                 "pf",
@@ -4144,7 +4013,7 @@ mod tests {
                 "{class}.{prop}: the seam and the offline chain disagree"
             );
         }
-        // The LAST link carries RP2.4's derived value, read back from the
+        // The LAST link carries the derived floor, read back from the
         // shipped slot rather than restated — and it is asked on a pair with no
         // echo row, or the echo link would answer first.
         assert_eq!(display_floor(), Some(2e-4));
@@ -4173,7 +4042,7 @@ mod tests {
         );
         // …and the mechanism clause at the chain's last link: 1.9e-5, well
         // inside the floor, refused because six printed digits cannot be a
-        // render of `0.1` (RP2.4 audit settlement).
+        // render of `0.1`.
         assert_eq!(
             claim_value(
                 PropsChannel::R4133,
@@ -4197,9 +4066,7 @@ mod tests {
         );
     }
 
-    /// **The display floor's metric, decomposed** (RP2.4) — the successor of
-    /// RP2.1's floor-slot placeholder, which only asserted that the slot was
-    /// empty.
+    /// **The display floor's metric, decomposed.**
     ///
     /// [`display_rel`] is what decides whether a cell is a *numeric* divergence
     /// at all, and the floor can never be wider than that decision. Each block
@@ -4258,9 +4125,8 @@ mod tests {
         }
         // The **skeleton** clause, on its own: same count of numbers, same
         // values even, and a different non-numeric skeleton. Without these two
-        // rows the block above proves only the count and emptiness clauses —
-        // every one of its seven pairs is rejected by one of those (RP2.4 audit
-        // round, `display_rel`'s skeleton clause was untested).
+        // rows the block above proves only the count and emptiness clauses:
+        // every one of its pairs is rejected by one of those.
         for (rust, oracle) in [("[ 400]", "400"), ("1 kV", "1 kW")] {
             assert_eq!(
                 display_rel(rust, oracle),
@@ -4273,12 +4139,11 @@ mod tests {
         assert_eq!(display_rel("0.001", "0.0"), Some(1.0));
         assert!(display_rel("0.747651914485831", "0.7484477").expect("numeric") > 2e-4);
         assert!(!under_display_floor("0.747651914485831", "0.7484477"));
-        // The mechanism clause, at the metric: a REAL census spelling 1.2e-6
-        // apart — deep inside the floor, and refused, because r4133 prints
-        // `load.kva` with `Format('%-g')` — 15 digits, `PCElements/Load.pas:2352`
-        // — while its own kVA is recomputed from an already round-tripped `pf`.
-        // The gap is a state difference, not a render (RP2.4 audit settlement;
-        // this spelling is one of RP3.9's 55).
+        // The mechanism clause, at the metric: a REAL census spelling deep
+        // inside the floor, and refused, because r4133 prints `load.kva` at
+        // full precision while its own kVA is recomputed from an already
+        // round-tripped `pf`. The gap is a state difference, not a render
+        // (`props_r4133_replay::RP39_ROUTING` holds the spelling).
         let rel = display_rel("105.263157894737", "105.26302971129").expect("numeric");
         assert!(rel < 2e-4 && rel > 1e-6, "{rel:e}");
         assert!(!display_is_render("105.263157894737", "105.26302971129"));
@@ -4320,8 +4185,8 @@ mod tests {
         // …and the POLICY reaches the counting seam, not the offline twin —
         // the arm that makes these two numbers "what the gate saw". Swapping
         // `PropsPolicy::under_display_floor` for `props_norm::under_display_floor`
-        // leaves every other assertion in the file green (RP2.4 audit round,
-        // mutation m4); this is where it dies.
+        // leaves every other assertion in the file green. This is where it
+        // dies.
         let policy = crate::harness::PropsPolicy::for_channel(PropsChannel::R4133);
         assert!(policy.under_display_floor("0.747651914485831", "0.7477"));
         let (v2, h2) = display_floor_counters();
@@ -4332,16 +4197,16 @@ mod tests {
         assert_eq!(seam_touches_here().floor, (t0.0 + 3, t0.1 + 2));
     }
 
-    /// **Capi-invariance of the measurement layer** (plan mechanic (b)).
+    /// **Capi-invariance of the measurement layer.**
     ///
     /// [`claim_value`] is asked about the rows of BOTH channels — the claims
     /// census annotates every census row it produced, on capi as well as r4133
     /// (`corpus_gate/props_census.rs`, `Row::annotate`). So the "capi is the
     /// identity" contract has to be a property of this function, not of the
     /// data: every cell the r4133 arm claims must come back `None` on capi, for
-    /// each live rule kind and for the RP2.4 floor's slot. The census's measured
-    /// "0 cells normalized on capi" is a statement about one capi population,
-    /// not about the contract.
+    /// each live rule kind and for the display floor's slot. The census's
+    /// measured "no cell normalized on capi" is a statement about one capi
+    /// population, not about the contract.
     #[test]
     fn the_capi_channel_claims_nothing() {
         for (class, prop, rust, oracle) in [
@@ -4349,18 +4214,16 @@ mod tests {
             ("Transformer", "Conn", "wye", "wye "),
             ("Line", "Ratings", "[ 400]", "[400,]"),
             ("SwtControl", "Normal", "closed", "[closed, ]"),
-            // RP2.3's link: an echo-excluded cell must stay a full compare on
+            // The echo link: an echo-excluded cell must stay a full compare on
             // capi. This one matters more than the folds above — capi is where
             // most of these rows' witness lives, so an echo row leaking onto
             // that channel would delete the very evidence it cites.
             ("RegControl", "Idle", "No", ""),
             ("Load", "Yearly", "day", ""),
-            // RP2.4's link: two numbers 1.14e-6 apart in the shape the
+            // The floor link: two numbers inside the floor in the shape the
             // mechanism produces (our full value, r4133's shorter render of
-            // it), which the r4133 arm claims `under-floor`. This row was
-            // written by RP2.1 as a slot guard ("`None` here must not depend on
-            // the floor being `None`") and RP2.4 is what turned it into a live
-            // channel statement.
+            // it), which the r4133 arm claims `under-floor`. `None` here must
+            // not depend on the floor being `None`.
             ("Load", "pf", "0.880001", "0.88"),
         ] {
             assert_eq!(
@@ -4584,15 +4447,14 @@ mod tests {
         ] {
             assert!(
                 !has_echo_row(class, prop),
-                "{class}.{prop} is a SilentReadOnly surface, not an echo — RP3.8's, not this \
+                "{class}.{prop} is a SilentReadOnly surface, not an echo, so not this \
                  table's (the capi `''` is harness::SKIP_PROPS group (g); the census rows \
                  are props_r4133_replay::RP38_SUPERSEDED)"
             );
         }
     }
 
-    /// **Every row carries a witness** — CLAUDE.md's exclusion discipline as a
-    /// test: an exclusion is only admissible paired with the thing that still
+    /// **Every row carries a witness**: the exclusion discipline as a test: an exclusion is only admissible paired with the thing that still
     /// holds the value. A `Capi` witness must name a positive case count (a
     /// zero would be the absence of a witness spelled as one), and a pin's name
     /// must be a real test identifier.
@@ -4644,8 +4506,7 @@ mod tests {
     /// **A `LiveSemanticsDiffer` row always names a pin.** The category claims
     /// the two engines mean different things and *ours is right* — capi
     /// agreement cannot carry that claim (capi is a numeric oracle, not the
-    /// behavioral authority), so the expected-value pin is mandatory. The names
-    /// are the tests RP2.3 part B2 lands.
+    /// behavioral authority), so the expected-value pin is mandatory.
     #[test]
     fn every_live_semantics_row_names_a_pin() {
         let named: Vec<(&str, &str, &str)> = PROPS_ECHO_R4133
@@ -4710,10 +4571,10 @@ mod tests {
                 "transformer_bh_arrays_render_empty_when_unset",
                 "windgen_dynout_renders_empty_when_unset",
             ],
-            "the expected-value pins the rows depend on — 20 from RP2.3 part B2, nine from \
-             its audit settlement for the rows exposed on r4133-only cases, RP3.3's \
-             generator.model (whose two cells are BOTH on r4133-only cases) and RF-D07-07's \
-             two GIC rows (exposed on the r4133-gated GIC decks)"
+            "the expected-value pins the rows depend on: the LiveSemanticsDiffer and \
+             no-capi-coverage rows, the rows exposed on r4133-only cases, generator.model \
+             (whose two cells are BOTH on r4133-only cases) and the two GIC rows (exposed \
+             on the r4133-gated GIC decks)"
         );
         assert_eq!(
             PROPS_ECHO_R4133
@@ -4723,7 +4584,7 @@ mod tests {
             66,
             "rows whose witness is (also) a pin"
         );
-        // …and the MAPPING, row by row (RF-D07-07). The two locks above hold the
+        // …and the MAPPING, row by row. The two locks above hold the
         // count and the name SET, so re-pointing a row at another pin that
         // already exists — `relay.action` at `fault_bus2_renders_the_live_terminal`,
         // say — kept every guard green while the row's value lost its holder.
@@ -4812,14 +4673,12 @@ mod tests {
 
     /// **A `Capi` witness must name a pair the capi channel really compares.**
     ///
-    /// [`EchoWitness::Capi`]'s `n` is a dated census number nothing can re-derive
+    /// [`EchoWitness::Capi`]'s `n` is a census number nothing can re-derive
     /// offline, so the type asserts only `n > 0`. That leaves one failure mode a
     /// test CAN close: a row claiming capi coverage for a pair the capi walk
     /// never reaches, because a `SKIP_PROPS` row masks its value, `PROPS_015X`
     /// drops it from the 0.14.5 capture, or the whole element is skipped there.
-    /// The RP2.3 rows behind those masks all carry `Pin` today — checked by hand
-    /// in part A's witness split, checked by the suite from here on (RP2.3 audit
-    /// settlement).
+    /// The rows behind those masks all carry `Pin`, and this test keeps it so.
     #[test]
     fn a_capi_witness_is_a_pair_the_capi_channel_can_compare() {
         for r in PROPS_ECHO_R4133 {
@@ -4850,16 +4709,16 @@ mod tests {
         }
     }
 
-    /// **Every row that masks cells on an `engines: "r4133"` case names a pin** —
-    /// plan mechanic (c)'s "r4133-only classes/**cases**" half, as a rule over
-    /// the measured population (RP2.3 audit settlement).
+    /// **Every row that masks cells on an `engines: "r4133"` case names a pin**:
+    /// the "r4133-only classes/**cases**" half of the witness obligation, as a
+    /// rule over the measured population.
     ///
     /// The capi channel does not run on those cases at all, so a `Capi(n)`
     /// witness — however large `n` is — says nothing about the cells the row
     /// masks there.
     ///
-    /// **What this guard does and does not prove about the numbers** (RP3.3
-    /// audit settlement). The pin obligation is the point, and it is per row.
+    /// **What this guard does and does not prove about the numbers.** The pin
+    /// obligation is the point, and it is per row.
     /// The counted columns are a measurement, held by three locks — the row
     /// count, the cell sum ([`R4133_ONLY_CELLS`]) and the case sum
     /// ([`R4133_ONLY_CASES`]) — plus
@@ -4907,7 +4766,7 @@ mod tests {
                 PROPS_ECHO_R4133[i].witness.pin().is_some(),
                 "{class}.{prop}: the row masks {cells} cell(s) on {cases} r4133-only case(s), \
                  where the capi channel never runs — a capi witness cannot hold that value, so \
-                 the row owes an expected-value pin (plan §1.2 mechanic (c))"
+                 the row owes an expected-value pin"
             );
         }
         // Sorted and unique, so a duplicate cannot hide a missing pin.
@@ -4920,10 +4779,10 @@ mod tests {
     }
 
     /// **The dormant-row exemption list is pinned literally**, like every other
-    /// closed set RP2.1/RP2.2 shipped.
+    /// closed set here.
     ///
     /// [`ECHO_ROWS_WITH_NO_IN_SCOPE_CELL`] switches off the only live anti-rot
-    /// guard of the 82 exclusions, one pair at a time; the literal keeps a third
+    /// guard of the exclusions, one pair at a time; the literal keeps a third
     /// entry from silently disarming the guard for another row.
     #[test]
     fn the_dormant_row_exemption_list_is_pinned() {
@@ -4942,7 +4801,7 @@ mod tests {
         }
     }
 
-    /// **The r4133-only-unexposed list is pinned literally** (RF-D07-07), for the
+    /// **The r4133-only-unexposed list is pinned literally**, for the
     /// reason the dormant list above is: an entry there exempts a row from the
     /// r4133-only pin obligation of [`ECHO_ROWS_ON_R4133_ONLY_CASES`], so adding
     /// one is a measured decision, never a tidy-up. The per-row class counts are
@@ -5015,7 +4874,7 @@ mod tests {
     /// count-locked, and every entry a shipped [`PROPS_NORM_R4133`] row. Its
     /// CONTENTS are the census's, re-derived both ways by `props_r4133_replay::
     /// the_norm_rows_with_no_in_scope_cell_are_exactly_the_declared_ones`; this
-    /// test guards the shape that derivation reads (RF-D07-07).
+    /// test guards the shape that derivation reads.
     #[test]
     fn the_norm_rows_with_no_in_scope_cell_are_well_formed() {
         assert_eq!(NORM_ROWS_WITH_NO_IN_SCOPE_CELL.len(), NORM_NO_IN_SCOPE_ROWS);
@@ -5047,7 +4906,7 @@ mod tests {
     /// totals can move between two statements here. What the globals are still
     /// asked, at the
     /// end and as `>=`, is the direction the thread-local cannot prove: that the
-    /// SHIPPED statics — the ones `assert_echo_rows_are_live` and RP4.1's live
+    /// SHIPPED statics — the ones `assert_echo_rows_are_live` and the live
     /// accounting read — are the pair this seam moved.
     #[test]
     fn the_echo_seam_counts_visits_and_hits() {
@@ -5074,8 +4933,8 @@ mod tests {
         ));
         assert_eq!(seam_touches_here().echo, (before.0 + 2, before.1 + 1));
         // A NARROWED row answers the same way for a spelling it does not carry
-        // — RP4.1 P1's whole point. `regcontrol.idle`'s row cites r4133's
-        // never-initialised `''` (RegControl.pas:291 + :1444-1459), so `'No'`
+        // (the point of narrowing). `regcontrol.idle`'s row cites r4133's
+        // never-initialised `''`, so `'No'`
         // vs `'Yes'` is a genuine flag divergence its citation does not explain:
         // it must be compared, and it is not a visit either.
         assert!(!echo_excluded_r4133("RegControl", "Idle", "No", "Yes"));
@@ -5092,15 +4951,15 @@ mod tests {
         );
     }
 
-    /// **The carve-out takes exactly its cited cell out of the row** — the
-    /// narrowing valve of the RP2.3 audit settlement, in both directions.
+    /// **The carve-out takes exactly its cited cell out of the row**, the
+    /// narrowing valve, in both directions.
     ///
-    /// `reactor.kvar`'s row cites the frozen `'1200'` default; the pair's 607th
-    /// census cell is r4133's own live `MakePosSequence` round-trip
-    /// (`Reactor.pas:1145-1201`, `kvar=%-.5g` through the parser) and is not an
-    /// echo at all. A pair-scoped row would have masked it — that is exactly the
-    /// "mask wider than its citation" this valve exists to prevent — so the cell
-    /// leaves the exclusion and RP2.4's display floor inherits it.
+    /// `reactor.kvar`'s row cites the frozen `'1200'` default. One census cell of
+    /// the pair is r4133's own live `MakePosSequence` round-trip (a
+    /// five-significant-digit `kvar=` through the parser) and is not an echo at
+    /// all. A pair-scoped row would mask it, which is exactly the "mask wider
+    /// than its citation" this valve exists to prevent, so the cell leaves the
+    /// exclusion and the display floor inherits it.
     #[test]
     fn the_carve_out_takes_exactly_its_cited_cell_out_of_the_row() {
         assert_eq!(ECHO_CARVE_OUTS.len(), ECHO_CARVE_OUT_CELLS);
@@ -5139,8 +4998,8 @@ mod tests {
         }
     }
 
-    /// **The narrowed rows are well-formed, and they narrow** — the shape half
-    /// of RP4.1's precondition 1 (the *contents* are re-derived from the corpus
+    /// **The narrowed rows are well-formed, and they narrow**: the shape half
+    /// of the narrowing (the *contents* are re-derived from the corpus
     /// by `props_r4133_replay::
     /// the_narrowed_echo_rows_carry_exactly_the_spellings_the_typed_rules_leave`,
     /// which is the load-bearing proof; this one guards the invariants that
@@ -5176,8 +5035,8 @@ mod tests {
                 r.prop
             );
             // …and only on a MIXED pair, or on one of the closed list of pure
-            // pairs narrowed on purpose: the other 61 pure echo rows keep the
-            // pair scope plan §1.2 prescribes, so a narrowing there would be a
+            // pairs narrowed on purpose: the other pure echo rows keep the
+            // pair scope, so a narrowing there would be a
             // silent unmask with no typed rule and no recorded reason behind it.
             let mixed = find_row(PROPS_NORM_R4133, r.class, r.prop).is_some();
             let listed_pure = ECHO_NARROWED_PURE_PAIRS
@@ -5222,7 +5081,7 @@ mod tests {
                     oracle
                 ));
                 // Values match EXACTLY, and an unmeasured spelling on the same
-                // pair falls OUT — the inversion RP4.1 P1 owns.
+                // pair falls OUT: the inversion narrowing exists for.
                 assert!(!echo_excluded(
                     r.class,
                     r.prop,
@@ -5276,8 +5135,8 @@ mod tests {
         check_echo_rows_are_live(PROPS_ECHO_R4133, &vec![0; n], &vec![0; n]);
         check_echo_rows_are_live(PROPS_ECHO_R4133, &vec![9; n], &vec![4; n]);
         // Visited but excluding nothing — legitimate ONLY for the exempt rows.
-        // The 21 narrowed rows must carry a visit here, or the second arm
-        // (RP4.1 audit settlement) reports them instead: this run's seam ran.
+        // The narrowed rows must carry a visit here, or the second arm reports
+        // them instead: this run's seam ran.
         let mut visits = vec![0; n];
         let mut hits = vec![0; n];
         for (i, r) in PROPS_ECHO_R4133.iter().enumerate() {
@@ -5312,11 +5171,11 @@ mod tests {
         check_echo_rows_are_live(PROPS_ECHO_R4133, &visits, &hits);
     }
 
-    /// …and its firing direction (RP4.1 audit settlement): the seam ran, but
+    /// …and its firing direction: the seam ran, but
     /// one narrowed row's measured spellings never occurred — the rot the
     /// coverage gate made invisible to the `hits == 0` arm.
     ///
-    /// Driven on `load.yearly`, the largest of the 21 (23 measured spellings,
+    /// Driven on `load.yearly`, the largest of the narrowed rows (the most spellings,
     /// tens of thousands of live cells), so a zero there can only mean the row
     /// stopped matching, never a thin population.
     #[test]
@@ -5357,7 +5216,7 @@ mod tests {
 
     // ------------------------------------------- the global compare-ran guard
 
-    /// **The §RP4.1 global guard, proven silent where it must be** — the
+    /// **The global compare-ran guard, proven silent where it must be** — the
     /// direction a full-gate run takes.
     ///
     /// [`check_r4133_props_compare_ran`] is the rule behind

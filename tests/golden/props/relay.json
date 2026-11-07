@@ -2,7 +2,7 @@
  "schema": 1,
  "oracle": {
   "engine": "EPRI OpenDSS r4133 (v11.0.0.1 Charlottesville) via AltDSS Oddie; DSS-Python 0.16.0b2",
-  "note": "WP-U2.3 r4133 Relay per-phase rewrite (50->71 props). Values are the Rust r4133 renders; the props_roundtrip gate compares Rust output back to them, so this file is a REGRESSION PIN (self-consistency), not an independent oracle gate — genuine r4133 oracle coverage lives in the live controls-family relay decks (oracle:\"r4133\"). The load-bearing discrete state (Normal/State arrays incl. the first-char-only `trip`->unchanged case) plus SwitchedObj/RecloseIntervals/Enabled were spot cross-validated MANUALLY (non-CI) against oddie:r4133."
+  "note": "r4133 Relay per-phase surface (71 props). Values are the Rust r4133 renders. The props_roundtrip gate compares Rust output back to them, so this file is a REGRESSION PIN (self-consistency), not an independent OpenDSS gate: r4133 coverage lives in the live controls-family relay decks (engines \"r4133\"). The load-bearing discrete state (Normal/State arrays incl. the first-char-only `trip`->unchanged case) plus SwitchedObj/RecloseIntervals/Enabled were spot cross-validated MANUALLY (non-CI) against r4133 through Oddie."
  },
  "class": "relay",
  "scenarios": [

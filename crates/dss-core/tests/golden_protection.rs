@@ -1,25 +1,18 @@
-//! Phase 7 WP7.2 step-4 **protection** golden (PHASE7_PLAN §1 focused gate 3):
+//! **Protection** golden:
 //! command-replay trip/reclose sequences that pin the Fault + Recloser / Relay /
-//! Fuse / SwtControl control path against the pinned oracle
+//! Fuse / SwtControl control path against r4133
 //! (`tools/golden/gen_protection.py`). Each scenario builds a small radial
-//! feeder, drives the **ported** `mode=duty controlmode=time` control sweep (the
-//! corpus relay demos use dynamics mode, unported until WP7.7), solves step by
-//! step, and must match its file under `tests/golden/protection/` (one
-//! `<scenario>.json` per scenario; the gate runs every file in the dir):
-//!
-//!   (The recloser_temp/recloser_perm scenarios were retired in WP-U2.2, and
-//!   relay_current in WP-U2.3: the r4133 per-phase rewrites move their event-log
-//!   behavior off the 0.14.5 oracle — new per-phase wording + an unconditional
-//!   `Debug Sample` line (upstream r4133's — the port writes it under
-//!   `DebugTrace` since `GOLDEN_REBASE_PLAN.md` G2.2d) — so they are no longer
-//!   byte-golden-able against the
-//!   pinned 0.14.5 oracle; their coverage is now the live r4133 family gates
-//!   under `tests/corpus/controls/{recloser,relay}/`.)
+//! feeder, drives the `mode=duty controlmode=time` control sweep (the corpus
+//! relay demos use dynamics mode), solves step by step, and must match its file
+//! under `tests/golden/protection/` (one `<scenario>.json` per scenario; the
+//! gate runs every file in the dir). Recloser and relay coverage lives in the
+//! live r4133 family gates under `tests/corpus/controls/{recloser,relay}/`,
+//! since their r4133 per-phase event logs cannot match a 0.14.5 capture.
 //!   - fuse_blow:     per-phase fuse on tlink -> PHASE 3/2/1 BLOWN;
 //!   - swt_manual:    manual switch opened by a mid-run `edit ... action=open`
-//!     — pinned on **EPRI r4133** (`oracle: oddie:r4133`), where WP-U2.4 D6 makes
-//!     the deprecated `Action` force the actual state immediately (no queue/delay,
-//!     empty event log), unlike the r4088/0.14.5 queued form.
+//!     — pinned on **EPRI r4133** (`oracle: oddie:r4133`), where the deprecated
+//!     `Action` forces the actual state immediately (no queue/delay, empty event
+//!     log), unlike the r4088/0.14.5 queued form.
 //!
 //! Pins: per-step dblHour + iteration count + converged + node voltages (the
 //! feeder voltage collapses on every step the line is held open, so the voltage
@@ -227,15 +220,8 @@ fn protection_scenarios_match_oracle() {
     // Every protection device must stay represented, so a future edit can't
     // silently drop a device's trip/reclose coverage (mirrors the count guards in
     // golden_{timeseries_controls,metering_monitors,der_controls} and corpus_live's depth guard).
-    // NB: the recloser_temp/recloser_perm scenarios were retired in WP-U2.2 and
-    // relay_current in WP-U2.3 — the r4133 per-phase rewrites (event-log wording
-    // overhaul + unconditional Debug Sample line, upstream r4133's: the port
-    // writes it under DebugTrace since GOLDEN_REBASE_PLAN.md G2.2d, + inst-delay
-    // single-count) move
-    // their behavior off the pinned 0.14.5 oracle, so they are no longer
-    // byte-golden-able (§1.3-2). Their trip/reclose coverage lives in the live
-    // r4133 family gates (tests/corpus/controls/{recloser,relay}/*, oracle:
-    // "r4133").
+    // Recloser and relay trip/reclose coverage lives in the live r4133 family
+    // gates (tests/corpus/controls/{recloser,relay}/*).
     for must in ["fuse_blow", "swt_manual"] {
         assert!(
             scenarios.iter().any(|s| s.name == must),

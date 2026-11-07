@@ -1,5 +1,4 @@
-//! The InvControl control algorithm (WP7.5 step 2b — VOLTVAR; step 2c — VOLTWATT +
-//! the VV_VW combi mode): the DER fleet build (`MakeDERList`), `RecalcElementData`'s
+//! The InvControl control algorithm: the DER fleet build (`MakeDERList`), `RecalcElementData`'s
 //! deferred tail, `UpdateDERParameters` / `GetMonVoltage`, the per-mode `Sample`
 //! trigger logic, the `DoPendingAction` dispatch (volt-var / volt-watt / VV_VW),
 //! `UpdateInvControl` (the rolling-average feed), and the curve/clamp/convergence
@@ -38,15 +37,15 @@
 //! `Check_Qlimits`/`Check_Plimits` clamp, wired into the VOLTVAR / DRC / VV_DRC /
 //! VOLTWATT / VV_VW `DoPendingAction` branches).
 //!
-//! **Storage** in VOLTWATT/VV_VW is ported (WPG.10): `Calc_PBase`'s `%Available`
+//! **Storage** in VOLTWATT/VV_VW: `Calc_PBase`'s `%Available`
 //! base reads the live `TStorageObj.DCkW`, and `CalcPVWcurve_limitpu` selects the
 //! charge/discharge curve by `StorageState`/`FVWStateRequested`; the Storage
 //! `kWOut_Calc` requesting/limiting region does the actual biting.
 //!
-//! **GFM** (mode=7, WPG.13): the grid-forming protective arm — `CheckAmpsLimit`
+//! **GFM** (mode=7): the grid-forming protective arm — `CheckAmpsLimit`
 //! (sets `dynVars.IComp`, driving the `DoGFM_Mode` `BaseV` shrink) / `CheckOLInverter`
 //! in `Sample`, the overload-drops-GFM path in `DoPendingAction`. The Exponential
-//! `ControlModel` (the `TPICtrl` PI controller) is ported (WPG.9).
+//! `ControlModel` (the `TPICtrl` PI controller) is ported.
 //!
 //! [`StorageController`]: crate::elements::control::storage_controller
 //! [`InvDispatchEnv`]: InvDispatchEnv
@@ -181,11 +180,10 @@ pub(crate) trait InvDispatchEnv {
     fn der_is_pvsystem(&self, r: ElemId) -> bool;
     /// Pascal `DERElem.ComputeVTerminal` then `Vterminal[1..NPhases]` — the
     /// per-phase COMPLEX terminal voltages (used by `GetMonVoltage`; the delta
-    /// line-to-line difference needs the phasors, not just magnitudes — D4).
+    /// line-to-line difference needs the phasors, not just magnitudes).
     fn der_vterminal(&mut self, r: ElemId) -> Vec<Complex64>;
     /// `DERElem.Connection = TGeneralConnection.Delta` — the controlled DER is
-    /// delta-connected, so `GetMonVoltage` monitors line-to-line voltages
-    /// (dss_capi 0.15.x D4, `InvControl.pas` l.1647-1652).
+    /// delta-connected, so `GetMonVoltage` monitors line-to-line voltages.
     fn der_is_delta(&self, r: ElemId) -> bool;
     /// `ActiveCircuit.Buses[DERElem.terminals[0].busRef].kVBase * 1000` — the L-N
     /// base volts for the `FVpuSolution` per-unit (UpdateInvControl).
@@ -197,8 +195,7 @@ pub(crate) trait InvDispatchEnv {
     /// `NodeV[0]=0` out of range). `j` indexes the control's parsed `mon_buses`.
     fn mon_bus_node_v(&self, j: usize, node: i32) -> Complex64;
     /// The `j`-th `MonBus` name did not resolve to a real bus
-    /// (`ActiveCircuit.BusList.Find(FMonBuses[j]) = 0`) — dss_capi 0.15.x C8
-    /// (`InvControl.pas` l.1596): `GetMonVoltage` then aborts the solution
+    /// (`ActiveCircuit.BusList.Find(FMonBuses[j]) = 0`) — `GetMonVoltage` then aborts the solution
     /// (#2024112) rather than silently reading the ground node.
     fn mon_bus_unresolved(&self, j: usize) -> bool;
     /// Pascal `DSS.SetSolutionAbort(true)` — stop the solve (the invalid-`MonBus`
@@ -260,8 +257,7 @@ pub(crate) trait InvDispatchEnv {
     /// `DERElem.Get_Presentkvar`.
     fn der_present_kvar(&self, r: ElemId) -> f64;
     /// `PVSys/Storage.Set_Variable(idx, value)` — the mode-3 monitor state vars
-    /// (`5`=FVreg, `7`/`16`=FVVOperation). Unobservable until the mode-3 monitor
-    /// body lands (WP7.7); ported for fidelity.
+    /// (`5`=FVreg, `7`/`16`=FVVOperation).
     fn der_set_monitor_var(&mut self, r: ElemId, kind: MonitorVar, value: f64);
 
     // --- control queue / event log / scalars ---
@@ -491,7 +487,7 @@ impl InvControl {
             // The complex per-bus monitored voltages (Pascal `cBuffer[0..len-1]`).
             let mut cbuffer: Vec<Complex64> = Vec::with_capacity(self.mon_buses.len());
             for j in 0..self.mon_buses.len() {
-                // dss_capi 0.15.x C8 (l.1596-1601): a `MonBus` name that does not
+                // A `MonBus` name that does not
                 // resolve to a real bus aborts the solve (#2024112) instead of
                 // silently reading the ground node's zero voltage.
                 if env.mon_bus_unresolved(j) {
@@ -530,7 +526,7 @@ impl InvControl {
         // per-node complex buffer `cBuffer[1..numNodes]`, then reduce by
         // `MonVoltageCalc`. For a WYE DER `cBuffer[j] = Vterminal[j]`; for a DELTA
         // DER it is the line-to-line difference `Vterminal[j] -
-        // Vterminal[NextDeltaPhase(j)]` (dss_capi 0.15.x D4). `NextDeltaPhase(j)`
+        // Vterminal[NextDeltaPhase(j)]`. `NextDeltaPhase(j)`
         // is 1-based `j+1`, wrapping to 1 past `NCondsDER`.
         let vterm = env.der_vterminal(self.fleet[i]);
         let is_delta = env.der_is_delta(self.fleet[i]);
@@ -578,18 +574,13 @@ impl InvControl {
 
         // Mode / combi-mode gating. Every `TInvControlCombiMode` *and* every
         // `TInvControlControlMode` variant is ported, so neither the combi gate
-        // nor the single-mode `case` has a reject branch left (the pre-enum
-        // `_ => return Err(...)` arms covered only ordinals outside the closed
-        // sets, which the property boundary already rejected). Settler pass
-        // 2026-07-26 (audit-code finding 5): the combi gate survived the retype
-        // as a structurally-dead `if` guarding a stale "deferred to WP7.7 (GFM)"
-        // message — GFM has been ported since WPG.11. It is an exhaustive match
-        // now, so a NEW combi variant is a compile error here instead of a
-        // silent fall-through into the VV_VW path.
+        // nor the single-mode `case` has a reject branch. The combi gate is an
+        // exhaustive match, so a NEW combi variant is a compile error here instead
+        // of a silent fall-through into the VV_VW path.
         match self.combi_mode {
             InvCombiMode::NoneCombMode | InvCombiMode::VvVw | InvCombiMode::VvDrc => {}
         }
-        // Exponential ControlModel (WPG.9) runs the `TPICtrl` PI controller in the
+        // Exponential ControlModel runs the `TPICtrl` PI controller in the
         // VV / AVR / DRC / VV_DRC var-calc paths; VOLTWATT / WATTPF / WATTVAR are
         // model-independent. Both models are ported — no reject here.
         let control_iter = env.control_iteration();
@@ -661,7 +652,7 @@ impl InvControl {
     ) -> Result<(), String> {
         let r = self.fleet[i];
 
-        // Write the mode-3 monitor state (unobservable until WP7.7).
+        // Write the mode-3 monitor state.
         let vreg = self.f_vreg;
         let vv_op = self.ctrl_vars[i].f_vv_operation;
         env.der_set_monitor_var(r, MonitorVar::Vreg, vreg);
@@ -1910,15 +1901,12 @@ impl InvControl {
     pub(crate) fn update_inv_control(&mut self, env: &mut dyn InvDispatchEnv) {
         self.ensure_fleet(env); // lazy build (Pascal `if FDERPointerList.Count = 0`)
         // Advance the 2-slot buffer cursor **once per `UpdateInvControl` pass**,
-        // unconditionally — the dss_capi 0.15.x `InvControlDeltaV` fix (Pascal
-        // l.2524-2531, default `CompatFlags & InvControlDeltaV == 0`). 0.14.5 gated
-        // the bump on `(j=1) and (i=1)` where `i` is the InvControl's element-list
-        // index, so ONLY the first InvControl in the circuit ever advanced its
-        // cursor (leaving every other control's `voltagechangesolution` latched at
-        // 0 → wrong volt-var hysteresis). Each InvControl object here owns its own
-        // cursor and `update_all_inv_controls` calls this once per object per time
-        // step, so the per-control fix falls out naturally. Adopted; EPRI r4133
-        // keeps the 9-year-old bug (ledger L1, docs/upgrade/DIVERGENCES.md).
+        // unconditionally. Each InvControl object owns its own cursor and
+        // `update_all_inv_controls` calls this once per object per time step.
+        // r4133 advances the cursor only for the first InvControl in the
+        // circuit, which latches every other control's `voltagechangesolution`
+        // at 0 (wrong volt-var hysteresis), an OpenDSS bug this engine does not
+        // reproduce.
         if self.f_vpu_solution_idx == 1 {
             self.f_vpu_solution_idx = 0;
         } else {
@@ -1958,15 +1946,9 @@ impl InvControl {
             self.ctrl_vars[j].f_avr_operation = 0.0;
             self.ctrl_vars[j].f_delta_p_factor = DELTAPDEFAULT;
 
-            // Pascal `BasekV := FVBase / 1000.0` inside `with CtrlVars[j]` — the
-            // per-DER base voltage (dss_capi 0.15.x D2 cross-leak fix, l.2550).
-            // 0.14.5 read `CtrlVars[i].FVBase` where `i` is the InvControl's
-            // element-list index (its `//TODO: check (i, j)` bug), so DER #i's
-            // vbase leaked into every DER's monitored-bus renormalization; for a
-            // single control this collapsed to `CtrlVars[1]` = the first DER's
-            // vbase for all DERs. Now each DER uses its own `FVBase` — only
-            // observable for a heterogeneous-vbase fleet under `MonBus` (the
-            // renormalization site in `GetMonVoltage`); see ledger row D2.
+            // Each DER renormalizes by its own base voltage
+            // (`CtrlVars[j].FVBase`). This matters only for a heterogeneous-vbase
+            // fleet under `MonBus` (the renormalization site in `GetMonVoltage`).
             let basekv = self.ctrl_vars[j].f_vbase / 1000.0;
             self.ctrl_vars[j].prior_roll_avg_window = self.ctrl_vars[j].f_roll_avg_window.avg_val();
             self.ctrl_vars[j].prior_drc_roll_avg_window =
@@ -2103,7 +2085,7 @@ impl InvControl {
     }
 
     /// Pascal `Check_Qlimits(j, Q)` — clamp Q (pu) to the current kvar limit and,
-    /// (`pub(super)` for the D3 watt-priority sqrt-guard unit test).
+    /// (`pub(super)` for the watt-priority sqrt-guard unit test).
     /// under watt priority, the kVA-available headroom; records `FVVOperation`.
     pub(super) fn check_qlimits(&mut self, j: usize, q: f64) {
         let cv = &mut self.ctrl_vars[j];
@@ -2156,14 +2138,12 @@ impl InvControl {
             && (self.reac_power_ref == ReacPowerRef::VarMax
                 || self.control_mode == InvControlMode::WattPf)
         {
-            // dss_capi 0.15.x D3 (r4056, `InvControl.pas` l.3442-3446): guard
-            // `SQR(kVArating) - SQR(presentkW)` — a near-cancellation that can go
-            // tiny-NEGATIVE in f64 — against `Sqrt(<0) = NaN` by zeroing the
-            // radicand when `|radicand| < EPSILON`. `EPSILON` is Pascal
+            // Guard `SQR(kVArating) - SQR(presentkW)`, a near-cancellation that
+            // can go tiny-NEGATIVE in f64, against `Sqrt(<0) = NaN` by zeroing the
+            // radicand when `|radicand| < EPSILON`. `EPSILON` is
             // `DSSGlobals.EPSILON = 1e-12` (crate::util::EPSILON), NOT f64::EPSILON
-            // (~2.2e-16) — the same identifier also fixes the neighbouring
-            // `|Q_Ppriority| < epsilon` guard below (l.3456), which the r3723 port
-            // mis-mapped to f64::EPSILON.
+            // (~2.2e-16). The neighbouring `|Q_Ppriority| < epsilon` guard below
+            // uses the same identifier.
             let mut qavailable_sqr = cv.f_kva_rating.powi(2) - cv.f_present_kw.powi(2);
             if qavailable_sqr.abs() < EPSILON {
                 qavailable_sqr = 0.0;
@@ -2221,7 +2201,7 @@ impl InvControl {
     }
 
     /// Pascal `CalcVoltVar_vars(j)` — the convergence step → `QDesiredVV`. Linear
-    /// `ControlModel`; the Exponential branch runs the `TPICtrl` PI controller (WPG.9).
+    /// `ControlModel`; the Exponential branch runs the `TPICtrl` PI controller.
     fn calc_voltvar_vars(&mut self, j: usize) {
         if self.ctrl_vars[j].flag_change_curve {
             // Stay at the present var output level.
@@ -2416,7 +2396,7 @@ impl InvControl {
 
     /// Pascal `CalcAVR_vars(j)` — the AVR convergence step → `QDesiredAVR`. The
     /// Linear `ControlModel` uses the hard-coded 0.2 step (**not** `FdeltaQFactor`);
-    /// the Exponential branch runs the `TPICtrl` PI controller (WPG.9).
+    /// the Exponential branch runs the `TPICtrl` PI controller.
     fn calc_avr_vars(&mut self, j: usize) {
         let mut delta_q = {
             let cv = &self.ctrl_vars[j];

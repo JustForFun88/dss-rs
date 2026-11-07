@@ -1,4 +1,4 @@
-//! WP8.6 executive-tail verbs: `BatchEdit`, `MakeBusList`, `GISCoords`,
+//! Executive-tail verbs: `BatchEdit`, `MakeBusList`, `GISCoords`,
 //! `SetBusXY`, `Interpolate` — the dispatch + error surfaces (all messages
 //! oracle-probed 2026-07-07; the numeric behavior is gated by the
 //! `tests/corpus/modes` batchedit live compares and the
@@ -23,8 +23,8 @@ fn dss_with_loads() -> Dss {
 
 /// Pascal `DoBatchEditCmd`: the pattern is a regex matched case-insensitively
 /// and UNANCHORED (`TRegExpr` ModifierI + `Exec` = search anywhere), so `LA`
-/// hits la1/la2/xla1 but not lb1, and `^lb` (anchored) hits lb1 only. WP-U2.4
-/// E1 (r4133): every batchedit sets `GlobalResult := 'Elements edited: N'`.
+/// hits la1/la2/xla1 but not lb1, and `^lb` (anchored) hits lb1 only. Every
+/// batchedit sets the result `Elements edited: N`, as r4133 does.
 #[test]
 fn batchedit_selects_by_unanchored_case_insensitive_regex() {
     let mut dss = dss_with_loads();
@@ -41,7 +41,7 @@ fn batchedit_selects_by_unanchored_case_insensitive_regex() {
     assert_eq!(query(&mut dss, "load.la1.pf"), "0.92");
 }
 
-/// WP-U2.4: `batchedit ... where <conditionals>` filters the regex matches by
+/// `batchedit ... where <conditionals>` filters the regex matches by
 /// property comparisons before editing. Every case here is pinned against the
 /// official r4133 binary (probed 2026-07-17): the result string
 /// (`Elements edited: N`) and which loads changed. The load set:
@@ -304,7 +304,7 @@ fn interpolate_named_meter_errors() {
 }
 
 // ---------------------------------------------------------------------------
-// WP8.8 command-tail ports: Enable/Disable, SetkVBase, Losses, Summary, the
+// Command-tail verbs: Enable/Disable, SetkVBase, Losses, Summary, the
 // step-solution commands, Reconductor. Every pinned value/message below was
 // captured live from the pinned oracle (dss-python 0.15.7 / dss_capi 0.14.5)
 // on 2026-07-10 (IEEE13 fixture where one is compiled).
@@ -486,9 +486,8 @@ fn step_solution_commands_match_oracle_iterations() {
 /// Pascal `DoReconductorCmd` + `TraceAndEdit`: on metered IEEE13,
 /// `Line1=632670 Line2=692675 Linecode=mtx601` re-linecodes the whole
 /// traceback path 692675 → 671692 (the switch, previously bare) → 670671 →
-/// 632670, leaving branches off the path (632633) untouched. Oracle-probed
-/// 2026-07-10, including all seven error surfaces (#28701-28707; #28701 and
-/// #28706 added at the audit-tests settlement, both re-probed live).
+/// 632670, leaving branches off the path (632633) untouched. The test covers
+/// all seven error surfaces (#28701-28707).
 #[test]
 fn reconductor_traces_path_and_errors() {
     let mut dss = dss_with_ieee13();

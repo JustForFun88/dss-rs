@@ -3,8 +3,7 @@
 //! (`Version8/Source/PCElements/WindGen.pas`, `NumPropsThisClass = 44` at
 //! `:255`), not the un-vendored dss_capi 0.15.x "cleaned" rewrite — the class
 //! does not exist in the pinned 0.14.5 oracle at all, so it has **no capi
-//! channel** and its property table answers to r4133 alone
-//! (`R4133_PROPS_PLAN.md` §RP1.3).
+//! channel** and its property table answers to r4133 alone.
 //!
 //! WindGen is a `Generator`-shaped negative-load PC element with two twists:
 //! its steady-state real power comes from an **aerodynamic** `P(v³·Cp)` curve
@@ -16,10 +15,9 @@
 //! r4133 dispatches seven power-flow models (`WindGen.pas:2109-2118`); **five**
 //! are ported — const-PQ / const-Z / const-P fixed-Q / const-P fixed-X
 //! (1/2/4/5) plus the **user-written model 6** (`DoUserModel`, `:1875-1898`),
-//! which runs over the sandboxed WASM host ([`user_model`],
-//! `WASM_USERMODELS_PLAN.md` WM.3 shape). Models 3 (`DoPVTypeGen`) and 7
-//! (`DoCurrentLimitedPQ`) stay out — no corpus deck sets them and no plan owns
-//! them (§1.3, `ORPHANED_GAPS.md`). Harmonics mode is **disabled upstream** (a
+//! which runs over the sandboxed WASM host ([`user_model`]). Models 3
+//! (`DoPVTypeGen`) and 7 (`DoCurrentLimitedPQ`) stay out — no corpus deck sets
+//! them. Harmonics mode is **disabled upstream** (a
 //! loud abort), reproduced 1:1.
 //!
 //! `ShaftModel`/`ShaftData` are deliberately **absent**: r4133 carries the
@@ -135,7 +133,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::bus("Bus1", 1),
         PropDef::double("kV").flags(PropFlags::NON_NEGATIVE | PropFlags::FINITE_BASE),
-        // L2 (DIVERGENCES.md): WindGen `kW`/`kVA`/`MVA` all carry the EPRI
+        // WindGen `kW`/`kVA`/`MVA` all carry the EPRI
         // `DblValueNZ` band-clamp (`REPLACE_ZERO`, applied unconditionally). The
         // dss_capi `NonZero` strict-error surface is NOT adopted (dss-ext-only).
         PropDef::double("kW").flags(PropFlags::REPLACE_ZERO),
@@ -152,13 +150,14 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("VMaxpu"),
         PropDef::double("kVA").flags(PropFlags::REPLACE_ZERO | PropFlags::FINITE_BASE),
         // `MVA` = `DblValueNZ * 1000` (WindGen.pas:638, scale 1000): unlike
-        // Generator's `MVA` (plain `DblValue`), WindGen's MVA also clamps — L2.
+        // Generator's `MVA` (plain `DblValue`), WindGen's MVA also clamps.
         PropDef::double("MVA")
             .scale(1000.0)
             .flags(PropFlags::REPLACE_ZERO | PropFlags::REDUNDANT | PropFlags::FINITE_BASE)
             .redundant_with(prop::KVA),
         // User-written model 6 over WASM (`WindGen.pas:391-395`, Edit arms
-        // `:641-642`). Same §2.4 activation rule as Generator's pair: a value
+        // `:641-642`). Same activation rule as Generator's pair
+        // (`docs/wasm/USERMODEL_ABI.md` §5): a value
         // resolving to an existing `.wasm` loads through `dss-usermodel`
         // (sandboxed wasmi); anything else (a native-DLL name, a missing file)
         // warns non-fatally (#570/#569) and leaves the slot absent. Never a

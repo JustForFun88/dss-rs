@@ -15,7 +15,7 @@ use crate::report::export::for_each_enabled_elem;
 ///
 /// Pascal `WriteNodeList` guards each element on `IsSolved` (error 222001) and
 /// exits early, so an **unsolved** circuit yields a header-only file; the router
-/// records the 222001 error once (PHASE8_PLAN §1 — no silent fake output).
+/// records the 222001 error once (no silent fake output).
 pub(crate) fn export_node_order(classes: &mut [DssClass], ckt: &Circuit) -> String {
     let mut s = String::from("Element, Nterminals, Nconductors, Node-1, Node-2, Node-3, ...\n");
     if !ckt.is_solved {
@@ -27,7 +27,7 @@ pub(crate) fn export_node_order(classes: &mut [DssClass], ckt: &Circuit) -> Stri
         let (nterms, nconds) = (cd.nterms, cd.nconds);
         // Pascal `Format('"%s", %d, %d', [CktElementName, Nterms, Nconds])` — the
         // full name (`Class.Name`, original case) quoted; identifiers compare
-        // case-insensitively (PHASE8_PLAN §2.3).
+        // case-insensitively.
         s.push_str(&format!("\"{name}\", {nterms}, {nconds}"));
         for i in 0..nconds * nterms {
             // The bus-local node number of each conductor: 0 for ground and for

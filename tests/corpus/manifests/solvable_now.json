@@ -1,12 +1,12 @@
 {
- "comment": "Entry points both engines solve; live-compared by corpus_gate.rs. Fields: path, kind(micro|feeder|large), post[], n_steps, selected_elements[]. WP8.5b property parity (every element's every property, Rust ?-surface vs oracle Properties(p).Val): gated automatically for pinned-capi feeder/micro-kind decks; the heavy large-kind decks (8500-Node/ckt5/EPRI/IEEE123/ADiakoptics/4Bus-YYD) and target-rev cases stay OFF in the mandatory gate (too slow / different-engine property format) and are swept by the DSS_LIVE_PROPS=1 corpus_live_properties pilot, which proved the whole corpus clean. Comparability exclusions: the test harness's SKIP_PROPS + TOLERANCE_NOTES.md.",
+ "comment": "Entry points both engines solve; live-compared by corpus_gate.rs. Fields: path, kind(micro|feeder|large), post[], n_steps, selected_elements[]. Property parity (every element's every property, Rust ?-surface vs OpenDSS Properties(p).Val): gated automatically for pinned-capi feeder/micro-kind decks; the heavy large-kind decks (8500-Node/ckt5/EPRI/IEEE123/ADiakoptics/4Bus-YYD) and target-rev cases stay OFF in the mandatory gate (too slow / different-engine property format) and are swept by the DSS_LIVE_PROPS=1 corpus_live_properties pilot, which proved the whole corpus clean. Comparability exclusions: the test harness's SKIP_PROPS.",
  "cases": [
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE118Bus/master_file.dss",
    "engines": "r4133",
    "kind": "large",
    "n_steps": 1,
-   "note": "PROMOTED 2026-07-26 (ORPHANED_GAPS 1.6, NCIM r4133 switching cadence). 354-node 138 kV transmission network solved with `set algorithm=NCIM` and model=3 (voltage-regulating) generators whose maxkvar/minkvar Q-limits are ENFORCED (`IgnoreGenQLimits=Yes` is commented out), so it lives or dies on the NCIM PV<->PQ switching cadence. The pinned 0.14.5 oracle predates NCIM entirely (capi_v0145 cannot gate it), and the retired capi015 r4103 cadence -- which the port reproduced loop-for-loop -- ran the PQ->PV test unconditionally every pass, so the generators chattered PV<->PQ around |V| = VTarget and BOTH capi015 and the port stalled at 100 iterations on the (physically correct) fixpoint. Adopting r4133's `if GenModel = 3 ... else ...` mutually-exclusive cadence (Solution.pas l.2059/2166) makes the port converge in EXACTLY r4133's 9 cold iterations at the same node voltages (89_CLINCHRV.1 80072.708834, 1_RIVERSDE.1 76088.991977, 4_NWCARLSL.1 79514.988474; live epri-worker probe 2026-07-26, r4133 warm-resolve 2 iters). LIVE-gated on r4133 with no ledger entry."
+   "note": "NCIM r4133 switching cadence. 354-node 138 kV transmission network solved with `set algorithm=NCIM` and model=3 (voltage-regulating) generators whose maxkvar/minkvar Q-limits are ENFORCED (`IgnoreGenQLimits=Yes` is commented out), so it lives or dies on the NCIM PV<->PQ switching cadence. dss_capi 0.14.5 has no NCIM (capi_v0145 cannot gate it). dss_capi 0.15.0b4 (r4103) runs the PQ->PV test unconditionally every pass, so its generators chatter PV<->PQ around |V| = VTarget and stall at 100 iterations on the (physically correct) fixpoint. r4133's `if GenModel = 3 ... else ...` mutually-exclusive cadence, which this engine follows, converges in r4133's 9 cold iterations at the same node voltages (89_CLINCHRV.1 80072.708834, 1_RIVERSDE.1 76088.991977, 4_NWCARLSL.1 79514.988474; live epri-worker probe 2026-07-26, r4133 warm-resolve 2 iters). LIVE-gated on r4133 with no ledger entry."
   },
   {
    "path": "Test/indmachtest/Master.DSS",
@@ -22,7 +22,7 @@
    "kind": "feeder",
    "n_steps": 1,
    "expect_warnings": ["Not Loaded"],
-   "note": "SKIPPED-SWEEP settle (2026-07-12): same class as Test/indmachtest — Generator model=6, unvendored UserModel=IndMach012a. Both engines warn-and-solve (safe Rust falls back to Yprim-only + non-fatal #567 each iter, discarded; one compile-time #570 'Not Loaded' = expect_warnings; pinned 0.14.5 oracle runs EarlyAbort off + user-model errnos tolerated via warn_and_continue). The prior park cited a '3 vs 2 iteration' gap; that compared Rust COLD (the deck's internal compile-time Solve, 3 iters) against the oracle WARM re-solve (2). Measured symmetrically BOTH engines are cold 3 / warm 2, and the harness (compile + explicit solve) compares the WARM re-solve: 2 == 2. Warm node V bit-identical (SOURCEBUS.1 7200.002150; all 12 nodes agree to 6+ figures across both engines)."
+   "note": "Same class as Test/indmachtest: Generator model=6, unvendored UserModel=IndMach012a. Both engines warn-and-solve (this engine falls back to Yprim-only + a non-fatal #567 each iteration, discarded; one compile-time #570 'Not Loaded' = expect_warnings; dss_capi 0.14.5 runs EarlyAbort off + user-model errnos tolerated via warn_and_continue). The deck's internal compile-time Solve takes 3 iterations cold. Measured symmetrically (2026-07-12) BOTH engines are cold 3 / warm 2, and the harness (compile + explicit solve) compares the WARM re-solve: 2 == 2. Warm node V bit-identical (SOURCEBUS.1 7200.002150; all 12 nodes agree to 6+ figures across both engines)."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4wire-Delta/Kersting4wire_Leading.dss",
@@ -30,7 +30,7 @@
    "kind": "feeder",
    "n_steps": 1,
    "expect_warnings": ["Not Loaded"],
-   "note": "SKIPPED-SWEEP settle (2026-07-12): same class as Kersting4wire_Lagging — Generator model=6, unvendored UserModel=IndMach012a, warn_and_continue oracle path. The prior '3 vs 2 iteration' park was Rust COLD (3) vs oracle WARM (2); measured symmetrically both engines are cold 3 / warm 2 and the harness compares the WARM re-solve 2 == 2. Warm node V bit-identical (SOURCEBUS.1 7199.557591; all 12 nodes agree to 6+ figures on both engines)."
+   "note": "Same class as Kersting4wire_Lagging: Generator model=6, unvendored UserModel=IndMach012a, warn_and_continue path. Measured symmetrically (2026-07-12) BOTH engines are cold 3 / warm 2, and the harness (compile + explicit solve) compares the WARM re-solve: 2 == 2. Warm node V bit-identical (SOURCEBUS.1 7199.557591; all 12 nodes agree to 6+ figures on both engines)."
   },
   {
    "path": "Version8/Distrib/Examples/Stevenson/StevensonPflow.dss",
@@ -98,7 +98,7 @@
    "kind": "large_near_ideal_source",
    "n_steps": 1,
    "compare_derived": true,
-   "note": "G1.3a OPT-IN (2026-09-04): `compare_derived` on despite `kind=large_near_ideal_source` — the `large*` cost guard in `scheduler::force_derived` does not apply to an 8-element deck, and this is one of exactly two decks the fastdss reference harness SKIPS `Residuals` on (`.inputs/DSS-Python` `origin/fastdss` `tests/compare_outputs.py:56-59`, \"Close enough for the system\"). Gating it is where our comparator is strictly stronger than the harness we are reaching parity with. Pinned in Rust as `scheduler::DERIVED_MANIFEST_OPT_INS`."
+   "note": "`compare_derived` on despite `kind=large_near_ideal_source`: the `large*` cost guard in `scheduler::force_derived` does not apply to a 8-element deck, and this is one of exactly two decks the DSS-Python fastdss reference harness SKIPS `Residuals` on (\"Close enough for the system\"). Gating it makes this comparator strictly stronger than that harness. Pinned in Rust as `scheduler::DERIVED_MANIFEST_OPT_INS`."
   },
   {
    "path": "Test/AutoTrans/AutoAuto.dss",
@@ -112,7 +112,7 @@
    "kind": "large_near_ideal_source",
    "n_steps": 1,
    "compare_derived": true,
-   "note": "G1.3a OPT-IN (2026-09-04): `compare_derived` on despite `kind=large_near_ideal_source` — the `large*` cost guard in `scheduler::force_derived` does not apply to a 5-element deck, and this is one of exactly two decks the fastdss reference harness SKIPS `Residuals` on (`.inputs/DSS-Python` `origin/fastdss` `tests/compare_outputs.py:56-59`, \"Close enough for the system\"). Gating it is where our comparator is strictly stronger than the harness we are reaching parity with. Pinned in Rust as `scheduler::DERIVED_MANIFEST_OPT_INS`."
+   "note": "`compare_derived` on despite `kind=large_near_ideal_source`: the `large*` cost guard in `scheduler::force_derived` does not apply to a 5-element deck, and this is one of exactly two decks the DSS-Python fastdss reference harness SKIPS `Residuals` on (\"Close enough for the system\"). Gating it makes this comparator strictly stronger than that harness. Pinned in Rust as `scheduler::DERIVED_MANIFEST_OPT_INS`."
   },
   {
    "path": "Test/BundleDemo.DSS",
@@ -184,7 +184,7 @@
    "kind": "feeder",
    "n_steps": 1,
    "isolate": true,
-   "note": "UNIFIED_GATE Phase D: persistent-worker file-backed-loadshape/asset contamination — a pooled worker (either channel) intermittently returns a stale value (~1e-3) for this asset deck while the Rust engine is stable; a fresh one-shot worker always matches. Same class as shape_mmf/shape_filearr (R2/§3.3)."
+   "note": "Persistent-worker file-backed-loadshape/asset contamination: a pooled worker (either channel) intermittently returns a stale value (~1e-3) for this asset deck while this engine is stable, and a fresh one-shot worker always matches. Same class as shape_mmf/shape_filearr."
   },
   {
    "path": "Test/IEEE13_CDPSM.dss",
@@ -192,7 +192,7 @@
    "kind": "large",
    "n_steps": 1,
    "isolate": true,
-   "note": "UNIFIED_GATE Phase D isolate: shares the IEEE13Nodeckt geometry/loadshape assets whose file-backed data a persistent pooled worker intermittently misreads across `clear` (~1e-3 node-V); runs one-shot each engine execution (same class as IEEE13_Assets/shape_mmf, R2/§3.3)."
+   "note": "Isolated: shares the IEEE13Nodeckt geometry/loadshape assets whose file-backed data a persistent pooled worker intermittently misreads across `clear` (~1e-3 node-V), so it runs one-shot each engine execution (same class as IEEE13_Assets/shape_mmf)."
   },
   {
    "path": "Test/IEEE13_LineAndCableSpacing.dss",
@@ -200,7 +200,7 @@
    "kind": "feeder",
    "n_steps": 1,
    "isolate": true,
-   "note": "UNIFIED_GATE Phase D isolate: shares the IEEE13Nodeckt geometry/cable/loadshape assets whose file-backed data a persistent pooled worker intermittently misreads across `clear` (~1e-3 node-V); runs one-shot each engine execution (same class as IEEE13_Assets/shape_mmf, R2/§3.3). (r4133 channel is separately `skip`ped for the #303 crash.)"
+   "note": "Isolated: shares the IEEE13Nodeckt geometry/cable/loadshape assets whose file-backed data a persistent pooled worker intermittently misreads across `clear` (~1e-3 node-V), so it runs one-shot each engine execution (same class as IEEE13_Assets/shape_mmf). (The r4133 channel is separately `skip`ped for the #303 crash.)"
   },
   {
    "path": "Test/IEEE13_LineGeometry.dss",
@@ -208,7 +208,7 @@
    "kind": "feeder",
    "n_steps": 1,
    "isolate": true,
-   "note": "UNIFIED_GATE Phase D: r4133 persistent-worker state contamination — under high parallelism a pooled epri-worker reused across dirs leaks a prior deck's Set option that `clear` does not reset, perturbing this LineGeometry solve (~1e-3). Matches both channels cleanly one-shot; isolate runs it on a throwaway worker (R2/§3.3)."
+   "note": "r4133 persistent-worker state contamination: under high parallelism a pooled epri-worker reused across dirs leaks a prior deck's Set option that `clear` does not reset, perturbing this LineGeometry solve (~1e-3). Matches both channels cleanly one-shot, and isolate runs it on a throwaway worker."
   },
   {
    "path": "Test/IEEE13_LineSpacing.dss",
@@ -216,7 +216,7 @@
    "kind": "feeder",
    "n_steps": 1,
    "isolate": true,
-   "note": "UNIFIED_GATE Phase D isolate: shares the IEEE13Nodeckt geometry/loadshape assets whose file-backed data a persistent pooled worker intermittently misreads across `clear` (~1e-3 node-V); runs one-shot each engine execution (same class as IEEE13_Assets/shape_mmf, R2/§3.3). (r4133 channel is separately `skip`ped for the #303 crash.)"
+   "note": "Isolated: shares the IEEE13Nodeckt geometry/loadshape assets whose file-backed data a persistent pooled worker intermittently misreads across `clear` (~1e-3 node-V), so it runs one-shot each engine execution (same class as IEEE13_Assets/shape_mmf). (The r4133 channel is separately `skip`ped for the #303 crash.)"
   },
   {
    "path": "Test/IEEE13_SpacingGeometry.dss",
@@ -224,7 +224,7 @@
    "kind": "feeder",
    "n_steps": 1,
    "isolate": true,
-   "note": "UNIFIED_GATE Phase D isolate: shares the IEEE13Nodeckt geometry/loadshape assets whose file-backed data a persistent pooled worker intermittently misreads across `clear` (~1e-3 node-V); runs one-shot each engine execution (same class as IEEE13_Assets/shape_mmf, R2/§3.3)."
+   "note": "Isolated: shares the IEEE13Nodeckt geometry/loadshape assets whose file-backed data a persistent pooled worker intermittently misreads across `clear` (~1e-3 node-V), so it runs one-shot each engine execution (same class as IEEE13_Assets/shape_mmf)."
   },
   {
    "path": "Test/IEEELineGeometry.dss",
@@ -232,7 +232,7 @@
    "kind": "feeder",
    "n_steps": 1,
    "isolate": true,
-   "note": "UNIFIED_GATE Phase D isolate: shares the IEEE13Nodeckt geometry/loadshape assets whose file-backed data a persistent pooled worker intermittently misreads across `clear` (~1e-3 node-V); runs one-shot each engine execution (same class as IEEE13_Assets/shape_mmf, R2/§3.3)."
+   "note": "Isolated: shares the IEEE13Nodeckt geometry/loadshape assets whose file-backed data a persistent pooled worker intermittently misreads across `clear` (~1e-3 node-V), so it runs one-shot each engine execution (same class as IEEE13_Assets/shape_mmf)."
   },
   {
    "path": "Test/LoadTest.DSS",
@@ -351,7 +351,7 @@
    "kind": "feeder",
    "n_steps": 1,
    "isolate": true,
-   "note": "UNIFIED_GATE Phase D: r4133 persistent-worker state contamination — a pooled epri-worker reused across dirs occasionally leaves this winding-rewire deck non-convergent (plan §1.2 pre-seeded isolate candidate). Matches both channels one-shot; isolate = fresh worker (R2/§3.3)."
+   "note": "r4133 persistent-worker state contamination: a pooled epri-worker reused across dirs occasionally leaves this winding-rewire deck non-convergent. Matches both channels one-shot, and isolate runs it on a fresh worker."
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/Master_ckt5.dss",
@@ -388,7 +388,7 @@
    "kind": "feeder",
    "n_steps": 1,
    "engines": "r4133",
-   "note": "UNIFIED_GATE Phase D: kept r4133-only — flipping to both surfaces a wholesale capi_v0145 all-properties divergence on the zero-power loads (Loads_Only.dss defines kW=0 kvar=0 pf=0.9). SETTLED empirically 2026-07-18: this is the WP-U1.1 L2 REPLACE_ZERO upgrade (kW/kVA parsed in (-1e-8,1e-8) clamp to +1e-8, EPRI r4133 DblValueNZ default; prop_flags.rs REPLACE_ZERO), NOT a port bug — the port correctly follows r4133 (which is why M1 gates cleanly on r4133). On the 0.14.5 oracle kW stays 0 so LoadSpec kW_kvar leaves PFNominal=0.9; on the port kW=1e-8 makes kVA>0 so PFNominal=kW/kVA=1. The delta touches every zero-load's kw/kva/pf property strings (wholesale, not tightly fingerprintable) so per §4-D it stays single-channel with note cause rather than a ledger entry. Siblings J1/K1 gate capi cleanly."
+   "note": "r4133-only: the capi_v0145 channel shows a wholesale all-properties divergence on the zero-power loads (Loads_Only.dss defines kW=0 kvar=0 pf=0.9). Measured 2026-07-18: this engine follows r4133, where kW/kVA parsed in (-1e-8,1e-8) clamp to +1e-8 (the r4133 DblValueNZ default, prop_flags.rs REPLACE_ZERO). In dss_capi 0.14.5 kW stays 0, so LoadSpec kW_kvar leaves PFNominal=0.9, while here kW=1e-8 makes kVA>0 so PFNominal=kW/kVA=1. The delta touches every zero-load's kw/kva/pf property strings (wholesale, not tightly fingerprintable), so the case stays single-channel with this note rather than a ledger entry. Siblings J1/K1 gate dss_capi cleanly."
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS",
@@ -502,7 +502,7 @@
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS",
    "engines": "capi_v0145",
    "isolate": true,
-   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
+   "note": "Enables debugtrace (via its redirect chain), so a persistent OpenDSS worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear (measured in one pooled run: 5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit.",
    "kind": "large_ultra_switch",
    "n_steps": 1
   },
@@ -510,7 +510,7 @@
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss",
    "engines": "capi_v0145",
    "isolate": true,
-   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
+   "note": "Enables debugtrace (via its redirect chain), so a persistent OpenDSS worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear (measured in one pooled run: 5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit.",
    "kind": "large_ultra_switch",
    "n_steps": 1
   },
@@ -574,7 +574,7 @@
    "path": "Version8/Distrib/Examples/DOCTechNote/1_1.dss",
    "engines": "both",
    "isolate": true,
-   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
+   "note": "Enables debugtrace (via its redirect chain), so a persistent OpenDSS worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear (measured in one pooled run: 5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit.",
    "kind": "large_floating_zeroseq",
    "n_steps": 1
   },
@@ -582,7 +582,7 @@
    "path": "Version8/Distrib/Examples/DOCTechNote/1_2.dss",
    "engines": "both",
    "isolate": true,
-   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
+   "note": "Enables debugtrace (via its redirect chain), so a persistent OpenDSS worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear (measured in one pooled run: 5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit.",
    "kind": "large_floating_zeroseq",
    "n_steps": 1
   },
@@ -590,7 +590,7 @@
    "path": "Version8/Distrib/Examples/DOCTechNote/2_1.dss",
    "engines": "both",
    "isolate": true,
-   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
+   "note": "Enables debugtrace (via its redirect chain), so a persistent OpenDSS worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear (measured in one pooled run: 5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit.",
    "kind": "large_floating_zeroseq",
    "n_steps": 1
   },
@@ -598,7 +598,7 @@
    "path": "Version8/Distrib/Examples/DOCTechNote/2_2.dss",
    "engines": "both",
    "isolate": true,
-   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
+   "note": "Enables debugtrace (via its redirect chain), so a persistent OpenDSS worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear (measured in one pooled run: 5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit.",
    "kind": "large_floating_zeroseq",
    "n_steps": 1
   },
@@ -613,7 +613,7 @@
    "kind": "feeder",
    "n_steps": 1,
    "engines": "both",
-   "note": "Full DynamicExp dynamics swing (fault at HT, cleared by opening a line, 5 s undamped swing) driven by a DynamicExp shaft model. The BUG WP DynExp fix (reverted D14: SolveEq is the full RHS evaluator, matching the vendored 0.14.5 AND r4133 Pascal, not the retired capi015 0.15.x no-op) makes the port swing and match BOTH gating oracles: the generator rotor swings to theta 2.0362 rad / speed 0.6255 like the 0.14.5 oracle (was frozen at 0.72907 under D14). Gates on BOTH channels at the feeder tier floor with no ledger entry (the two oracles agree to ~4.8e-10; the port matches both). See DIVERGENCES.md §D14 and the generator_dynexp_dynamics_* unit gates."
+   "note": "Full DynamicExp dynamics swing (fault at HT, cleared by opening a line, 5 s undamped swing) driven by a DynamicExp shaft model. SolveEq is the full RHS evaluator, as in dss_capi 0.14.5 and r4133 (dss_capi 0.15.x makes it a no-op), so the generator rotor swings to theta 2.0362 rad / speed 0.6255 like dss_capi 0.14.5 (a no-op SolveEq freezes it at 0.72907). Gates on BOTH channels at the feeder tier floor with no ledger entry (the two OpenDSS engines agree to ~4.8e-10 and this engine matches both). Pinned by the generator_dynexp_dynamics_* unit tests."
   },
   {
    "path": "Version8/Distrib/Examples/ExpControl/Master.dss",
@@ -630,7 +630,7 @@
   {
    "path": "Version8/Distrib/Examples/GICExample/GIC_Example.dss",
    "engines": "r4133",
-   "note": "GOLDEN_REBASE G1.4a (2026-09-04, coordinator decision D12): gated on r4133 ONLY. The pinned dss_capi 0.14.5 oracle disagrees with ITSELF across fresh processes on any deck that instantiates a GICTransformer -- 7 bad runs of 60 with the element, 0 of 40 without; the whole no-load solve lands elsewhere and Bus.kVBase is punted to 0. EPRI r4133 is deterministic (80/80 bit-identical over 20 one-shot runs x 4 decks), and an oracle channel that disagrees with itself cannot gate (CLAUDE.md: prefer the r4133 channel). See DIVERGENCES.md D12/D14.",
+   "note": "Gated on r4133 ONLY. dss_capi 0.14.5 disagrees with ITSELF across fresh processes on any deck that instantiates a GICTransformer: 7 bad runs of 60 with the element, 0 of 40 without (measured 2026-09-04), the whole no-load solve lands elsewhere and Bus.kVBase is punted to 0. EPRI r4133 is deterministic (80/80 bit-identical over 20 one-shot runs x 4 decks), and a channel that disagrees with itself cannot gate.",
    "kind": "feeder",
    "n_steps": 1
   },
@@ -1245,7 +1245,7 @@
    "n_steps": 1,
    "engines": "r4133",
    "wp": "WP-U1.7",
-   "note": "Kundur two-area transmission network solved with `set algorithm=NCIM` (the r4133-line solver; the pinned 0.14.5 oracle predates NCIM, so capi_v0145 cannot gate it -- deltaF/deltaZ/jacobian #24713). LIVE-gated on r4133 (oracle-of-record flip capi015->r4133, 2026-07-20): the whole-model compare (33 nodes, system Y, the Vsource swing current/power/loss and the four NCIM generators) matches r4133 to the tier floor with no ledger entry; r4133 warm-resolve 1 iter. Feature-sensitive -- forcing `set algorithm=Normal` diverges (NCIM holds the swing bus at the ideal EMF), so NCIM cannot silently no-op; the export deltaF/deltaZ/jacobian NCIM exports are ported (WP-U1.7). isolate: runs on a throwaway one-shot r4133 worker (large NCIM deck; conservative isolation carried from its 2026-07-17 test-triage promotion)."
+   "note": "Kundur two-area transmission network solved with `set algorithm=NCIM` (the r4133-line solver; dss_capi 0.14.5 has no NCIM, so capi_v0145 cannot gate it, deltaF/deltaZ/jacobian #24713). LIVE-gated on r4133 (2026-07-20): the whole-model compare (33 nodes, system Y, the Vsource swing current/power/loss and the four NCIM generators) matches r4133 to the tier floor with no ledger entry, r4133 warm-resolve 1 iter. Feature-sensitive: forcing `set algorithm=Normal` diverges (NCIM holds the swing bus at the ideal EMF), so NCIM cannot silently no-op. The deltaF/deltaZ/jacobian NCIM exports are implemented. isolate: runs on a throwaway one-shot r4133 worker (a conservative isolation for a large NCIM deck)."
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss",
@@ -1306,7 +1306,7 @@
    ],
    "n_steps": 1,
    "isolate": true,
-   "note": "UNIFIED_GATE Phase D: EnergyMeter DI_Totals CSV file-handle contention — a persistent oracle worker keeps the meter output open past its reply, so the next same-dir engine write hits os-error-32. isolate runs each engine execution one-shot (process exits → handle released), serializing the writes (R2/§3.3)."
+   "note": "EnergyMeter DI_Totals CSV file-handle contention: a persistent OpenDSS worker keeps the meter output open past its reply, so the next same-dir engine write hits os-error-32. isolate runs each engine execution one-shot (process exits -> handle released), serializing the writes."
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_SeasonTarget/Run_example.dss",
@@ -1318,7 +1318,7 @@
    ],
    "n_steps": 1,
    "isolate": true,
-   "note": "UNIFIED_GATE Phase D: EnergyMeter DI_Totals CSV file-handle contention — a persistent oracle worker keeps the meter output open past its reply, so the next same-dir engine write hits os-error-32. isolate runs each engine execution one-shot (process exits → handle released), serializing the writes (R2/§3.3).",
+   "note": "EnergyMeter DI_Totals CSV file-handle contention: a persistent OpenDSS worker keeps the meter output open past its reply, so the next same-dir engine write hits os-error-32. isolate runs each engine execution one-shot (process exits -> handle released), serializing the writes.",
    "compare_run_files": true,
    "compare_di": true
   },
@@ -1386,7 +1386,7 @@
    "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_3_Price/Storage_price.dss",
    "engines": "both",
    "isolate": true,
-   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
+   "note": "Enables debugtrace (via its redirect chain), so a persistent OpenDSS worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear (measured in one pooled run: 5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit.",
    "kind": "feeder",
    "n_steps": 1
   },
@@ -1465,7 +1465,7 @@
    "kind": "feeder",
    "n_steps": 1,
    "engines": "r4133",
-   "note": "Flipped capi015 -> oracle:r4133 by WP-U2.4 D6 (SwtControl `Action` fix). SwtControl.5_11/7_16/10_14 are created `Action=c` then `edit action=o`; under D6 (r4133) the `action=o` opens the tie switches IMMEDIATELY at parse (the switch state forced like `State`), so the snapshot solve converges in 2 iterations to the open-tie topology. capi015 (Rung-1) instead armed a control-queue action that opened the ties during the solve's control loop (5 iterations, warm-started from the closed mesh), converging to a physically-equivalent-but-not-bit-identical point (node0 V differs 8e-4, above the feeder tier abs floor 1.3e-4 -- a solve-PATH difference, not conditioning). PROVEN the port matches r4133 exactly: r4133 also converges in 2 iters to node0 V=(13261.309423, -34.747502), bit-identical to the port; capi015's 5-iter path gives (13261.308840, -34.748053). All three ties open on every engine (|I|=0). Target-rev case -> no property-compare, so the D12 Normal/State readback (still pinned by the swtcontrol/swt_control unit tests) is moot here. See DIVERGENCES.md §D12 (SwtControl field mapping) + STATUS §WP-U2.4."
+   "note": "SwtControl `Action`: SwtControl.5_11/7_16/10_14 are created `Action=c` then `edit action=o`. On r4133 the `action=o` opens the tie switches IMMEDIATELY at parse (the switch state forced like `State`), so the snapshot solve converges in 2 iterations to the open-tie topology. dss_capi 0.15.x instead arms a control-queue action that opens the ties during the solve's control loop (5 iterations, warm-started from the closed mesh), converging to a physically-equivalent-but-not-bit-identical point (node0 V differs 8e-4, above the feeder tier abs floor 1.3e-4: a solve-PATH difference, not conditioning). This engine matches r4133 exactly: r4133 also converges in 2 iters to node0 V=(13261.309423, -34.747502), bit-identical, while the 0.15.x 5-iter path gives (13261.308840, -34.748053). All three ties open on every engine (|I|=0). An r4133-only case takes no property compare, so the Normal/State readback is pinned by the swtcontrol/swt_control unit tests instead."
   },
   {
    "path": "Version8/Distrib/Examples/civinlar model/regulator.dss",
@@ -1792,7 +1792,7 @@
    "kind": "feeder",
    "post": ["Solve"],
    "expect_solve_abort": "Max Control Iterations Exceeded",
-   "note": "CF2-R: #485 control-settling. The deck's own Solve settles clean at 67 iters; the harness's second solve re-runs the control loop from the settled taps, a regulator re-arms at a band edge and hunts, exceeding MaxControlIter=10 -> #485 abort on BOTH engines. Proven identical to the official r3723 (Oddie): all 12 RegControl taps + 10 cap states exact, node V to 5.5e-11 rel over 8531 nodes, same 10 control iters / 109 total iters. Pinned oracle raises #485 on the re-solve; Rust reproduces SolutionAbort + the same message 1:1. The 'Rust 67 clean vs r3723 109 #485' note was a measurement artifact (Rust first-solve vs oracle re-solve)."
+   "note": "#485 control-settling. The deck's own Solve settles clean at 67 iters. The harness's second solve re-runs the control loop from the settled taps, a regulator re-arms at a band edge and hunts, exceeding MaxControlIter=10 -> #485 abort on BOTH engines. Proven identical to the official r3723 (Oddie): all 12 RegControl taps + 10 cap states exact, node V to 5.5e-11 rel over 8531 nodes, same 10 control iters / 109 total iters. dss_capi raises #485 on the re-solve, and Rust reproduces SolutionAbort + the same message. A 67-vs-109 iteration comparison would set this engine's first solve against the OpenDSS re-solve."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/DG_Protection/DG_Prot_Fdr.dss",
@@ -1898,7 +1898,7 @@
    "kind": "large",
    "n_steps": 1,
    "engines": "r4133",
-   "note": "CF-B migration (T-A #29). The pinned oracle raises #303 on the deck's headless `Show` commands; the official EPRI engines treat them as non-fatal and solve through, matching Rust -- validated live through the harness via the Oddie bridge (full-model compare green). Rust compiles the whole deck (Show/Export/fileedit are headless no-ops) with zero errors; the gated final solve is the deck's Direct-mode SLG-fault-at-B2 (loads disabled) solve. Re-gated r3723 -> r4088 at the upgrade-rung1 sync merge: the deck is 4Bus Carson geometry, and WP-U1.2 B2/D1 (SimpleCarson De 658.5 -> 658.8530451057239, DIVERGENCES.md #b2--d1) moved Rust off the r3723-era constant (witnessed 5.7e-6 > 1.04e-6 floor); r4088 carries the corrected LineConstants (ledger: byte-identical across r4088/r4133) while keeping the non-fatal-Show behavior."
+   "note": "dss_capi 0.14.5 raises #303 on the deck's headless `Show` commands, while the official EPRI engines treat them as non-fatal and solve through, as Rust does. Rust compiles the whole deck (Show/Export/fileedit are headless no-ops) with zero errors. The gated final solve is the deck's Direct-mode SLG-fault-at-B2 (loads disabled) solve. The deck is 4Bus Carson geometry, and the SimpleCarson De constant (658.8530451057239 in r4088/r4133, 658.5 in r3723) moves Rust off r3723 (5.7e-6 > 1.04e-6 floor), so the deck gates on r4133."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod1.dss",
@@ -1919,7 +1919,7 @@
    "kind": "large_floating_delta",
    "n_steps": 1,
    "engines": "r4133",
-   "note": "CF-B migration (T-B U1a). Whole-IEEE123 GFM snapshot; floating-delta common-mode floor (precedent GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS, TOLERANCE_NOTES section floating-delta). Flipped oracle:capi015 by the GFM WP: the snapshot leaves the GFM storage in discharging+GFM, so the B5 Isc1 change (drop *1000, dss_capi de6a5a42 = SVN r3865; DIVERGENCES.md #b5) moves the assembled system Y at the StoBus mutuals (witnessed 0.14.5 vs capi015 rel 1.209e-1). Whole-model live compare green vs capi015 (op-point Isc1-invariant, only the Norton YPrim moves)."
+   "note": "Whole-IEEE123 GFM snapshot, floating-delta common-mode floor (precedent GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS). The snapshot leaves the GFM storage in discharging+GFM, and the 0.15.x/r4133 GFM Storage YPrim drops the *1000 factor on Isc1 that dss_capi 0.14.5 applies (dss_capi de6a5a42 = SVN r3865), which moves the assembled system Y at the StoBus mutuals (0.14.5 vs 0.15.x rel 1.209e-1), so the deck gates on r4133. The op-point is Isc1-invariant, only the Norton YPrim moves."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-A.DSS",
@@ -1940,7 +1940,7 @@
    "kind": "large_floating_delta",
    "n_steps": 1,
    "engines": "r4133",
-   "note": "CF-B migration (T-B U1a). Whole-IEEE123 GFM snapshot (step-by-step validation variant C); floating-delta common-mode floor. Flipped oracle:capi015 by the GFM WP: variant C ends with the GFM storage discharging (variants A/B end idling/charging and stay 0.14.5-green), so the B5 Isc1 change (de6a5a42/SVN r3865; DIVERGENCES.md #b5) moves the StoBus mutual Y (witnessed rel 1.209e-1). Whole-model live compare green vs capi015."
+   "note": "Whole-IEEE123 GFM snapshot (step-by-step validation variant C), floating-delta common-mode floor. Variant C ends with the GFM storage discharging (variants A/B end idling/charging and gate on dss_capi 0.14.5), and the 0.15.x/r4133 GFM Storage YPrim drops the *1000 factor on Isc1 that dss_capi 0.14.5 applies (dss_capi de6a5a42 = SVN r3865), which moves the assembled system Y at the StoBus mutuals (rel 1.209e-1), so the deck gates on r4133."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDaily.DSS",
@@ -1954,7 +1954,7 @@
    "kind": "large_floating_delta",
    "n_steps": 1,
    "engines": "r4133",
-   "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM daily trajectory with reference swap (AmpLimit); floating-delta common-mode floor. Flipped oracle:capi015 by the GFM WP: the SwapRef trajectory ends with the GFM storage discharging (its non-SwapRef GFMDaily sibling ends charging/GFL and stays 0.14.5-green), so the B5 Isc1 change (de6a5a42/SVN r3865; DIVERGENCES.md #b5) moves the StoBus mutual Y (witnessed rel 1.209e-1). Whole-model live compare green vs capi015."
+   "note": "Whole-IEEE123 GFM daily trajectory with reference swap (AmpLimit), floating-delta common-mode floor. The SwapRef trajectory ends with the GFM storage discharging (its non-SwapRef GFMDaily sibling ends charging/GFL), and the 0.15.x/r4133 GFM Storage YPrim drops the *1000 factor on Isc1 that dss_capi 0.14.5 applies (dss_capi de6a5a42 = SVN r3865), which moves the assembled system Y at the StoBus mutuals (rel 1.209e-1), so the deck gates on r4133."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS",
@@ -1968,7 +1968,7 @@
    "kind": "large_floating_delta",
    "n_steps": 1,
    "engines": "r4133",
-   "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM daily trajectory with reference swap; floating-delta common-mode floor. Flipped oracle:capi015 by the GFM WP: the SwapRef trajectory ends with the GFM storage discharging (its non-SwapRef GFMDaily sibling ends charging/GFL and stays 0.14.5-green), so the B5 Isc1 change (de6a5a42/SVN r3865; DIVERGENCES.md #b5) moves the StoBus mutual Y (witnessed rel 1.209e-1). Whole-model live compare green vs capi015."
+   "note": "Whole-IEEE123 GFM daily trajectory with reference swap, floating-delta common-mode floor. The SwapRef trajectory ends with the GFM storage discharging (its non-SwapRef GFMDaily sibling ends charging/GFL), and the 0.15.x/r4133 GFM Storage YPrim drops the *1000 factor on Isc1 that dss_capi 0.14.5 applies (dss_capi de6a5a42 = SVN r3865), which moves the assembled system Y at the StoBus mutuals (rel 1.209e-1), so the deck gates on r4133."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMWholeDaily.DSS",
@@ -1982,41 +1982,41 @@
    "kind": "large_floating_delta",
    "n_steps": 1,
    "engines": "r4133",
-   "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM daily->dynamics trajectory (cannot-pick-up-load: Load.s103c.kW=400 collapses the island so the GFM storage cannot form voltage); floating-delta common-mode floor. Flipped oracle:capi015 by the GFM WP: its GFM storage reaches CalcGFMYprim in the discharging+GFM final state, so the B5 Isc1 change (drop *1000, dss_capi de6a5a42 = SVN r3865; DIVERGENCES.md #b5) moves the assembled system Y at the StoBus mutuals (witnessed Y[STOBUS.2,STOBUS.1] 0.14.5 vs capi015 rel 1.209e-1). Contrary to the WP-U1.2 note that this deck 'stays 0.14.5-green', it moves like its GFMDaily sibling (the AmpLimit current limit is a separate axis and does not shield the YPrim). Whole-model live compare green vs capi015."
+   "note": "Whole-IEEE123 GFM daily->dynamics trajectory (cannot-pick-up-load: Load.s103c.kW=400 collapses the island so the GFM storage cannot form voltage), floating-delta common-mode floor. Its GFM storage reaches CalcGFMYprim in the discharging+GFM final state, and the 0.15.x/r4133 GFM Storage YPrim drops the *1000 factor on Isc1 that dss_capi 0.14.5 applies (dss_capi de6a5a42 = SVN r3865), which moves the assembled system Y at the StoBus mutuals (Y[STOBUS.2,STOBUS.1] 0.14.5 vs 0.15.x rel 1.209e-1), so the deck gates on r4133. The AmpLimit current limit is a separate axis and does not shield the YPrim."
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS",
    "kind": "large_floating_delta",
    "n_steps": 1,
    "engines": "r4133",
-   "note": "GFM WP re-promotion (was parked upgrade_straddle_gfm_wp). Islanded GFM daily->dynamics deck (sw5 open, storage GFM discharge). The 0.15.x GFM Storage YPrim delta (B5: Isc1 drops the *1000 factor, dss_capi de6a5a42 = SVN r3865; DIVERGENCES.md #b5) is now ported, moving the assembled system Y at the StoBus mutuals to the capi015 value (witnessed Y[STOBUS.1,STOBUS.2] 0.14.5 vs capi015 rel 1.209e-1). Straddle-axis (1) WP-U1.2 D7 (PVSystem dynamics iMaxPPhase PanelkW->FkVArating) is also resolved on capi015. Whole-model live compare (system Y + V/I/P per step) green vs capi015; the GFM power-flow op-point is Isc1-invariant (proven), so V/I/P did not move -- only the Norton YPrim did."
+   "note": "Islanded GFM daily->dynamics deck (sw5 open, storage GFM discharge). the 0.15.x/r4133 GFM Storage YPrim drops the *1000 factor on Isc1 that dss_capi 0.14.5 applies (dss_capi de6a5a42 = SVN r3865), which moves the assembled system Y at the StoBus mutuals (Y[STOBUS.1,STOBUS.2] 0.14.5 vs 0.15.x rel 1.209e-1), so the deck gates on r4133. The PVSystem dynamics iMaxPPhase base (FkVArating, not PanelkW) follows 0.15.x/r4133 too. The GFM power-flow op-point is Isc1-invariant (proven), so V/I/P do not depend on it, only the Norton YPrim does."
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123_AmpLimit/Run_IEEE123Bus_GFMDaily_CurrentLimit.DSS",
    "kind": "large_floating_delta",
    "n_steps": 1,
    "engines": "r4133",
-   "note": "GFM WP re-promotion (was parked upgrade_straddle_gfm_wp). Current-limited (AmpLimit=500) islanded GFM daily->dynamics deck; same class as its GFM_IEEE123/GFMDaily sibling. B5 (Isc1 drop *1000, de6a5a42/SVN r3865; DIVERGENCES.md #b5) moves the assembled system Y at the StoBus mutuals to capi015 (witnessed rel 1.209e-1). The storage dynamics state var it[last] is an open-loop, non-injecting integration (only it[0] drives the GFM voltage source), so it drifts on the oscillating AC waveform over the long trajectory; it is not a gated quantity and does not affect node V, which stays pinned by the it[0]<->node-V fixpoint. Whole-model live compare green vs capi015."
+   "note": "Current-limited (AmpLimit=500) islanded GFM daily->dynamics deck, same class as its GFM_IEEE123/GFMDaily sibling: the 0.15.x/r4133 GFM Storage YPrim drops the *1000 factor on Isc1 that dss_capi 0.14.5 applies (dss_capi de6a5a42 = SVN r3865), which moves the assembled system Y at the StoBus mutuals (rel 1.209e-1), so the deck gates on r4133. The storage dynamics state var it[last] is an open-loop, non-injecting integration (only it[0] drives the GFM voltage source), so it drifts on the oscillating AC waveform over the long trajectory. It is not a gated quantity and does not affect node V, which stays pinned by the it[0]<->node-V fixpoint."
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily.DSS",
    "kind": "large_floating_delta",
    "n_steps": 1,
    "engines": "r4133",
-   "note": "CF2-G migration. Whole-IEEE123 GFL daily→dynamics trajectory (Storage+PV, InvControl GFM monitor). Was ABOVE-BAND; root cause fixed: PVSystem InitStateVars/IntegrateStates ignored 'Set LoadShapeClass=daily' in dynamics (PanelkW 800 vs oracle 594.78), diverging node V ~16 V at the PV region. Fix honors ActiveLoadShapeClass in dynamics per PVsystem.pas l.2192/l.2281. Flipped oracle:capi015 at the upgrade-rung1 sync merge: WP-U1.2 D7 (PVSystem dynamics iMaxPPhase PanelkW -> FkVArating, DIVERGENCES.md #d7) moves this deck -- the daily shape puts PanelkW (irradiance-scaled, ~594.78 kW) below FkVArating (800), so the dynamics current limit differs between the engines (U1.2's kVA=Pmpp snapshot no-op probe does not apply mid-shape); vs 0.14.5 the trajectory diverged 7.61e-4 > 7.44e-4 floor (witnessed at merge), vs capi015 it is within floors."
+   "note": "Whole-IEEE123 GFL daily->dynamics trajectory (Storage+PV, InvControl GFM monitor). PVSystem InitStateVars/IntegrateStates honor 'Set LoadShapeClass=daily' (ActiveLoadShapeClass) in dynamics. Ignoring it gives PanelkW 800 where OpenDSS has 594.78 and moves node V ~16 V at the PV region. The PVSystem dynamics iMaxPPhase base is FkVArating in 0.15.x/r4133 and PanelkW in dss_capi 0.14.5, and the daily shape puts PanelkW (irradiance-scaled, ~594.78 kW) below FkVArating (800), so the dynamics current limit differs between the two (0.14.5 diverges 7.61e-4 > 7.44e-4 floor) and the deck gates on r4133."
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily_DynExp.DSS",
    "kind": "large_floating_delta",
    "n_steps": 1,
    "engines": "r4133",
-   "note": "CF2-G migration. GFL daily->dynamics DynamicExp/DynamicEq/DynOut variant of the GFL sibling. Gates on r4133 for the SAME reason as its non-DynExp sibling: WP-U1.2 D7 (PVSystem dynamics iMaxPPhase PanelkW -> FkVArating, DIVERGENCES.md #d7) moves it off the 0.14.5 oracle (the daily shape puts PanelkW below FkVArating, so the dynamics current limit differs; witnessed 7.62e-4 > 7.41e-4 floor at entry 118). The BUG WP DynExp fix (reverted D14: SolveEq is the full RHS evaluator, matching r4133's full evaluator, not the retired capi015 0.15.x no-op) makes the DynExp state integrate; the deck now matches r4133 at the tier floor (no ledger entry) instead of the D14-frozen no-op. See DIVERGENCES.md §D14."
+   "note": "GFL daily->dynamics DynamicExp/DynamicEq/DynOut variant of the GFL sibling. Gates on r4133 for the SAME reason as its non-DynExp sibling: the PVSystem dynamics iMaxPPhase base is FkVArating in r4133 and PanelkW in dss_capi 0.14.5, and the daily shape puts PanelkW below FkVArating, so the dynamics current limit differs (0.14.5 diverges 7.62e-4 > 7.41e-4 floor at entry 118). SolveEq is the full RHS evaluator, as in r4133 (dss_capi 0.15.x makes it a no-op), so the DynExp state integrates and the deck matches r4133 at the tier floor with no ledger entry."
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/Run_Ckt24.dss",
    "engines": "capi_v0145",
    "isolate": true,
-   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
+   "note": "Enables debugtrace (via its redirect chain), so a persistent OpenDSS worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear (measured in one pooled run: 5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit.",
    "kind": "large_ultra_switch",
    "n_steps": 1
   },
@@ -2024,7 +2024,7 @@
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss",
    "engines": "capi_v0145",
    "isolate": true,
-   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
+   "note": "Enables debugtrace (via its redirect chain), so a persistent OpenDSS worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear (measured in one pooled run: 5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit.",
    "kind": "large_ultra_switch",
    "n_steps": 1
   },
@@ -2032,7 +2032,7 @@
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss",
    "engines": "capi_v0145",
    "isolate": true,
-   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
+   "note": "Enables debugtrace (via its redirect chain), so a persistent OpenDSS worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear (measured in one pooled run: 5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit.",
    "kind": "large_ultra_switch",
    "n_steps": 1
   },
@@ -2040,7 +2040,7 @@
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-csv-pq.dss",
    "engines": "capi_v0145",
    "isolate": true,
-   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
+   "note": "Enables debugtrace (via its redirect chain), so a persistent OpenDSS worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear (measured in one pooled run: 5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit.",
    "kind": "large_ultra_switch",
    "n_steps": 1
   },
@@ -2048,7 +2048,7 @@
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-dbl-p.dss",
    "engines": "capi_v0145",
    "isolate": true,
-   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
+   "note": "Enables debugtrace (via its redirect chain), so a persistent OpenDSS worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear (measured in one pooled run: 5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit.",
    "kind": "large_ultra_switch",
    "n_steps": 1
   },
@@ -2056,7 +2056,7 @@
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-sng-p.dss",
    "engines": "capi_v0145",
    "isolate": true,
-   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
+   "note": "Enables debugtrace (via its redirect chain), so a persistent OpenDSS worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear (measured in one pooled run: 5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit.",
    "kind": "large_ultra_switch",
    "n_steps": 1
   },
@@ -2064,7 +2064,7 @@
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-p.dss",
    "engines": "capi_v0145",
    "isolate": true,
-   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
+   "note": "Enables debugtrace (via its redirect chain), so a persistent OpenDSS worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear (measured in one pooled run: 5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit.",
    "kind": "large_ultra_switch",
    "n_steps": 1
   },
@@ -2072,7 +2072,7 @@
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-pq.dss",
    "engines": "capi_v0145",
    "isolate": true,
-   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
+   "note": "Enables debugtrace (via its redirect chain), so a persistent OpenDSS worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear (measured in one pooled run: 5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit.",
    "kind": "large_ultra_switch",
    "n_steps": 1
   },
@@ -2080,7 +2080,7 @@
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-nomm.dss",
    "engines": "capi_v0145",
    "isolate": true,
-   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
+   "note": "Enables debugtrace (via its redirect chain), so a persistent OpenDSS worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear (measured in one pooled run: 5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit.",
    "kind": "large_ultra_switch",
    "n_steps": 1
   },
@@ -2096,7 +2096,7 @@
    "kind": "large",
    "n_steps": 1,
    "engines": "r4133",
-   "note": "Flipped oracle:capi015 by the GFM WP: the 8500-node GFM snapshot leaves its GFM storage discharging, so the B5 Isc1 change (drop *1000, dss_capi de6a5a42 = SVN r3865; DIVERGENCES.md #b5) moves the assembled system Y at the StoBus mutuals (witnessed 0.14.5 vs capi015 rel 1.172e-1). Its GFMDaily/GFMDailySmallerPV siblings end charging/GFL and stay 0.14.5-green. Whole-model live compare green vs capi015."
+   "note": "The 8500-node GFM snapshot leaves its GFM storage discharging, and the 0.15.x/r4133 GFM Storage YPrim drops the *1000 factor on Isc1 that dss_capi 0.14.5 applies (dss_capi de6a5a42 = SVN r3865), which moves the assembled system Y at the StoBus mutuals (0.14.5 vs 0.15.x rel 1.172e-1), so the deck gates on r4133. Its GFMDaily/GFMDailySmallerPV siblings end charging/GFL and gate on dss_capi 0.14.5."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDaily.dss",
@@ -2116,7 +2116,7 @@
    "kind": "large",
    "post": ["Solve"],
    "expect_solve_abort": "Max Control Iterations Exceeded",
-   "note": "CF2-R: #485 control-settling (GFM_IEEE8500 recloser-siting). Same base 8500 model + RecloserSiting overlay as IEEETestCases/8500-Node/Run_RecloserSiting.DSS: the deck's own Solve settles clean at 67 iters; the harness re-solve hunts a band-edge regulator past MaxControlIter=10 -> #485 abort on BOTH engines. Proven identical to the official r3723 (Oddie): all 12 taps + 10 cap states exact, node V to 5.5e-11 rel over 8531 nodes, same 10 control iters / 109 total iters. Rust reproduces SolutionAbort + the message 1:1."
+   "note": "#485 control-settling (GFM_IEEE8500 recloser-siting). Same base 8500 model + RecloserSiting overlay as IEEETestCases/8500-Node/Run_RecloserSiting.DSS: the deck's own Solve settles clean at 67 iters, and the harness re-solve hunts a band-edge regulator past MaxControlIter=10 -> #485 abort on BOTH engines. Proven identical to the official r3723 (Oddie): all 12 taps + 10 cap states exact, node V to 5.5e-11 rel over 8531 nodes, same 10 control iters / 109 total iters. Rust reproduces SolutionAbort + the message."
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/Storage-Quasi-Static-Example/Run_Demo1.dss",

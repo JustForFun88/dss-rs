@@ -26,8 +26,7 @@ fn full_name(classes: &[DssClass], r: ElemId) -> String {
 /// [`derive_control_lists`], the same derivation
 /// [`Dss::snapshot_elements`](crate::exec::Dss::snapshot_elements)'s
 /// `NumControls`/`OCPDev*`/`Has*Control` readers use — one order, so the report
-/// and the API surface cannot drift. The whole report is read-only
-/// (PHASE8_PLAN §2.1).
+/// and the API surface cannot drift. The whole report is read-only.
 pub(crate) fn show_controlled(classes: &[DssClass], ckt: &Circuit) -> String {
     let lists = derive_control_lists(classes, ckt);
     let mut s = String::new();

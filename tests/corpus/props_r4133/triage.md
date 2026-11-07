@@ -137,8 +137,7 @@ x1/r0/x0/mvasc1/mvasc3/angle/basekv/puz*` (Vsource.pas:1327-1343 `%-.5g`),
    conventions byte-exactly; r4133's Delphi conventions are its own).
 3. A workable r4133 property compare needs a DESIGN decision: a channel-aware
    value-normalization layer (boolean/enum/array/empty/name-case conventions,
-   per `(channel, class, prop)` evidence rows, proven non-loosening in
-   TOLERANCE_NOTES) plus the four port-gap props and the r4133 display-default
+   per `(channel, class, prop)` evidence rows, proven non-loosening) plus the four port-gap props and the r4133 display-default
    inventory. That is its own work package.
 
 ## Artifacts

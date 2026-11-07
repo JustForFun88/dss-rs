@@ -5,12 +5,11 @@
 //! `ExpControl`, emitting a `DERIEEEType1` block (nameplate + applied nameplate +
 //! the five settings groups) into the **Dyn** profile.
 //!
-//! GAPS_PLAN WPG.18 Stage F. The `DERDynamics.RemoteInputSignal` /
-//! `RemoteInputSignal` path (Pascal `FindSignalTerminals`, only reached when a
-//! control carries a `MonBus`) is ported here but is **not byte-gated**: no
-//! oracle corpus deck runs `export cim100` with a monitored-bus InvControl, and
-//! the local-monitoring case (`MonBuses` empty ⇒ no signals) is what the Stage F
-//! `cim_der` gate exercises. See [`Ieee1547Controller::find_signal_terminals`].
+//! The `DERDynamics.RemoteInputSignal` / `RemoteInputSignal` path (only reached
+//! when a control carries a `MonBus`) is ported here but is **not byte-gated**:
+//! no corpus deck runs `export cim100` with a monitored-bus InvControl, and the
+//! local-monitoring case (`MonBuses` empty ⇒ no signals) is what the `cim_der`
+//! gate exercises. See [`Ieee1547Controller::find_signal_terminals`].
 
 use crate::circuit::Circuit;
 use crate::elements::pc::pvsystem::PVSystem;
@@ -253,11 +252,11 @@ impl Ieee1547Controller {
         // verbatim so `vRefOlrt` byte-matches. Clean fix:
         // `std::f64::consts::LN_10`.
         //
-        // Stage F status (F.3x): the same *documented* constant as
+        // The same *documented* constant as
         // `ExpControl`'s `Tresponse / 2.3026` — see the escape argument at
         // `elements/control/exp_control/accessors.rs`. Not a lane split; it
         // would additionally move the `cim_der{,_DYN}.xml` byte goldens, which
-        // are compared byte-exact in **both** lanes. Escape-recorded.
+        // are compared byte-exact in **both** lanes.
         self.vv_olrt = s.lpf_tau * 2.3026;
         self.vw_olrt = self.vv_olrt;
 
@@ -1085,12 +1084,11 @@ fn check_signal_match(
 ///   which adds `Fault` to PD and the two shunts to both);
 /// * this one keeps r4133's own terminal-1/2 name test, which is what the CIM
 ///   `IEEE1547` signal scan wants; the at-bus surface answers **any** terminal
-///   (GOLDEN_REBASE D26 `S4`).
+///   (the `S4` rule of `BusElementsView`).
 ///
 /// Re-pointing this function at the at-bus walk would widen the signal scan
 /// (`Ieee1547Controller::find_signal_terminals` → `scan_bus_for_signal`) to
-/// `Fault`/`Vsource`/`Isource` and could move CIM export bytes, which WP-G1
-/// does not do.
+/// `Fault`/`Vsource`/`Isource` and could move CIM export bytes.
 ///
 /// [`Dss::all_bus_elements`]: crate::exec::Dss::all_bus_elements
 /// [`ElemKind::is_power_delivery`]: crate::circuit::ElemKind::is_power_delivery

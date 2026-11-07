@@ -37,9 +37,9 @@ pub(crate) fn show_voltages(ckt: &Circuit, ll: bool) -> String {
     }
     rep.blank();
     // Pascal's header carries a `Mag:` label *between* the bus column and the
-    // six value columns, so it has no cell-per-column decomposition (unlike the
-    // F.4d reports, whose headers were exactly their columns) — it stays free
-    // text until a v2 re-layout (plan §F-FMT step 4). Same for the two other
+    // six value columns, so it has no cell-per-column decomposition (unlike
+    // reports whose headers are exactly their columns) and stays free text.
+    // Same for the two other
     // `Show Voltages` forms below.
     rep.line(&format!(
         "{}{}",
@@ -304,7 +304,7 @@ pub(crate) fn show_voltages_elements(classes: &[DssClass], ckt: &Circuit, ll: bo
 /// *outside* the `if pElem.Enabled` guard, so a disabled element still emits its
 /// separating blank — `ShowResults.pas:452-489`). The blank-after-every-element is
 /// invisible to the token/blank-filtering golden gate but reproduced for byte
-/// faithfulness (audit-code WP8.4 step 4).
+/// faithfulness.
 fn walk_element_voltages(
     rep: &mut Report,
     classes: &[DssClass],

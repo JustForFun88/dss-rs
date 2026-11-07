@@ -1,9 +1,8 @@
 //! Raw `extern "C"` bindings to the official EPRI `OpenDSSDirect.dll` (r4133).
 //!
-//! The DDLL surface is verified against the vendored Pascal source
-//! (`.inputs/electricdss-code-r4133-trunk/Version8/Source/DDLL/`,
-//! `UNIFIED_GATE_PLAN.md` §7). Every exported entry point is one of five plain
-//! `cdecl` shapes — no OLE Variants, no COM, no callbacks:
+//! The DDLL surface is verified against the r4133 source. Every exported entry
+//! point is one of five plain `cdecl` shapes — no OLE Variants, no COM, no
+//! callbacks:
 //!
 //! - `XxxI(mode: longint, arg: longint): longint`      → [`FnI`]
 //! - `XxxF(mode: longint, arg: double): double`        → [`FnF`]
@@ -45,7 +44,7 @@ pub type FnF = unsafe extern "C" fn(i32, f64) -> f64;
 /// arg1, arg2: double)` (`DCmathLib.pas:5`, impl `:12`; mode 0 `Cabs`, mode 1
 /// `Cdang`, both over `cmplx(arg1, arg2)`). Every other `XxxF` — and every
 /// `XxxI`/`XxxS`/`XxxV` — is uniform (exhaustive sweep of the vendored DDLL
-/// `interface` sections, G1.0).
+/// `interface` sections).
 ///
 /// # SAFETY
 /// Binding these two with [`FnF`] is an ABI mismatch, not a nuisance: the second
@@ -89,10 +88,9 @@ pub struct DllFns {
 
     /// `DSSElementV` — mode 0 returns the active DSS object's
     /// `ParentClass.AllPropertyNames` (`DDSSElement.pas` line 63, type tag 4,
-    /// `\0`-separated). Backs the all-properties enumeration (§2.2 — report-tooling
-    /// parity when written, gating since R4133_PROPS RP4.1): `? name.Like`
-    /// activates the object, then this reads its property
-    /// list — the WPG.1-safe path that covers terminal-less `DSS_OBJECT`s too.
+    /// `\0`-separated). Backs the gating all-properties enumeration: `? name.Like`
+    /// activates the object, then this reads its property list. That query path
+    /// covers terminal-less `DSS_OBJECT`s too.
     pub dss_element_v: FnV,
 
     pub solution_i: FnI,

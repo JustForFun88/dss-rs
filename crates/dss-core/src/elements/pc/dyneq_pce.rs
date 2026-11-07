@@ -64,7 +64,7 @@ pub enum DynEqHost {
 pub struct DynEqPceData {
     /// `DynamicEqObj` name (kept for the `DynamicEq=` dump / resolution bookkeeping).
     pub dynamic_eq: String,
-    /// `DynamicEqObj` — the linked `DynamicExp` (snapshot clone, WP4.2/WP5.3 pattern).
+    /// `DynamicEqObj` — the linked `DynamicExp` (snapshot clone).
     pub dynamic_eq_obj: Option<DynamicExpObj>,
     /// The resolved `DynamicExp`'s stable arena handle (statically that class —
     /// `DynamicEq=` is an `object_ref_class("DynamicExp", …)` property).
@@ -520,8 +520,7 @@ impl DynEqPceData {
     /// Pascal `DynamicEqObj.SolveEq(DynamicEqVals)` — evaluate the linked
     /// equation's RHS and write the state-variable derivatives back into the
     /// memory space, so the host's trapezoidal integrator advances the state
-    /// (both gating oracles integrate; see [`DynamicExpObj::solve_eq`] and
-    /// DIVERGENCES.md §D14).
+    /// (both OpenDSS engines integrate; see [`DynamicExpObj::solve_eq`]).
     /// (Disjoint-field borrow: the read-only equation and the mutable memory are
     /// separate fields, so no per-step clone of the expression is needed.)
     pub fn solve_eq(&mut self) {

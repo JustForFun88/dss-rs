@@ -92,7 +92,7 @@ fn all_elements_inherit_the_50hz_base_frequency() {
 // 60.0. The pin also holds the two boundaries the fix must not move: a 60 Hz
 // circuit (every golden and every gated corpus deck) is unchanged, and an
 // explicit `basefreq=` still wins over the inherited value.
-/// The CLAUDE.md upstream bug #6, torn down by `GOLDEN_REBASE_PLAN.md` G2.2b.
+/// The Monitor `BaseFrequency` upstream bug, fixed in both lanes.
 ///
 /// `TMonitorObj.Create` hard-pins `Basefrequency := 60.0`
 /// (`.inputs/dss_capi/src/Meters/Monitor.pas:472` == r4133

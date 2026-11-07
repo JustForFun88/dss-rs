@@ -52,8 +52,8 @@ pub struct SpectrumObj {
     /// harmonic solution mode (`get_mult`) and the Complete `Dump` tail's
     /// `Multiplier Array:` block (`dump.rs`).
     mult_array: Option<Vec<Complex64>>,
-    /// Deferred `CSVFile` reads queued for the executive (the WP5.2b
-    /// `FileLoad` pattern — the property hook can't reach the filesystem).
+    /// Deferred `CSVFile` reads queued for the executive (the `FileLoad`
+    /// pattern — the property hook can't reach the filesystem).
     pending_file_loads: Vec<FileLoad>,
 }
 
@@ -269,7 +269,7 @@ impl DssObject for SpectrumObj {
             CSV_FILE => {
                 // Pascal `DoCSVFile` (Spectrum.pas:210) runs here, but the hook
                 // can't reach the filesystem/current dir: queue the read for
-                // the executive (the WP5.2b deferred-`FileLoad` path).
+                // the executive (the deferred-`FileLoad` path).
                 self.pending_file_loads
                     .push(FileLoad::text(CSV_FILE, self.csvfile.clone()));
             }

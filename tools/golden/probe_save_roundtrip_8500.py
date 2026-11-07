@@ -18,8 +18,8 @@ only a scratch dir it deletes.
 Usage:
     python tools/golden/probe_save_roundtrip_8500.py
 
-Records its numbers in tests/TOLERANCE_NOTES.md (§save-roundtrip). Re-run to
-re-verify the floor after an oracle re-pin.
+Prints its numbers. Re-run to re-verify the floor after a re-pin of the
+OpenDSS engine.
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-//! Phase 4 gate (PHASE4_PLAN.md WP4.9): replay the committed controls-off
+//! Feeder gate: replay the committed controls-off
 //! variants of IEEE13, IEEE37 and IEEE123 through the Rust engine and require
 //!   (a) convergence flag and fixed-point iteration counts exactly equal,
 //!   (b) node order exactly equal,
@@ -84,7 +84,7 @@ fn run_scenario(sc: &Scenario) {
     );
 
     // (a) convergence flag and fixed-point iteration count (exact in the parity
-    // lane, ±`lane::ITER_SLACK` in the default lane — Stage F drift model).
+    // lane, ±`lane::ITER_SLACK` in the default lane).
     let ckt = dss
         .circuit()
         .unwrap_or_else(|| panic!("{}: no circuit after compile", sc.name));

@@ -1,4 +1,4 @@
-//! The per-element **discrete extras** of `GOLDEN_REBASE_PLAN.md` G1.3d — part
+//! The per-element **discrete extras** — part
 //! (i)'s index/name scalars (`CktElement.NumTerminals` / `NumConductors` /
 //! `NumPhases`, `CktElement.NodeOrder`, `CktElement.EnergyMeter`) and part
 //! (ii)'s control-derived five (`NumControls`, `OCPDevIndex`, `OCPDevType`,
@@ -6,7 +6,7 @@
 //! `CktElement.PhaseLosses` — as they come out of
 //! [`Dss::snapshot_elements`](crate::exec::Dss::snapshot_elements).
 //!
-//! These are the two sub-steps' expected-value pins. The live corpus gate
+//! These are the expected-value pins. The live corpus gate
 //! compares every one of them against both oracle channels, case by case —
 //! exactly for the ten discrete fields, on the powers tier for `PhaseLosses`
 //! (the only quantity in this file carrying a tolerance at all); what a live
@@ -16,8 +16,7 @@
 //!    element's own terminal-major order — a rotated bus spec rotates it — and
 //!    a grounded conductor reads `0`;
 //! 2. the accessor and the frozen `Export NodeOrder` renderer agree row for row,
-//!    so the two code paths cannot drift (WP-G1 moves no golden byte, so the
-//!    renderer could not be refactored into the accessor);
+//!    so the two code paths cannot drift;
 //! 3. `EnergyMeter` names the meter that *meters* the element — its
 //!    `MeteredElement` — and not every element in that meter's zone;
 //! 4. the shapes with no `NodeRef` to report (never-enabled, 0-terminal) are
@@ -155,10 +154,8 @@ fn node_order_is_the_bus_local_node_number_per_conductor() {
 }
 
 // Expected-value pin — the accessor and the `Export NodeOrder` report path read
-// the same mapping. WP-G1 may move no committed golden byte, so the report
-// renderer (`report/export/node_order.rs`, Pascal `ExportNodeOrder` +
-// `WriteNodeList`) could not be refactored into the accessor and the two walks
-// exist side by side; this pin is what keeps them from drifting.
+// the same mapping. The report renderer (`report/export/node_order.rs`) and the
+// accessor are two walks side by side. This pin keeps them from drifting.
 /// Every `Export NodeOrder` row equals the snapshot's counts and node order for
 /// the same element.
 #[test]
@@ -265,7 +262,7 @@ fn energy_meter_is_the_bare_lowercased_meter_name() {
     );
 }
 
-// Expected-value pin (G1.3d(i) capture predicate) — the two shapes with nothing
+// Expected-value pin (capture predicate) — the two shapes with nothing
 // to report. A never-enabled element never gets `SetNodeRef`, so its `NodeRef`
 // is still nil upstream: capi warns 15013 and returns its `DefaultResult`
 // (`CAPI/CAPI_CktElement.pas:900-906`) while r4133, which has no such guard,
@@ -334,7 +331,7 @@ fn a_disabled_element_keeps_the_node_order_it_was_given() {
     assert_eq!(a.node_order, vec![1, 2, 3, 1, 2, 3]);
 }
 
-// Regression pin (the G1.3a audit settlement class) — a `NodeRef` SHORTER than
+// Regression pin — a `NodeRef` SHORTER than
 // `Yorder` must not panic here. `set_nterms`/`set_nconds` grow `yorder` and
 // reallocate the terminal buffers but leave `node_ref` alone; only
 // `set_node_ref` resizes it (`elements/ckt.rs`), and `reprocess_bus_defs`
@@ -412,10 +409,10 @@ fn num_phases_terminals_conductors_follow_the_element_data() {
 }
 
 // ---------------------------------------------------------------------------
-// G1.3d(ii): `PhaseLosses` + the five control-derived scalars
+// `PhaseLosses` + the five control-derived scalars
 // ---------------------------------------------------------------------------
 
-/// The G1.3d(ii) control fixture. `Line.l1` carries three **heterogeneous**
+/// The control fixture. `Line.l1` carries three **heterogeneous**
 /// controls in a known attach order; `Line.l2` carries a **disabled** OCP
 /// control ahead of an enabled one; a CapControl acts on a capacitor, a
 /// RegControl on a transformer, a GenDispatcher on a line it never joins the
@@ -508,7 +505,7 @@ fn phase_losses_are_watts_and_sum_to_get_losses() {
     );
     // …and the per-phase bucketing itself: `PhaseLosses[i]` is the sum over
     // terminals of the same phase's `Powers` slot (the identity measured to hold
-    // on the capi channel for every element, `tmp/g13d2/probe_pl_both.py`).
+    // on the capi channel for every element).
     for (i, pl) in l1.phase_losses.iter().enumerate() {
         let terms = || (0..l1.n_terms).map(move |j| l1.powers[j * l1.n_conds + i] * 1000.0);
         let from_powers: num_complex::Complex64 = terms().sum();
@@ -687,9 +684,9 @@ fn a_disabled_ocp_control_still_wins_the_ocp_scan() {
 // `RecalcElementData`, i.e. on EVERY edit (`Controls/Relay.pas:955` from
 // `:626`), so re-editing a control moves it to the END of its element's list.
 // capi 0.14.5 makes `ControlledElement` a property-write target
-// (`Controls/Relay.pas:439-441`) and leaves the order alone. r4133 is the
-// behavioral authority (`DIVERGENCES.md`); measured on the two live channels as
-// `OCPDevType` 3 → 1 on r4133 and a flat 3 on capi.
+// (`Controls/Relay.pas:439-441`) and leaves the order alone. Where the
+// documentation is silent this engine follows r4133 (measured on the two live
+// channels as `OCPDevType` 3 → 1 on r4133 and a flat 3 on capi).
 /// Re-editing `Relay.r` moves it behind `Fuse.f`, so `OCPDevType` goes 3 → 1
 /// (r4133's answer; capi 0.14.5 would still say 3).
 #[test]
@@ -718,7 +715,7 @@ fn ocp_dev_type_follows_the_last_attach_order() {
     );
 }
 
-// Expected-value pin (G1.3d(ii) audit settlement, 2026-09-05) — the converse of
+// Expected-value pin — the converse of
 // the pin above: `MakePosSequence` is NOT an edit. r4133's `DoMakePosSeq` calls
 // only `CktElem.MakePosSequence` (`Executive/ExecHelper.pas:3069-3086`), and
 // every control override mutates its own fields and ends with `inherited` — the

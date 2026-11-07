@@ -60,7 +60,7 @@ pub enum Json {
 /// exactly these). `State`/`Debug`/`Edit` (bits 11–13) are deliberately **not**
 /// representable: `State`/`Debug` are commented out as NOT IMPLEMENTED upstream
 /// (a silent no-op on the oracle), and `Edit` is the JSON-import-only internal
-/// flag — omitting them is the faithful equivalent of "not implemented" (§6).
+/// flag — omitting them is the faithful equivalent of "not implemented".
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct JsonOpts(u32);
 
@@ -89,8 +89,7 @@ impl JsonOpts {
 
     /// Build from a raw `DSSJSONOptions` integer (the representable bits 0–10).
     ///
-    /// This is the one raw-bits entry point, so — per JSON_EXPORT_PLAN §6 — it
-    /// must **error loudly**, never silently ignore, when it receives a bit that
+    /// This is the one raw-bits entry point, so it must **error loudly**, never silently ignore, when it receives a bit that
     /// is not on the export surface. Bits 11–13 (`State`/`Debug`/`Edit`) are
     /// NOT_PORTED (`State`/`Debug` are commented out upstream as a silent no-op,
     /// `Edit` is the JSON-import-only internal flag); passing any of them is a
@@ -100,7 +99,7 @@ impl JsonOpts {
             bits & !0x7FF,
             0,
             "DSSJSONOptions bits 11-13 (State/Debug/Edit) are not representable on \
-             the JSON export surface (NOT_PORTED, JSON_EXPORT_PLAN §6)"
+             the JSON export surface (NOT_PORTED)"
         );
         Self(bits)
     }
@@ -198,7 +197,7 @@ fn escape_into(s: &str, out: &mut String) {
 }
 
 /// How the writers below spell a float and separate two members — the two
-/// F-FMT lane rows of the JSON surface, bundled so a caller that needs one
+/// lane rows of the JSON surface, bundled so a caller that needs one
 /// specific spelling can ask for it explicitly.
 ///
 /// Two instances exist and no more: [`FPJSON_SPELLING`], which is fpjson's own

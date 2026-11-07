@@ -1,32 +1,28 @@
-//! **GOLDEN_REBASE G1.10a — the expected-value pins behind the run-file SET
-//! surface** (`compare_run_files`: every filesystem entry a run creates under
-//! the case directory, compared as an exact discrete set at `rel = abs = 0`).
+//! **The expected-value pins behind the run-file SET surface**
+//! (`compare_run_files`: every filesystem entry a run creates under the case
+//! directory, compared as an exact discrete set at `rel = abs = 0`).
 //!
 //! Three facts about that surface are settled by something other than "the two
-//! sides matched", and CLAUDE.md wants each of them pinned by an expected-value
-//! test that names BOTH numbers:
+//! sides matched", and each is pinned by an expected-value test that names both
+//! numbers:
 //!
-//! * the **`Visualize` DSSView pair** — the one `tests/corpus/ledger.json` row
-//!   this sub-step lands (`r4133-visualize-writes-a-dssview-file-pair`), a
-//!   deliberate product divergence rather than an upstream defect;
-//! * the **D25/Q2 engine-scratch split** — a structural normalization applied
+//! * the **`Visualize` DSSView pair** — the `tests/corpus/ledger.json` row
+//!   `r4133-visualize-writes-a-dssview-file-pair`, a deliberate product
+//!   divergence rather than an OpenDSS bug;
+//! * the **engine-scratch split** — a structural normalization applied
 //!   symmetrically to both channels, with **zero** ledger rows and a
 //!   fail-on-stale population (`scheduler::SCRATCH_FILE_DECLINES`);
-//! * the **cross-oracle case fold** — the normalization that makes the two
-//!   oracles' spellings one member, without which every second deck would
+//! * the **cross-engine case fold** — the normalization that makes the two
+//!   OpenDSS engines' spellings one member, without which every second deck would
 //!   "diverge" on capitalization alone.
 //!
 //! Each pin drives the **gate-side** comparator
-//! (`harness::run_files::compare_run_files`) against the oracle sets measured on
-//! the named channel, and takes the port's side from the port itself — the very
-//! `RunFileProbe` the corpus gate uses, over a fresh scratch copy of the
-//! vendored corpus deck (`harness::scratch`, RETRO_FIXES RF-I00-01; never
-//! `.inputs/`, CLAUDE.md). Every oracle number below was measured by the G1.10a
-//! probes and re-measured by the live gate: `tmp/g110a/oracle_diff.txt` (the
-//! 14-deck capi↔r4133 diff), `tmp/g110a/f_F1_capi_files.json` (pinned
-//! dss-python 0.15.7 / dss_capi 0.14.5), `tmp/g110a/f_F0_r4133_files.json` (the
-//! vendored EPRI r4133 DLL through `crates/dss-epri`) and
-//! `tmp/g110a/f_F3_full_drive.log` (the full 526-case default-lane drive).
+//! (`harness::run_files::compare_run_files`) against the OpenDSS sets measured
+//! on the named channel, and takes this engine's side from the engine itself —
+//! the very `RunFileProbe` the corpus gate uses, over a fresh scratch copy of
+//! the vendored corpus deck (`harness::scratch`, never `.inputs/`). The OpenDSS
+//! sets were read on the pinned dss-python and on the vendored EPRI r4133 DLL
+//! through `crates/dss-epri`, and the live gate re-measures them.
 //!
 //! **Windows-only**, like the surface: the created-file classification the three
 //! producers share lives in `dss_epri::guard`, and `dss-epri` is
@@ -66,7 +62,7 @@ fn corpus_deck(rel: &str) -> PathBuf {
 /// fired)`.
 ///
 /// The run happens in the port's own fresh scratch copy of the case
-/// (`harness::scratch`, RETRO_FIXES RF-I00-01), never in the vendored tree: the
+/// (`harness::scratch`), never in the vendored tree: the
 /// probe classifies what the run created in the copy and removes it — the
 /// same contract `RunFileProbe` keeps inside the gate — then the copy goes.
 fn port_run_files(rel: &str, n_steps: usize) -> (Vec<String>, Vec<String>) {
@@ -95,7 +91,7 @@ fn port_run_files(rel: &str, n_steps: usize) -> (Vec<String>, Vec<String>) {
     // Drop the engine BEFORE the probe reads, exactly as the runner does: a file
     // the engine still held open would fail its removal.
     drop(dss);
-    // G1.10b: the probe now reports the created SET and the CONTENTS of the
+    // The probe reports the created SET and the CONTENTS of the
     // members the gate selects; these pins are about the set, so they take
     // that half (the contents have their own pins).
     let created = probe
@@ -128,38 +124,14 @@ fn panic_message(f: impl FnOnce()) -> String {
     }
 }
 
-/// **The `Visualize` ledger row's both-numbers pin — r4133 creates SIX entries
-/// on `Test/YgD-Test.dss`, the port and dss_capi 0.14.5 create FOUR, and the two
-/// extra ones are a DSSView viewer file pair the port answers with a JSON
-/// callback payload instead.**
-///
-/// The deck's last-but-one line is `Visualize powers Transformer.TR1`
-/// (`tests/corpus/electricdss-tst/Test/YgD-Test.dss:25`).
-///
-/// * **r4133** dispatches `DoVisualizeCmd`
-///   (`Version8/Source/Executive/ExecHelper.pas:3672`) to
-///   `TDSSPlot.DoVisualizationPlot` (`Version8/Source/Plot/DSSPlot.pas:3642`),
-///   which names `<OutputDirectory><CircuitName_><Class>_<Name>_PQ.DSV`
-///   (`:3728` + `:3746`) and calls `MakeNewGraph`
-///   (`:3758` → `Version8/Source/Plot/DSSGraph.pas:109`), which `Rewrite`s that
-///   `.DSV` (`:114-115`) and `FileCreate`s its binary twin
-///   `ChangeFileExt(…, '.dbl')` (`:125`, `:128`) — hence a PAIR.
-/// * **dss_capi 0.14.5** (`src/Executive/ExecHelper.pas:4099`) builds a
-///   `{PlotType, ElementName, ElementType, Quantity}` JSON object
-///   (`:4184-4189`) and hands it to `DSSPlotCallback`, opening no file.
-/// * **the port** follows the JSON payload
-///   (`crates/dss-core/src/exec/command.rs:865-968` →
-///   `exec/plot.rs:405-421`) — asserted here, so "the port writes no pair"
-///   can never quietly become "the port ignores `Visualize`".
-///
-/// Both numbers, measured: oracle (r4133) **6**, port **4**, capi_v0145 **4**.
-/// The gate compares the four common names on both channels and excludes only
-/// the two `_pq` ones, on `r4133` only
-/// (`tests/corpus/ledger.json` → `r4133-visualize-writes-a-dssview-file-pair`).
+/// On `Visualize`, r4133 writes a DSSView viewer file pair where this engine
+/// and dss_capi hand a JSON payload to the plot callback, and the payload is
+/// asserted so "no pair" cannot become "`Visualize` ignored". The gate excludes
+/// only the pair, on `r4133` only (ledger row
+/// `r4133-visualize-writes-a-dssview-file-pair`).
 #[test]
 fn visualize_writes_a_dssview_pair_on_r4133_and_a_json_payload_in_the_port() {
-    // Measured on the vendored EPRI r4133 DLL (`tmp/g110a/f_F0_r4133_files.json`,
-    // raw spellings `testYgD_Curr_Elem.Txt`, `testYgD_Transformer_tr1_PQ.DSV`, …
+    // Measured on the vendored EPRI r4133 DLL (raw spellings `testYgD_Curr_Elem.Txt`, `testYgD_Transformer_tr1_PQ.DSV`, …
     // — the comparator's ASCII fold is what makes them these members).
     let r4133 = v(&[
         "testygd_curr_elem.txt",
@@ -169,8 +141,7 @@ fn visualize_writes_a_dssview_pair_on_r4133_and_a_json_payload_in_the_port() {
         "testygd_vll.txt",
         "testygd_vln_node.txt",
     ]);
-    // Measured on the pinned dss-python 0.15.7 / dss_capi 0.14.5
-    // (`tmp/g110a/f_F1_capi_files.json`).
+    // Measured on the pinned dss-python.
     let capi = v(&[
         "testygd_curr_elem.txt",
         "testygd_curr_seq.txt",
@@ -253,28 +224,10 @@ fn visualize_writes_a_dssview_pair_on_r4133_and_a_json_payload_in_the_port() {
     );
 }
 
-/// **The D25/Q2 engine-scratch pin — on `Run_NEV.dss` an oracle reports SEVEN
-/// created entries and the port SIX, and the seventh is the Pascal engines'
-/// harmonics disk round-trip, split off BOTH sides instead of being triaged.**
-///
-/// `SavePresentVoltages` writes `<OutputDirectory><CircuitName_>SavedVoltages.dbl`
-/// (r4133 `Version8/Source/Common/Utilities.pas:1512-1521`, reached only from
-/// `InitializeForHarmonics` `:1599-1608`, read back by `RetrieveSavedVoltages`
-/// `:1554-1564`); dss_capi 0.14.5 is the twin (`src/Common/Utilities.pas:883`,
-/// `:914-923`). The port keeps that vector in memory
-/// (`crates/dss-core/src/solution/solution/state.rs`,
-/// `solution/solution/harmonics.rs`) and writes no such file.
-///
-/// Both numbers, measured (`tmp/g110a/f_F1_capi_files.json`): the capi_v0145
-/// channel creates **7** — `line_quad-1_yprim.txt`, `nev_exp_y.csv`,
-/// `nev_exp_yprim.csv`, `nev_faultstudy.txt`, `nev_savedvoltages.dbl`,
-/// `nev_systemy.txt`, `nev_vln_node.txt` — of which **1** is the scratch name,
-/// so **6** are compared; the r4133 channel creates the same seven
-/// (`tmp/g110a/f_F0_r4133_files.json`, raw `NEV_SavedVoltages.dbl`,
-/// `NEV_EXP_Y.CSV`, …); the port creates **6**. Zero ledger rows: the split is
-/// symmetric and the population it declines is pinned instead
-/// (`corpus_gate::scheduler::SCRATCH_FILE_DECLINES`, fail-on-stale in both
-/// directions).
+/// The OpenDSS engines' harmonics round-trip through a `SavedVoltages.dbl`
+/// scratch file, which this engine keeps in memory, so the gate splits that
+/// name off both sides. The split needs no ledger row, and the population it
+/// declines is pinned in `corpus_gate::scheduler::SCRATCH_FILE_DECLINES`.
 #[test]
 fn the_harmonics_scratch_file_is_declined_on_the_nev_deck() {
     let oracle = v(&[
@@ -301,8 +254,8 @@ fn the_harmonics_scratch_file_is_declined_on_the_nev_deck() {
             "nev_systemy.txt",
             "nev_vln_node.txt",
         ]),
-        "the port creates the oracle's seven minus the harmonics scratch file — \
-         six entries. If it ever writes `nev_savedvoltages.dbl`, the D25/Q2 \
+        "this engine creates the OpenDSS seven minus the harmonics scratch file — \
+         six entries. If it ever writes `nev_savedvoltages.dbl`, the scratch \
          split stops being a normalization and becomes a real change."
     );
     assert_eq!(
@@ -342,31 +295,13 @@ fn the_harmonics_scratch_file_is_declined_on_the_nev_deck() {
     );
 }
 
-/// **The cross-oracle case-fold pin — on `Test/AutoTrans/Auto1bus.dss` the two
-/// gating oracles spell the SAME nine created files differently, and the fold is
-/// what makes them one set.**
-///
-/// The two engines disagree with each other, so there is no single "upstream
-/// spelling" the port could adopt: r4133
-/// `Version8/Source/Executive/ExportOptions.pas:333-356` writes `'…CSV'` upper
-/// and lowercases the whole deck-supplied stem, dss_capi 0.14.5
-/// `src/Executive/ExportOptions.pas:314,343,345,381,437` writes `'…csv'` lower
-/// and preserves the stem. Measured raw, on this deck
-/// (`tmp/g110a/oracle_diff.txt`, all nine names): capi
-/// `Auto1bus_HL_current.txt` vs r4133 `auto1bus_hl_current.txt`; capi
-/// `Auto1bus_LT_losses.txt` vs r4133 `auto1bus_lt_losses.txt`; and so on. The
-/// port keeps capi's spelling
-/// (`crates/dss-core/src/exec/report.rs`, `"EXP_VOLTAGES.csv"` etc.) —
-/// recorded in `docs/upgrade/DIVERGENCES.md`, never a ledger row, because the
-/// comparator's ASCII fold makes all three sides one member. NTFS is
-/// case-insensitive, so nothing observable depends on it.
-///
-/// This deck is `kind=large_near_ideal_source` and therefore OUTSIDE the forced
-/// run-file population — it is here as the measured statement of the fold, so a
-/// future normalizer change cannot silently drop the case.
+/// The two OpenDSS engines spell the same created files with different case,
+/// and this engine keeps dss_capi's, so the comparator's ASCII fold makes all
+/// three one set, never a ledger row (NTFS is case-insensitive, so nothing
+/// observable depends on the spelling).
 #[test]
 fn the_two_oracle_spellings_of_auto1bus_fold_to_one_member() {
-    // Raw, as each engine wrote them (`tmp/g110a/oracle_diff.txt`).
+    // Raw, as each engine wrote them.
     let capi_raw = v(&[
         "Auto1bus_HL_current.txt",
         "Auto1bus_HL_losses.txt",

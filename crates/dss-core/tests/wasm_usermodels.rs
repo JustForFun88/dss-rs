@@ -1,6 +1,5 @@
-//! Channel-1 hermetic replay gate for the WASM_USERMODELS WM.3 Generator
-//! user-model path (`WASM_USERMODELS_PLAN.md` §2.5-1; recorded decision
-//! 2026-07-19: the oracle channel is the in-house **r4133 bridge**, not pinned
+//! Channel-1 hermetic replay gate for the Generator user-model path (the
+//! reference channel is the in-house **r4133 bridge**, not the pinned
 //! dss-python).
 //!
 //! Each `tools/golden/wasm_decks/*.dss` deck is run on the **Rust** engine with
@@ -11,12 +10,12 @@
 //! (manually) by `crates/dss-epri/tests/gen_wasm_usermodels.rs`, which runs the
 //! **same decks** on the r4133 engine (`dss_epri::Engine`) driving the FPC-built
 //! **native `.dll` twin** of the reference model. So this is a real cross-engine
-//! oracle comparison — Rust engine + wasm fixture vs r4133 engine + native twin
+//! comparison — Rust engine + wasm fixture vs r4133 engine + native twin
 //! — **never "Rust agrees with itself"** (the twin and the wasm fixture are
 //! independent builds of the induction-machine math from the same Pascal, pinned
-//! bit-exact to each other by the WM.2 fixture self-gate).
+//! bit-exact to each other by the `dss-usermodel` fixture self-gate).
 //!
-//! Hermetic (plan §2.6): needs only the committed `.wasm` + the committed
+//! Hermetic: needs only the committed `.wasm` + the committed
 //! goldens — no FPC, no native DLL, no wasm toolchain. Runs in every
 //! `cargo test`.
 
@@ -31,7 +30,7 @@ use serde::Deserialize;
 /// The committed reference fixture, workspace-root-relative.
 const FIXTURE_REL: &str = "tests/fixtures/wasm/indmach012a.wasm";
 
-/// Every WM.3 gate deck (basename shared by `tools/golden/wasm_decks/<d>.dss` and
+/// Every gate deck (basename shared by `tools/golden/wasm_decks/<d>.dss` and
 /// `tests/golden/wasm_usermodels/<d>.json`).
 const DECKS: &[&str] = &[
     "wasm_gen_pflow",
@@ -75,9 +74,9 @@ fn load_golden(deck: &str) -> WasmGolden {
     serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse golden {}: {e}", path.display()))
 }
 
-/// Run a WM.3 deck on the Rust engine with `@FIXTURE@` → the committed `.wasm`.
+/// Run a gate deck on the Rust engine with `@FIXTURE@` → the committed `.wasm`.
 /// The deck is fed line-by-line (comments/blanks skipped); the absolute fixture
-/// path resolves regardless of the working directory (§2.4 activation rule).
+/// path resolves regardless of the working directory.
 fn run_deck(deck: &str) -> Dss {
     let fixture = workspace_root()
         .join(FIXTURE_REL)
@@ -149,36 +148,27 @@ fn check(
 ///   r4133 oracle (they pass at ~1e-14).
 ///
 /// - `true` also now covers the GenModel=6 + ShaftModel DYNAMICS deck
-///   `wasm_gen_dyn` (D2 sub-bug #2 FIXED, round 2): the full 34-variable surface
+///   `wasm_gen_dyn`: the full 34-variable surface
 ///   AND all node voltages match the r4133 oracle at the same tier floors, worst
 ///   ~7e-7 REL only on the near-zero quadrature currents Is2/Ir2 (~4.3e-7 value,
 ///   ~3e-13 abs — the documented cancellation floor, bounded by `var_abs`). The
 ///   macro quantities (Is1/Ir1/StatorLoss/RotorLoss/Slip/dSpeed/HPshaft, all node
-///   V) match to ≤~1e-13. The historical ~5e-4 divergence was a Rust PORT bug in
-///   the dynamics-entry seed: Pascal `InitStateVars` (`generator.pas:2393-2449`)
-///   runs only `ComputeIterminal` — never `ComputeVterminal` — before
-///   `UserModel.FInit`, so the model is seeded from the STALE `Vterminal` buffer
-///   (the power-flow's last-injection voltage `V_{n-1}`, one network re-solve
-///   behind the converged `NodeV`). The earlier port refreshed `Vterminal` to
-///   `V_n` in `user_model_finit`, seeding `E1 = V_n - I·Zsp` (the power-flow
-///   point, |Is1|=189.10) instead of `V_{n-1} - I·Zsp` (the dynamic operating
-///   point, |Is1|=189.207 — the oracle's h-independent first-step projection).
-///   Dropping that refresh reproduces the oracle's step-1 projection AND the whole
-///   trajectory (STATUS §"D2 sub-bug #2 — FIXED (round 2)"). The swing-damping
-///   default note stands: dss_capi/`generator.pas:1006` `Dpu:=1.0` (D≈13263) vs
-///   r4133/`generator.pas:968` sets `D:=1.0` in the ctor but never `Dpu`, so
-///   `InitStateVars` recomputes `D:=Dpu*kVArating*1000/w0=0` — a genuine version
-///   divergence the deck neutralizes by pinning `D=1` on both. Three-way
-///   (A=Rust+wasm, B=pinned 0.14.5+244-B twin, C=r4133+twin): now A==B==C to the
-///   floors (was A diverging from B==C by ~5e-4). The step-1 dSpeed sub-bug #1
-///   guard is `wasm_gen_dyn_step1_trajectory_matches_oracle` below.
+///   V) match to ≤~1e-13. The dynamics entry seeds the model from the STALE
+///   `Vterminal` buffer (the power-flow's last-injection voltage `V_{n-1}`, one
+///   network re-solve behind the converged `NodeV`), never refreshed to `V_n`
+///   before `UserModel.FInit`. The swing damping differs between the OpenDSS
+///   engines (dss_capi derives `D` from `Dpu = 1`, r4133 leaves `Dpu` unset and
+///   ends at `D = 0`), a version divergence the deck neutralizes by pinning
+///   `D=1` on both. Rust+wasm, the pinned 0.14.5 + twin and r4133 + twin agree
+///   to the floors. The step-1 guard is
+///   `wasm_gen_dyn_step1_trajectory_matches_oracle` below.
 fn gate_deck(deck: &str, numeric: bool) {
     let g = load_golden(deck);
     let mut dss = run_deck(deck);
 
     // The deck loads a real `.wasm`, so there is no "Not Loaded" warning and no
     // trap: the engine must be error-free (a surfaced user-model trap/protocol
-    // fault would land here — plan §2.9-5, never a silent fallback).
+    // fault would land here, never a silent fallback).
     assert!(
         dss.errors().is_empty(),
         "{deck}: unexpected engine errors: {:?}",
@@ -199,8 +189,8 @@ fn gate_deck(deck: &str, numeric: bool) {
     // the same nonlinear model on the same inputs, so the gap is the faer-vs-KLU
     // last-ulp floor propagated through the induction-machine slip fixpoint — the
     // `feeder` voltage class, and a `machine` class for the state variables
-    // (empirically calibrated, see the assertion report below; NOT loosened to
-    // pass — CLAUDE.md).
+    // (empirically calibrated, see the assertion report below; never loosened
+    // to pass).
     let vtol = tol_for("feeder");
     // State-variable floor, calibrated to the MEASURED faer-vs-KLU gap on these
     // decks (not a defensive round number): tightening the floor to (1e-13, 1e-14)
@@ -214,9 +204,8 @@ fn gate_deck(deck: &str, numeric: bool) {
     //     principled REL ceiling (the observed macro-var gap is far tighter, ~1e-13).
     //   * `var_abs = 1e-12` — covers the near-zero Is2/Ir2 absolute floor (~1.4e-13)
     //     with ~7x margin, so those currents are constrained by an ABS band instead
-    //     of an unconstrained ~1e-5 (a floor 8 orders above the signal, WM3 audit).
-    // NOT loosened to pass — this is 100x tighter (rel) / 1e7x tighter (abs) than the
-    // pre-settlement 1e-6/1e-5; calibration is printed on any failure.
+    //     of an unconstrained ~1e-5 (a floor 8 orders above the signal).
+    // Never loosened to pass; calibration is printed on any failure.
     let (var_rel, var_abs) = (1e-8, 1e-12);
 
     let mut worst = (0.0_f64, String::from("(none)"));
@@ -342,16 +331,16 @@ fn wasm_gen_dyn_matches_r4133_oracle() {
 }
 
 /// Step-1 dynamics trajectory guard for the `wasm_gen_dyn` (Model=6 UserModel +
-/// ShaftModel) deck — the targeted regression pin for BOTH D2 sub-bugs at the
+/// ShaftModel) deck — the targeted regression pin for BOTH dynamics-entry bugs at the
 /// FIRST dynamics step, where they first appear (the `gate_deck` numeric flip
 /// above pins the 21-step END state, this pins the entry).
 ///
-/// * sub-bug #2 (the dynamics-entry seed, FIXED round 2): step-1 `Is1` jumps
+/// * the dynamics-entry seed: step-1 `Is1` jumps
 ///   h-independently from the power-flow point (189.10) to the dynamic operating
 ///   point (189.207) — the projection driven by seeding `FInit` from the stale
 ///   `Vterminal` (`user_model.rs::user_model_finit`). If that seed regressed to
 ///   the converged `V_n`, `Is1` would stay at 189.10 (a ~5e-4 gap).
-/// * sub-bug #1 (the shaft `FCalc` `Iterminal` write-back, FIXED earlier): step-1
+/// * the shaft `FCalc` `Iterminal` write-back: step-1
 ///   `dSpeed` is −89.24; without the write-back `IntegrateStates`' `TracePower`
 ///   reads the USER model's currents instead of the SHAFT model's and `dSpeed`
 ///   drifts to ≈−80.1 (a ~1e-1 gap that the end-state gate also catches, but this
@@ -504,13 +493,9 @@ fn wasm_gen_edit_matches_r4133_oracle() {
     gate_deck("wasm_gen_edit", true);
 }
 
-/// WM.3 hunt item (silent fallback on trap → loud typed errors): a `Model=6`
-/// (user-written) Generator with **no** `UserModel=` must SURFACE the
-/// missing-model diagnostic (#567, `generator.pas:1834`) through the solution
-/// error log. The power-flow `inj_currents` path previously built the #567 in a
-/// LOCAL `ErrorLog` and dropped it (WM3-1 audit); it now drains into
-/// `SolveEnv.errors` = `Dss::errors()`. Needs no `.wasm` fixture — the point is
-/// the surfacing channel, not the model math.
+/// A `Model=6` (user-written) Generator with **no** `UserModel=` surfaces the
+/// missing-model diagnostic (#567) through `Dss::errors()`, never a silent
+/// fallback.
 #[test]
 fn model6_without_usermodel_surfaces_diagnostic() {
     let deck = "\
@@ -536,8 +521,7 @@ solve";
     );
 }
 
-/// `like=` must carry a **live** user model, not a dead slot (RP1.3 audit
-/// settlement, 2026-08-23).
+/// `like=` must carry a **live** user model, not a dead slot.
 ///
 /// Pascal `MakeLike` does `UserModel.Name := OtherGenerator.UserModel.Name` and
 /// `ShaftModel.Name := …` (`generator.pas:825-826`), and `Set_Name` is an eager
@@ -546,8 +530,6 @@ solve";
 /// slot's `Clone` deliberately drops the live wasmi instance while every call
 /// site guards on `exists()`: the copy echoed `UserModel=<path>`, reported only
 /// the six built-in variables, injected nothing and said NOTHING about it.
-/// Measured before the fix on this very deck: 20 variables on `g1`, 6 on `g2`.
-///
 /// The surface is the discriminator because it is exactly `6 built-in ++
 /// UserModel.FNumVars ++ ShaftModel.FNumVars` (`generator.pas:2954-2959`), so a
 /// dead slot cannot hide: both slots are bound here, so a copy that lost either
@@ -579,11 +561,9 @@ fn like_carries_a_live_user_model_on_both_generator_slots() {
     );
 }
 
-/// WM.3 hunt item (state-var off-by-one / 1-based Pascal arrays): the classic
-/// GenVars setters `Set_Variable` i=1..6 (`generator.pas:2650-2663`) are ported —
-/// `Set StateVar` on a built-in GenVars field mutates the element. Previously
-/// every index routed to the user-model setter and 1..6 was a silent no-op (WM3-4
-/// audit). `PShaft` (index 4) round-trips through `Get StateVar` with no unit
+/// The classic GenVars setters (state variables 1..6) work: `Set StateVar` on a
+/// built-in GenVars field mutates the element instead of reaching the user-model
+/// setter. `PShaft` (index 4) round-trips through `Get StateVar` with no unit
 /// conversion, so it is the cleanest witness. The write uses the capi015 `=x`
 /// form (`set StateVar=x <elem> <var> <value>`) because the natural positional
 /// `set StateVar <elem> …` is an upstream-broken misroute — faithfully reproduced

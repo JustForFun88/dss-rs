@@ -1,4 +1,4 @@
-// Recloser fast/slow pickup split (r4133 WP-U2.2, delta rows B3/C2): r4133 splits
+// Recloser fast/slow pickup split (r4133): r4133 splits
 // the single PhaseTrip pickup into separate PhFastPickup (used while OperationCount
 // <= NumFast) and PhSlowPickup (used after). Here PhFastPickup=50 lets the FAST
 // operation trip on a permanent 3ph fault, but PhSlowPickup=6000 is set ABOVE the

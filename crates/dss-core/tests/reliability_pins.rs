@@ -1,34 +1,24 @@
-//! **GOLDEN_REBASE G1.6(i) — the `Meters` reliability surface's gate-level
-//! pins.**
+//! **The `Meters` reliability surface's gate-level pins.**
 //!
 //! `harness::RELIABILITY_SKIP_FIELDS` stops the value comparison of two
 //! per-phase arrays — `Meters.CalcCurrent` and `Meters.AllocFactors` — on both
-//! oracle channels, because both oracles read them out of **uninitialized
-//! memory** until a deck has run the executive `AllocateLoads`:
-//! `TMeterElement.AllocateSensorArrays` `ReallocMem`s `CalculatedCurrent` and
-//! `PhsAllocationFactor` **without zeroing them** (r4133
-//! `Version8/Source/Meters/MeterElement.pas:45-52`; capi 0.14.5 carries the
-//! identical code), and the only thing that ever writes them is
-//! `TMeterElement.CalcAllocationFactors` (`:54-72`), whose sole driver is
-//! `TExecHelper.DoAllocateLoadsCmd` (r4133
-//! `Version8/Source/Executive/ExecHelper.pas:2624-2683`).
+//! OpenDSS channels, because both engines read them out of **uninitialized
+//! memory** until a deck has run the executive `AllocateLoads`: the sensor
+//! arrays are allocated **without zeroing them**, and only `AllocateLoads`
+//! ever writes them (an OpenDSS bug).
 //!
-//! CLAUDE.md's discipline is that such an exclusion is pinned by its own
-//! expected-value test naming **both** numbers, or it is a mask over nothing.
-//! Here the oracle half of "both numbers" is heap garbage that changes between
-//! processes — measured on `controls:combo/combo_protection.dss` with three
-//! fresh `epri-worker` processes (G1.6(i) part R):
-//! `[2.806806272625585e-309, 2.121995791e-314, 2.37e-322]` in run 1 and
-//! `[…, …, 2.4e-322]` in runs 2-3 — so an envelope is impossible and only a pin
-//! can hold the port's value. That pin is
+//! Such an exclusion is pinned by its own expected-value test naming **both**
+//! numbers, or it is a mask over nothing. Here the OpenDSS half of "both
+//! numbers" is heap garbage that changes between processes, so an envelope is
+//! impossible and only a pin can hold this engine's value. That pin is
 //! [`meter_alloc_factors_are_zero_until_allocateloads_runs`], which every row of
 //! the table names.
 //!
 //! The exclusion's predicate is the **port's own** regime
 //! (`harness::reliability_skip_applies`: all factors still exactly zero), so it
 //! evaporates the moment a deck allocates. `controls:energymeter/midi_relcalc.dss`
-//! is that deck — the only corpus case that runs `AllocateLoads`, added by this
-//! sub-step for exactly this reason — and
+//! is that deck — the only corpus case that runs `AllocateLoads`, there for
+//! exactly this reason — and
 //! [`meter_allocation_factors_are_the_peak_current_over_the_metered_current`]
 //! is the affirmative half: there both fields are defined, live-compared on both
 //! channels, and equal to the peak-over-current identity to the last bit.
@@ -45,17 +35,17 @@
 //! check that they are non-empty, but only a scan from outside can check that
 //! the `#[test]` each one names still exists.
 //!
-//! # G1.6(ii) — the per-bus half
+//! # The per-bus half
 //!
 //! The trailing block of this file pins the eight per-bus reliability columns
 //! (`Bus.Lambda / N_interrupts / Int_Duration / Cust_Interrupts /
 //! Cust_Duration / TotalMiles / N_Customers / SectionID`) that
 //! `harness::compare_bus_reliability` compares exactly, per bus, on both
-//! oracle channels: four expected-value tables carrying the port's and both
-//! oracles' numbers, the record of the `Bus.Int_Duration` zone question, a
+//! OpenDSS channels: four expected-value tables carrying this engine's and both
+//! OpenDSS engines' numbers, the record of the `Bus.Int_Duration` zone question, a
 //! four-sided column census, and the bus capture's own read-order contract
-//! with its negative drive. It has its own banner comment; the G1.6(i) rules
-//! above are untouched by it.
+//! with its negative drive. It has its own banner comment; the rules above are
+//! untouched by it.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -180,8 +170,7 @@ fn deck_steps(rel: &str, steps: usize) -> (Dss, DeckDirGuard) {
 ///
 /// The oracle's third slot **changes between processes**, which is what makes
 /// the cell un-envelopable and therefore a harness exclusion rather than a
-/// `tests/corpus/ledger.json` row (coordinator decision D4; the
-/// `PD_SKIP_FIELDS` precedent). The port's value is right by construction:
+/// `tests/corpus/ledger.json` row (like `PD_SKIP_FIELDS`). The port's value is right by construction:
 /// `MeterElementData::new` zero-initializes both arrays
 /// (`elements/meter/meter_element.rs:106,111`) and only
 /// `calc_allocation_factors` (`:117-136`, the port of
@@ -279,8 +268,8 @@ fn meter_alloc_factors_are_zero_until_allocateloads_runs() {
 /// sections, and all 67 `Meters.Totals` slots. That is the proof that these two
 /// arrays alone are solve-derived: they are `|GetCurrents|` of the metered
 /// element at the solve `CalcAllocationFactors` ran on, and they therefore
-/// carry the current tier (`harness::reliability_array_band`, derived in
-/// `tests/TOLERANCE_NOTES.md`), not this surface's exactness rule. The port's
+/// carry the current tier (`harness::reliability_array_band`), not this
+/// surface's exactness rule. The port's
 /// worst gap against either oracle is `6.14e-14` relative (phase 1 vs capi),
 /// i.e. `1.9x` the spread the two oracles already leave between themselves —
 /// faer-vs-KLU on the same footing as KLU-vs-KLU, four orders inside the micro
@@ -402,7 +391,7 @@ fn dss_relcalc(dss: &mut Dss) {
 /// **`modes:time/midi_duty_ctrl.dss` — every reliability index, with both
 /// oracles' numbers.**
 ///
-/// This is the sub-step's clean `both`-channel witness: the two independent
+/// This is the clean `both`-channel witness: the two independent
 /// oracle engines return **bit-identical** doubles for every value below, and
 /// the port returns the same bits again. That is what licenses the exactness
 /// rule `harness::compare_reliability` applies (`rel = abs = 0`); a floor here
@@ -429,7 +418,7 @@ fn dss_relcalc(dss: &mut Dss) {
 /// | section 1 `FaultRateXRepairHrs` | `0.009408` | idem | idem |
 ///
 /// The capi column was read through `tools/oracle/oracle_server.py`'s own read
-/// path (G1.6(i) part R), the r4133 column through the `epri-worker` DDLL
+/// path, the r4133 column through the `epri-worker` DDLL
 /// bridge (`MetersI` 20/21, `MetersF` 0-3, `MetersI` 22-27 per section). Both
 /// are re-confirmed live by the corpus gate, which compares every one of them
 /// on both channels for this case.
@@ -517,7 +506,7 @@ fn relcalc_indices_match_both_oracles_on_the_duty_deck() {
 /// "not comparable": `TEnergyMeterObj` publishes it as EnergyMeter property
 /// `CAIDI` — 0-based index 22 in `AllPropertyNames`, i.e. property **23** —
 /// which `harness::compare_all_properties` already compares live on the capi
-/// channel and, since RP4.1, on r4133 as well. This pin records the arithmetic
+/// channel and on r4133 as well. This pin records the arithmetic
 /// behind that cell and both numbers:
 ///
 /// * the port's f64 `CAIDI` is `2.999999999999999`, exactly `SAIDI / SAIFI`
@@ -525,8 +514,7 @@ fn relcalc_indices_match_both_oracles_on_the_duty_deck() {
 ///   same on all three engines;
 /// * rendered at the property channel's 11 significant digits it is the string
 ///   `"3"`, which is exactly what the capi oracle reported for
-///   `EnergyMeter.em[22]` when `RelCalc` moved that cell from `"0"`
-///   (G1.6(i) part R).
+///   `EnergyMeter.em[22]` when `RelCalc` moved that cell from `"0"`.
 ///
 /// So the value is gated twice over: numerically here, and live through the
 /// property surface on both channels.
@@ -587,7 +575,7 @@ fn caidi_is_saidi_over_saifi_on_a_reliability_deck() {
 ///   boolean and the message and never the count.
 /// * `TotalCustomers` still moves — `24` on `em`, `0` on `em2` — because it is
 ///   read off the zone head's bus and is not produced by the aborted calc
-///   (measured on both channels, G1.6(i) part R).
+///   (measured on both channels).
 #[test]
 fn relcalc_abort_is_symmetric_on_a_zone_without_ocp() {
     const MSG: &str = "Error: No Overcurrent Protection device (Relay, Recloser, or Fuse) \
@@ -639,16 +627,14 @@ fn relcalc_abort_is_symmetric_on_a_zone_without_ocp() {
 }
 
 // ---------------------------------------------------------------------------
-// G1.6b's deferred non-vacuity demo, discharged here
+// The non-vacuity demo of the `RelCalc`-fed `PDElements` fields
 // ---------------------------------------------------------------------------
 
 /// **The four `RelCalc`-fed `PDElements` fields are live, and oracle-compared.**
 ///
-/// G1.6b landed the 14-field `PDElements` walk with `section_id`, `total_miles`,
-/// `lambda` and `accumulated_l` reading `0` on every gated case, because no live
-/// corpus deck ran `RelCalc` — so comparing them proved only that the port does
-/// not populate them early, and `harness::compare_pd_elements`' doc recorded the
-/// non-vacuity demo as owed by G1.6(i). This is that demo.
+/// Without `RelCalc`, `section_id`, `total_miles`, `lambda` and
+/// `accumulated_l` read `0` on every gated case, which proves only that this
+/// engine does not populate them early. This is the non-vacuity demo.
 ///
 /// Two halves, both required:
 ///
@@ -804,9 +790,8 @@ fn assert_manifest_gates_reliability(family: &str, deck_rel: &str, engines: &str
 // The read-order contract, asserted over both capture sources
 // ---------------------------------------------------------------------------
 //
-// `GOLDEN_REBASE_PLAN.md` §1.1(a) / coordinator decision D3. Three rules bind
-// every transport that captures this surface, and none of them is expressible
-// in a type system — one transport is Python (`tools/oracle/oracle_server.py`),
+// Three rules bind every transport that captures this surface, and none of
+// them is expressible in a type system — one transport is Python (`tools/oracle/oracle_server.py`),
 // the other a `libloading` bridge (`crates/dss-epri/src/capture.rs`), and a
 // capture that broke a rule would still LOOK fine: it would simply compare the
 // port against a stale section, or against a walk that lost its meters.
@@ -824,8 +809,7 @@ fn assert_manifest_gates_reliability(family: &str, deck_rel: &str, engines: &str
 //    `:2347-2360`; r4133 `DMeters.pas:558-573` -> `Circuit.pas:2520-2538`),
 //    which walks `EnergyMeters.First`/`Next` itself and destroys the cursor.
 //    fastdss says so verbatim (`DSS-Python@origin/fastdss:`
-//    `tests/save_outputs.py:330-332`, "This breaks the iteration") and G1.6(i)
-//    part R measured it: a mid-walk `Totals` read on
+//    `tests/save_outputs.py:330-332`, "This breaks the iteration"), measured: a mid-walk `Totals` read on
 //    `controls:energymeter/midi_energymeter.dss` truncates the clean walk
 //    `['em', 'em2']` to `['em']`.
 // 3. **The payload's slot is between the meters and the PD elements**, on both
@@ -1359,7 +1343,7 @@ fn the_reliability_read_order_guard_rejects_a_contaminated_capture() {
 // the harness is the other end of the `pin` string: whether the expected-value
 // test it names EXISTS. `pin` is a plain `&'static str`, so a renamed or
 // deleted pin leaves the exclusion standing over nothing — precisely the "mask
-// over nothing" CLAUDE.md forbids. This scan closes the loop from the outside,
+// over nothing". This scan closes the loop from the outside,
 // the way [`the_capi_reliability_capture_reads_in_the_pinned_order`] closes it
 // on the capture bodies.
 
@@ -1368,7 +1352,7 @@ fn the_reliability_read_order_guard_rejects_a_contaminated_capture() {
 const RELIABILITY_PIN_SOURCES: &[&str] = &[
     "crates/dss-core/tests/reliability_pins.rs",
     "crates/dss-core/src/exec/tests/reliability.rs",
-    // The harness' own offline drives (G1.6(ii) audit settlement): the
+    // The harness' own offline drives: the
     // per-column non-vacuity of `compare_bus_reliability` and the fail-loud
     // decode of a non-finite cell are pinned where the comparator and the caps
     // live, so the docs that name them are covered by the same guard.
@@ -1420,8 +1404,7 @@ fn is_a_test_fn(name: &str) -> bool {
 /// `force_pdelements` apply. Those two have real `kind=large*` predicates and
 /// pinned populations; `compare_reliability` is manifest-set only, so nothing
 /// but this test stops a `large` deck being flagged and paying for a whole
-/// extra `RelCalc` + payload on three engines (G1.6(i) audit settlement,
-/// finding AC-9: the word 'guard' now names something).
+/// extra `RelCalc` + payload on three engines.
 #[test]
 fn no_large_case_gates_the_reliability_surface() {
     let mut large = 0usize;
@@ -1471,74 +1454,7 @@ const RELIABILITY_MANIFESTS: &[&str] = &[
     "tests/corpus/modes/manifest.json",
     "tests/corpus/manifests/solvable_now.json",
 ];
-/// The G1.6(i) pins that `TESTING.md`, `tests/TOLERANCE_NOTES.md` and the
-/// phase record quote by NAME.
-///
-/// The four `RELIABILITY_SKIP_FIELDS` rows are guarded by
-/// [`every_reliability_skip_row_pin_names_a_real_test`] because an exclusion
-/// whose pin is gone is a mask over nothing. These are the other direction:
-/// a doc sentence that names a pin is only evidence while that pin exists,
-/// and nothing stopped a rename from leaving the sentence pointing at
-/// nothing (G1.6(i) audit settlement, finding AT-7).
-const RELIABILITY_PINS_QUOTED_IN_DOCS: &[&str] = &[
-    "a_non_finite_reliability_cell_fails_the_decode_on_both_transports",
-    "bus_int_duration_stays_in_the_meters_zone_on_the_live_population",
-    "bus_reliability_columns_match_both_oracles_on_the_duty_deck",
-    "bus_reliability_columns_on_the_capi_only_and_r4133_only_decks",
-    "bus_reliability_sections_and_durations_on_the_relcalc_deck",
-    "bus_reliability_survives_the_52902_abort",
-    "caidi_is_saidi_over_saifi_on_a_reliability_deck",
-    "every_bus_reliability_column_is_compared_per_bus",
-    "every_bus_reliability_column_is_read_by_some_transport",
-    "meter_alloc_factors_are_zero_until_allocateloads_runs",
-    "meter_allocation_factors_are_the_peak_current_over_the_metered_current",
-    "meter_totals_is_the_masked_register_sum",
-    "pd_elements_relcalc_fields_are_live_after_relcalc",
-    "relcalc_abort_is_symmetric_on_a_zone_without_ocp",
-    "relcalc_assume_restoration_changes_auto_ocp_interruptions",
-    "relcalc_is_not_idempotent_and_the_gate_runs_it_once",
-    "relcalc_recomputes_the_customer_totals_it_depends_on",
-    "reliability_accumulators_are_correctly_rounded_f64_sums",
-];
 
-/// The three documents whose sentences name the pins above.
-const RELIABILITY_PIN_DOCS: &[&str] = &[
-    "TESTING.md",
-    "tests/TOLERANCE_NOTES.md",
-    "docs/phase-records/golden-rebase.md",
-];
-
-/// **Every pin the docs name exists, and every name in the list is really
-/// quoted somewhere** — the guard fails in both directions, so neither the
-/// list nor a doc sentence can rot on its own.
-#[test]
-fn every_reliability_pin_named_in_the_docs_exists() {
-    let docs: Vec<String> = RELIABILITY_PIN_DOCS
-        .iter()
-        .map(|d| read_source(d))
-        .collect();
-    for pin in RELIABILITY_PINS_QUOTED_IN_DOCS {
-        assert!(
-            is_a_test_fn(pin),
-            "the docs name `{pin}` as an expected-value pin, but no `#[test] fn \
-             {pin}` exists in {RELIABILITY_PIN_SOURCES:?}. A doc sentence \
-             pointing at a renamed or deleted test is evidence of nothing \
-             (CLAUDE.md; `GOLDEN_REBASE_PLAN.md` §1.1(e))."
-        );
-        assert!(
-            docs.iter().any(|d| d.contains(*pin)),
-            "`{pin}` is listed here as doc-quoted but appears in none of \
-             {RELIABILITY_PIN_DOCS:?} — drop it from the list, or restore the \
-             sentence that named it"
-        );
-    }
-    // Not vacuous in either direction.
-    assert!(!RELIABILITY_PINS_QUOTED_IN_DOCS.is_empty());
-    assert!(!is_a_test_fn(
-        "relcalc_is_not_idempotent_and_the_gate_runs_it_twice"
-    ));
-    assert!(docs.iter().all(|d| !d.is_empty()));
-}
 /// **Every `RELIABILITY_SKIP_FIELDS` row names a `#[test]` that exists.**
 ///
 /// The four shipped rows all name
@@ -1569,7 +1485,7 @@ fn every_reliability_skip_row_pin_names_a_real_test() {
             "RELIABILITY_SKIP_FIELDS names the pin `{pin}`, but no `#[test] fn \
              {pin}` exists in {RELIABILITY_PIN_SOURCES:?}. An exclusion whose \
              expected-value test has been renamed or deleted is a mask over \
-             nothing (CLAUDE.md; `GOLDEN_REBASE_PLAN.md` §1.1(e))."
+             nothing."
         );
     }
     // The scan is not vacuous in either direction.
@@ -1584,24 +1500,22 @@ fn every_reliability_skip_row_pin_names_a_real_test() {
 }
 
 // ===========================================================================
-// GOLDEN_REBASE G1.6(ii) — the eight per-bus reliability columns
+// The eight per-bus reliability columns
 // ===========================================================================
 //
 // `Export BusReliability` renders six of the eight at 11 significant digits
 // against two byte goldens (`report/export/reliability.rs:21-38`,
 // `tests/golden/reports/export_busreliability{,_multimeter}.txt`);
-// `Cust_Duration` and `SectionID` were witnessed by nothing at all before this
-// sub-step. Since G1.6(ii) `harness::compare_bus_reliability` compares all
-// eight, per bus, in full f64, on every gating channel of the six flagged
-// cases. These pins are the expected-value half of that: the port's own
-// numbers, beside the two oracles' numbers, on every regime the population
+// `harness::compare_bus_reliability` compares all eight, per bus, in full f64,
+// on every gating channel of the six flagged cases. These pins are the
+// expected-value half of that: this engine's own numbers, beside the two
+// OpenDSS engines' numbers, on every regime the population
 // reaches — a completed multi-section zone, a single-section zone, an
 // r4133-only deck, a capi-only deck and the errno-52902 abort.
 //
-// The exactness rule (`rel = abs = 0`, derived in `tests/TOLERANCE_NOTES.md`)
-// rests on a measurement, not on hope: the two independent oracle engines
-// return **bit-identical** doubles for all 400 cells the two channels share
-// (G1.6(ii) parts F1/F4, `tmp` probes over the shipped transports), and four of
+// The exactness rule (`rel = abs = 0`) rests on a measurement, not on hope: the
+// two OpenDSS engines return **bit-identical** doubles for every cell the two
+// channels share (measured over the shipped transports), and four of
 // the eight columns are already pinned bit-for-bit against both oracles by
 // transitivity through
 // [`relcalc_indices_match_both_oracles_on_the_duty_deck`]. A band here would
@@ -1739,7 +1653,7 @@ fn assert_int_duration_is_the_sections_repair_time(dss: &Dss, who: &str) {
 /// **`modes:time/midi_duty_ctrl.dss` — all eight per-bus columns, with both
 /// oracles' numbers.**
 ///
-/// The sub-step's clean `both`-channel witness, and the deck whose meter
+/// The clean `both`-channel witness, and the deck whose meter
 /// indices are already pinned against both oracles by
 /// [`relcalc_indices_match_both_oracles_on_the_duty_deck`]. Every cell below
 /// was returned **bit-identically** by the pinned dss-python / dss_capi 0.14.5
@@ -1755,8 +1669,8 @@ fn assert_int_duration_is_the_sections_repair_time(dss: &Dss, who: &str) {
 /// | `loadb` | `0.16799999999999998` | 0 | `2.999999999999999` | 0 | 0 | `0.05600000000000001` | 1 | 0 |
 /// | `loadc` | `0.16799999999999998` | 0 | `2.999999999999999` | 0 | 0 | `0.05600000000000001` | 1 | 0 |
 ///
-/// (capi column == r4133 column == port column, cell for cell — measured over
-/// the two shipped transports, G1.6(ii) parts F1 and F4.)
+/// (capi column == r4133 column == engine column, cell for cell — measured over
+/// the two shipped transports.)
 ///
 /// Four of the eight are *already* pinned against both oracles one level up,
 /// and this test closes that loop explicitly: on this fixture
@@ -2179,7 +2093,7 @@ fn bus_reliability_survives_the_52902_abort() {
 /// oracle, so a pin carries the most weight here — and together they cover the
 /// reason both single-channel classes exist: capi 0.14.5 cannot compile
 /// `combo_protection` (`Fuse.curvemultiplier` is not a parameter it knows,
-/// error 110 — measured, part R), while `makeposseq_ctrl` is capi-gated over an
+/// error 110 — measured), while `makeposseq_ctrl` is capi-gated over an
 /// unrelated SwtControl per-phase-state divergence already carried in
 /// `tests/corpus/ledger.json`.
 ///
@@ -2335,50 +2249,10 @@ const RELIABILITY_POPULATION: &[RelPopulationCase] = &[
     },
 ];
 
-/// **`Bus.Int_Duration` stays inside its own meter's zone — and on this
-/// population the upstream all-buses walk cannot tell the difference.**
-///
-/// The standing G2.2a claim, re-asserted where the live gate can see it. r4133
-/// `Version8/Source/Meters/EnergyMeter.pas:2567-2574` (capi 0.14.5
-/// `EnergyMeter.pas:2521-2526`) writes the duration by walking **every circuit
-/// bus** and indexing that bus's `BusSectionID` into *this* meter's
-/// `FeederSections`, an array sized to *this* meter's `SectionCount`; the
-/// zeroing that would have cleared a foreign id is itself per-zone (`:2472`).
-/// The port walks only the zone its own forward sweep numbered
-/// (`solution/meters/reliability.rs`, `set_duration` over `zone_buses`), which
-/// is CLAUDE.md's "no upstream bug is reproduced in any lane".
-///
-/// The difference is observable only when some bus outside a meter's zone
-/// carries a section id that meter could index — which needs **two** meters,
-/// at least one of them with an allocated section. This test asserts the
-/// structural reason that never happens on the flagged population: of the six
-/// cases, five define exactly one meter, and the sixth
-/// (`controls:energymeter/midi_energymeter.dss`) has two meters that both abort
-/// at errno 52902, so neither allocates a section and every bus keeps
-/// `SectionID = 0`. With at most one meter holding sections, every in-range
-/// section id in the circuit was stamped by that meter's own sweep, so the
-/// zone-scoped walk and the all-buses walk agree cell for cell — both oracles
-/// therefore return the port's numbers, and the surface needs no ledger row.
-///
-/// # The Q4 measurement (part R, 2026-09-05) — recorded here rather than in prose
-///
-/// The brief predicted the four `DOCTechNote` multi-meter decks would be in
-/// regime **(b)** of the bug (an out-of-range id -> an OOB heap read, proven
-/// nondeterministic in
-/// `investigations/reliability_bus_int_duration_oob_bug_report.md`), which
-/// would have forced an unconditional exclusion with no oracle number to pin.
-/// It was measured instead of assumed: `DOCTechNote/1_1.dss` in **three** fresh
-/// capi processes and `2_2.dss` in **two** came back bit-identical on all eight
-/// columns for all 390 buses. The cause is structural — on all four decks every
-/// bus's `SectionID` is in `{0, 1}` (histogram `{0: 218, 1: 172}`) while the
-/// per-meter `NumSections` histogram is `{1: 68, 0: 9}` (`2_2` also has one
-/// meter at 8), so a foreign id is **always in range**: regime **(a)**, the
-/// deterministic cross-zone overwrite. Had those decks been flagged, the
-/// settlement would have been an ordinary field-by-field ledger exclusion plus
-/// an expected-value pin — not an unconditional one. They are out of the
-/// population by G1.6(i) decision D-i-2 (the `kind=large*` cost guard, held by
-/// [`no_large_case_gates_the_reliability_surface`]), so nothing is owed either
-/// way; the measurement is recorded because it inverted the prediction.
+/// `Bus.Int_Duration` stays inside its own meter's zone, while the OpenDSS
+/// engines walk every circuit bus into this meter's sections (an OpenDSS bug,
+/// never reproduced). On the flagged population at most one meter holds
+/// sections, so both walks agree and the surface needs no ledger row.
 #[test]
 fn bus_int_duration_stays_in_the_meters_zone_on_the_live_population() {
     // The population is exactly the six cases pinned above — checked against
@@ -2587,9 +2461,8 @@ fn struct_field_names(rel: &str, name: &str) -> Vec<String> {
 // The per-bus capture's read-order contract, over both capture sources
 // ---------------------------------------------------------------------------
 //
-// `GOLDEN_REBASE_PLAN.md` §1.1(a) / coordinator decision D3. The eight columns
-// are **group C** — order-free with respect to everything else in a checkpoint:
-// each is a plain field read off the active `TDSSBus` behind a "is a bus
+// The eight columns are **group C** — order-free with respect to everything
+// else in a checkpoint: each is a plain field read off the active `TDSSBus` behind a "is a bus
 // active" guard (capi `CAPI/CAPI_Bus.pas:462-526`, `:604-622`; r4133
 // `Version8/Source/DDLL/DBus.pas:129-170` `BUSF` 6-11 and `:60-73` `BUSI` 4-5),
 // so none goes through `ComputeIterminal`/`GetCurrents` and none writes engine
@@ -2611,7 +2484,7 @@ fn struct_field_names(rel: &str, name: &str) -> Vec<String> {
 //
 // The bus block also sits AFTER `Meters.Totals` in both transports, so the
 // reliability payload reads meters-then-buses on both channels; that is
-// asserted here too, and it is what keeps G1.6(i)'s "Totals is the last
+// asserted here too, and it is what keeps the "Totals is the last
 // `Meters` read" rule literally true (the bus reads touch no `Meters` handle).
 //
 // [`the_bus_reliability_read_order_guard_rejects_a_contaminated_capture`]

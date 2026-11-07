@@ -1,10 +1,7 @@
-//! `epri-worker` — the persistent r4133 bridge worker (UNIFIED_GATE_PLAN.md
-//! §3.2). Speaks the same line-JSON `ping`/`run`/`quit` protocol as
-//! `tools/oracle/oracle_server.py`, producing byte-compatible `CaseResult`
-//! responses so the `harness/mod.rs` comparators accept it unchanged
-//! (bit-compat vs the outgoing Python/Oddie path was proven by
-//! `xcheck_bridge.py` before that whole stack — script included — was
-//! retired in UNIFIED_GATE Phase E).
+//! `epri-worker` — the persistent r4133 bridge worker. Speaks the same
+//! line-JSON `ping`/`run`/`quit` protocol as `tools/oracle/oracle_server.py`,
+//! producing byte-compatible `CaseResult` responses so the `harness/mod.rs`
+//! comparators accept it unchanged.
 //!
 //! Modes:
 //! - `--smoke` — run the oracle-free self-smoke and exit (replaces
@@ -58,7 +55,7 @@ fn main() {
         return;
     }
 
-    // Init sequence (§2.2): load DLL -> DSSI(8,0) (inside Engine::new) -> version
+    // Init sequence: load DLL -> DSSI(8,0) (inside Engine::new) -> version
     // assert vs revisions.json expect_version -> ready.
     let dll = dll_path();
     let engine = match Engine::new(&dll) {
@@ -76,7 +73,7 @@ fn main() {
         }
     };
     let version = engine.version().trim().to_string();
-    // Where every `run` reply is sent from (RF-I00-01, the `run` arm below).
+    // Where every `run` reply is sent from (the `run` arm below).
     // Without one there is nowhere to step back to, so the worker refuses to
     // start, as the Python transport does (`os.getcwd()` raising at startup).
     let startup_cwd = match std::env::current_dir() {
@@ -280,11 +277,11 @@ fn main() {
                         }
                     },
                 };
-                // RETRO_FIXES RF-I00-01: the gate compiles every case in its own
-                // scratch copy and removes it after the reply, but a compile
-                // leaves this process's working directory inside the copy
-                // (r4133 `Executive/ExecHelper.pas:752-754`) and Windows refuses
-                // to remove a process's working directory: step back first. A
+                // The gate compiles every case in its own scratch copy and
+                // removes it after the reply, but an r4133 compile leaves this
+                // process's working directory inside the copy and Windows
+                // refuses to remove a process's working directory: step back
+                // first. A
                 // failed step back fails the case naming the cause, as the
                 // Python twin's `finally: os.chdir(startup_cwd)` does, instead of
                 // replying from inside the copy (where it would read as an

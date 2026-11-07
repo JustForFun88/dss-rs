@@ -1,6 +1,6 @@
 WM.3 D2 follow-up — three-way disambiguation of the ~5e-4 Generator-dynamics gap
 ================================================================================
-Question (STATUS §WASM-UM WP-WM.3, D2): on wasm_gen_dyn (Generator Model=6 +
+Question: on wasm_gen_dyn (Generator Model=6 +
 ShaftModel, IndMach012a, 21 dynamics steps, explicit D=1) a residual ~5e-4 gap
 vs r4133 survives. The WM.3 settlement HYPOTHESISED this is a dss_capi-0.14.5-
 vs-r4133 engine-version divergence (same family as the proven D1 Dpu diff) and

@@ -14,7 +14,7 @@ mod tests;
 pub use dss_compat::OPENDSS_PARITY;
 
 // ---------------------------------------------------------------------------
-// RPN pi (IV.2 row 4)
+// RPN pi
 // ---------------------------------------------------------------------------
 
 /// The shortened pi of the Pascal original (`RPN.pas:69-70`, `TRPNCalc`'s
@@ -45,7 +45,7 @@ pub const PI: f64 = if OPENDSS_PARITY {
 };
 
 // ---------------------------------------------------------------------------
-// FPC `Round` (IV.2 row 5)
+// FPC `Round`
 // ---------------------------------------------------------------------------
 
 /// FPC `Round`: round-to-nearest-even to Int64 (x87/SSE default mode; out of

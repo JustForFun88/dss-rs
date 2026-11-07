@@ -4,7 +4,7 @@
 //! the equivalent symmetrical-component summary (Z1/Z0, C1/C0, surge impedance,
 //! propagation velocity). Produces **two** files: the human-readable report
 //! (`<CircuitName_>LineConstants.txt`) and a `LineConstantsCode.dss` LineCode
-//! script (same dir, no circuit prefix). The Carson recompute reuses the WP7.1
+//! script (same dir, no circuit prefix). The Carson recompute reuses the
 //! `LineGeometryObj::z_matrix`/`yc_matrix` (recomputed at the requested freq/rho).
 
 use crate::elements::general::line_geometry::LineGeometryObj;

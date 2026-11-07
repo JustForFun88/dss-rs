@@ -1,7 +1,7 @@
 //! NCIM solver report exports (Pascal `Common/ExportResults.pas`
 //! `ExportJacobian` / `ExportdeltaF` / `ExportdeltaZ`): dump the last-solution
 //! NCIM Jacobian and mismatch/correction vectors. All three read state left by
-//! [`crate::solution::solution::ncim`] (`Set Algorithm=NCIM`); on a circuit that
+//! [`crate::solution::solution::do_ncim_solution`] (`Set Algorithm=NCIM`); on a circuit that
 //! never ran an NCIM solve the vectors are empty and the Jacobian is `None`.
 //!
 //! These are numeric dumps of the *last iteration's* solver state. The Jacobian

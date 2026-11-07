@@ -1,6 +1,6 @@
 use crate::exec::*;
 
-// ---- WP6.7: Sensor + load allocation -------------------------------------
+// ---- Sensor + load allocation --------------------------------------------
 
 /// A radial feeder with an EnergyMeter at the head and two ConnectedkVA-spec
 /// loads. The meter's `SensorCurrent` defaults to 400 A, so `allocateloads`
@@ -40,17 +40,9 @@ fn allocateloads_meter_drives_zone() {
     assert!(close_rel(f2, 6.372501), "ld2 factor {f2}");
 }
 
-/// WP-U1.5 D9 (dss_capi `fb728364`, SVN r4115): a DISABLED EnergyMeter is
-/// ignored by load allocation — `TEnergyMeterObj.AllocateLoad` and
-/// `TMeterElement.CalcAllocationFactors` each open with `if not Enabled then
-/// Exit`. Here the meter is enabled at zone-build time (so its zone/load list is
-/// populated), then disabled before `allocateloads`; the guard makes the
-/// allocation a clean no-op, leaving both loads' factors at their initial `0.5`.
-/// Feature-sensitive: without the guard the populated zone would be walked and
-/// the factors driven to `6.3725` (the enabled-meter result of
-/// `allocateloads_meter_drives_zone`). Probed 2026-07-16: capi015 keeps `0.5`
-/// (0.14.5 hit an Access Violation walking the disabled meter — UB, not
-/// reproduced).
+/// A disabled EnergyMeter is ignored by load allocation. The meter is enabled
+/// while its zone is built and disabled before `allocateloads`, so both loads
+/// keep their initial allocation factors.
 #[test]
 fn allocateloads_ignores_disabled_meter() {
     let mut dss = allocation_feeder();

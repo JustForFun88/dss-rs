@@ -86,8 +86,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         ),
         PropDef::double("kW").flags(PropFlags::REQUIRED),
         // `pf` is read-only on both engines (writes silently ignored in
-        // `set_f64`), but the two disagree on the TEXT RENDER, and r4133 is the
-        // authority (CLAUDE.md, 2026-08-02):
+        // `set_f64`), but the two disagree on the TEXT RENDER, and this engine
+        // follows r4133:
         //
         // * dss_capi 0.14.5 flags it `[SilentReadOnly, ReadByFunction]` and never
         //   assigns a `PropertyOffset` (stays -1), so `GetObjPropertyValue`'s
@@ -99,7 +99,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         //   `Common/Utilities.pas:1821`, `Power[1]` is `TDSSCktElement.Get_Power`,
         //   `CktElement.pas:666-703`).
         //
-        // So `RENDERS_LIVE_RESULT` rides alongside `SILENT_READ_ONLY` (RP3.8):
+        // So `RENDERS_LIVE_RESULT` rides alongside `SILENT_READ_ONLY`:
         // the `?`/`Dump`/`all_properties` render reads the live value from
         // [`IndMach012::live_pf`], while the three surfaces the 0.14.5 convention
         // still governs (JSON export omission, JSON load refusal, schema

@@ -310,10 +310,9 @@ impl WindGen {
             5 => self.do_fixed_qz_gen(sys, node_v),
             6 => self.do_user_model(sys, node_v, errors),
             // Models 3 (`DoPVTypeGen`) and 7 (`DoCurrentLimitedPQ`) are out of
-            // scope (`R4133_PROPS_PLAN.md` §1.3, `ORPHANED_GAPS.md`); they fall
-            // into the Pascal `ELSE` arm (`WindGen.pas:2117-2118`, "for now,
-            // until we implement the other models"), which they cannot reach
-            // upstream — the enum refuses to parse them.
+            // scope. They fall into the Pascal `ELSE` arm (`WindGen.pas:2117-2118`,
+            // "for now, until we implement the other models"), which they cannot
+            // reach upstream — the enum refuses to parse them.
             _ => self.do_constant_pq_gen(sys, node_v),
         }
     }

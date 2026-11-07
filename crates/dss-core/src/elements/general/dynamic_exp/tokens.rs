@@ -18,7 +18,7 @@
 //! [`Lexeme`] is what `InterpretDiffEq`'s `case OpCode of` does with each
 //! `opCodes` entry. The compiler ([`super::DynamicExpObj::interpret_diff_eq`])
 //! emits `DynToken`s and the evaluator (`solve_eq`) consumes them, so the
-//! sentinel arithmetic exists only in the `#[cfg(test)]` [`DynToken::ordinal`]
+//! sentinel arithmetic exists only in the `#[cfg(test)]` `DynToken::ordinal`
 //! pin channel that still asserts the compiled stream cell-for-cell against the
 //! Pascal notation above.
 
@@ -147,7 +147,7 @@ pub(super) const OP_LEXEMES: [Lexeme; 29] = [
 ///
 /// Every value the Pascal `Integer` cell can legally hold has a variant, so the
 /// evaluator's dispatch is exhaustive and the two magic numbers (`50000`,
-/// `-50`) live only in the test-only [`DynToken::ordinal`] encoding.
+/// `-50`) live only in the test-only `DynToken::ordinal` encoding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum DynToken {
     /// Pascal `-50`: the marker that follows an equation's output-variable

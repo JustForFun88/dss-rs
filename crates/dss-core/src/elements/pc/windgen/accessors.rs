@@ -295,12 +295,10 @@ impl CktElement for WindGen {
         }
         // Surface any user-model trap / missing-`Model=6` diagnostic through the
         // solution ErrorLog — never a silent fallback on a trapping `.wasm`
-        // (WASM_USERMODELS §2.9-5). An `abort`-flagged fault (the missing
-        // dynamics model, `WindGen.pas:1996-1997`) lifts `SolutionAbort` so the
-        // solve stops instead of iterating on a best-effort stale current. The
-        // log was previously built and DROPPED here, which also swallowed the
-        // non-3-phase WTG3 dynamics guard (RP1.3 part B fix; the Generator twin
-        // has always drained it, `generator/accessors.rs:326-331`).
+        // (`docs/wasm/USERMODEL_ABI.md` §6). An `abort`-flagged fault (the missing
+        // dynamics model) lifts `SolutionAbort` so the solve stops instead of
+        // iterating on a best-effort stale current. Draining the log also
+        // surfaces the non-3-phase WTG3 dynamics guard, as the Generator does.
         for d in errors.into_vec() {
             if d.abort {
                 *ctx.solution_abort = true;
@@ -339,9 +337,8 @@ impl CktElement for WindGen {
         // WindGen.pas:1693): `and (not ForceInjCurr)` — skip the model recompute and
         // report the frozen `Iterminal` (via the `inherited` YPrim·V path) when the
         // currents are forced from the DSS language (`Set InjCurrent=`/`ITerminal=`),
-        // mirroring the other five flag-checking classes (WP-U1.9 / 0.15.x-adoption
-        // sweep a3a5). Without this the port recomputes at the new operating point
-        // where r4133 freezes.
+        // mirroring the other five flag-checking classes. Without this guard the
+        // element would recompute at the new operating point where r4133 freezes.
         if !self.cd.iterminal_solved_for(sys.solution_count)
             && !self.gen_switch_open
             && !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS)
@@ -349,8 +346,8 @@ impl CktElement for WindGen {
             // `GetTerminalCurrents` has no solve-context error channel, so a
             // user-model trap / missing-`Model=6` diagnostic recomputed here is
             // queued on the element's deferred-error log (drained by the
-            // executive) rather than dropped — never a silent fallback on trap
-            // (§2.9-5). The loud path is `inj_currents` during the solve; this
+            // executive) rather than dropped — never a silent fallback on trap.
+            // The loud path is `inj_currents` during the solve; this
             // query recompute is the fallback surfacing.
             let mut errors = crate::diag::ErrorLog::new();
             self.calc_gen_model_contribution(sys, node_v, &mut errors);
@@ -444,11 +441,11 @@ impl WindGen {
         // hands `make_like` an owned `clone()` of the donor, and the slot's
         // `Clone` deliberately drops the live wasmi instance — so a cloned slot
         // reports `exists() == false` and every call site (`user_model_fcalc`,
-        // `…_finit`, `…_fintegrate`, `get_all_user_model_vars`) skips it. The
-        // copy therefore produced a WindGen that echoed `UserModel=<path>`,
-        // reported only the 22 native variables and silently injected nothing —
-        // measured, RP1.3 part C. `ShaftModel.Name` (`:830`) has no counterpart
-        // — no property can ever set it (module doc).
+        // `…_finit`, `…_fintegrate`, `get_all_user_model_vars`) skips it. A
+        // cloned slot would give a WindGen that echoes `UserModel=<path>`,
+        // reports only the native variables and silently injects nothing.
+        // `ShaftModel.Name` has no counterpart — no property can ever set it
+        // (module doc).
         self.user_model_name = other.user_model_name.clone();
         self.user_model = None;
         self.queue_user_model_load(other.user_model_name.clone());
@@ -610,7 +607,7 @@ impl DssObject for WindGen {
         use prop::*;
         match idx {
             // UserModel/UserData store the value here; the load/edit is a
-            // deferred request raised in `side_effects` (WASM_USERMODELS §2.4) —
+            // deferred request raised in `side_effects` (`docs/wasm/USERMODEL_ABI.md` §5) —
             // never a parse error, matching `TWindGenUserModel.Set_Name`.
             USERMODEL => self.user_model_name = value,
             USERDATA => self.user_data = value,
@@ -726,7 +723,7 @@ impl DssObject for WindGen {
             // The `Edit` dispatch order (`WindGen.pas:641-642`): `UserModel.Name`
             // (load) before `UserData` (edit). The filesystem/current-dir are
             // unreachable from the property hook, so each records a deferred
-            // request the executive resolves before `end_edit` (§2.4).
+            // request the executive resolves before `end_edit` (ABI doc §5).
             USERMODEL => self.queue_user_model_load(self.user_model_name.clone()),
             USERDATA => self.queue_user_model_edit(self.user_data.clone()),
             // Pascal `TProp.VV_Curve` side effect: load the four volt-var points

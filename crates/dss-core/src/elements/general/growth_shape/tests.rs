@@ -59,7 +59,7 @@ fn year_is_rounded_and_arrays_round_trip() {
 
 #[test]
 fn file_props_queue_a_deferred_load() {
-    // WPG.1: CSVFile/SngFile/DblFile are ported (deferred FileLoad).
+    // CSVFile/SngFile/DblFile queue a deferred FileLoad.
     for (name, prop, binary) in [
         ("csvfile", prop::CSVFILE, false),
         ("sngfile", prop::SNGFILE, true),

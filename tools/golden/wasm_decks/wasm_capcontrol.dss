@@ -1,4 +1,4 @@
-! WASM_USERMODELS WM.5 — CapControl user-control gate deck (the Rust side).
+! WASM user model — CapControl user-control gate deck (the Rust side).
 ! A deadband voltage CapControl implemented as a WASM user model (capuserctl):
 ! `@FIXTURE@` is the committed tests/fixtures/wasm/capuserctl.wasm on the Rust
 ! engine (hermetic replay) and the native twin .dll for the empirical

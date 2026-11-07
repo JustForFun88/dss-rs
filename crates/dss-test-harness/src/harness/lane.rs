@@ -1,50 +1,54 @@
-//! Stage F **two-lane test policy** — the drift model of `DE_PASCALIZE_PLAN.md`
-//! Part IV.2, implemented once here and shared by every golden driver.
+//! The **two-lane test policy**, implemented once here and shared by every
+//! golden driver.
 //!
 //! The engine ships in two builds. The **parity lane**
-//! (`--features dss-compat/opendss-parity`) selects the bit-compat kernels of
-//! `dss_core::compat` and must keep EVERY existing oracle gate green forever —
-//! byte goldens, checkpoint Y, corpus floors, iteration counts, discrete
-//! states; it never re-baselines. The **default lane** (no features) is the
-//! idiomatic-Rust product: its kernels differ from the oracle's at the ulp
-//! (F.3), and after F-FMT (F.4) its report text is rendered natively.
+//! (`--features dss-compat/opendss-parity`) selects the precision kernels of
+//! `dss_core::compat`: the truncated constants, the FPC rounding and the FPC
+//! number formatting of the OpenDSS engines. It reproduces their precision and
+//! nothing else, and it holds every comparison with them: the byte goldens, the
+//! checkpoint Y, the corpus floors, the iteration counts and the discrete
+//! states. The **default
+//! lane** (no features) is the product: its kernels differ from the OpenDSS
+//! engines at the ulp, and it renders its report text natively. No lane
+//! reproduces an OpenDSS bug: a value that differs from the OpenDSS engines by
+//! physics is excluded field by field in both lanes and pinned by a test of the
+//! engine's own value.
 //!
-//! What each quantity class does in each lane — the plan's drift-model table,
-//! turned into code:
+//! What each quantity class does in each lane:
 //!
 //! | Quantity class | parity lane | default lane |
 //! |---|---|---|
-//! | Continuous results (V, I, S, losses, registers) | the calibrated oracle floors (`tol_for`) | **the same floors, unchanged** — ulp-level kernel drift lands orders below them |
-//! | Discrete state (taps, control state, action counts, event log) | exact vs oracle | **exact vs oracle** — a knife-edge flip is investigated per the `CLAUDE.md` prove-it rule, never blanket-relaxed |
-//! | Iteration count vs an oracle golden | exact (`==`, or `<=` on the r4133 channel) | [`compare_iterations`] / [`compare_iterations_le`] — a documented ±[`ITER_SLACK`] band |
-//! | Text reports (Dump/Save/Show/Export) | byte-exact vs the committed golden | [`compare_report`] — the *same* committed golden, compared parsed-numeric |
-//! | Deliberate divergences (the F.3 upstream-bug fixes) | reproduced, oracle-compared | excluded field-by-field, pinned by their own expected-value tests |
+//! | Continuous results (V, I, S, losses, registers) | the calibrated floors (`tol_for`) | **the same floors** (ulp-level kernel drift lands orders below them) |
+//! | Discrete state (taps, control state, action counts, event log) | exact | **exact** (a knife-edge flip is investigated, never relaxed) |
+//! | Iteration count vs a golden of the OpenDSS engines | exact (`==`, or `<=` on the r4133 channel) | [`compare_iterations`] / [`compare_iterations_le`]: a ±[`ITER_SLACK`] band |
+//! | Text reports (Dump/Save/Show/Export) | byte-exact vs the committed golden | [`compare_report`]: the *same* committed golden, compared parsed-numeric |
+//! | A precision row the default lane computes exactly (`compat::profile_ll_pu_divisor`) | compared | excluded at those fields, pinned by its own expected-value test |
+//! | An OpenDSS bug ([`LANE_SKIP_ELEM_POWERS`]) | excluded field by field | excluded field by field |
 //!
 //! **No tolerance is introduced anywhere by this split.** The default-lane
 //! report policies are built by [`exact_value_policy`] (`rel = abs = 0`): the
-//! numbers must still parse to *exactly* the oracle's f64: only their rendering
-//! (digit count, padding, column widths) is allowed to move. The physical
-//! floors stay where `tol_for`/`tests/TOLERANCE_NOTES.md` put them.
+//! numbers must still parse to *exactly* the golden's f64, and only their
+//! rendering (digit count, padding, column widths) may move. The physical
+//! floors stay where `tol_for` puts them.
 //!
 //! **Which goldens are lane-split, and why (the scoping rule).** A byte golden
 //! is routed through [`compare_report`] iff its writer renders a number through
-//! the **F-FMT seam** — `compat::fmt_g`, `report::format`'s `g`/`fixed*`/`g_w`/
-//! `fpc_sci_w`/`pad` family — i.e. iff F.4 can change its bytes. Everything else
-//! keeps the byte compare in *both* lanes, because it is the strictly stronger
-//! check and nothing in Stage F can move it:
+//! the formatting kernels (`compat::fmt_g`, `report::format`'s `g`/`fixed*`/
+//! `g_w`/`fpc_sci_w`/`pad` family), i.e. iff the lane can change its bytes.
+//! Everything else keeps the byte compare in *both* lanes, because it is the
+//! strictly stronger check and no lane kernel can move it:
 //!
 //! * `Show Loops`/`Zone`/`Controlled`/`Isolated`/`Topology`, `Export UUIDs`,
-//!   `Show PV2PQ_Conversions`, the incidence-matrix CSVs — identifier / tree /
-//!   integer text, no float rendered at all → byte-exact in both lanes.
-//! * the CIM XML profiles — their writers call no `report::format` float helper
-//!   → byte-exact in both lanes.
-//! * the `Action=SngSave/DblSave` binary goldens — raw little-endian f32/f64,
-//!   zero formatting freedom → byte-exact in both lanes.
+//!   `Show PV2PQ_Conversions`, the incidence-matrix CSVs: identifier, tree and
+//!   integer text, no float rendered at all, byte-exact in both lanes.
+//! * the CIM XML profiles: their writers call no `report::format` float helper,
+//!   byte-exact in both lanes.
+//! * the `Action=SngSave/DblSave` binary goldens: raw little-endian f32/f64,
+//!   zero formatting freedom, byte-exact in both lanes.
 //!
-//! **F.4 added one more shape.** The AltDSS JSON captures used to sit in the
-//! byte-exact group; F.4 gave their writer two lane rows of its own
-//! (`compat::json_float`, `compat::JSON_LINE_BREAK`), so they now go through
-//! [`compare_json`] — byte-exact in the parity lane, token-for-token with
+//! The AltDSS JSON captures have two lane rows of their own
+//! (`compat::json_float`, `compat::JSON_LINE_BREAK`), so they go through
+//! [`compare_json`]: byte-exact in the parity lane, token-for-token with
 //! bit-exact numeric equality in the default one. `export/json/circuit.rs`'s
 //! `%8.2f` weights render *DSS script text* inside the payload, and strings are
 //! compared verbatim, so that one row is enumerated at the driver
@@ -53,9 +57,9 @@
 //! **Where a rendering row cannot be absorbed by a comparator, it is
 //! enumerated, never widened.** Three helpers do that, each fail-on-stale:
 //! [`expected_eventlog`]'s [`EVENTLOG_REROUNDED`] cells, [`expected_rerounded`]
-//! for the `Dump` goldens, and the driver-local JSON lists. `CLAUDE.md`'s
-//! no-fudging rule is why: a widened band would also absorb a real last-digit
-//! change of a *value*, and these rows only re-spell one.
+//! for the `Dump` goldens, and the driver-local JSON lists. A widened band
+//! would also absorb a real last-digit change of a *value*, and these rows only
+//! re-spell one.
 //!
 //! Non-vacuity of the whole split is proven by the unit tests at the bottom of
 //! this file, which assert the *split itself*: a rendering-only difference must
@@ -77,27 +81,22 @@ use super::{ColSel, ColTol, ElemChannels, ExportPolicy, GateSpec, RowPolicy, com
 /// `golden_smoke.rs::the_harness_crate_reads_the_lane_this_driver_was_built_in`.
 pub const PARITY: bool = dss_core::compat::OPENDSS_PARITY;
 
-/// Default-lane slack on an iteration count compared against an **oracle**
-/// golden, in iterations.
+/// Default-lane slack on an iteration count compared against a golden of the
+/// OpenDSS engines, in iterations.
 ///
-/// The drift model: an ulp-level kernel difference can flip the convergence
-/// test one step early or late, i.e. ±1 — and nothing more, because the
-/// fixpoint itself is still pinned at the calibrated voltage floors. Growth
-/// beyond this band is a regression signal, not something to widen: it means
-/// the default lane is walking a *different* trajectory, which the `CLAUDE.md`
-/// prove-it rule says to diagnose (tighten the loop tolerance, isolate the
-/// suspect, dump both per-iteration trajectories) before touching any bound.
-/// M3c (parallel LU) and WP-R1 (iterative refinement) may later need a wider,
-/// *measured* band; they must raise it here with the measurement, per case.
+/// It exists because an ulp-level kernel difference can flip the convergence
+/// test one step early or late, and nothing more: the fixpoint itself is still
+/// pinned at the calibrated voltage floors. Growth beyond this band means the
+/// default lane walks a *different* trajectory, which is diagnosed (tighten the
+/// loop tolerance, isolate the suspect, dump both per-iteration trajectories),
+/// never widened. A solver change that needs a wider band raises it here with
+/// the measurement, per case.
 ///
-/// The parity lane ignores this constant entirely — it stays exact forever,
-/// and that is where the band's **compensating control** lives: the same 13
-/// routed sites compare `assert_eq!(rust, oracle)` in the parity build, which
-/// is one of the five mandatory gate commands (and now a CI step), so an
-/// iteration count that moved at all still fails somewhere in `cargo test`.
-/// The band is not backstopped by `tools/lanes/lane_diff.ps1` — that job
-/// compares the two *lanes*, not either lane against the oracle, and is not
-/// part of `cargo test` at all.
+/// The parity lane ignores this constant and stays exact: the same call sites
+/// compare `assert_eq!(rust, oracle)` in the parity build, which is a gate
+/// command, so an iteration count that moved at all still fails there.
+/// `tools/lanes/lane_diff.ps1` is no backstop: it compares the two *lanes*,
+/// not either lane against the OpenDSS engines.
 pub const ITER_SLACK: i32 = 1;
 
 /// The records the default lane deliberately answers differently from the
@@ -110,147 +109,51 @@ pub const ITER_SLACK: i32 = 1;
 /// is an exclusion against the oracles, in both lanes, and has no row here.
 pub const DOCUMENTED_DIVERGENCES: &[(&str, &[&str])] = &[];
 
-/// The corpus cases whose element `Powers`/`Losses`/`PhaseLosses` **neither**
-/// lane oracle-compares — the drift model's "deliberate divergences … excluded
-/// field-by-field" row, and the only such exclusion in the suite.
+/// The corpus cases whose element `Powers`/`Losses`/`PhaseLosses`/`TotalPowers`
+/// **neither** lane compares with the OpenDSS engines: the only element-channel
+/// exclusion in the suite.
 ///
-/// CLAUDE.md upstream bug 5, torn down in both lanes (`GOLDEN_REBASE_PLAN.md`
-/// G2.3 on this gate's reader, `RETRO_FIXES_PLAN.md` RF-D00-01 on every one):
-/// `DoNewtonSolution` leaves `Iterminal` stamped from the pre-final voltage
-/// guess, so upstream's cache-aware `Get_Powers`/`Get_Losses` report a stale
-/// current after `Set algorithm=Newton` while `Currents` recomputes fresh. The
-/// solver drops those stamps on exit (`drop_stale_newton_iterminal_stamps`), so
-/// every read lands at the converged `NodeV` — deliberately *not* what any oracle reports
-/// (measured against `capi_v0145`: 4.86e-4 kVA on `newton.dss`, 2.46e-3 kVA on
-/// `newton_feeder.dss`, both on `Vsource.source` conductor 0 — ~60× and ~35×
-/// their tiers' floors, so this can never be mistaken for drift). Bumping the
-/// oracle is no escape: the quirk is in every vendored official rev (r3723,
-/// r4088, r4133), so the `r4133` channel misreports these two channels too.
-///
-/// These are the only two gated decks that run a Newton solve, and the bug is
-/// unobservable after every other algorithm (the cache is invalid at read time,
-/// so the cache-aware read recomputes the same current) — which is why the
-/// exclusion stays these two decks' two channels and nothing wider.
+/// An OpenDSS bug, excluded in both lanes: after `Set algorithm=Newton` both
+/// OpenDSS engines leave the terminal currents stamped from the pre-final
+/// voltage guess, so their cached power and loss reads report a stale current
+/// while `Currents` recomputes fresh. The engine drops those stamps on exit
+/// (`drop_stale_newton_iterminal_stamps`), so every read lands at the converged
+/// `NodeV`. These are the only two gated decks that run a Newton solve, and the
+/// bug is unobservable after every other algorithm, which is why the exclusion
+/// stays these two decks and nothing wider.
 ///
 /// **What still gates them**: the element name set, terminal **currents**, node
-/// voltages, the system Y, discrete state, the ten discrete per-element extras
-/// and the iteration count — everything except the four `S = V·conj(I)`
-/// channels: `Powers`, `Losses`, since G1.3d(ii) `PhaseLosses` (the same
-/// products bucketed by phase) and, since G1.3c, `TotalPowers` (the same
-/// products summed per terminal). All four are reached through the cache-aware
-/// `ComputeIterminal`, and only their *values* are dropped —
+/// voltages, the system Y, discrete state, the discrete per-element extras and
+/// the iteration count, everything except the four `S = V·conj(I)` channels
+/// (`Powers`, `Losses`, `PhaseLosses` bucketed by phase and `TotalPowers`
+/// summed per terminal). Only their *values* are dropped:
 /// `harness::compare_element_phase_losses` and
-/// `harness::compare_element_total_powers` still assert their array shapes
-/// there. Those are pinned by
-/// `dss_core::exec::tests::newton::newton_powers_match_the_normal_algorithm`,
-/// which asserts the Newton powers equal the *normal* algorithm's on the same
-/// deck to 1e-8 kVA (upstream's stale read differs by ≥ 1e-1 kVA) — and the
-/// normal algorithm's powers are oracle-gated on ~500 other corpus cases, which
-/// closes the loop transitively. `newton_total_powers_match_the_normal_algorithm`
-/// carries the terminal sums the same way: the port's own Newton-vs-normal gap
-/// is 3.320142298909114e-11 kVA, against the 4.5155082046702575e-4 /
-/// 5.213217790400988e-3 kVA the two oracle channels report stale in the gate's
-/// own state — ~20x their band on every channel ([`elem_channels_for`]'s G1.3c
-/// section carries the four measurements).
+/// `harness::compare_element_total_powers` still assert their array shapes.
+/// The values are pinned by
+/// `dss_core::exec::tests::newton::newton_powers_match_the_normal_algorithm`
+/// and `newton_total_powers_match_the_normal_algorithm`, which assert the
+/// Newton powers equal the *normal* algorithm's on the same deck, and the
+/// normal algorithm's powers are compared on every other corpus case.
 const LANE_SKIP_ELEM_POWERS: &[&str] =
     &["modes:newton/newton.dss", "modes:newton/newton_feeder.dss"];
 
 // LANE-EXCLUSION(POWERS_REUSE_STALE_NEWTON_ITERMINAL): the two decks' powers,
-// losses, per-phase losses and per-terminal totals are dropped from the oracle
-// compare in **both** lanes — no oracle channel reports them at the converged
+// losses, per-phase losses and per-terminal totals are dropped from the
+// comparison in **both** lanes: no OpenDSS engine reports them at the converged
 // `NodeV`, so there is no lane in which comparing them would be right.
-/// Which element sub-channels the corpus gate oracle-compares for the case
-/// `label` — [`ElemChannels::ALL`] everywhere except [`LANE_SKIP_ELEM_POWERS`],
-/// in either lane.
+/// Which element sub-channels the corpus gate compares for the case `label`:
+/// [`ElemChannels::ALL`] everywhere except [`LANE_SKIP_ELEM_POWERS`], in either
+/// lane.
 ///
-/// # G1.3a: the three derived polar channels do NOT join the exclusion
-///
-/// `CurrentsMagAng`, `VoltagesMagAng` and `Residuals`
-/// (`GOLDEN_REBASE_PLAN.md` G1.3a) stay compared on the two `newton*` decks.
-/// The staleness above is confined to the **cache-aware** read path —
-/// `Get_Powers`/`Get_Losses` reuse `ComputeIterminal`, which returns the stamped
-/// `Iterminal` untouched when the solution count already matches (r4133
-/// `Common/CktElement.pas:632-640`, called from `Get_Power` `:666` at `:680` and
-/// from `Get_Losses` `:707` at `:743`). The three new surfaces do not use it:
-/// upstream reads them through a scratch `GetCurrents`
-/// (r4133 `DDLL/DCktElement.pas:837`/`:1069`) and `VoltagesMagAng` only reads
-/// `NodeV` through `NodeRef` (`:1096-1100`), never `Iterminal`. So the two decks
-/// *gain* three oracle-compared channels here — a strengthening, not a widening
-/// — and [`ElemChannels::CURRENTS_ONLY`] keeps all three `true`.
-///
-/// # G1.3d(ii): `PhaseLosses` DOES join it
-///
-/// The fourth surface added since — `PhaseLosses`
-/// (`GOLDEN_REBASE_PLAN.md` G1.3d(ii)) — is on the other side of that same
-/// line: `GetPhaseLosses` opens with the identical cache-aware
-/// `ComputeIterminal` (r4133 `Common/CktElement.pas:1090`, capi
-/// `src/Common/CktElement.pas:896`) and forms the identical
-/// `NodeV·conj(Iterminal)` products, merely bucketed by phase instead of summed,
-/// so no oracle channel reports it at the converged `NodeV` on these two decks
-/// either. [`ElemChannels::CURRENTS_ONLY`] therefore clears
-/// `phase_losses` — the value compare only; the port-side identity
-/// `Σ_i PhaseLosses[i] = Losses` is pinned in-engine by
-/// `dss_core::exec::tests::element_extras::phase_losses_are_watts_and_sum_to_get_losses`
-/// beside this row's own `newton_powers_match_the_normal_algorithm`, and
-/// `harness::compare_element_phase_losses` keeps asserting the array shapes on
-/// these decks under every channel policy.
-/// # G1.3b: the three sequence channels do NOT join it — `SeqPowers` included
-///
-/// `SeqCurrents`, `SeqVoltages` and `SeqPowers`
-/// (`GOLDEN_REBASE_PLAN.md` G1.3b) land back on the polar three's side of that
-/// same line, and the third of them is the one worth naming: it is a **power**
-/// channel that is nevertheless not stale here. r4133's `CktElementV` mode `9`
-/// fills its own scratch buffer through `GetCurrents`
-/// (`DDLL/DCktElement.pas:758`, `:778`) and reads `Solution.NodeV` directly, and
-/// capi's `Alt_CE_Get_SeqPowers_` does the same (`CAPI/CAPI_Alt.pas:549`); modes
-/// `7`/`8` go through `CalcSeqVoltages`/`CalcSeqCurrents`, which also call
-/// `GetCurrents` / read `NodeV`. **None of the three takes the cache-aware
-/// `ComputeIterminal` path**, so all three stay `true` in
-/// [`ElemChannels::CURRENTS_ONLY`] and the two `newton*` decks gain three more
-/// oracle-compared channels rather than a fourth exclusion.
-///
-/// # G1.3c: `CplxSeq*` do NOT join it, `TotalPowers` DOES
-///
-/// The two complex sequence channels (`GOLDEN_REBASE_PLAN.md` G1.3c) are the
-/// same reads as `SeqCurrents`/`SeqVoltages` minus the `Cabs` — r4133 modes
-/// `13`/`14` (`DDLL/DCktElement.pas:885-928`/`:931-975`) call the very
-/// `CalcSeqVoltages`/`CalcSeqCurrents` helpers modes `7`/`8` call, and capi's
-/// `Alt_CE_Get_ComplexSeq*` (`CAPI/CAPI_Alt.pas:872-895`/`:898-925`) likewise —
-/// so they stay `true` in [`ElemChannels::CURRENTS_ONLY`] and the two decks gain
-/// two more compared channels, this time complex.
-///
-/// `TotalPowers` is the one G1.3c surface on the other side of the line: it is
-/// the per-terminal sum of `GetPhasePower`, whose first act is the cache-aware
-/// `ComputeIterminal` (r4133 `Common/CktElement.pas:1049`, reached from mode
-/// `20` at `DDLL/DCktElement.pas:1120`; capi `CAPI/CAPI_Alt.pas:1127`), so no
-/// oracle channel reports it at the converged `NodeV` here either. Measured by
-/// the **live corpus gate**, on BOTH gating channels, with the bit forced ON
-/// (G1.3c F5, 2026-09-06; step 0, `Vsource.source` terminal 0; the two decks
-/// flipped to `engines: "r4133"` in a scratch manifest for their second channel,
-/// since a case aborts on its first failing channel):
-///
-/// * `modes/newton/newton.dss` — port `(-1339.5781272745278,
-///   -548.8069881927757)` kW/kvar vs capi `(-1339.5777198832018,
-///   -548.8067934353601)`, |d| **4.5155082046702575e-4** > allowed
-///   2.2953166227444328e-5; vs r4133 `(-1339.577719883203, -548.8067934353802)`,
-///   |d| 4.5155081076231536e-4 > allowed 2.2953166227444412e-5.
-/// * `modes/newton/newton_feeder.dss` — port `(-9745.942809960561,
-///   -8273.745474220133)` vs capi `(-9745.938445807476, -8273.742622587692)`,
-///   |d| **5.213217790400988e-3** > allowed 2.1128110294679937e-4; vs r4133
-///   `(-9745.938445807791, -8273.742622587679)`, |d| 5.213217533932785e-3 >
-///   allowed 2.1128110294680455e-4.
-///
-/// — ~19.7x and ~24.7x the band, on both channels, which is what clears the
-/// bit. How far the stale cache is behind depends on how far the deck has
-/// re-converged, and the gate solves once more after the compile
-/// (`tools/oracle/oracle_server.py:612-632`): read after `compile` ALONE the
-/// same capi channel is 0.6831564014868734 kVA (`newton.dss`, `Line.l1`) /
-/// 2.1850404626011652 kVA (`newton_feeder.dss`, `Vsource.source`) off a
-/// freshly-recomputed terminal sum, and the identical probe under the gate's own
-/// protocol reads 0.000451550541865182 / 0.005213217527607856 kVA — the gap the
-/// gate measures above, to three digits. Against a per-conductor `Powers`
-/// staleness of 0.53 / 0.75 kVA in the compile state, summing a terminal grows
-/// the gap instead of cancelling it.
+/// The exclusion covers exactly the channels both OpenDSS engines read through
+/// their cached terminal currents: `Powers`, `Losses`, `PhaseLosses` (the same
+/// products bucketed by phase) and `TotalPowers` (the same products summed per
+/// terminal). The derived polar channels (`CurrentsMagAng`, `VoltagesMagAng`,
+/// `Residuals`), the sequence channels (`SeqCurrents`, `SeqVoltages`,
+/// `SeqPowers`) and the complex sequence pair recompute the currents or read
+/// `NodeV` directly, so they are not stale on these decks and
+/// [`ElemChannels::CURRENTS_ONLY`] keeps them `true`. `SeqPowers` is a power
+/// channel on that side of the line.
 pub fn elem_channels_for(label: &str) -> ElemChannels {
     if LANE_SKIP_ELEM_POWERS.contains(&label) {
         ElemChannels::CURRENTS_ONLY
@@ -339,7 +242,7 @@ pub fn grounded_banks_the_oracles_call_series(label: &str) -> Vec<&'static str> 
 /// vendored decks), so re-capturing them would trade an oracle proof for two
 /// label changes.
 ///
-/// # Both lanes: the two Relay rows (`GOLDEN_REBASE_PLAN.md` G2.2d)
+/// # Both lanes: the two Relay rows
 ///
 /// Neither is a precision row — they are upstream label mistakes, so the engine
 /// emits the correct log in both lanes and the rewrite here is what keeps every
@@ -380,8 +283,8 @@ pub fn grounded_banks_the_oracles_call_series(label: &str) -> Vec<&'static str> 
 ///
 /// # Default lane only: the `%g` cells
 ///
-/// `compat::fmt_g` (F.4) is a **precision** row and is still lane-split (until
-/// `GOLDEN_REBASE_PLAN.md` G4.1), so [`EVENTLOG_REROUNDED`] — the enumerated
+/// `compat::fmt_g` is a **precision** row and is lane-split, so
+/// [`EVENTLOG_REROUNDED`] — the enumerated
 /// cells where its two kernels spell a *traced* number's last printed digit
 /// differently — stays behind the parity guard, together with its
 /// [`REROUND_VISITS`]/[`REROUND_HITS`] accounting. Applying it in the parity
@@ -463,11 +366,8 @@ static REROUND_HITS: [AtomicUsize; EVENTLOG_REROUNDED.len()] =
 /// corpus gate.
 ///
 /// A cell whose case was compared but which never fired is exempting a number
-/// that is no longer there — the staleness the ledger and
-/// [`expected_rerounded`] are both guarded against, and the one this list lacked
-/// until F-settle W4 (probe: two invented rows, one with a key occurring
-/// nowhere in the corpus, passed the whole gate unremarked — while the module
-/// doc above already claimed this helper was fail-on-stale).
+/// that is no longer there, the staleness the ledger and
+/// [`expected_rerounded`] are both guarded against.
 ///
 /// Silent when a cell's case was never visited, so `DSS_GATE_ONLY` runs and the
 /// parity lane (which applies no re-round cell — it returns from
@@ -491,7 +391,7 @@ pub fn assert_reround_cells_are_live() {
     }
 }
 
-/// The event-log cells F-FMT's `%g` row (`compat::fmt_g`) re-spells in the
+/// The event-log cells the `%g` row (`compat::fmt_g`) re-spells in the
 /// default lane, as `(parity spelling, default spelling)`.
 ///
 /// **The one carrier, found by measurement over the whole 520-case gate:**
@@ -505,18 +405,13 @@ pub fn assert_reround_cells_are_live() {
 /// control decision moves, and the rest of that log line (and every other line
 /// of that case) stays compared against the oracle.
 ///
-/// Each cell names its **case**, and is applied only to that case's log — the
-/// list used to be applied to every line of every gated case, which is far
-/// wider than the one carrier it was measured on. It is also fail-on-stale:
-/// [`expected_eventlog`] asserts every cell of the case it is comparing fired
-/// exactly once. Until F-settle W4 nothing checked that, so a stale entry sat
-/// there silently exempting a cell (probe: two invented rows, one with a key
-/// that occurs nowhere, passed the gate unremarked) — while the module doc two
-/// screens up already claimed this helper was fail-on-stale.
+/// Each cell names its **case**, and is applied only to that case's log. It is
+/// also fail-on-stale: [`expected_eventlog`] asserts every cell of the case it
+/// is comparing fired exactly once.
 ///
-/// A cell that stops occurring can therefore no longer degrade quietly; and it
-/// must never match a line it was not written for, which is why the keys carry
-/// the property name and the entries carry the case.
+/// A cell that stops occurring therefore cannot degrade quietly, and it must
+/// never match a line it was not written for, which is why the keys carry the
+/// property name and the entries carry the case.
 const EVENTLOG_REROUNDED: &[(&str, &str, &str, &str)] = &[
     (
         "controls:invcontrol/midi_invcontrol_drc.dss",
@@ -545,10 +440,9 @@ const EVENTLOG_REROUNDED: &[(&str, &str, &str, &str)] = &[
 /// Lower-casing is **ASCII-only**, deliberately. `str::to_lowercase` is
 /// Unicode-aware and can change a string's byte length (`U+0130` → `i` + a
 /// combining dot, 2 bytes → 3), while the offsets it produces are used to slice
-/// the *original* line — a skew that silently missed the rewrite on one probe
-/// input and panicked with "byte index is not a char boundary" on another
-/// (F-settle W4). ASCII folding is length-preserving, so the offsets are
-/// correct by construction, and it matches the port's P6 convention.
+/// the *original* line, a skew that would miss the rewrite on some inputs and
+/// panic with "byte index is not a char boundary" on others. ASCII folding is
+/// length-preserving, so the offsets are correct by construction.
 fn reround_cell(line: &str, key: &str, from: &str, to: &str) -> (String, usize) {
     let (lower_l, lower_k) = (line.to_ascii_lowercase(), key.to_ascii_lowercase());
     let mut out = String::with_capacity(line.len());
@@ -598,8 +492,8 @@ fn reset_device_name(line: &str) -> Option<&str> {
 /// accessor, is what this transform is measured against on that channel.
 ///
 /// So the placeholder is a **client artifact of both readers we gate against**,
-/// never an engine value in either lane. `GOLDEN_REBASE_PLAN.md` G2.4 therefore
-/// reclassified it from a lane split into this capture normalization: both
+/// never an engine value in either lane. It is therefore a capture
+/// normalization, not a lane split: both
 /// lanes' engines report the empty channel, and both lanes strip the
 /// placeholder from either channel's capture. (Scoping the strip to
 /// `capi_v0145` was measured and rejected — it reds the three gated
@@ -628,7 +522,7 @@ fn reset_device_name(line: &str) -> Option<&str> {
 ///   and fails loudly.
 ///
 /// The one shape those guards do **not** catch is a client that stops padding
-/// and returns `[]`: since G2.4 both lanes' engines also report `[]`, so such a
+/// and returns `[]`: both lanes' engines also report `[]`, so such a
 /// capture would compare equal and quietly turn this normalization into dead
 /// code. [`assert_monitor_pad_is_live`] closes that hole the way
 /// [`assert_reround_cells_are_live`] closes the event-log one — every
@@ -672,7 +566,7 @@ static MONITOR_PAD_MISSES: AtomicUsize = AtomicUsize::new(0);
 /// **Fail-on-stale for [`expected_monitor_channel`]**, asserted once at the end
 /// of the corpus gate.
 ///
-/// Since G2.4 the engine reports the empty channel in both lanes, so an oracle
+/// The engine reports the empty channel in both lanes, so an OpenDSS
 /// client that stopped padding would produce a capture equal to the engine's
 /// answer and the normalization would silently become a no-op — the one rot the
 /// transform's own shape guards cannot see. Every unflushed-monitor capture the
@@ -696,7 +590,7 @@ pub fn assert_monitor_pad_is_live() {
     );
 }
 
-/// The oracle capture as the **current lane** spells it after F-FMT's `%g` row
+/// The oracle capture as the **current lane** spells it after the `%g` row
 /// — the identity in the parity lane, and in the default lane the enumerated
 /// set of cells where `compat::fmt_g`'s two kernels round the *last printed
 /// digit* differently.
@@ -710,7 +604,7 @@ pub fn assert_monitor_pad_is_live() {
 /// FPC battery, always a last-digit difference
 /// (`crates/dss-core/tests/fmt_battery.rs`). Relaxing [`exact_value_policy`] to
 /// absorb that would silently absorb a *real* last-digit value change too, and
-/// `CLAUDE.md` forbids widening a band to make a comparison pass. So the golden
+/// a band is never widened to make a comparison pass. So the golden
 /// keeps `rel = abs = 0` and each affected cell is named here instead, in the
 /// shape `golden_cim`/`golden_json`/`fault_dump_expected` already use: a
 /// literal `from → to` pair that must match **exactly once**, so a recaptured
@@ -728,7 +622,7 @@ pub fn expected_rerounded(oracle: &str, cells: &[(&str, &str)]) -> String {
         assert_eq!(
             out.matches(from).count(),
             1,
-            "the F-FMT re-rounding cell {from:?} matches {} times, not once — \
+            "the re-rounding cell {from:?} matches {} times, not once — \
              if the golden was recaptured or the engine value moved, re-derive \
              the pair; do not loosen the compare",
             out.matches(from).count()
@@ -770,11 +664,11 @@ fn is_last_digit_respelling(a: &str, b: &str) -> bool {
 /// The lane policy for an **AltDSS JSON byte golden**: byte-exact in the parity
 /// lane, token-for-token with numeric equality in the default lane.
 ///
-/// F.4 gave the JSON writer two lane rows — `compat::json_float` (fpjson's fixed
+/// The JSON writer has two lane rows: `compat::json_float` (fpjson's fixed
 /// 17-significant scientific vs the shortest round-tripping literal) and
 /// `compat::JSON_LINE_BREAK` (the Windows `sLineBreak` the oracle captured vs a
 /// plain `\n`). Both change how the document *looks* and neither changes what it
-/// *says*, which is exactly the F-FMT contract, so the default lane compares the
+/// *says*, which is exactly the formatting contract, so the default lane compares the
 /// same committed golden as a token stream:
 ///
 /// * every structural character, in order — so key order, nesting, array length
@@ -888,7 +782,7 @@ fn json_tokens(text: &str, ctx: &str) -> Vec<JsonTok> {
 /// The strongest report gate: beyond the token content it pins leading
 /// indentation, padding runs and trailing spaces — a formatter-side off-by-one
 /// in a tab depth or a column width, invisible to a whitespace tokenizer, fails
-/// here. Used directly (both lanes) for the goldens no Stage F step can move,
+/// here. Used directly (both lanes) for the goldens no lane kernel can move,
 /// and as [`compare_report`]'s parity-lane arm.
 pub fn assert_bytes_eq(oracle: &str, rust: &str, ctx: &str) {
     let o = oracle.replace("\r\n", "\n");
@@ -915,22 +809,21 @@ pub fn assert_bytes_eq(oracle: &str, rust: &str, ctx: &str) {
 }
 
 /// The lane policy for a **text report golden whose writer renders numbers
-/// through the F-FMT seam**: parity lane = the byte compare, unchanged;
+/// through the formatting kernels**: parity lane = the byte compare, unchanged;
 /// default lane = the same committed golden compared **parsed-numeric** with
-/// the existing tokenizer (`compare_export`/[`ExportPolicy`], PHASE8_PLAN
-/// §2.3).
+/// the existing tokenizer (`compare_export`/[`ExportPolicy`]).
 ///
 /// What the default lane still pins: the line count, every row's field count,
 /// every text token (case-insensitively), and every number's *value* under the
 /// policy's tolerance — which for the byte-golden families is exactly zero
 /// ([`exact_value_policy`]). What it stops pinning: how the numbers are
-/// spelled and how the columns are padded. That is precisely the freedom F-FMT
-/// buys, and nothing else.
+/// spelled and how the columns are padded. That is precisely the freedom the
+/// formatting kernels have, and nothing else.
 ///
 /// Enforces the scoping rule mechanically (in **both** lanes, so a mis-scoped
 /// call site cannot hide in the lane that is not being run): a golden routed
 /// here must actually carry a rendered number. A number-free report has nothing
-/// F-FMT can move, so splitting it would only weaken the default lane into a
+/// a lane kernel can move, so splitting it would only weaken the default lane into a
 /// near-vacuous compare — those call [`assert_bytes_eq`] instead.
 pub fn compare_report(oracle: &str, rust: &str, policy: &ExportPolicy, ctx: &str) {
     assert!(
@@ -952,8 +845,8 @@ pub fn compare_report(oracle: &str, rust: &str, policy: &ExportPolicy, ctx: &str
 /// tokenization, no verbatim header block, row-for-row, `rel = abs = 0`.
 ///
 /// Every number must parse to bit-identical f64; only its rendering may differ.
-/// Stage F therefore adds **no** tolerance to the byte-golden families — it
-/// only stops pinning glyphs. (`sep == ' '` selects `split_fields`' fixed-width
+/// The lane split therefore adds **no** tolerance to the byte-golden families:
+/// it only stops pinning glyphs. (`sep == ' '` selects `split_fields`' fixed-width
 /// mode: split on whitespace *or* commas, dropping pad-dot runs.)
 pub fn exact_value_policy(sep: char) -> ExportPolicy {
     ExportPolicy {
@@ -978,10 +871,10 @@ pub fn compare_iterations(rust: i32, oracle: i32, ctx: &str) {
     assert!(
         delta.abs() <= ITER_SLACK,
         "{ctx}: iteration count drifted {delta:+} from the oracle's {oracle} \
-         (Rust {rust}) — beyond the Stage F default-lane slack of \
-         ±{ITER_SLACK}. The drift model allows a one-step shift at the \
-         convergence boundary and nothing more: diagnose the trajectory \
-         (CLAUDE.md prove-it rule) instead of widening the band."
+         (Rust {rust}) — beyond the default-lane slack of \
+         ±{ITER_SLACK}. An ulp-level kernel difference shifts the \
+         convergence boundary by one step and nothing more: diagnose the \
+         trajectory instead of widening the band."
     );
     if delta != 0 {
         eprintln!(
@@ -1015,13 +908,11 @@ pub fn compare_iterations_le(rust: i32, oracle: i32, ctx: &str) {
 ///
 /// The default lane excludes exactly the two per-unit columns (`puV1` at index
 /// 2, `puV2` at index 4) of those three goldens, because
-/// `compat::profile_ll_pu_divisor` deliberately diverges there: upstream
-/// divides the L-L magnitude by the four-digit `1732.0` while the *same
-/// procedure*'s line-to-neutral arms divide by the exact `1000.0`, so the
-/// reported L-L per-unit is 2.93e-5 relative high. This is the drift model's
-/// "deliberate divergences … excluded from oracle comparison **at those
-/// fields**", implemented with the mechanism the `Iresidual` row already uses
-/// ([`GateSpec::Mask`]) — an exclusion, never a widened tolerance.
+/// `compat::profile_ll_pu_divisor` is a precision row there: the OpenDSS
+/// engines divide the L-L magnitude by the truncated constant `1732.0`, which
+/// the parity lane keeps and the default lane replaces by the exact
+/// `1000·√3`. The columns are excluded with the mechanism the `Iresidual` row
+/// already uses ([`GateSpec::Mask`]): an exclusion, never a widened tolerance.
 ///
 /// **What still gates these goldens in the default lane**: the header line, the
 /// row set and its order, the element name, both distance columns, the phase
@@ -1069,12 +960,9 @@ mod tests {
         /// tests share their binary with `corpus_gate_all_cases_match_engines`:
         /// the first version of `passes` installed a no-op hook for the duration
         /// of its closure, which silenced *every other thread's* panic message
-        /// for that window. That is not hypothetical — it swallowed the corpus
-        /// gate's failing-case list on an F.5 gate run (the test reported
-        /// "519/520, 1 failed" with no case name and no way to get one, since
-        /// the message is produced by the hook). Two `passes` calls overlapping
-        /// could also restore each other's saved hook and leave the no-op
-        /// installed permanently.
+        /// for that window, the corpus gate's failing-case list included. Two
+        /// `passes` calls overlapping could also restore each other's saved hook
+        /// and leave the no-op installed permanently.
         static SILENCE_PANICS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     }
 
@@ -1115,8 +1003,8 @@ mod tests {
     #[test]
     fn monitor_transform_is_the_unflushed_placeholder() {
         let placeholder = [0.0];
-        // The one rewritten cell — rewritten in BOTH lanes since
-        // `GOLDEN_REBASE_PLAN.md` G2.4: the pad is the oracle clients' stream
+        // The one rewritten cell — rewritten in BOTH lanes: the pad is the
+        // oracle clients' stream
         // decoder, not an engine's, so no lane of ours ever emits it.
         assert_eq!(
             expected_monitor_channel(0, &placeholder),
@@ -1178,19 +1066,16 @@ mod tests {
     }
 
     /// The one element-channel exclusion: the `newton*` decks' `Powers`/
-    /// `Losses`/`PhaseLosses` are dropped in **both** lanes since
-    /// `GOLDEN_REBASE_PLAN.md` G2.3 (G1.3d(ii) for the third), because no oracle
+    /// `Losses`/`PhaseLosses` are dropped in **both** lanes, because no oracle
     /// channel reports them at the converged `NodeV`; their **currents** are
     /// kept in both, and no other case is touched.
     #[test]
     fn newton_powers_are_the_only_element_channel_exclusion() {
-        // The case list itself, spelled out (the `LANE_SKIP_PROPS` precedent,
-        // G1.3d(ii) audit settlement 2026-09-05): the loop below and the
-        // negative list further down both pass for a list that GREW, and since
-        // G1.3d(ii) one more entry drops THREE oracle-compared channels — not
-        // two — on a whole case in both lanes. A third deck must be argued for
-        // in this assertion, in the doc block above and in the record, or not
-        // at all.
+        // The case list itself, spelled out (as `LANE_SKIP_PROPS` is): the loop
+        // below and the negative list further down both pass for a list that
+        // GREW, and one more entry drops every power and loss channel of a case
+        // in both lanes. A third deck must be argued for in this assertion and
+        // in the doc block above, or not at all.
         assert_eq!(
             LANE_SKIP_ELEM_POWERS,
             &["modes:newton/newton.dss", "modes:newton/newton_feeder.dss"],
@@ -1204,21 +1089,24 @@ mod tests {
             // Field by field, not just `== CURRENTS_ONLY`: comparing a value
             // against the very constant it was built from is a tautology, so
             // flipping a field OF the constant would silently drop that channel
-            // on every gated case in both lanes (G1.3a audit settlement).
+            // on every gated case in both lanes.
             assert!(
                 ch.currents_mag_ang && ch.voltages_mag_ang && ch.residuals,
-                "{label}: the G1.3a polar channels stay gated in every lane — \
+                "{label}: the derived polar channels stay gated in every lane — \
                  they render `Currents`/`NodeV`, not the cache-aware \
                  `Get_Powers`/`Get_Losses` read the Newton staleness lives in"
             );
             assert!(
                 ch.seq_currents && ch.seq_voltages && ch.seq_powers,
-                "{label}: the G1.3b sequence channels stay gated in every lane \n                 - all three read a scratch `GetCurrents` and/or `NodeV` (r4133 \n                 `DDLL/DCktElement.pas:758`/`:778`, capi \n                 `CAPI/CAPI_Alt.pas:549`), never the cache-aware \n                 `ComputeIterminal`, so `SeqPowers` is a POWER channel that does \n                 NOT share the Newton exclusion"
+                "{label}: the sequence channels stay gated in every lane: all \
+                 three recompute the currents or read `NodeV`, never the cached \
+                 terminal currents, so `SeqPowers` is a POWER channel that does \
+                 NOT share the Newton exclusion"
             );
             assert!(
                 !ch.powers && !ch.losses && !ch.phase_losses,
                 "{label}: powers, losses and per-phase losses are the excluded \
-                 triple (G1.3d(ii) added the third)"
+                 triple"
             );
             assert_eq!(
                 ch,
@@ -1342,7 +1230,7 @@ mod tests {
     /// reset event, and leaves every recloser line — including the *identically
     /// worded* recloser reset and the recloser's own (guarded) trace — alone.
     ///
-    /// Asserted **without** a lane branch since `GOLDEN_REBASE_PLAN.md` G2.2d:
+    /// Asserted **without** a lane branch:
     /// both rows are upstream label mistakes, both lanes emit the corrected log,
     /// so both lanes apply both rewrites to the oracle capture. (The synthetic
     /// case owns no [`super::EVENTLOG_REROUNDED`] cell, so the still-lane-split
@@ -1381,7 +1269,7 @@ mod tests {
         );
     }
 
-    /// The F-FMT event-log cell: the traced `QoutPU` is re-spelled in the
+    /// The `%g` event-log cell: the traced `QoutPU` is re-spelled in the
     /// default lane only, case-insensitively (the capture reaches the transform
     /// in the engine's wording, the comparator upper-cases), and no other number
     /// on the same line — or a `QoutPU` carrying a different value — is touched.
@@ -1473,8 +1361,8 @@ mod tests {
 
     /// The relabel is refused when the name is ambiguous — a circuit holding a
     /// Relay *and* a Recloser called `r1` must fail its compare loudly instead
-    /// of having a genuine recloser event rewritten into a relay's. Since G2.2d
-    /// the rewrite runs in both lanes, so this refusal is asserted in both: the
+    /// of having a genuine recloser event rewritten into a relay's. The rewrite
+    /// runs in both lanes, so this refusal is asserted in both: the
     /// predicate, not the lane, is what holds it back.
     #[test]
     fn eventlog_reset_relabel_needs_an_unambiguous_relay() {
@@ -1490,7 +1378,7 @@ mod tests {
     }
 
     /// A **rendering-only** difference (same value, different glyphs) is the
-    /// exact freedom F-FMT buys: it must FAIL in the parity lane (byte compare)
+    /// exact freedom the formatting kernels have: it must FAIL in the parity lane (byte compare)
     /// and PASS in the default lane (parsed-numeric compare). Asserted as an
     /// equality against the lane, so this test is meaningful in *both* lanes.
     #[test]
@@ -1507,7 +1395,7 @@ mod tests {
     }
 
     /// The scoping guard fires in **both** lanes: a golden that renders no
-    /// number has nothing F-FMT can move, so routing it through the split
+    /// number has nothing a lane kernel can move, so routing it through the split
     /// (instead of `assert_bytes_eq`) is a call-site mistake — rejected even
     /// when the two sides are identical and the compare would trivially pass.
     #[test]
@@ -1521,7 +1409,7 @@ mod tests {
     }
 
     /// A **value** difference fails in BOTH lanes: the default-lane policy is
-    /// exact-value (`rel = abs = 0`), so Stage F loosens no number anywhere.
+    /// exact-value (`rel = abs = 0`), so the lane split loosens no number anywhere.
     #[test]
     fn report_value_difference_fails_in_both_lanes() {
         let oracle = "bus1, 1.5, 12.47\n";
@@ -1580,7 +1468,7 @@ mod tests {
     }
 
     /// `assert_bytes_eq` is lane-independent (it is the both-lanes gate for the
-    /// goldens Stage F cannot move): only CRLF normalization is forgiven.
+    /// goldens no lane kernel can move): only CRLF normalization is forgiven.
     #[test]
     fn bytes_eq_forgives_only_line_endings() {
         assert_bytes_eq("a\r\nb\r\n", "a\nb\n", "probe");

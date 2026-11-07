@@ -1,4 +1,4 @@
-"""Apply a classify report to the corpus manifests (CORPUS_TEST_PLAN.md §2/§6).
+"""Apply a classify report to the corpus manifests.
 
 Reads `tmp/classify_report.json` (written by the `corpus_live_classify` Rust test)
 and moves entries out of `skipped_needs_investigation`, preserving the bijection

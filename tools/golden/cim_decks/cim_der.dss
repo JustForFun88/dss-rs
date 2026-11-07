@@ -1,5 +1,5 @@
-// GAPS_PLAN WPG.18 Stage F gate deck: the DER sweeps + the IEEE1547 controller +
-// the DER ECP machinery + fragments mode. Every Stage F branch is exercised:
+// CIM export DER gate deck: the DER sweeps + the IEEE1547 controller +
+// the DER ECP machinery + fragments mode. Every DER branch is exercised:
 //   - Generator -> SynchronousMachine: a 3-phase (no phase objects) + a 1-phase
 //     7.2 kV unit (the per-phase SynchronousMachinePhase loop) + a daily LoadShape
 //     (a `Gen:` EnergyConnectionProfile row)

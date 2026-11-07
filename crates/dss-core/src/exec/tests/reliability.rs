@@ -2,7 +2,7 @@ use crate::elements::ckt::{CktElementData, ElemFlags, OcpDeviceType};
 use crate::elements::meter::energymeter::prop;
 use crate::exec::*;
 
-// --- WP6.6 reliability ------------------------------------------------
+// --- Reliability ------------------------------------------------------
 
 /// Two-section radial feeder (src→b1→b2) with per-line fault data and a
 /// load on each section. Solved snapshot, EnergyMeter on the source line.
@@ -355,7 +355,7 @@ fn relcalc_assume_restoration_parsed() {
     );
 }
 
-// --- WP7.2 step 3: OCP-device reliability activation ------------------
+// --- OCP-device reliability activation ---------------------------------
 
 /// A Relay/Recloser/Fuse marks its controlled element with `Flg.HasOCPDevice`
 /// (Pascal `RecalcElementData`), and the `GetOCPDeviceType` ordinal lands on
@@ -420,14 +420,14 @@ fn disabled_ocp_device_sets_no_flag() {
     );
 }
 
-/// **Documented WP7.2-step-3 deferral.** The port ports Pascal's
-/// `if Enabled then Include(Flg.HasOCPDevice)` but **not** the unconditional
+/// **Known gap.** This engine applies `if Enabled then
+/// Include(Flg.HasOCPDevice)` but **not** the unconditional
 /// `Exclude(PreviousControlledElement.Flags, …)` that precedes it. So disabling
 /// a control after it was enabled leaves the controlled element's flag *stale*
 /// (Pascal would clear it) — the same limitation the existing
 /// `SetSwitchClosed`/`SetConductorsClosed` forces carry (they never un-force a
-/// prior target). Pinned here so the gap is explicit, not silent; a future
-/// faithful fix flips this assertion deliberately.
+/// prior target). Pinned here so the gap is explicit, not silent. A fix flips
+/// this assertion deliberately.
 #[test]
 fn enable_then_disable_leaves_ocp_flag_stale() {
     let mut dss = ocp_feeder(
@@ -518,8 +518,8 @@ fn ocp_device_type_first_registered_wins() {
 /// and the latch (first *enabled* OCP control wins) records `Relay` = **3**;
 /// the scan has no `Enabled` filter, so the disabled fuse still occupies slot 1
 /// of the `ControlElementList` and wins — **1** (`FUSE`). Both oracles agree
-/// with the scan: pinned capi `Meters.OCPDeviceType == 1` for this exact deck
-/// (`tmp/g13d2/probe_f5_ocp.py`, G1.3d(ii) F5), and the API-level
+/// with the scan: pinned capi `Meters.OCPDeviceType == 1` for this exact deck,
+/// and the API-level
 /// `CktElement.OCPDevType` is `1` on both channels
 /// (`exec::tests::element_extras::a_disabled_ocp_control_still_wins_the_ocp_scan`).
 #[test]
@@ -574,8 +574,7 @@ fn section_device_type_is_the_live_ocp_scan_not_the_registration_latch() {
 /// diverge in SAIFI/SAIFIkW/CustInterrupts/SAIDI. High pickups keep the snapshot
 /// solve from tripping.
 ///
-/// **Both numbers, `RelCalc yes` (measured 2026-09-05,
-/// `tmp/g16ii/probe_f7_r4133.py` / `probe_f7_capi.py`).** The port follows r4133
+/// **Both numbers, `RelCalc yes`.** This engine follows r4133
 /// — r3723, r4088 and r4133 all carry the call — while dss_capi 0.14.5 dropped
 /// it (`src/Meters/EnergyMeter.pas:2411-2432` goes straight from the zone check
 /// to the zeroing loop) and therefore weights the sections with the totals the
@@ -720,8 +719,7 @@ fn compile_midi_relcalc() -> Dss {
 /// three-section reliability case, whose three Reclosers all set
 /// `HasAutoOCPDevice`, so the restoration flag really cuts the roll-up.
 ///
-/// Two halves, both measured 2026-09-05 against the two gating oracles
-/// (`tmp/g16ii/probe_f7_relcalc_deck.py`, raw JSON `tmp/g16ii/f7_relcalc_deck.json`):
+/// Two halves, both measured against the two gating OpenDSS engines:
 ///
 /// 1. **`RelCalc` with no flag — the corpus path — is bit-identical on capi
 ///    0.14.5 and r4133**, and the re-run changes nothing, because the zone build
@@ -733,8 +731,8 @@ fn compile_midi_relcalc() -> Dss {
 ///    (`30`, `30`, `SAIDI = 0.5496409495548961`). Everything else — SAIFI
 ///    `0.11267537091988129`, SAIFIkW `0.11966863270777478`, CustInterrupts
 ///    `3.79716` and every other bus column — agrees on all three engines, and
-///    the port's side of that sentence is asserted here rather than asserted of
-///    the oracles only (audit settlement AC-5): `(N_interrupts, Cust_Duration,
+///    this engine's side of that sentence is asserted here rather than asserted
+///    of the OpenDSS engines only: `(N_interrupts, Cust_Duration,
 ///    Int_Duration)` are pinned bus by bus in BOTH regimes, **exactly**, down to
 ///    the last-ULP-distinct `Int_Duration` the flag moves on `lb`/`lc`
 ///    (`2.856984478935699` without it, `2.8569844789356984` with it — both
@@ -802,7 +800,7 @@ fn relcalc_recomputes_the_customer_totals_it_depends_on() {
     }
 
     // The per-bus columns the doc above claims agree on all three engines are
-    // asserted for the PORT too (audit settlement AC-5), from the same measured
+    // asserted for the PORT too, from the same measured
     // capture: `(n_interrupts, cust_duration, int_duration)`, which the
     // restoration flag moves on every sectioned bus, and which the two oracles
     // return identically in both regimes.
@@ -931,7 +929,7 @@ fn relcalc_downstream_recloser_matches_oracle() {
     );
 }
 
-// --- GOLDEN_REBASE G1.6(i): the `Meters` reliability read surface -------
+// --- The `Meters` reliability read surface -------------------------------
 //
 // `Dss::meter_reliability` / `Dss::meter_totals` (`exec/view.rs`) are pure
 // reads of the state `CalcReliabilityIndices` leaves behind. The three pins
@@ -1027,7 +1025,7 @@ fn meter_regs_and_mask(dss: &Dss, name: &str) -> (Vec<f64>, Vec<f64>) {
 /// `Version8/Source/Common/Circuit.pas:2520-2538`), the body behind capi
 /// `Meters_Get_Totals` (`CAPI/CAPI_Meters.pas:279-290`) and r4133 `MetersV(3)`
 /// (`DDLL/DMeters.pas:558-573`). Length is `NumEMRegisters` = 67, which is what
-/// both oracles return (measured on the live decks, `tmp/g16i` probes).
+/// both OpenDSS engines return (measured on the live decks).
 ///
 /// The fixture gives `m2` a non-unit mask slot 0 (`Mask=[0.25]`, the rest
 /// defaulting to 1.0 exactly as Pascal fills them), so the masked slot differs
@@ -1078,8 +1076,7 @@ fn meter_totals_is_the_masked_register_sum() {
 }
 
 /// **`RelCalc` is not idempotent across meters, so the live gate runs it
-/// exactly once, after the last solve** (GOLDEN_REBASE G1.6(i) decision
-/// D-i-1).
+/// exactly once, after the last solve**.
 ///
 /// `TPDElement.ZeroReliabilityAccums` (r4133
 /// `Version8/Source/PDElements/PDElement.pas:313-328`) zeroes only the FROM
@@ -1104,12 +1101,12 @@ fn meter_totals_is_the_masked_register_sum() {
 /// Both halves are asserted here, on the port.
 ///
 /// **The same leak also makes the FIRST run depend on meter creation order,
-/// and this test says so** (G1.6(i) audit settlement, finding AT-1). With the
+/// and this test says so**. With the
 /// inner meter declared first, `DoLambdaCalcs` walks it first, so the outer
 /// meter reads the already-written boundary bus on run 1 and lands on the
 /// shifted answer immediately. That is not the port's reading of the Pascal:
-/// **both** oracles do it, measured through the transports the gate uses
-/// (`tmp/g16i/settle/probe_settle*.py`, re-runnable) —
+/// **both** OpenDSS engines do it, measured through the transports the gate
+/// uses —
 /// `AccumulatedMilesDownStream(line.l1)` on a three-line nested pair is
 /// `2.0 → 3.0 → 3.0` over three runs with the OUTER meter first and
 /// `3.0 → 3.0 → 3.0` with the INNER meter first, identically on
@@ -1117,21 +1114,17 @@ fn meter_totals_is_the_masked_register_sum() {
 /// engine by choice: it is loop-for-loop the cited Pascal, and the ordering
 /// arm below asserts that all three engines agree.
 ///
-/// **Ruling (coordinator decision D4 chain, recorded in the G1.6(i) audit
-/// settlement).** r4133's own comment calls the loop "Zero reliability
-/// accumulators", so the sweep is *intended* to start from zeroed
-/// accumulators; on a multi-meter circuit it does not, and the answer then
-/// depends on run count and declaration order. Intent contradicts behaviour
-/// ⇒ upstream defect, reported in
-/// `investigations/to_opendss/61-relcalc-cross-zone-accumulator-leak.md`.
-/// Fixing it is an ENGINE change in `solution/meters/reliability.rs`, which
-/// G1.6(i) is explicitly forbidden to touch (brief R-14(d)) and which needs a
-/// semantics decision this sub-step does not own: the physically correct
-/// `Bus.TotalMiles` for a nested head bus is arguable (3.0 counts the inner
-/// zone as downstream, 2.0 stops at the zone boundary). So it is recorded as
-/// an engine finding for its own step; until then this test pins what all
-/// three engines do, which is what keeps the one-shot gate protocol honest …
-/// a port that quietly diverged here would otherwise go unnoticed.
+/// **This is a known defect.** r4133's own comment calls the loop "Zero
+/// reliability accumulators", so the sweep is *intended* to start from zeroed
+/// accumulators. On a multi-meter circuit it does not, and the answer then
+/// depends on run count and declaration order. Intent contradicts behaviour, so
+/// it is an OpenDSS bug (one of the OpenDSS reports) that this engine still
+/// reproduces. The fix lies in `solution/meters/reliability.rs` and needs a
+/// physics decision: the physically correct `Bus.TotalMiles` for a nested head
+/// bus is arguable (3.0 counts the inner zone as downstream, 2.0 stops at the
+/// zone boundary). This test pins what all three engines do, which keeps the
+/// one-shot gate protocol honest: an engine that quietly diverged here would
+/// otherwise go unnoticed.
 #[test]
 fn relcalc_is_not_idempotent_and_the_gate_runs_it_once() {
     // Single meter: the zone's own zeroing covers every bus it writes.
@@ -1383,8 +1376,7 @@ fn last_bit_feeder() -> Dss {
 /// `(0.1+0.2)+0.3 = 0.6000000000000001` while `0.1+(0.2+0.3) = 0.6`, so a
 /// re-association or a re-ordered zone walk moves the pinned literal. A
 /// two-summand chain cannot do that (addition IS commutative), which is why
-/// [`last_bit_feeder`] alone could not carry the order claim (G1.6(i) audit
-/// settlement, finding AT-3).
+/// [`last_bit_feeder`] alone cannot carry the order claim.
 fn branch_point_feeder() -> Dss {
     let mut dss = Dss::new();
     dss.command("New circuit.t basekv=12.47 bus1=src phases=3");
@@ -1416,20 +1408,17 @@ fn branch_point_feeder() -> Dss {
 /// **The reliability accumulators are plain IEEE-754 double sums in the Pascal
 /// sweep order, and they are right down to the last bit.**
 ///
-/// GOLDEN_REBASE G1.6(i) micro-part F2s: the live gate reported 15 cells
-/// (`accumulated_l`, `total_miles`, `cust_interrupts`, `saifikw`,
-/// `sum_branch_flt_rates`) as 1-ULP Rust↔oracle divergences on BOTH channels.
-/// They are not divergences at all. The raw JSON number token each oracle puts
-/// on the wire round-trips to the port's own f64 bit for bit — 15/15, measured
-/// at the wire on the capi (`tools/oracle/oracle_server.py`) and r4133
-/// (`epri-worker`) transports — and what loses the last bit is the gate's own
-/// decoder: `serde_json` WITHOUT the `float_roundtrip` feature decodes a
-/// 17-significant-digit token as `significand as f64` followed by one divide by
-/// a power of ten — two roundings — and lands 1 ULP away. Coordinator decision
-/// **D11** turns that feature on workspace-wide; with it the five flagged cases
-/// are green in both lanes (measured). No floor is owed here and the surface
-/// stays `rel = abs = 0` — `tests/TOLERANCE_NOTES.md` §"The `Meters`
-/// reliability surface (G1.6(i))".
+/// Fifteen cells (`accumulated_l`, `total_miles`, `cust_interrupts`,
+/// `saifikw`, `sum_branch_flt_rates`) look like 1-ULP divergences on BOTH
+/// channels when the wire is decoded naively. They are not divergences at all.
+/// The raw JSON number token each OpenDSS engine puts on the wire round-trips to
+/// this engine's own f64 bit for bit, measured at the wire on the capi
+/// (`tools/oracle/oracle_server.py`) and r4133 (`epri-worker`) transports. What
+/// loses the last bit is the decoder: `serde_json` WITHOUT the `float_roundtrip`
+/// feature decodes a 17-significant-digit token as `significand as f64`
+/// followed by one divide by a power of ten — two roundings — and lands 1 ULP
+/// away. The workspace turns that feature on, so no floor is owed here and the
+/// surface stays `rel = abs = 0`.
 ///
 /// This pin freezes the port's side with **both numbers** at each cell, so a
 /// future change of precision is caught here and never
@@ -1491,7 +1480,7 @@ fn reliability_accumulators_are_correctly_rounded_f64_sums() {
     // the summation order ever changes. Both oracles read exactly this double
     // for `PDElements.AccumulatedL(Line.l1)` on the same deck: dss_capi 0.14.5
     // and EPRI r4133 (DDLL `PDElementsF` mode 5) both return
-    // 0.6400000000000001 (probes in `tmp/g16i/settle/`).
+    // 0.6400000000000001.
     let mut branch = branch_point_feeder();
     branch.command("Relcalc");
     let head = accum_flt_rate(&branch, "line.l1");

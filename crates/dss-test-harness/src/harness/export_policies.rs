@@ -1,19 +1,12 @@
-//! The report-golden [`ExportPolicy`] table, lifted out of
-//! `tests/golden_reports.rs` so the LIVE run-file contents surface
-//! (`GOLDEN_REBASE_PLAN.md` G1.10b, [`super::run_file_contents`]) can name the
-//! very same policy its golden names — "same policy" as a compile-time fact
-//! rather than a comment (spec `tmp/g110b/spec.md` §2.3(1), coordinator
-//! decision **D40(2)**).
+//! The report-golden [`ExportPolicy`] table, shared by `tests/golden_reports.rs`
+//! and the LIVE run-file contents surface ([`super::run_file_contents`]) so
+//! both name the very same policy — "same policy" as a compile-time fact
+//! rather than a comment.
 //!
-//! **This module is a byte-faithful move, not a rewrite** (`SPLITTING_RULES.md`
-//! protocol): every `ExportPolicy` literal below is the one that stood inline in
-//! the golden test that now calls it, field for field, and the two functions
-//! that were already named (`ang_tol`, `profile_policy`, `register_policy`)
-//! carry their original doc comments verbatim. No value moved — the unchanged
-//! `golden_reports` run and `golden_lock` are the proof. Nothing here may ever
-//! be *re-tuned* to make a live file pass: the live rule is the separate
-//! `case floor + print ulp` derivation in [`super::run_file_contents`]
-//! (D40(1)), and these values keep gating the committed golden bytes.
+//! Nothing here may ever be *re-tuned* to make a live file pass: the live rule
+//! is the separate `case floor + print ulp` derivation in
+//! [`super::run_file_contents`] (D40(1)), and these values keep gating the
+//! committed golden bytes.
 
 use super::{ColSel, ColTol, ExportPolicy, GateSpec, RowPolicy};
 

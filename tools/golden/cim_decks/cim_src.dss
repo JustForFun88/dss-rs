@@ -1,4 +1,4 @@
-// GAPS_PLAN WPG.18 Stage A gate deck: Vsource + buscoords, nothing else - the
+// CIM export scaffolding gate deck: Vsource + buscoords, nothing else - the
 // smallest circuit that exercises the whole ExportCDPSM *scaffolding* (regions/
 // substation/feeder/location, the six OperationalLimitTypes, the BaseVoltage +
 // op-limit-set sweep over LegalVoltageBases, the bus -> TopologicalNode/

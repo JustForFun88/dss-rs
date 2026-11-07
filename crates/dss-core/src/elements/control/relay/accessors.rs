@@ -72,20 +72,16 @@ impl CktElement for Relay {
                 .unwrap_or_default();
             self.ccd.cd.set_bus(1, &bus);
         }
-        // r4133 does NOT touch the state arrays here (`Relay.pas:1008-1027`);
-        // the `[closed, closed, closed, ]` -> `[closed, ]` resync the probe
-        // measured after `makeposseq` (`tmp/rp37/probe.md` §6, re-measured
-        // `out_b1.txt` B1(4)) is purely `GetPropertyValue` 39/40 looping the
-        // LIVE `ControlledElement.NPhases` (`:1407-1428`) — and `Sample`
-        // (`:1318`), `Reset` (`:1454`) and `RecalcElementData` (`:965`) loop the
-        // live `Min(RELAYCONTROLMAXDIM, ControlledElement.Nphases)` with it. The
-        // port's stand-in for that live read is the controlled-element
-        // snapshot, so refresh its shape from the now-pos-seq element:
-        // otherwise [`Relay::state_size`] keeps answering the FROZEN parse-time
+        // The state arrays are not touched here. After `makeposseq` the
+        // rendered state shrinks to the pos-seq element's phase count because
+        // `Normal`/`State` render, `Sample`, `Reset` and `RecalcElementData` all
+        // loop the live `Min(RELAYCONTROLMAXDIM, ControlledElement.Nphases)`.
+        // This engine's stand-in for that live read is the controlled-element
+        // snapshot, so refresh its shape from the now-pos-seq element.
+        // Otherwise [`Relay::state_size`] keeps answering the FROZEN parse-time
         // count (3), the render prints three tokens off a 1-conductor element
-        // and `Sample` reads phases 2..3 past its end as *open* (the port's
-        // pre-RP3.7 `[closed, open, open, ]`, `tmp/rp37/out_b1_port.txt`
-        // B1(4) — the `modes/makeposseq/makeposseq_ctrl.dss` census cell).
+        // and `Sample` reads phases 2..3 past its end as *open* (the
+        // `modes/makeposseq/makeposseq_ctrl.dss` census cell).
         // `PosSeqElemInfo` has no `nterms`, so `nterms = bus_names.len()`
         // (`BusNames[1..NTerms]`).
         if let Some(c) = &ctx.controlled
@@ -483,15 +479,12 @@ impl DssObject for Relay {
     /// ordinal (r4133's no-else arm) leaves its slot unchanged, and the lock
     /// guard refuses `State` while letting `Normal` through (`:1244`).
     ///
-    /// Being a second implementation, it CAN drift; what holds the two together
+    /// Being a second implementation, it CAN drift. What holds the two together
     /// is `tests::the_ordinal_array_setter_matches_the_interpreter`, which
-    /// runs both paths on identical relays and compares the renders (added by
-    /// the RP3.7 audit settlement, 2026-09-02 — until then this twin had no
-    /// test at all).
+    /// runs both paths on identical relays and compares the renders.
     ///
-    /// The pre-RP3.7 body read `values.len() == 1` as *ganged*; that heuristic is
-    /// gone — r4133 keys the split on `WasQuoted`, and a quoted single token
-    /// writes phase 1 only (measured, `tmp/rp37/out_b1.txt` B1(1)).
+    /// r4133 keys the ganged/per-phase split on `WasQuoted`, so a quoted single
+    /// token writes phase 1 only.
     fn set_enum_array(&mut self, idx: usize, values: &[i32]) {
         use super::prop::*;
         if idx == STATE && self.f_locked {
@@ -586,9 +579,7 @@ impl DssObject for Relay {
             // PropertyIdxMap OF 19, 40:` covers BOTH the deprecated `Action`
             // (internal 19) and `State` (internal 40), and sits OUTSIDE
             // `InterpretRelayState`, so it runs even when the interpreter
-            // refused the write (locked) or matched no token. Measured on the
-            // r4133 DLL: `tmp/rp37/out_b1.txt` B1(2a)/(2b), `out_b1b.txt`
-            // B1(2e)/(2f).
+            // refused the write (locked) or matched no token.
             ACTION | STATE => self.state_side_effect(),
             _ => {}
         }

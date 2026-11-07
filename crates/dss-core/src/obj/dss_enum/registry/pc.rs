@@ -203,12 +203,11 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PcEnums {
 
     // WindGen `Model=` (`WindGen.pas:330-338`; r4133 parses it as a plain
     // integer, so the enum is the port's own admission gate). Values 1,2,4,5 +
-    // the user-written model 6 (`DoUserModel`, `:1875`; admitted by
-    // `R4133_PROPS_PLAN.md` RP1.3). Models **3** (`DoPVTypeGen`) and **7**
-    // (`DoCurrentLimitedPQ`) stay OUT — r4133 dispatches them (`:2112`, `:2116`)
-    // but neither is ported, no corpus deck sets them, and no plan owns them
-    // (§1.3; the deferral is a named `ORPHANED_GAPS.md` row). The names follow
-    // the Generator enum's wording for the same codes.
+    // the user-written model 6 (`DoUserModel`, `:1875`). Models **3**
+    // (`DoPVTypeGen`) and **7** (`DoCurrentLimitedPQ`) stay OUT — r4133
+    // dispatches them (`:2112`, `:2116`) but neither is ported, and no corpus
+    // deck sets them. The names follow the Generator enum's wording for the
+    // same codes.
     let windgen_model = push(DssEnum::new(
         "WindGen: Model",
         true,

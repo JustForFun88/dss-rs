@@ -1,4 +1,4 @@
-//! WindGen shuttle gate (`R4133_PROPS_PLAN.md` RP1.3): drives the COMMITTED
+//! WindGen shuttle gate: drives the COMMITTED
 //! `tests/fixtures/wasm/wgturbine.wasm` through the `dss-usermodel` crate API
 //! and pins the **`TWindGenVars` boundary record** end to end — host codec
 //! (`records::WindGenVars`, ABI doc §2.6) → `dss_alloc` buffer → guest decoder →
@@ -94,8 +94,8 @@ fn fixture_bytes(name: &str) -> Vec<u8> {
 /// `conn` is deliberately the NON-default `1` even though the terminal shape
 /// around it is the 3-phase wye of [`YORDER`]: this is a codec fixture, and a
 /// cell whose expected value equals the zero an unwritten field carries could
-/// not tell "the integer crossed" from "the integer was never written"
-/// (RP1.3 audit settlement). The engine-side wiring behind it is pinned
+/// not tell "the integer crossed" from "the integer was never written". The
+/// engine-side wiring behind it is pinned
 /// separately, on a `conn=delta` deck, by
 /// `exec::tests::windgen_usermodel::a_delta_windgen_echoes_its_own_connection`.
 fn record() -> WindGenVars {

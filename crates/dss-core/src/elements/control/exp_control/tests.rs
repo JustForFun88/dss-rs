@@ -1,4 +1,4 @@
-//! Unit tests for ExpControl (WP7.5 step 3). `Create` defaults and the
+//! Unit tests for ExpControl. `Create` defaults and the
 //! PVSystemList ↔ DERList sync are spec-pinned (Pascal is the spec); the full
 //! property round-trip is oracle-pinned by `tests/golden/props/expcontrol.json`
 //! (props_roundtrip.rs). The dispatch math (the adaptive-`Vreg` volt-var
@@ -71,7 +71,7 @@ fn derlist_syncs_pvsystemlist() {
     assert_eq!(ec.der_name_list, vec!["PVSystem.pvA", "PVSystem.pvB"]);
 }
 
-// --- WP7.5 step 3: the dispatch math, pinned through a mock env ---
+// --- The dispatch math, pinned through a mock env ---
 mod dispatch {
     use super::super::ExpPendingChange;
     use super::super::compute::{ExpDispatchEnv, PvFind, PvSnap};

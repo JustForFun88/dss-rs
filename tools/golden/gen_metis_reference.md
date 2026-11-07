@@ -1,7 +1,7 @@
-# METIS reference goldens (WP-AD.2 Stage A)
+# METIS reference goldens
 
 The `dss-metis` crate is a 1:1 safe-Rust source port of the METIS 5.2.1
-`METIS_PartGraphKway` path (`DIAKOPTICS_PSTCALC_PLAN.md` D2). Its bit-exact gate
+`METIS_PartGraphKway` path. Its bit-exact gate
 compares the port against the **C original**, built OFFLINE on the dev machine.
 No C is compiled in `cargo test` or CI — the `.graph` fixtures and `.part.N`
 outputs under `crates/dss-metis/tests/golden/` are committed artifacts,
@@ -11,7 +11,7 @@ discipline).
 This file documents the exact toolchain, flags, seed, type widths, and command
 lines so the goldens are reproducible.
 
-## Spec pins (D2)
+## Spec pins
 
 - `.inputs/METIS` @ `272d4a9` (KarypisLab/METIS `origin/master` = release
   `v5.2.1` + 39 bit-identical post-release commits).
@@ -61,7 +61,7 @@ Notes:
   format-warnings-as-errors in **debug/print** paths; they never touch the
   partition numbers.
 - The stock `gpmetis` CLI does not build on Windows (`getrusage`); we link a
-  minimal driver instead (allowed by the WP brief). `libmetis.a` builds cleanly.
+  minimal driver instead. `libmetis.a` builds cleanly.
 
 ## Golden driver (== `gpmetis <graph> <nparts>` with CLI defaults)
 
@@ -93,7 +93,8 @@ symmetric, `fmt=1` edge weights = phase counts 1/2/3):
 - `ckt24norm` — normalized from the official OpenDSS artifact
   `tests/golden/provenance/ckt24_openDSS_raw.graph`
   (`…/ADiakoptics/ckt24/ckt24_.graph`). The official file is 0-based with the
-  OpenDSS `Create_MeTIS_graph` line/index quirks (Stage-B concerns); `ckt24norm`
+  OpenDSS `Create_MeTIS_graph` line/index quirks (a tearing concern, not a
+  partitioner one); `ckt24norm`
   is its topology re-emitted as a valid symmetric 1-based standard METIS graph
   so the stock C reader accepts it. Provenance kept alongside.
 - `mesh120u` — the **fmt=0 (unweighted)** variant of `mesh120`: same topology
@@ -134,7 +135,7 @@ tests. Seed 4321 is METIS's `SEED=-1` default; seed 123 is the
 
 Two load-bearing GKlib primitives are pinned in `#[cfg(test)]` unit tests by
 harvesting the C macros standalone (they instantiate the same header-only
-templates the port mirrors, so the output is oracle-grade, not self-referential):
+templates the port mirrors, so the output is a C reference, not self-referential):
 
 - `sort.rs::matches_c_qsort_tie_break_order` — the **unstable tie-break order**
   of `GK_MKQSORT(ikv_t, …, ikey_lt)` (`GKlib/include/gk_mksort.h`).

@@ -191,9 +191,8 @@ impl DssObject for Isource {
             // `Bus2=` that was parsed first. The flag exists for exactly this
             // test, and the sibling classes set it on this very property
             // (`Vsource.pas:498`, r4133 `:468`; `Capacitor.pas:349`), so the
-            // omission is a hole, not a design. Latched in both lanes since
-            // `GOLDEN_REBASE_PLAN.md` G2.2b; pinned by
-            // `tests::bus2_latches_like_the_sibling_class`.
+            // omission is a hole, not a design. Latched in both lanes, pinned
+            // by `tests::bus2_latches_like_the_sibling_class`.
             BUS2 => {
                 self.bus2_defined = true;
             }

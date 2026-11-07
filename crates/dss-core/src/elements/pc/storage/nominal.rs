@@ -491,7 +491,7 @@ impl Storage {
 
     /// Pascal `SetNominalDEROutput` (`SetNominalStorage`): pick the dispatch /
     /// shape for the solve mode, then derive the per-phase P/Q and `YEQ`.
-    /// Dynamics/harmonics modes leave the element in its prior state (WP7.6/7.7).
+    /// Dynamics/harmonics modes leave the element in its prior state.
     pub fn set_nominal_der_output(&mut self, sys: &SysCtx) {
         self.base.shape_factor = CDOUBLEONE; // changed by the curve routine below
 
@@ -762,7 +762,7 @@ impl Storage {
             0.0,
         );
 
-        // Thevenin equivalents (ohms) — used by the harmonic model (WP7.6).
+        // Thevenin equivalents (ohms) — used by the harmonic model.
         let present_kv = self.kv_storage_base;
         self.r_thev = self.base.pct_r * 0.01 * present_kv.powi(2) / self.f_kva_rating * 1000.0;
         self.x_thev = self.base.pct_x * 0.01 * present_kv.powi(2) / self.f_kva_rating * 1000.0;

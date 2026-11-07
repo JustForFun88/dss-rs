@@ -1,4 +1,4 @@
-//! `GOLDEN_REBASE_PLAN.md` WP-G1 sub-step **G1.10a** — the run-produced FILE
+//! The run-produced FILE
 //! SET, compared live on every gating channel of the unified corpus gate.
 //!
 //! # The surface
@@ -14,7 +14,7 @@
 //! Sorted, compared as an exact discrete set at `rel = abs = 0`.
 //!
 //! Precisely: **the case dir's own entries, plus everything under a directory
-//! the run created** (coordinator decision D30(2)). A PRE-EXISTING subdirectory
+//! the run created**. A PRE-EXISTING subdirectory
 //! is not descended into on any producer — every executive writer resolves its
 //! name against `OutputDirectory` (`GetOutputDirectory + CircuitName_ +
 //! FileName`, r4133 `Version8/Source/Executive/ExportOptions.pas:401`), so a run
@@ -26,29 +26,28 @@
 //! nothing about the compared model moves. What it gates is everything the
 //! executive writes to disk — `Export`, `Show`, `Dump`, `Visualize`, the
 //! `CloseDI` demand-interval tree, `Save`, the monitor CSVs' NAMES (their
-//! contents stay out: monitor data is f32 and unsampled-monitor comparison is a
-//! known oracle artifact, `TESTING.md`).
+//! contents stay out: monitor data is f32, and an unsampled monitor's file is an
+//! artifact of the OpenDSS engines).
 //!
-//! # The CONTENTS half (G1.10b)
+//! # The CONTENTS half
 //!
 //! This half compares the bytes of the members the gate SELECTS
 //! ([`dss_epri::guard::RUN_FILE_CONTENTS_PATTERNS`] — the report CSVs whose kind
 //! its own name identifies). The selection is computed once on the gate side and
 //! travels in the run request, so neither oracle transport re-derives it; the
 //! two transports copy the selected files into a gate-owned sidecar directory
-//! (coordinator decision D40(6)) at the same strictly-last point inside the
+//! at the same strictly-last point inside the
 //! guard scope where they classify the set, and this module's probe reads them
 //! in place ([`RunFileProbe::finish_and_clean`]). [`read_sidecar`] decodes and
 //! deletes; [`compare_run_file_contents`] pairs the sides by name and hands the
 //! pairs to the per-report cell comparison.
 //!
-//! Provenance: new coverage, not catch-up. The upstream harness never compared
-//! this set — fastdss's `tests/compare_outputs.py` skips a name missing on the
+//! The fastdss test harness never fails on this set: its `tests/compare_outputs.py` skips a name missing on the
 //! other side (`except KeyError: ... continue`, `:416-421`) and prints instead
 //! of failing on a CSV mismatch (`except: print("COMPARE CSV ERROR:", fn)`,
 //! `:517-524`).
 //!
-//! # The demand-interval tenant (G1.10c)
+//! # The demand-interval tenant
 //!
 //! This tenant compares the CONTENTS of the run-created demand-interval
 //! tree (`<OutputDirectory><CaseName>/DI_yr_<year>/*`, r4133
@@ -60,7 +59,7 @@
 //! the probe exists whenever either is set, but neither arms the other's
 //! comparison.
 //!
-//! That surface is new coverage too: the upstream harness reads the same CSVs
+//! The fastdss test harness reads the same CSVs
 //! out of its two output archives but can never fail on one — a name missing on
 //! the other side is skipped (fastdss `tests/compare_outputs.py:416-421`), and a
 //! cell mismatch is PRINTED, with the `raise` commented out (`:517-527`).
@@ -87,19 +86,18 @@
 //!
 //! # Normalization, not tolerance
 //!
-//! The case fold is a CROSS-ORACLE normalization in the `props_norm` /
-//! coordinator-decision-D4 tradition: r4133 writes `EXP_VOLTAGES.CSV`
+//! The case fold is a normalization across the OpenDSS engines, as in
+//! `props_norm`: r4133 writes `EXP_VOLTAGES.CSV`
 //! (`Version8/Source/Executive/ExportOptions.pas:333-356`) while dss_capi 0.14.5
 //! writes `EXP_VOLTAGES.csv` (`src/Executive/ExportOptions.pas:314,343,345,381,437`),
 //! and r4133 additionally lowercases deck-supplied stems
 //! (`Auto1bus_HL_current.txt` -> `auto1bus_hl_current.txt`), so NO single
 //! spelling satisfies both gating channels. NTFS is case-insensitive, so nothing
-//! observable depends on the case. There is no floor anywhere in this module —
-//! see `tests/TOLERANCE_NOTES.md` for why "no floor" is a derivation here and
-//! not an omission.
+//! observable depends on the case. There is no floor anywhere in this module:
+//! a file set is discrete, so the compare is exact.
 //!
-//! The second normalization is coordinator decision **D25/Q2**: the Pascal
-//! engines round-trip the fundamental solution through DISK when harmonics is
+//! The second normalization is the **scratch split** (D25/Q2 in the census and
+//! messages below): the OpenDSS engines round-trip the fundamental solution through DISK when harmonics is
 //! initialized (`<CircuitName_>SavedVoltages.dbl`, r4133
 //! `Common/Utilities.pas:1512-1521` `SavePresentVoltages`, read back by
 //! `RetrieveSavedVoltages` `:1554-1564`), while the port keeps that vector in
@@ -113,8 +111,8 @@
 //! # Platform
 //!
 //! The classification itself ([`dss_epri::guard`]) is pure `std::fs` and builds
-//! everywhere — coordinator decision D33(3) ungated it precisely so the gate's
-//! own corpus guard needs no second copy of the rule off Windows. This module
+//! everywhere, so the gate's own corpus guard needs no second copy of the rule
+//! off Windows. This module
 //! is nevertheless declared under `#[cfg(windows)]` in `harness/mod.rs`: the
 //! surface is only ever compared against the gate's two oracle channels, and
 //! the `r4133` transport is a Win64 DLL. On any other platform the corpus gate
@@ -147,13 +145,13 @@ use super::capture_guard;
 /// first). `finish_and_clean` consumes the probe: the report is taken while the
 /// guard is alive, and the guard is then `finish`ed — it removes exactly what it
 /// classified, restores any pre-existing file the run overwrote, and hands back
-/// anything it could NOT remove, which fails the case (D33(3)).
+/// anything it could NOT remove, which fails the case.
 pub struct RunFileProbe {
     guard: CorpusGuard,
 }
 
-/// What one port run left on disk: the created-file SET (G1.10a) and the
-/// CONTENTS of the members the gate selected (G1.10b).
+/// What one port run left on disk: the created-file SET and the CONTENTS of the
+/// members the gate selected.
 ///
 /// One struct because both halves must be taken from the SAME bracket, before
 /// the sweep: reading the contents after `finish()` would read files that are
@@ -186,8 +184,7 @@ impl RunFileProbe {
     }
 
     /// The run-created demand-interval tree's CONTENTS, `normalized member name
-    /// -> file text` — the port's producer for the `compare_di` surface
-    /// (GOLDEN_REBASE G1.10c).
+    /// -> file text` — the port's producer for the `compare_di` surface.
     ///
     /// Read inside the probe's own bracket, after the Rust engine has been
     /// dropped (so `close_all_di_files` has run and every stream is flushed) and
@@ -248,8 +245,7 @@ impl RunFileProbe {
     ///    guards' "an incomplete snapshot never deletes" rule in the reporting
     ///    direction: a set we are not sure of must not be compared. The sweep
     ///    still runs, because it only ever removes entries it did classify.
-    /// 2. The sweep left a created entry behind (coordinator decisions
-    ///    D32(2)/D33(3)). The port is a producer exactly like the two oracle
+    /// 2. The sweep left a created entry behind. The port is a producer exactly like the two oracle
     ///    transports, and a dropping it cannot remove poisons the NEXT
     ///    producer's pre-run snapshot the same way — the entry is then
     ///    "pre-existing" and silently drops out of that producer's created set.
@@ -258,9 +254,9 @@ impl RunFileProbe {
     ///    order-coupling cannot hide behind a leak reported to stderr only
     ///    (`dss_epri::guard::CorpusGuard`'s `Drop`).
     ///
-    /// `want_contents` arms the G1.10b half. The probe's bracket opens for a
-    /// `compare_di`-only case too (coordinator decision D42(4): the port
-    /// `RunFileProbe` exists whenever `compare_run_files || compare_di`), and
+    /// `want_contents` arms the CONTENTS half. The probe's bracket opens for a
+    /// `compare_di`-only case too (the port `RunFileProbe` exists whenever
+    /// `compare_run_files || compare_di`), and
     /// `compare_di` is FORCED on every live case — `large` decks included —
     /// while `compare_run_files` is not. Reading and strictly decoding the
     /// selected reports there would give an un-armed surface a failure path the
@@ -272,7 +268,7 @@ impl RunFileProbe {
     #[track_caller]
     pub fn finish_and_clean(mut self, ctx: &str, want_contents: bool) -> RunFileReport {
         let created = self.guard.created();
-        // G1.10b: the port's half of the CONTENTS surface, taken while the files
+        // The port's half of the CONTENTS surface, taken while the files
         // are still on disk — inside this bracket and before the sweep, which is
         // the same "strictly last, inside the guard scope" point the two oracle
         // transports copy at (`crates/dss-epri/src/capture.rs`,
@@ -384,7 +380,7 @@ pub fn scratch_decline_table() -> BTreeMap<String, Vec<String>> {
 }
 
 // ---------------------------------------------------------------------------
-// GOLDEN_REBASE G1.10b — the CONTENTS of the selected run-produced files.
+// The CONTENTS of the selected run-produced files.
 // ---------------------------------------------------------------------------
 
 /// One selected report as all three producers wrote it, ready for the
@@ -417,7 +413,7 @@ pub fn contents_census() -> (usize, usize) {
     )
 }
 
-/// Read one channel's sidecar directory (coordinator decision D40(6)) and
+/// Read one channel's sidecar directory and
 /// delete it, returning the decoded contents keyed by normalized name.
 ///
 /// * `dir` — the gate-owned sidecar this case's transport copied into
@@ -503,8 +499,8 @@ pub fn read_sidecar(
 ///   name whose PRESENCE is triaged has no contents to compare either, and the
 ///   call marks the scope hit, which keeps `ledger.json` fail-on-stale.
 ///
-/// Returns the matched pairs; the per-report-kind policy comparison
-/// (`GOLDEN_REBASE_PLAN.md` G1.10b micro-part F2) is applied to exactly these.
+/// Returns the matched pairs: the per-report-kind policy comparison applies to
+/// exactly these.
 #[track_caller]
 pub fn compare_run_file_contents(
     channel: &str,
@@ -671,7 +667,7 @@ pub fn compare_run_files(
          engine-internal scratch split off (D25/Q2): oracle {oracle_scratch:?}, port []\n  \
          ledger-excluded on this case+channel: {excluded_names:?}\n  \
          Names are `/`-joined, ASCII-case-folded, a trailing `/` marking a created \
-         directory. Triage per TESTING.md: a genuine product divergence gets a \
+         directory. Triage: a genuine product divergence gets a \
          `run_files` ledger exclusion with a `name_re` plus an expected-value pin \
          naming both sets; a missing writer is a port gap and is ported.",
         oracle_set.len(),
@@ -900,15 +896,15 @@ mod tests {
         let before: BTreeSet<String> = walk(&root);
         let probe = RunFileProbe::start(case.to_str().unwrap());
         std::fs::write(root.join("EXP_Y.CSV"), b"y\n").unwrap();
-        // A real `Export Voltages`: the executive prefixes the circuit name
-        // (r4133 `Executive/ExportOptions.pas:401`), which is what the G1.10b
-        // selection matches — the un-prefixed `EXP_Y.CSV` above therefore stays
-        // a SET member whose CONTENTS nobody asked for.
+        // A real `Export Voltages`: the executive prefixes the circuit name,
+        // which is what the CONTENTS selection matches — the un-prefixed
+        // `EXP_Y.CSV` above therefore stays a SET member whose CONTENTS nobody
+        // asked for.
         std::fs::write(root.join("Fbs_EXP_VOLTAGES.CSV"), b"Bus,V\r\n a,1\r\n").unwrap();
         std::fs::create_dir_all(root.join("DI_yr_0/Sub")).unwrap();
         std::fs::write(root.join("DI_yr_0/Sub/deep.DBL"), b"d\n").unwrap();
         // Stands for a concurrently running sibling case writing into its own
-        // (here pre-existing) directory: neither reported nor swept — D30(2).
+        // (here pre-existing) directory: neither reported nor swept.
         std::fs::write(root.join("pre/New_Report.Txt"), b"r\n").unwrap();
         let report = probe.finish_and_clean("unit:probe", true);
 
@@ -947,7 +943,7 @@ mod tests {
         std::fs::remove_dir_all(&root).ok();
     }
 
-    /// Coordinator decision **D33(3)**: the port is a producer exactly like the
+    /// The port is a producer exactly like the
     /// two oracle transports, so a dropping IT cannot remove fails the case
     /// loudly. Before this the probe dropped its guard, whose `Drop` prints the
     /// leak to stderr and returns — and a survivor is precisely what makes the
@@ -996,7 +992,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // G1.10b — the CONTENTS transport: the sidecar read and the pairing rails.
+    // The CONTENTS transport: the sidecar read and the pairing rails.
     // -----------------------------------------------------------------------
 
     fn m(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
@@ -1120,8 +1116,8 @@ mod tests {
             matched.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(),
             vec!["nev_exp_y.csv", "stor_s1.csv"]
         );
-        // F1 pairs; it does not compare cells — the differing `stor_s1.csv`
-        // travels to the caller intact (micro-part F2 is what reds on it).
+        // The pairing does not compare cells — the differing `stor_s1.csv`
+        // travels to the caller intact (the cell comparison is what reds on it).
         assert_eq!(matched[1].oracle, "b\n");
         assert_eq!(matched[1].port, "c\n");
         let after = contents_census();
@@ -1165,7 +1161,7 @@ mod tests {
         );
     }
 
-    /// GOLDEN_REBASE G1.10c — the port's own DI producer: the contents are read
+    /// The port's own DI producer: the contents are read
     /// from the probe's bracket BEFORE the sweep, keyed exactly like the two
     /// oracle transports key them, and only the `DI_yr_*` tree's FILE members
     /// are in the map while the created-file SET still holds everything.
@@ -1183,7 +1179,7 @@ mod tests {
 
         let probe = RunFileProbe::start(case.to_str().unwrap());
         // what a `CloseDI` run leaves behind, plus one ordinary export and one
-        // the G1.10b selection DOES match (the circuit-name prefix) — this case
+        // the CONTENTS selection DOES match (the circuit-name prefix) — this case
         // arms `compare_di` only, so its contents must stay unread.
         std::fs::write(root.join("EXP_Y.CSV"), b"Y\n").unwrap();
         std::fs::write(
@@ -1223,7 +1219,7 @@ mod tests {
         );
         assert!(
             created.contains(&"ieee13_exp_currents.csv".to_string()) && report.contents.is_empty(),
-            "a `compare_di`-only case leaves the G1.10b surface un-armed: the \
+            "a `compare_di`-only case leaves the CONTENTS surface un-armed: the \
              selected report is still in the SET, and the port reads no contents \
              for it ({created:?} / {:?})",
             report.contents
@@ -1243,7 +1239,7 @@ mod tests {
     /// `dss_epri::guard::copy_selected_contents`).
     ///
     /// The probe's bracket opens for `compare_run_files || compare_di`
-    /// (coordinator decision D42(4)) and `compare_di` is forced on every live
+    /// and `compare_di` is forced on every live
     /// case, `large` decks included; without this gate the port alone would read
     /// and strictly UTF-8-decode files nothing compares.
     #[test]

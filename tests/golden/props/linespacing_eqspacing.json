@@ -3,7 +3,7 @@
  "oracle": {
   "engine_spec": "capi015",
   "engine": "DSS C-API Library version 0.15.0b4 revision e936d2101d745e0f0ea6872d7aa8545cb6bbd5ae based on OpenDSS SVN 4103",
-  "note": "WP-U1.4 equivalent-spacing property surface (LineSpacing.pas Detailed/EqDistPhPh/EqDistPhN/AvgPhaseHeight/AvgNeutralHeight); values probed on capi015 2026-07-16 (ls_props.py)."
+  "note": "Equivalent-spacing property surface (LineSpacing Detailed/EqDistPhPh/EqDistPhN/AvgPhaseHeight/AvgNeutralHeight). Values probed on dss_capi 0.15.0b4 2026-07-16 (ls_props.py)."
  },
  "class": "linespacing",
  "scenarios": [

@@ -16,7 +16,7 @@ const RULE: &str = "------------------------------------------------------------
 /// each **enabled** generator carrying the `NCIM_ExPV` flag prints its `FullName`
 /// (Pascal `if (Flg.NCIM_ExPV in pGen.Flags) then FSWriteLn(F, pGen.FullName())`).
 /// A circuit that never ran NCIM (or converted no generator) yields just the
-/// banner. Read-only (PHASE8_PLAN §2.1).
+/// banner. Read-only.
 pub(crate) fn show_pv2pq_gen(classes: &[DssClass], ckt: &Circuit) -> String {
     // Pascal: rule, title, rule, blank, blank → `...\n...\n...\n\n\n`.
     let title = "LIST OF GENERATORS CONVERTED FROM PV TO PQ BUS DURING THE LAST SOLUTION (NCIM)";

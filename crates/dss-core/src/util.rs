@@ -24,14 +24,14 @@ pub fn inv_sqrt3_x1000() -> f64 {
 /// Used by the Vsource asymmetric-matrix path; the clean fix is the exact
 /// `1∠−120°`, and it is a re-baseline rather than a lane flip.
 ///
-/// **Stage F.3z measured it** instead of filing it under "truncated constants".
+/// **Measured** instead of filed under "truncated constants".
 /// The imaginary part is **4.37e-7** relative short of `−sin 120° =
 /// −0.8660254037844386` — only ~2x below the 1e-6-class oracle floors before
 /// the solve amplifies it, which is exactly why this one does not survive:
 /// with the exact value selected (here *and* at the `Reactor` twin), **33 of
 /// the 520** gated corpus cases fail plus the `dump_reactor_symcomp` byte
 /// golden. Whole-artifact cost on a third of a hundred decks, so it escapes
-/// with that number; the flip belongs to an UPGRADE-rung re-capture.
+/// with that number. The flip needs a re-capture of the goldens.
 pub const CALPHA: Complex64 = Complex64::new(-0.5, -0.866025);
 /// Pascal `CDOUBLEONE` (DSSUcomplex.pas).
 pub const CDOUBLEONE: Complex64 = Complex64::new(1.0, 1.0);
@@ -210,8 +210,7 @@ pub fn check_for_blanks(s: &str) -> String {
 
 /// FPC `FloatToStr` stand-in. Rust's shortest round-trip formatting differs
 /// from FPC in digit count and never uses scientific notation, so golden
-/// comparisons must always parse numbers out instead of diffing strings
-/// (PORTING_PLAN.md §4 tolerance policy).
+/// comparisons must always parse numbers out instead of diffing strings.
 pub fn float_to_str(v: f64) -> String {
     // FPC `FloatToStr(Double)` = `FloatToStrF(v, ffGeneral, 15, 0)`: 15 significant
     // digits, general (fixed-or-scientific) notation, trailing zeros stripped —
@@ -264,8 +263,7 @@ pub fn comma_text(items: &[String]) -> String {
         .join(",")
 }
 
-/// The **F-FMT seam** entry point for "general" (`%g`) number rendering
-/// (`DE_PASCALIZE_PLAN.md` Part IV.2 §F-FMT, step F.4).
+/// The **number-format seam** entry point for "general" (`%g`) number rendering.
 ///
 /// Every engine path that turns an `f64` into general-notation text calls this
 /// one function; *which* kernel it lands in is the lane's single choice, made
@@ -309,7 +307,7 @@ pub fn fpc_general_digits(sig: usize) -> usize {
 /// `P + Exponent < PE` and `Exponent > -6` (hence the long-observed "fixed
 /// notation down to 1e-5" FPC threshold) and strips trailing zeros.
 ///
-/// **The parity kernel of the F-FMT seam** ([`fmt_g`]). Its one deliberate
+/// **The parity kernel of the number-format seam** ([`fmt_g`]). Its one deliberate
 /// inexactness — the reason the row is lane-split at all — is that the final
 /// cut to `sig` digits is **not correctly rounded**: Grisu1 first produces 17
 /// ties-to-even digits, then `round_digits` re-rounds that *decimal string* to
@@ -336,7 +334,7 @@ pub fn fmt_g_fpc_impl(v: f64, sig: usize) -> String {
     fpc_general_post(sci)
 }
 
-/// The **default kernel** of the F-FMT seam ([`fmt_g`]): the same general
+/// The **default kernel** of the number-format seam ([`fmt_g`]): the same general
 /// notation, rendered through Rust's correctly-rounded `format!`.
 ///
 /// What it keeps from FPC, deliberately, and why: the *digit count*
@@ -344,12 +342,12 @@ pub fn fmt_g_fpc_impl(v: f64, sig: usize) -> String {
 /// digits` — one decade wider than C's `%g`, which stops at `-4`), trailing-zero
 /// stripping and the uppercase `E` exponent with no `+` and no zero padding.
 /// None of those is an inexactness: they are the layout policy the fixed-width
-/// `Show` tables and the `Export` column widths are built around
-/// (`DE_PASCALIZE_PLAN.md` IV.1 keeps report *structure* contractual), so
-/// changing them would move columns, not precision. What it drops is the one
-/// thing IV.2 §F-FMT calls a wart — FPC's two-stage decimal re-rounding: here
-/// every digit comes from a single correctly-rounded conversion, so
-/// `0.82582833333333349745…` prints `0.825828333333333` at 15 digits.
+/// `Show` tables and the `Export` column widths are built around (report
+/// *structure* is contractual), so changing them would move columns, not
+/// precision. What it drops is the one wart — FPC's two-stage decimal
+/// re-rounding: here every digit comes from a single correctly-rounded
+/// conversion, so `0.82582833333333349745…` prints `0.825828333333333` at 15
+/// digits.
 ///
 /// The two kernels therefore agree except where the FPC round-up rules bite;
 /// `fmt_battery.rs` measures that population over the committed FPC battery.
@@ -1479,9 +1477,8 @@ mod tests {
     }
 
     /// FPC `FloatToStr` = `ffGeneral`/15 significant digits, NOT Rust's shortest
-    /// round-trip (`{}`, up to 17 digits). Directly pins the WP8.5 fix (else only
-    /// the `dump_reactor` golden gates it). Each value's shortest form needs ≥16
-    /// digits; `%.15g` rounds to 15 (the `Dump`/`Save` byte-fidelity contract).
+    /// round-trip (`{}`, up to 17 digits), the `Dump`/`Save` byte-fidelity
+    /// contract.
     #[test]
     fn float_to_str_is_15_sig_figs() {
         // 4.6299139469897817… — the reactor NormAmps: shortest `{}` is 16 digits.

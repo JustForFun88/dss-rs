@@ -13,7 +13,7 @@ use crate::report::format;
 /// Build the `Export Powers` body (Pascal `ExportPowers`, `opt` = 0 → kVA,
 /// 1 → MVA). Read/compute over the solved circuit: walks PDElements then
 /// PCElements, calling the mutating `Power`/`ExcesskVANorm`/`ExcesskVAEmerg`
-/// getters (PHASE8_PLAN §2.1).
+/// getters.
 pub(crate) fn export_powers(
     classes: &mut [DssClass],
     ckt: &Circuit,

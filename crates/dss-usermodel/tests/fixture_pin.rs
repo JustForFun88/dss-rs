@@ -1,15 +1,12 @@
-//! Hash-vs-PIN scaffold for the committed `.wasm` fixtures (plan §2.6):
-//! the fixture is a golden-class artifact regenerated MANUALLY ONLY with the
-//! pinned toolchain; this test asserts the committed file's SHA-256 matches
-//! the hash recorded in `tools/wasm_usermodel/PIN.txt` — drift is red.
+//! Hash-vs-PIN check for the committed `.wasm` fixtures: a fixture is a
+//! golden-class artifact regenerated MANUALLY ONLY with the pinned toolchain,
+//! and this test asserts the committed file's SHA-256 matches the hash
+//! recorded in `tools/wasm_usermodel/PIN.txt` — drift is red.
 //!
-//! Originally a self-activating scaffold (WP-WM.1 item 3) with a dormant
-//! pre-WM.2 arm (no fixture + no pin = pass). WM.2 committed the fixture, so
-//! the artifact is now PERMANENT: both the fixture and its PIN line must
-//! exist — a simultaneous deletion of both is red, not a silent pass
-//! (audit finding WM-T4, settled 2026-07-19).
+//! The artifact is PERMANENT: both the fixture and its PIN line must exist, so
+//! a simultaneous deletion of both is red, not a silent pass.
 //!
-//! PIN line format (WM.2):
+//! PIN line format:
 //! `sha256(tests/fixtures/wasm/indmach012a.wasm)=<64 hex digits>`
 
 use sha2::{Digest, Sha256};
@@ -37,7 +34,7 @@ fn pinned_hash(pin_text: &str, fixture_name: &str) -> Option<String> {
 }
 
 /// Assert a committed `.wasm` fixture's SHA-256 matches its `PIN.txt` line
-/// (both halves must exist — WM-T4). A permanent pinned artifact (plan §2.6).
+/// (both halves must exist). A permanent pinned artifact.
 fn assert_fixture_matches_pin(fixture_name: &str) {
     let root = repo_root();
     let fixture = root
@@ -63,37 +60,37 @@ fn assert_fixture_matches_pin(fixture_name: &str) {
         got,
         want,
         "committed fixture {} does not match tools/wasm_usermodel/PIN.txt — \
-         fixtures regenerate MANUALLY ONLY with the pinned toolchain (plan §2.6/§2.9-4)",
+         fixtures regenerate MANUALLY ONLY with the pinned toolchain",
         fixture.display()
     );
 }
 
 #[test]
 fn committed_fixture_hash_matches_pin() {
-    // WM.2 IndMach012a (Generator user model).
+    // IndMach012a (Generator user model).
     assert_fixture_matches_pin("indmach012a.wasm");
 }
 
 #[test]
 fn committed_wm4model_fixture_hash_matches_pin() {
-    // WM.4 wm4model (Storage DynaDLL + PVSystem UserModel).
+    // wm4model (Storage DynaDLL + PVSystem UserModel).
     assert_fixture_matches_pin("wm4model.wasm");
 }
 
 #[test]
 fn committed_capuserctl_fixture_hash_matches_pin() {
-    // WM.5 capuserctl (CapControl UserModel — deadband voltage control).
+    // capuserctl (CapControl UserModel — deadband voltage control).
     assert_fixture_matches_pin("capuserctl.wasm");
 }
 
 #[test]
 fn committed_wgturbine_fixture_hash_matches_pin() {
-    // R4133_PROPS_PLAN RP1.3 wgturbine (WindGen UserModel).
+    // The wgturbine fixture (WindGen UserModel).
     assert_fixture_matches_pin("wgturbine.wasm");
 }
 
 #[test]
-fn pinned_hash_parser_reads_the_wm2_line_format() {
+fn pinned_hash_parser_reads_the_pin_line_format() {
     let text = "\
 # comment sha256(tests/fixtures/wasm/indmach012a.wasm)=0000000000000000000000000000000000000000000000000000000000000000
 wasmi==1.0.9

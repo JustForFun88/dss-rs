@@ -1,4 +1,4 @@
-! WP-U1.2 row D3 (UPGRADE_PLAN §WP-U1.2, LineGeometry.pas:1060-1064) — spacing
+! Spacing
 ! ratings from the MINIMUM over PHASE conductors, not conductor 1. Phase wires
 ! [big small big] have differing normamps; the neutral (neut, normamps=999) is
 ! excluded (index > FNphases). 0.15.x: Line.normamps = min(600,400,600)=400,

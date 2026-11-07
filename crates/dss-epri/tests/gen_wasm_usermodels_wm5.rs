@@ -1,37 +1,35 @@
-//! Golden generator for the WASM_USERMODELS **WM.5** CapControl user-control
-//! gate (recorded decision, r4133 bridge oracle).
+//! Golden generator for the CapControl user-control gate, on the r4133 bridge.
 //!
-//! **Oracle = the r4133 BUILT-IN VOLTAGE CapControl, not a native twin.** WM.5
-//! round 2 established (from the r4133 source, definitively) that a native
-//! `TCapUserControl` DLL **cannot drive the r4133 control queue**: the 7-fn
-//! `New(var CallBacks)` gives the model no owning-element pointer
-//! (`CapUserControl.pas:36`), neither `SampleControlDevices`
-//! (`Solution.pas:3611-3621`) nor `CapControl.Sample` (USERCONTROL arm
-//! `CapControl.pas:1054-1069`) sets `ActiveCktElement` to the CapControl, and
-//! `ControlQueue.Push` needs the CapControl as `Owner` to route `DoPendingAction`
-//! on pop (`ControlQueue.pas:145,193`). So the reference `capuserctl` fixture's
-//! deadband logic is made identical to the built-in VOLTAGE control
+//! **The reference is r4133's BUILT-IN VOLTAGE CapControl, not a native twin.**
+//! A native `TCapUserControl` DLL **cannot drive the r4133 control queue**: the
+//! model gets no pointer to its owning CapControl, nothing in the sampling path
+//! makes the CapControl the active element, and the queue needs the CapControl
+//! as owner to route the pending action on pop. So the reference `capuserctl`
+//! fixture's deadband logic is made identical to the built-in VOLTAGE control
 //! (OnSetting=vlow / OffSetting=vhigh), and the r4133 built-in VOLTAGE control
-//! (`wasm_capcontrol_oracle.dss`) is the sound cross-engine oracle for the Rust
+//! (`wasm_capcontrol_oracle.dss`) is the cross-engine reference for the Rust
 //! USERCONTROL wiring.
 //!
 //! This generator has two jobs:
 //!  1. **Golden** (always): run `wasm_capcontrol_oracle.dss` (built-in VOLTAGE)
 //!     on the r4133 engine and write the ordered SWITCH actions + final cap state
 //!     + node voltages as `tests/golden/wasm_usermodels/wasm_capcontrol.json`.
-//!  2. **Empirical twin confirmation** (when `WASM_TWIN_DLL` is set): run the
+//!  2. **Twin confirmation** (when `WASM_TWIN_DLL` is set): run the
 //!     USERCONTROL deck `wasm_capcontrol.dss` with `@FIXTURE@` = the native twin
-//!     `capuserctl.dll` on the r4133 engine, corroborating the source finding
-//!     that the twin cannot push. **OBSERVED (2026-07-20): this HANGS the r4133
-//!     engine** — the twin pushes with `Owner := GetActiveElementPtr()` (the only
-//!     element pointer it can obtain, and NOT the CapControl), so the control-queue
-//!     pop dereferences a wrong/garbage `TControlElem` and corrupts the engine. A
-//!     hang (not a clean empty log) is itself decisive evidence that the channel is
-//!     un-gatable — but the definitive proof is the source reading above, so this
-//!     part is a corroboration you run at your own risk (it will not return). The
-//!     twin is built by `build_capuserctl_native.ps1`.
+//!     `capuserctl.dll` on the r4133 engine. The twin pushes with the only
+//!     element pointer it can obtain, not the CapControl, so the queue pop
+//!     dereferences a wrong control element and the r4133 engine hangs. Run it at
+//!     your own risk: it does not return. The twin is built by
+//!     `build_capuserctl_native.ps1`.
 //!
-//! **Manual only** (like every golden): env-gated on `DSS_GEN_WM5`. Regenerate:
+//! # Knobs
+//!
+//! - `DSS_GEN_WM5`: set to any value, runs the generator. Unset by default, and
+//!   then it returns without writing anything.
+//! - `WASM_TWIN_DLL`: path of the native `capuserctl.dll` twin, arms the twin
+//!   confirmation of job 2. Unset by default.
+//!
+//! **Manual only** (like every golden): `#[ignore]` and gated on `DSS_GEN_WM5`. Regenerate:
 //! ```text
 //! DSS_GEN_WM5=1 cargo test -p dss-epri --test gen_wasm_usermodels_wm5 -- --nocapture --ignored
 //! # optional twin confirmation (after build_capuserctl_native.ps1):
@@ -53,7 +51,7 @@ fn workspace_root() -> PathBuf {
 /// (`Hour=…, Sec=…, ControlIter=…, Element=…, Action=…`), keeping only the actual
 /// bank switches — **Opened**/**Closed**/**Step Up**/**Step Down** — and dropping
 /// the **Armed**/**Reset** queue-mechanism rows (which the direct-push USERCONTROL
-/// path legitimately omits, WM5-3). Actions normalized to uppercase.
+/// path legitimately omits). Actions normalized to uppercase.
 fn switch_actions(log: &[String]) -> Vec<(String, String)> {
     let mut out = Vec::new();
     for line in log {
@@ -89,7 +87,7 @@ fn field(line: &str, key: &str) -> Option<String> {
 #[ignore = "manual golden generation — needs DSS_GEN_WM5=1"]
 fn generate_wm5_capcontrol_golden() {
     if std::env::var("DSS_GEN_WM5").is_err() {
-        eprintln!("DSS_GEN_WM5 unset — skipping WM.5 golden generation (manual step).");
+        eprintln!("DSS_GEN_WM5 unset — skipping golden generation (manual step).");
         return;
     }
 
@@ -98,7 +96,7 @@ fn generate_wm5_capcontrol_golden() {
     let version = engine.version().to_string();
     eprintln!("r4133 engine: {version}");
 
-    // --- 1. Golden from the built-in VOLTAGE oracle deck ---
+    // --- 1. Golden from the built-in VOLTAGE reference deck ---
     let oracle = workspace_root().join("tools/golden/wasm_decks/wasm_capcontrol_oracle.dss");
     engine.clear().unwrap();
     engine
@@ -140,14 +138,14 @@ fn generate_wm5_capcontrol_golden() {
 
     assert!(
         !actions.is_empty(),
-        "oracle produced no switch actions — deck did not exercise the control"
+        "the reference deck produced no switch actions — it did not exercise the control"
     );
 
     let golden = serde_json::json!({
         "deck": "wasm_capcontrol",
         "engine": version,
         "oracle": "r4133 built-in VOLTAGE CapControl (native CapUserControl twin cannot drive \
-                   the control queue — WM.5 round-2 finding)",
+                   the control queue)",
         "converged": engine.converged(),
         "switch_actions": actions.iter().map(|(e, a)| vec![e.clone(), a.clone()]).collect::<Vec<_>>(),
         "capacitor_states": cap_states,
@@ -178,13 +176,10 @@ fn generate_wm5_capcontrol_golden() {
         std::fs::write(&deck_path, &deck_text).unwrap();
 
         eprintln!(
-            "[twin] EXPECTED TO HANG: OBSERVED 2026-07-20 the compile below does NOT return — the \
-             twin pushes with Owner := GetActiveElementPtr() (the wrong element), so the control- \
-             queue pop dereferences a garbage TControlElem and corrupts the r4133 engine. A hang \
-             (not a clean empty log) is itself the decisive corroboration that the native-twin \
-             channel is un-gatable; the definitive proof is the source reading in the module doc. \
-             If this call ever DOES return (engine hardened), the event log should be empty (no \
-             correctly-routed switch)."
+            "[twin] EXPECTED TO HANG: the compile below does not return — the twin pushes with \
+             the wrong element as owner, so the control-queue pop dereferences a wrong control \
+             element and corrupts the r4133 engine. If this call ever DOES return (engine \
+             hardened), the event log should be empty (no correctly-routed switch)."
         );
         engine.clear().unwrap();
         let compile_res = engine.compile(&deck_path.to_string_lossy().replace('\\', "/"), true);

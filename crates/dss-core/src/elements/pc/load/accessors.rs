@@ -190,8 +190,8 @@ impl CktElement for Load {
         }
         // Pascal `TLoadObj.GetTerminalCurrents` (@ 0.15.0b4): recompute the load
         // model contribution unless the terminal currents were forced from the
-        // DSS language (`Set InjCurrent=`/`Set ITerminal=`, `Flg.ForceInjCurrents`,
-        // WP-U1.9) — then the stored/forced `ITerminal` is used as-is.
+        // DSS language (`Set InjCurrent=`/`Set ITerminal=`, `Flg.ForceInjCurrents`)
+        // — then the stored/forced `ITerminal` is used as-is.
         if !self.cd.iterminal_solved_for(sys.solution_count)
             && !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS)
         {

@@ -12,7 +12,7 @@ variant, and saves the captured JSON string to
 variants (read back from `meta.json`, so the two can never drift), captures its
 own payload, and compares structurally after parsing numbers out — fpjson emits
 `2.0000000000000000E+003` for floats, which is byte-incomparable with any Rust
-serializer (PORTING_PLAN §4 tolerance policy).
+serializer.
 
 Registration order matters: the message callback must be registered BEFORE
 `DSS_Set_AllowForms(True)` (else it is a no-op, error 5096), then the plot
@@ -73,7 +73,7 @@ VARIANTS = [
     ("visualize_power", ["visualize powers Transformer.tr1"]),
     ("visualize_current", ["visualize current Line.l1"]),
     ("visualize_voltage", ["visualize voltage Line.l1"]),
-    # --- audit-settlement variants (2026-07-09): pin the upstream quirks and
+    # --- further variants: pin the OpenDSS quirks and
     # the parse arms the first 13 variants only exercised at their defaults. ---
     # `min=` asymmetry: min=0 still sets MinScaleIsSpecified (unlike max=0).
     ("circuit_min_zero", ["plot type=circuit quantity=Voltage min=0"]),

@@ -3,11 +3,11 @@
 //!
 //! Both are `DSS_OBJECT` classes (no terminals, no YPrim) that hold a single
 //! scalar curve indexed by hour: TempShape's `Temp` (consumed by temperature-
-//! dependent loads, Phase 7) and PriceShape's `Price` (feeds `ckt.PriceSignal`
-//! in `SolveDaily`, wired in WP5.7). They are the simpler, *legacy* siblings of
+//! dependent loads) and PriceShape's `Price` (feeds `ckt.PriceSignal`
+//! in `SolveDaily`). They are the simpler, *legacy* siblings of
 //! LoadShape: one value array (no Q), no peak/normalize, no UseActual, no
-//! interpolation mode, and an `Action` that only does the unported binary
-//! saves. Crucially their `GetTemperature`/`GetPrice` lookups are the **legacy
+//! interpolation mode, and an `Action` that only does the binary saves.
+//! Crucially their `GetTemperature`/`GetPrice` lookups are the **legacy
 //! 1-based** Pascal (init `LastValueAccessed := 1`, loop
 //! `for i := LastValueAccessed + 1 to FNumPoints`, fall-through returns the
 //! *last* point) — distinct from LoadShape's modernized 0-based `GetMultAtHour`
@@ -22,8 +22,7 @@
 //! `(hour, value)` pairs from both) — live here on [`ScalarShapeCore`]; the
 //! per-class property tables and their differing `PropertySideEffects` live in
 //! [`super::temp_shape`] and [`super::price_shape`]. All three file props are
-//! read via the deferred [`FileLoad`] path, exactly like LoadShape (WP5.2b /
-//! WPG.1 for the binary pair).
+//! read via the deferred [`FileLoad`] path, exactly like LoadShape.
 
 use crate::obj::base::{DssObjData, FileLoad, ShapeSave};
 use crate::support::mathutil::{curve_mean_and_std_dev, mean_and_std_dev};
@@ -168,8 +167,8 @@ impl ScalarShapeCore {
         // Normalize Hr into the first cycle (wraparound). Pascal divides by
         // Hours[FNumPoints] unguarded, so a degenerate curve whose LAST hour is
         // 0 poisons Hr to NaN (masked-FPU Inf·0) — defined-garbage on a
-        // pathological input, not reproduced (CLAUDE.md known-bug policy): the
-        // port skips the wraparound and reads the curve as-is.
+        // pathological input, not reproduced: this engine skips the
+        // wraparound and reads the curve as-is.
         let mut hr = hr;
         let last = h[npts - 1]; // Hours[FNumPoints]
         if hr > last && last != 0.0 {

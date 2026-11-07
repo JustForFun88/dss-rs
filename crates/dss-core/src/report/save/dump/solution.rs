@@ -2,9 +2,13 @@
 //! `! OPTIONS` / `Set …` option listing appended to every whole-circuit
 //! `Dump` and produced alone by `Dump solution`. The `Leaf`-gated lines print
 //! only on the Dump paths (both pass `Leaf=TRUE`); the Save `IncludeOptions`
-//! path (WP8.5 step 5) reuses this with `Leaf=FALSE`. `Complete` (bare
+//! path reuses this with `Leaf=FALSE`. `Complete` (bare
 //! `Dump debug`) additionally dumps the factored system Y in compressed
 //! column order.
+//!
+//! Knob: `EDITOR` names the editor on the `Set editor=` line on macOS and
+//! Linux (default `open -t` on macOS, `xdg-open` elsewhere). Windows always
+//! prints `NotePad.exe`.
 
 use num_complex::Complex64;
 use std::collections::BTreeMap;

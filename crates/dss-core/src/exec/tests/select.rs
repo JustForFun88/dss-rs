@@ -1,10 +1,10 @@
 //! Exec `Select` command tests (Pascal `DoSelectCmd`, ExecHelper.pas:670) and the
-//! `Show Yprim` active-element surface (WP8.4 step 11). `Select class.name [term]`
+//! `Show Yprim` active-element surface. `Select class.name [term]`
 //! makes a circuit element the `ActiveCktElement` (read by `Show Yprim`) and sets
 //! its active terminal; a `DSS_OBJECT` / `circuit` / bare select does not; an
 //! unknown class logs #903 and **falls back** to the previously-referenced class.
 //! These cover the error/edge branches the `show_yprim` golden's happy path does
-//! not (step-11 audit follow-up).
+//! not.
 
 use crate::exec::*;
 
@@ -133,7 +133,7 @@ fn select_circuit_is_noop() {
     assert_eq!(dss.active_ckt_element, before);
 }
 
-/// Regression (audit-code Major, `command.rs` `do_clear_cmd`): `Clear` must reset
+/// Regression (`command.rs` `do_clear_cmd`): `Clear` must reset
 /// `active_ckt_element`. Otherwise a stale `(cls, idx)` from a pre-`Clear` `Select`
 /// indexes the now-emptied class objects when a fresh circuit is built and
 /// `Show Yprim` runs → an OOB **panic** (or a foreign-element read).
@@ -206,10 +206,9 @@ fn show_yprim_filename_has_no_circuit_prefix() {
 
 #[test]
 fn set_class_activates_and_set_object_selects() {
-    // WP-U1.1 item 5 (r3875 / C11): `Set Class=`/`Set Object=` were NOT_PORTED;
-    // now `Set Class=X` activates class X (Pascal SetObjectClass — the r3875 fix
-    // sets ActiveDSSClass, unified here as `active_class`) and `Set Object=`
-    // selects an object, resolving a bare name against the active class.
+    // `Set Class=X` activates class X (`active_class`, as in r3875) and
+    // `Set Object=` selects an object, resolving a bare name against the active
+    // class.
     let mut dss = Dss::new();
     build(&mut dss);
     dss.command("new load.ld bus1=b kv=12.47 kw=5");

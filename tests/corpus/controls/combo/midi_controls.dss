@@ -102,7 +102,7 @@ new capacitor.cdel phases=3 bus1=bb13 conn=delta kvar=300 kv=12.47
 new reactor.rsh phases=1 bus1=bb4.3 kvar=120 kv=7.2
 
 ! --- DER pocket at the feeder end ---
-! pv3 is wye: WP-U1.3 row D4 makes a DELTA controlled DER monitor line-to-line
+! pv3 is wye: 0.15.x and r4133 make a DELTA controlled DER monitor line-to-line
 ! voltages (a capi015/r4133 behavior); this deck stays 0.14.5-gated (its
 ! CapControl/RegControl/StorageController carry unported U1.5/U1.6 deltas, so it
 ! cannot flip to capi015), and the multi-step capi015 oracle cannot gate a

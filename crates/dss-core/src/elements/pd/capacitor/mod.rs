@@ -9,7 +9,7 @@
 //! matching nodes makes a series capacitor.
 //!
 //! The harmonic-filter recomputation (`Harm`) is ported for fidelity.
-//! [`MakePosSequence`] (WPG.21) collapses the bank to its positive-sequence
+//! [`MakePosSequence`] collapses the bank to its positive-sequence
 //! single-phase form in [`solve`].
 //!
 //! [`MakePosSequence`]: crate::elements::traits::CktElement::make_pos_sequence
@@ -117,7 +117,7 @@ pub(super) const CUF_SCALE: f64 = 1.0e-6;
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
     let defs = vec![
-        // Pascal flags bus1 `Required` (inert here — not enforced in Phase 4).
+        // Pascal flags bus1 `Required` (enforced only by the JSON import).
         PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
         PropDef::bus("Bus2", 2),
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),

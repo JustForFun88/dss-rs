@@ -249,7 +249,7 @@ fn default_is_3ph_closed_relay() {
 
 // EXPECTED-VALUE-PIN(RELAY_SAMPLE_TRACE_IGNORES_DEBUGTRACE): the per-`Sample`
 // state trace is a debug trace, so it is written exactly when `DebugTrace` says
-// so — in both lanes, since `GOLDEN_REBASE_PLAN.md` G2.2d tore the row down.
+// so, in both lanes.
 /// Expected-value pin: the `Debug Sample` line of `TRelayObj.Sample` follows
 /// `DebugTrace`, the guard its Recloser twin (`Recloser.pas:1044`) and its own
 /// siblings (`Relay.pas:1822`, `:1845`) carry and r4133 dropped from this one
@@ -281,14 +281,9 @@ fn sample_state_trace_follows_debugtrace() {
     }
 }
 
-/// Self-check of [`non_debug_lines`] (G2.2d retro audit, AC-2): its needle must
-/// match the trace lines as the event log really stores them. Before the fix
-/// it filtered on `"DEBUG SAMPLE"`, which no line contains, so it counted the
-/// traces too — latent only because its four callers never `sample()`. With
-/// `DebugTrace=yes` a below-pickup `sample()` logs exactly the state trace and
-/// an above-pickup one adds one `OvercurrentLogic` curve trace per phase, all
-/// of which the helper must skip, while any other line (here a protection
-/// event appended by hand) is still counted.
+/// Self-check of [`non_debug_lines`]: its needle must match the trace lines as the
+/// event log really stores them, so it skips every debug trace and still counts any
+/// other line.
 #[test]
 fn non_debug_lines_skips_the_debug_sample_lines_only() {
     let mut r = armed_relay();
@@ -335,7 +330,7 @@ fn overcurrent_arms_open_then_reclose() {
     assert!(r.armed_for_open[G]);
     assert!(r.armed_for_close[G]);
     assert!(r.phase_target[G]);
-    assert_eq!(r.relay_target[G], "Ph Curve"); // E2 descriptive target
+    assert_eq!(r.relay_target[G], "Ph Curve"); // descriptive target
     assert_eq!(sc.queue.queue_size(), 2); // OPEN + reclose CLOSE
 }
 
@@ -376,12 +371,11 @@ fn overcurrent_ground_trip_on_residual_sum() {
     assert!(r.armed_for_open[G]);
     assert!(r.ground_target);
     assert!(!r.phase_target[G]);
-    assert_eq!(r.relay_target[G], "Gnd Curve"); // E2 descriptive target
+    assert_eq!(r.relay_target[G], "Gnd Curve"); // descriptive target
 }
 
-/// **D3:** the instantaneous trip time is a bare `0.01` (the `MechanicalDelay` is
-/// added once, at the push) — `0.01 + MechanicalDelay`, not r4088's `0.01 +
-/// 2·MechanicalDelay`.
+/// The instantaneous trip fires at its bare trip time plus one `MechanicalDelay`,
+/// the delay counted once, at the push.
 #[test]
 fn overcurrent_inst_single_count_d3() {
     let mut r = armed_relay();
@@ -400,7 +394,7 @@ fn overcurrent_inst_single_count_d3() {
     };
     let (open, t_open) = sc.queue.pop_time(far, false).unwrap();
     assert_eq!(open.code, ControlAction::Open.ordinal());
-    // D3: 0.01 + MechanicalDelay(0.05) = 0.06 (NOT 0.01 + 2·0.05 = 0.11).
+    // 0.01 + MechanicalDelay(0.05) = 0.06 (NOT 0.01 + 2·0.05 = 0.11).
     assert!((t_open - 0.06).abs() < 1e-9, "inst open time = {t_open}");
 }
 
@@ -462,7 +456,7 @@ fn overcurrent_disarms_and_resets_when_current_drops() {
     assert_eq!(sc.queue.queue_size(), 3); // the prior two stay + a RESET
 }
 
-// --- Single-phase trip (B1 / SinglePhTrip) ----------------------------------
+// --- Single-phase trip (SinglePhTrip) --------------------------------------
 
 /// With `SinglePhTrip`, only the over-current phase(s) arm; the phase index rides
 /// the control-queue proxy handle.
@@ -660,12 +654,10 @@ fn do_pending_open_close_are_wrong_state_no_ops() {
 }
 
 // EXPECTED-VALUE-PIN(RELAY_RESET_EVENT_IS_LABELLED_RECLOSER): the reset event
-// names the class that emitted it, in both lanes, since `GOLDEN_REBASE_PLAN.md`
-// G2.2d tore the row down.
-/// **D4:** the queued `DoPendingAction(CTRL_RESET)` no longer runs the full
-/// `Reset` — it only resets `OperationCount` to 1 for closed phases, does NOT
-/// force the element back to normal state, and logs the event as
-/// `Relay.<name>`.
+// names the class that emitted it, in both lanes.
+/// The queued `DoPendingAction(CTRL_RESET)` only resets `OperationCount` for closed
+/// phases, without forcing the element back to normal state. It logs the event as
+/// `Relay.<name>`, the class that emitted it.
 #[test]
 fn do_pending_reset_only_resets_opcount_d4() {
     let mut r = armed_relay();
@@ -684,7 +676,7 @@ fn do_pending_reset_only_resets_opcount_d4() {
     );
     assert_eq!(r.operation_count[G], 1, "opcount reset to 1");
     assert!(ctrl.cd.terminal_all_phases_closed(1)); // element NOT forced (still closed)
-    assert!(!sc.y_changed, "D4 reset does not force the element / Y");
+    assert!(!sc.y_changed, "a reset does not force the element / Y");
     // The label half of the pin. Upstream copy-pasted `'Recloser.' + Self.Name`
     // out of `Recloser.pas:909`/`:924` into both `CTRL_RESET` arms
     // (`Relay.pas:1196`, `:1212`); the event belongs to the relay that emitted
@@ -766,7 +758,7 @@ fn reset_with_open_normal_state_locks_out() {
     assert!(sc.y_changed);
 }
 
-/// A `Locked` relay does NOT reset (r4133 D4/lock semantics).
+/// A `Locked` relay does NOT reset.
 #[test]
 fn reset_with_blocked_while_locked() {
     let mut r = armed_relay();
@@ -784,8 +776,8 @@ fn reset_with_blocked_while_locked() {
     assert_eq!(non_debug_lines(&sc), 0);
 }
 
-/// Fail-on-regression guard for the WP7.2 step-2a Reset dirty edge: `reset_with`
-/// must raise `SystemYChanged` and flip each phase per-phase.
+/// `reset_with` on a partly open terminal must raise `SystemYChanged` and flip each
+/// phase per-phase.
 #[test]
 fn reset_with_partial_open_terminal_still_forces_rebuild() {
     let mut r = armed_relay();
@@ -903,7 +895,7 @@ fn voltage_under_voltage_trips() {
     assert_eq!(r.relay_target[G], "UV");
 }
 
-/// **B2:** the OV trip uses `Vmax_closed` (extrema over *closed* phases only). A
+/// The OV trip uses `Vmax_closed` (extrema over *closed* phases only). A
 /// relay with one phase open ignores an over-voltage on the open phase.
 #[test]
 fn voltage_ov_uses_closed_phase_extrema_b2() {
@@ -928,27 +920,9 @@ fn voltage_ov_uses_closed_phase_extrema_b2() {
     );
 }
 
-/// **59NRelayDemo regression (WP-U2.6):** a `type=voltage` relay whose MONITORED
-/// element is a 1-phase broken-delta PT (measuring 3V0 across an open point to
-/// ground) but whose SWITCHED element is a 3-phase line. Pascal
-/// `RecalcElementData` forces `Nphases := MonitoredElement.NPhases` (=1, used only
-/// for `vbase`/`cBuffer`/`CondOffset`), while every per-phase state-array loop —
-/// `VoltageLogic` (Relay.pas:2852), `GetPropertyValue` 39/40, `Sample`, `Reset` —
-/// iterates `Min(RELAYCONTROLMAXDIM, ControlledElement.NPhases)` (=3). With the
-/// wrong count=1 the loop reads only `cBuffer[1]` (the high 3V0) and trips on the
-/// ground overvoltage; with the correct count=3 the loop's final *phantom* phase
-/// (beyond the 1-phase PT terminal's conductors) reads 0, so `Vmag` ends 0, the
-/// `IF Vmag > 0` guard fails, `OVTime` stays -1 and the relay correctly does NOT
-/// trip — matching oddie:r4133. (For the usual mon==ctrl-phase relay the two
-/// counts coincide, so this is the only path that distinguishes them.)
-///
-/// The no-trip outcome is NOT self-pinned: on the r4133 engine itself the deck's
-/// own `Relay.State` property reads `[closed, closed, closed, ]` (byte-identical
-/// to the `render_state_array()` asserted below) and Line.line1 still carries
-/// ~1381 A. Reproduce via `tools/opendss/probe_59n.py`, which drives the official
-/// r4133 DLL through the in-house `epri-worker` bridge (crates/dss-epri; the
-/// original Oddie/dss-python probe was retired with that channel) — exits 0 iff
-/// r4133 reads all-closed / no trip. Re-verified through the bridge 2026-07-19.
+/// A `type=voltage` relay with a 1-phase broken-delta PT as monitored element and a
+/// 3-phase line as switched element sizes its state arrays by the switched line. Its
+/// voltage loop then ends on a phase past the PT's conductors and queues no trip.
 #[test]
 fn voltage_relay_open_point_sizes_state_by_controlled_nphases_59n() {
     let mut r = armed_relay(); // ctrl_snap = 3-phase line
@@ -988,13 +962,9 @@ fn voltage_relay_open_point_sizes_state_by_controlled_nphases_59n() {
     );
 }
 
-/// **MakeLike per-phase state count (WP-U2.6 audit).** Pascal `TRelayObj.MakeLike`
-/// (Relay.pas:683) copies `FPresentState`/`FNormalState` over
-/// `Min(RELAYCONTROLMAXDIM, ControlledElement.Nphases)` — the SWITCHED element's
-/// phase count, resolved before the copy — NOT the relay's own `FNPhases`
-/// (= MonitoredElement.NPhases). For an asymmetric `like=` source (1-phase
-/// monitored PT, 3-phase switched line) an OPEN state latched on a high phase must
-/// survive the copy; the old `other.ccd.cd.nphases`-bounded loop dropped it.
+/// `MakeLike` copies the per-phase states over the switched element's phase count,
+/// not the relay's own `FNPhases`, so an OPEN state on a high phase of an
+/// asymmetric `like=` source survives the copy.
 #[test]
 fn make_like_copies_state_by_controlled_nphases() {
     let mut src = armed_relay(); // ctrl_snap = 3-phase line
@@ -1454,20 +1424,8 @@ fn default_dump_matches_oracle() {
     assert_eq!(dump(&mut dss, "PhaseTrip"), dump(&mut dss, "PhPickup"));
 }
 
-/// `ControlledElement = NIL` renders the bare `'[]'` on Relay exactly as it
-/// does on SwtControl — r4133's getters 39/40 open with
-/// `If ControlledElement <> Nil Then` (`Relay.pas:1407`/`:1418`) and otherwise
-/// leave `Result` at `'['+']'`.
-///
-/// **Measured on the r4133 DLL 11.0.0.1** (RP3.7 audit settlement, 2026-09-02):
-/// a relay pointed at a non-existent `switchedobj` — the create raises #387 and
-/// leaves `ControlledElement` nil (`:984`) — answers `'[]'` for BOTH `Normal`
-/// and `State`. Before the settlement the port fell back to the relay's own
-/// phase count and printed `[closed, closed, closed, ]`.
-///
-/// The guard is the getters' own ([`Relay::render_size`]); the twelve
-/// sensing/reset/`MakeLike` loops keep [`Relay::state_size`], which is where
-/// `ORPHANED_GAPS.md` §1.14(c)'s residual lives.
+/// A relay whose `switchedobj` does not exist renders the bare `'[]'` for both
+/// `Normal` and `State`, as SwtControl does, since there is no phase to report.
 #[test]
 fn nil_controlled_element_renders_the_empty_array() {
     let mut dss = Dss::new();
@@ -1612,24 +1570,16 @@ fn recloseintervals_none_clears_the_array() {
     assert_eq!(dump(&mut dss, "Shots"), "1");
 }
 
-/// Relay's ordinal twin [`DssObject::set_enum_array`] — the SwtControl pin's
-/// missing counterpart, added by the RP3.7 audit settlement (2026-09-02).
-///
-/// The method is unreachable in production ([`Relay::set_enum_array_raw`]
-/// consumes every `Normal`/`State` write) but it re-implements the lock guard,
-/// the five-slot cap and the `Keep` rule by hand, and nothing tested it at all.
-/// Each row drives two identical relays — one through the ordinal setter, one
-/// through [`Relay::interpret_relay_state`] with the equivalent quoted
-/// spelling — and asserts BOTH the r4133 bytes and that the two agree, so a
-/// change to either path reds this test.
+/// Relay's ordinal twin [`DssObject::set_enum_array`] re-implements the lock guard,
+/// the five-slot cap and the `Keep` rule by hand, so each row drives it and
+/// [`Relay::interpret_relay_state`] on identical relays and asserts both agree.
 #[test]
 fn the_ordinal_array_setter_matches_the_interpreter() {
     use crate::obj::dss_enum::EnumRegistry;
     let keep = ControlAction::Keep.ordinal();
     let open = ControlAction::Open.ordinal();
     // Every row starts from the all-closed baseline `Relay::new` gives its six
-    // in-bounds slots — the same baseline `out_b1b.txt` B1(3b) established on
-    // the DLL with a ganged `state=closed` before measuring the cap.
+    // in-bounds slots.
     let cases: [(bool, usize, &[i32], &str, &str); 4] = [
         (
             false,
@@ -1638,9 +1588,8 @@ fn the_ordinal_array_setter_matches_the_interpreter() {
             "open, keep, open",
             "[open, closed, open, closed, closed, closed, ]",
         ),
-        // The five-slot cap on both paths (`take(RCMAX - 1)` vs `:1286`); the
-        // 6th token is dropped, as B1(3b) measured on the r4133 DLL. A reproduced
-        // r4133 off-by-one (upstream report 75): RETRO_FIXES RF-D01-01 AC3-1
+        // The five-slot cap on both paths (`take(RCMAX - 1)`): the 6th token is
+        // dropped. This reproduces an r4133 off-by-one, a known defect whose fix
         // flips this row (see `the_property_seam_caps_the_per_phase_parse_at_five_tokens`).
         (
             false,
@@ -1728,20 +1677,9 @@ fn r4133_property_table_has_71_props() {
     );
 }
 
-/// RP3.7(b) — the r4133 `WasQuoted` split at the property seam
-/// (`Relay.pas:1256-1306`): a BARE single token is ganged, a QUOTED single token
-/// writes phase 1 only. The port's pre-RP3.7 `set_enum_array` keyed the split on
-/// `values.len() == 1`, so `state=(open)` filled all three phases.
-///
-/// Bytes measured on the vendored r4133 DLL through `epri-worker`
-/// (`tmp/rp37/probe_b1.py` -> `out_b1.txt` B1(1), deck `decks/p4_relay3.dss`):
-/// `state=(open)` -> `[open, closed, closed, ]` (Normal follows through the
-/// supplemental), `state=open` -> `[open, open, open, ]`, and `normal=(closed)`
-/// over an all-open Normal -> `[closed, open, open, ]`.
-///
-/// Non-vacuity: reverting the seam to the length heuristic renders
-/// `[open, open, open, ]` on the first assertion and `[closed, closed, closed, ]`
-/// on the last.
+/// A BARE single token writes every phase and a QUOTED single token writes phase 1
+/// only, as r4133 splits on `WasQuoted`. `normal=(closed)` over an all-open Normal
+/// likewise closes phase 1 only.
 #[test]
 fn a_quoted_single_token_is_per_phase_a_bare_one_is_ganged() {
     let mut dss = Dss::new();
@@ -1775,47 +1713,10 @@ fn a_quoted_single_token_is_per_phase_a_bare_one_is_ganged() {
     assert!(dss.errors().is_empty(), "errors: {:?}", dss.errors());
 }
 
-/// RP3.7(b) — the per-phase parse honors at most FIVE tokens
-/// (`Relay.pas:1286` `While (Length(DataStr2)>0) and (i < RELAYCONTROLMAXDIM)`),
-/// while the render prints one token per controlled-element phase. The cap is
-/// only observable on a >5-phase controlled element, so the pin drives a 6-phase
-/// line; the generic ordinal tokenizer the seam used before RP3.7 read
-/// `array_size()` = six tokens and applied the sixth.
-///
-/// Measured on the r4133 DLL (`tmp/rp37/probe_b1b.py` -> `out_b1b.txt` B1(3b),
-/// deck `decks/b1_relay6.dss`): from an all-closed ganged baseline,
-/// `state=(closed, closed, closed, closed, closed, open)` leaves
-/// `[closed, closed, closed, closed, closed, closed, ]`.
-///
-/// **A reproduced upstream bug, pending its fix.** That bound is an r4133
-/// off-by-one — the ganged arm (`:1260`) and `StateArray` (`:62`) span six
-/// slots — reported upstream in
-/// `investigations/to_opendss/75-per-phase-state-list-drops-the-sixth-phase.md`
-/// (local-only), and the 2026-08-02 policy says it is not reproduced. The port
-/// still reproduces it here and in the ordinal twin `set_enum_array`: the fix
-/// must move both together (`the_ordinal_array_setter_matches_the_interpreter`
-/// asserts they agree) and is RETRO_FIXES RF-D01-01 AC3-1, which flips this
-/// pin and that test's row 2 to the sixth token landing.
-///
-/// r4133's own FRESH 6-phase render has **no defined value** in slots 4..6:
-/// `Create` allocates `FPresentState` with `FNPhases` (3) entries and
-/// initializes only those (`Relay.pas:829-843`), while the getter loops the
-/// controlled element's six phases (`:1418-1428`), so those three tokens are an
-/// out-of-bounds heap read. Measured both ways on the same DLL 11.0.0.1
-/// (RP3.7 audit settlement, 2026-09-02): on `decks/b1_relay6.dss`, which ends in
-/// a `solve`, it reads `[closed, closed, closed, open, open, open, ]`
-/// (`out_b1.txt` B1(3), reproducible 2/2 on re-run), and on the same
-/// construction stopped before the `solve` it reads all-closed — the flip
-/// happens at the `solve`, i.e. it tracks heap content, not the model
-/// (re-measured 2026-09-25, RF-D01-01 probe (a), transcript local-only: the
-/// same bytes after the `solve`). That defect is NOT reproduced (2026-08-02
-/// policy, A1 D8/A2a D7): the port initializes all six in-bounds slots to
-/// closed, and the first assertion below pins exactly that on the fresh
-/// 6-phase render through the property seam — load-bearing, not setup noise
-/// (rows 1, 3 and 4 of `the_ordinal_array_setter_matches_the_interpreter` and
-/// the fresh render of `a_seven_phase_controlled_element_renders_six_tokens`
-/// pin the same initialization). The cap itself is then measured from the
-/// ganged all-closed baseline, as B1(3b) did.
+/// The per-phase parse honors at most five tokens while the render prints one per
+/// controlled-element phase, an r4133 off-by-one this engine still reproduces (a
+/// known defect). The fresh 6-phase render is all closed, because this engine
+/// initializes every in-bounds slot where r4133 reads past its allocation.
 #[test]
 fn the_property_seam_caps_the_per_phase_parse_at_five_tokens() {
     let mut dss = Dss::new();
@@ -1855,32 +1756,8 @@ fn the_property_seam_caps_the_per_phase_parse_at_five_tokens() {
     assert!(dss.errors().is_empty(), "errors: {:?}", dss.errors());
 }
 
-/// RP3.7 retro audit AT3-1 — past six phases the render stops at six tokens
-/// where r4133 does not. `GetPropertyValue` 39/40 loop
-/// `ControlledElement.NPhases` uncapped (`Relay.pas:1409`/`:1420`), so the 7th
-/// token reads `FPresentState^[7]` past `StateArray =
-/// Array[1..RELAYCONTROLMAXDIM]` (`:57`/`:62`, six slots) and past `Create`'s
-/// 3-entry allocation (`:829-830`): an out-of-bounds read, never reproduced
-/// (2026-08-02 policy), so [`Relay::state_size`] clips at six.
-///
-/// Measured on the r4133 DLL 11.0.0.1 (RF-D01-01 probe (b), deck
-/// `b_relay7.dss`, whose circuit/line/relay lines this test replays; no
-/// `solve`):
-/// State and Normal render SEVEN tokens fresh, all `closed`; after the ganged
-/// `state=open` (slots `1..RELAYCONTROLMAXDIM` only, `:1260`) State
-/// reads `[open, open, open, open, open, open, closed, ]`, the 7th token being
-/// the never-written slot; `state=closed` then gives seven `closed` and Normal
-/// keeps the first write's six `open` plus a 7th `closed`. No warning on either
-/// engine: Relay's `RecalcElementData` has no phase-count check (the
-/// SwtControl #384 twin is `ORPHANED_GAPS.md` §1.15). The port answers six
-/// tokens at every step, each assert naming the r4133 bytes.
-///
-/// The probe transcript is local-only (gitignored `tmp/retro_fix/`). To
-/// re-derive it, compile this test's four commands plus the deck's
-/// `new load.ld bus1=b1 phases=3 kv=115 kw=2000 pf=0.95 model=1`,
-/// `set voltagebases=[115]` and `calcvoltagebases` in a fresh
-/// `tools/opendss/epri_worker.py` worker on the r4133 DLL, then send the edits
-/// and `?` reads below.
+/// Past six phases the render stops at six tokens, where r4133 reads past its
+/// six-slot state array, an out-of-bounds read this engine does not reproduce.
 #[test]
 fn a_seven_phase_controlled_element_renders_six_tokens() {
     let mut dss = Dss::new();
@@ -1912,28 +1789,11 @@ fn a_seven_phase_controlled_element_renders_six_tokens() {
     assert!(dss.errors().is_empty(), "errors: {:?}", dss.errors());
 }
 
-/// RF-D01-01 settlement round 2 (SA-1) — the Relay twin of
-/// `swt_control::tests::a_seven_token_list_leaves_no_residue_for_the_next_bare_write`.
-/// `Relay.pas:1278-1305` carries the same `Else`-without-`Begin` fall-through
-/// (only `:1280` sits under the `Else`; the reads `:1282-1283` and the
-/// per-phase `While` `:1286` run on the unquoted path too), not reproduced
-/// ([`Relay::interpret_relay_state`]'s doc).
-///
-/// Measured on the r4133 DLL 11.0.0.1 (RF-D01-01 part 2 residue probe, a
-/// 3-phase line): from the ganged `state=closed` baseline,
-/// `state=(closed, closed, closed, closed, closed, closed, open)` reads
-/// `[closed, closed, closed, ]`, the next `state=closed` reads
-/// `[open, closed, closed, ]` and a second one `[closed, closed, closed, ]`.
-/// The port reads `[closed, closed, closed, ]` at every step; the assert on
-/// the divergent step names r4133's bytes. Like its twin, the pin holds across
-/// the pending sixth-token fix (AC3-1).
-///
-/// The probe transcript is local-only (gitignored `tmp/retro_fix/`). To
-/// re-derive it, compile this test's four commands plus
-/// `new load.ld bus1=b1 phases=3 kv=115 kw=2000 pf=0.95 model=2`,
-/// `set voltagebases=[115]`, `calcvoltagebases` and `solve` in a fresh
-/// `tools/opendss/epri_worker.py` worker on the r4133 DLL, then send the edits
-/// and `?` reads below.
+/// The Relay twin of
+/// `swt_control::tests::a_seven_token_list_leaves_no_residue_for_the_next_bare_write`:
+/// a long quoted list leaves no parser residue for the next bare `state=closed`.
+/// r4133 re-reads that residue, an `Else`-without-`Begin` fall-through this engine
+/// does not reproduce ([`Relay::interpret_relay_state`]).
 #[test]
 fn a_seven_token_list_leaves_no_residue_for_the_next_bare_write() {
     let mut dss = Dss::new();
@@ -1966,22 +1826,10 @@ fn a_seven_token_list_leaves_no_residue_for_the_next_bare_write() {
     assert!(dss.errors().is_empty(), "errors: {:?}", dss.errors());
 }
 
-/// RP3.7(b) — the Edit supplemental (`Relay.pas:616-619`, `CASE PropertyIdxMap
-/// OF 19, 40:`) sits OUTSIDE `InterpretRelayState`, so a `State`/`Action` write
-/// latches `NormalStateSet` (copying Present into Normal) even when the
-/// interpreter refused it while `Locked` (`:1244`) or matched no `o`/`c` token.
-/// The port ran the latch for `State` (side effects are unconditional) but not
-/// for `Action`, whose early returns skipped it — so a locked `action=open`
-/// followed by an unlocked `state=open` carried Normal to open.
-///
-/// Measured on the r4133 DLL (`tmp/rp37/out_b1.txt` B1(2a)/(2b),
-/// `out_b1b.txt` B1(2e)/(2f)): in all four sequences the later unlocked
-/// `state=open` leaves `Normal` at `[closed, closed, closed, ]`, while the
-/// control sequence with no earlier write (B1(2c)) carries it to
-/// `[open, open, open, ]`.
-///
-/// Non-vacuity: restoring `state_side_effect()` inside `do_action`'s guarded
-/// path makes the two `action` rows render `[open, open, open, ]`.
+/// A `State`/`Action` write latches `NormalStateSet` even when the interpreter
+/// refused it while `Locked` or matched no `o`/`c` token, so a later unlocked
+/// `state=open` leaves `Normal` closed. With no earlier write, the first
+/// `state=open` carries `Normal` with it.
 #[test]
 fn a_refused_or_unmatched_action_still_runs_the_normal_defaults_supplemental() {
     let build = || {
@@ -2024,7 +1872,7 @@ fn a_refused_or_unmatched_action_still_runs_the_normal_defaults_supplemental() {
         assert!(dss.errors().is_empty(), "{first:?}: {:?}", dss.errors());
     }
 
-    // Control (r4133 B1(2c)): with no earlier write, the first state= carries
+    // Control: with no earlier write, the first state= carries
     // Normal with it.
     let mut dss = build();
     dss.command("edit relay.r1 state=open");
@@ -2032,25 +1880,9 @@ fn a_refused_or_unmatched_action_still_runs_the_normal_defaults_supplemental() {
     assert_eq!(dump(&mut dss, "Normal"), open);
 }
 
-/// RP3.7(b), the census cell — `GetPropertyValue` 39/40 loop the **live**
-/// `ControlledElement.NPhases` (`Relay.pas:1407-1428`), so after `makeposseq`
-/// reduces the switched line to one conductor the relay renders ONE token.
-/// `Sample` (`:1318`), `Reset` (`:1454`) and `RecalcElementData` (`:965`) use
-/// the same live `Min(RELAYCONTROLMAXDIM, ControlledElement.Nphases)` bound.
-///
-/// The port reads that count off the controlled-element snapshot, which
-/// `make_pos_sequence` now refreshes from the live `PosSeqCtx`; before RP3.7 the
-/// frozen parse-time 3 survived, so the render printed three tokens AND the
-/// `Sample` resync read conductors 2..3 past the end of the 1-conductor element
-/// as *open* — the port's pre-fix `State = [closed, open, open, ]`, which is the
-/// `props_r4133` census row for `relay.state` on
-/// `modes/makeposseq/makeposseq_ctrl.dss` (that deck's relay statement is
-/// reproduced here; `relay.normal` is its sibling row).
-///
-/// Bytes measured on the r4133 DLL (`tmp/rp37/probe.md` §6 P4(ii), re-measured
-/// `out_b1.txt` B1(4)): `[closed, closed, closed, ]` before, `[closed, ]` after
-/// — and still `[closed, ]` after a later unrelated `edit`, whose `recalc`
-/// re-reads the snapshot.
+/// After `makeposseq` reduces the switched line to one conductor, the relay renders
+/// ONE token, the live phase count of its controlled element. A later unrelated
+/// `edit` keeps the single token, because its `recalc` re-reads the refreshed snapshot.
 #[test]
 fn the_render_bound_follows_makeposseq() {
     let mut dss = Dss::new();
@@ -2088,21 +1920,9 @@ fn the_render_bound_follows_makeposseq() {
     assert_eq!(get(&mut dss, "Normal"), "[closed, ]");
 }
 
-/// RP3.7(b) — the per-phase write reaches the CONDUCTORS through the new raw
-/// seam, not just the render: `state=(open, closed, closed)` on a 3-phase
-/// controlled line zeroes phase 1's current and leaves phases 2/3 carrying load.
-///
-/// The r4133 DLL's own terminal currents for this deck+edit
-/// (`tmp/rp37/probe.md` §6 P4(i-a), `decks/p4_relay3.dss`) are
-/// `['0.000000 -0.000000j', '-7.824715 -7.067886j', '-2.219181 +10.328951j', …]`.
-/// The DLL prints six decimals, so the comparison band is that print's own
-/// rounding (5e-7 absolute per component) — the port lands inside it on every
-/// component (`-7.824714600188 -7.067886356275j`,
-/// `-2.219180813961 +10.328950858660j`, `tmp/rp37/out_b1_port_fixed.txt` /
-/// `probe_b1c`), i.e. the two engines agree far below the faer-vs-KLU floor.
-///
-/// Non-vacuity: a ganged interpretation of the quoted list (the pre-RP3.7 seam
-/// on a single token, or a `set_all_present` here) zeroes phases 2 and 3 too.
+/// The per-phase write reaches the conductors, not just the render:
+/// `state=(open, closed, closed)` on a 3-phase controlled line zeroes phase 1's
+/// current and leaves phases 2/3 carrying load.
 #[test]
 fn per_phase_state_write_through_the_executive_opens_only_its_phase() {
     let mut dss = Dss::new();

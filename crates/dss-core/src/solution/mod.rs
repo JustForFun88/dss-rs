@@ -1,4 +1,4 @@
-//! Solution engine: `Solution.pas` + `Ymatrix.pas` (Phase 3 subset).
+//! Solution engine: `Solution.pas` + `Ymatrix.pas`.
 #![allow(clippy::module_inception)]
 
 pub mod control_queue;

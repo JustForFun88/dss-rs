@@ -1,13 +1,11 @@
 //! [`UserModelHost`]: engine + linker + compiled module, one per loaded
-//! `.wasm` path (plan §2.1), with load-time export-set validation.
+//! `.wasm` path, with load-time export-set validation.
 //!
-//! Template: the vendored typst plugin host (`.inputs/typst/crates/
-//! typst-library/src/foundations/plugin.rs`) — `Plugin::new` (`:268-308`)
-//! builds the deterministic engine config (relaxed SIMD off, `:271-272`),
-//! compiles the module, checks the `memory` export (`:279-281`) and registers
-//! the host-import module on a `Linker` (`:284-297`). On top of the typst
-//! pattern this host adds fuel metering and a store memory cap (plan §2.1 —
-//! typst has neither).
+//! Template: the typst plugin host (`typst-library` `foundations/plugin.rs`)
+//! — `Plugin::new` builds the deterministic engine config (relaxed SIMD off),
+//! compiles the module, checks the `memory` export and registers the
+//! host-import module on a `Linker`. On top of the typst pattern this host adds
+//! fuel metering and a store memory cap (typst has neither).
 
 use wasmi::{ExternType, ValType};
 
@@ -184,16 +182,15 @@ impl InterfaceKind {
     }
 }
 
-/// Sandbox limits (plan §2.1 — additions over the typst template).
+/// Sandbox limits (additions over the typst template).
 #[derive(Debug, Clone, Copy)]
 pub struct HostConfig {
     /// Per-call fuel budget. Exhaustion is the loud typed
     /// [`UserModelError::FuelExhausted`] naming the model and function.
     ///
-    /// The default is deliberately generous; WP-WM.2 verifies the plan's
-    /// calibration bar against the committed IndMach012a fixture (a
-    /// reference-model call must use <1% of the budget) and adjusts by a
-    /// recorded decision if needed.
+    /// The default is deliberately generous: a reference-model call of the
+    /// committed IndMach012a fixture must use <1% of the budget (pinned in
+    /// `tests/fixture_self_gate.rs`).
     pub fuel_per_call: u64,
     /// Linear-memory cap enforced by the store limiter (ABI doc §6;
     /// default 64 MiB). Breach is the loud typed
@@ -202,7 +199,7 @@ pub struct HostConfig {
 }
 
 impl HostConfig {
-    /// Plan §2.1 defaults: generous fuel, 64 MiB memory cap.
+    /// Defaults: generous fuel, 64 MiB memory cap.
     pub const DEFAULT_FUEL_PER_CALL: u64 = 100_000_000;
     /// 64 MiB.
     pub const DEFAULT_MEMORY_CAP: usize = 64 * 1024 * 1024;
@@ -217,8 +214,8 @@ impl Default for HostConfig {
     }
 }
 
-/// Engine + linker + compiled module — one per loaded `.wasm` path
-/// (plan §2.1); instances are created per element binding via
+/// Engine + linker + compiled module — one per loaded `.wasm` path.
+/// Instances are created per element binding via
 /// [`crate::UserModelInstance::new`] / [`crate::CapControlInstance::new`].
 pub struct UserModelHost {
     pub(crate) engine: wasmi::Engine,
@@ -241,8 +238,8 @@ impl std::fmt::Debug for UserModelHost {
 impl UserModelHost {
     /// Compile `wasm_bytes` and validate the export set for `kind`.
     ///
-    /// Deterministic sandbox per plan §2.1 / ABI doc §6: relaxed SIMD off
-    /// (typst `plugin.rs:271-272`), fuel metering on, store memory cap; the
+    /// Deterministic sandbox per ABI doc §6: relaxed SIMD off (as in typst),
+    /// fuel metering on, store memory cap; the
     /// only import surface is the `dss_env` module. `model` is the
     /// attribution used in every error (the property value / resolved path).
     ///
@@ -258,9 +255,9 @@ impl UserModelHost {
     ) -> Result<Self, UserModelError> {
         let mut wasmi_config = wasmi::Config::default();
         // Disable relaxed SIMD: it can introduce non-determinism
-        // (typst plugin.rs:271-272; ABI doc §6 determinism policy).
+        // (as in typst; ABI doc §6 determinism policy).
         wasmi_config.wasm_relaxed_simd(false);
-        // Per-call fuel budget (plan §2.1; beyond the typst template).
+        // Per-call fuel budget (beyond the typst template).
         wasmi_config.consume_fuel(true);
 
         let engine = wasmi::Engine::new(&wasmi_config);

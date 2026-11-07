@@ -54,8 +54,7 @@ pub struct DssObjData {
     /// serializer writes this object out, so a later `WriteClassFile` in the
     /// same session skips it. Persists across `Save` commands exactly like the
     /// Pascal flag (probe-proven 2026-07-07: a second `save load` writes 0
-    /// records and deletes the file); only `Circuit.Save` clears them all
-    /// (WP8.5 step 5).
+    /// records and deletes the file); only `Circuit.Save` clears them all.
     has_been_saved: bool,
     /// `TNamedObject.pUuid` (`NamedObject.pas`): the lazily-created UUID slot —
     /// `Get_UUID` makes a **random v4** on first read; the `Uuids` command
@@ -134,7 +133,7 @@ impl DssObjData {
     }
 
     /// Pascal `Include(obj.Flags, Flg.HasBeenSaved)` / the `Circuit.Save`
-    /// `Exclude` reset (WP8.5 step 5).
+    /// `Exclude` reset.
     pub fn set_has_been_saved(&mut self, saved: bool) {
         self.has_been_saved = saved;
     }
@@ -504,7 +503,7 @@ impl RefAction {
 /// parses the content with its own format rules. Nothing reads the object's
 /// data between the property set and the load, so the deferral is
 /// unobservable (the load still completes before `EndEdit`) — with one
-/// documented limitation (audit Question, 2026-07-09, accepted): Pascal runs
+/// documented limitation: Pascal runs
 /// the file read *inline at its property position*, so a single command that
 /// sets a file prop AND a later array prop touching the same arrays (e.g.
 /// `csvfile=f yarray=(…)`) finishes with the file values overwritten by the
@@ -687,7 +686,7 @@ pub enum UserModelSlot {
     /// The Generator shaft model (`ShaftModel=`).
     Shaft,
     /// The Storage dynamics-only model (`DynaDLL=`, Pascal `TStoreDynaModel`,
-    /// the 13-function interface — WASM_USERMODELS WM.4).
+    /// the 13-function interface).
     Dyna,
 }
 
@@ -707,8 +706,8 @@ pub enum UserModelAction {
 }
 
 /// A deferred user-model (WASM) load/edit request queued by a `UserModel=` /
-/// `UserData=` / `ShaftModel=` / `ShaftData=` property setter (WASM_USERMODELS
-/// WM.3+). Like [`FileLoad`], the setter cannot reach the filesystem or the
+/// `UserData=` / `ShaftModel=` / `ShaftData=` property setter. Like
+/// [`FileLoad`], the setter cannot reach the filesystem or the
 /// script's current directory, so it records the request; the executive
 /// resolves the model path (literal → `current_dir`, mirroring the Pascal
 /// `LoadLibrary(Value)` / `LoadLibrary(DSSDirectory + Value)` order,
@@ -717,7 +716,7 @@ pub enum UserModelAction {
 /// `RecalcElementData` sees the loaded model.
 ///
 /// Unlike a [`FileLoad`], a **missing** file is NOT an "Error opening file":
-/// the activation rule (plan §2.4 / ABI doc §5) warns non-fatally
+/// the activation rule (`docs/wasm/USERMODEL_ABI.md` §5) warns non-fatally
 /// ("… Not Loaded. …") and falls back to the built-in model. The executive
 /// passes the resolved `.wasm` bytes when (and only when) a file that exists
 /// **and** ends in `.wasm` was found; `None` otherwise (a missing file or a
@@ -771,7 +770,7 @@ pub type ObjectRefArrayItem<'a> = Option<(String, crate::obj::arena::ResolvedObj
 /// uses; the defaults panic so a wrong dispatch surfaces as an obvious bug
 /// rather than silent data corruption (this mirrors the Pascal base
 /// `CustomSetRaw` "base ... reached" guard).
-// `: Send` is the P7 thread-readiness rider (DE_PASCALIZE Part V / R1): every
+// `: Send` is the thread-readiness bound: every
 // concrete element is plain owned data, so the bound is vacuous today but makes
 // `Box<dyn DssObject>` (hence `Dss`) `Send` and guards against a future
 // non-`Send` field. See `lib.rs` `assert_send::<Dss>()`.
@@ -965,9 +964,8 @@ pub trait DssObject: Send {
     /// `false` falls through to the tokenizer. `was_quoted` is
     /// [`PropEngine::was_quoted`](crate::obj::props::PropEngine::was_quoted);
     /// seams without an outer parser leave it `false` and the implementor
-    /// reconstructs the quoted case from the value itself (RP3.7 A2 — the
-    /// SwtControl `Normal`/`State` writer; the Relay twin keeps the generic
-    /// arm until B1).
+    /// reconstructs the quoted case from the value itself (the SwtControl and
+    /// Relay `Normal`/`State` writers).
     fn set_enum_array_raw(&mut self, idx: usize, value: &str, was_quoted: bool) -> bool {
         let _ = (idx, value, was_quoted);
         false
@@ -1007,7 +1005,7 @@ pub trait DssObject: Send {
     /// `DSSObjectReferenceProperty` write for a *resolved* reference (a
     /// `PropDef::object_ref_class`): `name` is the referenced object's name for
     /// dumps (Pascal `otherObj.Name`, `""` when unresolved), and `resolved`
-    /// carries its stable [`ElemId`] plus a read view of the object so the
+    /// carries its stable [`ElemId`](crate::obj::arena::ElemId) plus a read view of the object so the
     /// element can copy data immediately (Pascal `FetchLineCode` etc.). The
     /// dump value is read back through [`DssObject::get_string`].
     fn set_object_ref(
@@ -1291,8 +1289,7 @@ pub trait DssObject: Send {
         let _ = (load, content, errors);
     }
 
-    /// Drain the [`UserModelLoad`]s queued during the last edit (WASM_USERMODELS
-    /// WM.3+). The executive resolves each `Load` path and reads the `.wasm`
+    /// Drain the [`UserModelLoad`]s queued during the last edit. The executive resolves each `Load` path and reads the `.wasm`
     /// bytes (or `None`), then calls [`DssObject::apply_user_model_load`]
     /// *before* `end_edit`. Default empty.
     fn take_user_model_loads(&mut self) -> Vec<UserModelLoad> {

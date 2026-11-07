@@ -1,4 +1,4 @@
-! GOLDEN_REBASE G1.6(i) reliability + load-allocation deck. TWO jobs no other
+! Reliability + load-allocation deck. TWO jobs no other
 ! corpus case can do:
 !
 ! (1) It is the ONLY deck that runs the executive `AllocateLoads`, and that is
@@ -46,7 +46,7 @@ new line.lat3 bus1=lb bus2=lc linecode=lc length=0.6 units=mi
 
 ! Three section boundaries: the head span and both laterals. Explicit A/D curves
 ! for the reason modes:time/midi_duty_ctrl.dss names them (r4133 dropped the
-! built-in default recloser curves, WP-U2.2 D2).
+! built-in default recloser curves).
 new recloser.rfeed monitoredobj=line.feed monitoredterm=1
 ~ switchedobj=line.feed switchedterm=1 phasefast=a phasedelayed=d
 ~ phasetrip=1200 groundtrip=800

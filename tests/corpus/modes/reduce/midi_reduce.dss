@@ -118,7 +118,7 @@ new load.ld22 bus1=l9e.3 phases=1 conn=wye model=5 kv=7.2 kw=420 pf=0.85 vminpu=
 new load.ld23 bus1=bb6 phases=3 conn=wye model=3 kv=12.47 kw=280 pf=0.94 vminpu=0.85
 new load.ld24 bus1=bb11.2 phases=1 conn=wye model=1 kv=7.2 kw=160 pf=0.93 vminpu=0.85
 
-! Reduce family (PHASE8_PLAN WP8.7): the DEFAULT in-line merge strategy
+! Reduce family: the DEFAULT in-line merge strategy
 ! at scale (the un-loaded lateral mid-buses l2m/l3m merge; buses with
 ! loads/branches survive; the loop tie + regulator bank stay).
 new energymeter.em element=transformer.sub terminal=1

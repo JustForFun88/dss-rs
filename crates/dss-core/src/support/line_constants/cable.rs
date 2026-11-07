@@ -26,13 +26,14 @@ const RHO_TS: f64 = 2.3718e-8;
 // formula (Pascal `0.3183`). The clean fix is `FRAC_1_PI`, and it is a
 // re-baseline rather than a lane flip.
 //
-// **Stage F.3z measured it** rather than escaping it under a category: `0.3183`
+// **Measured** rather than escaped under a category: `0.3183`
 // is **3.10e-5** relative below `1/π = 0.3183098861837907`, and it multiplies
 // the tape-shield conductor's own resistance, so it lands directly in `Z`. With
 // `FRAC_1_PI` selected, **8 of the 520** gated corpus cases fail together with 8
 // unit tests and the `line_constants_scenarios` golden — every one of them a
 // tape-shield deck, i.e. the row's whole observable surface rather than one
-// field of it. An UPGRADE-rung re-capture, not a default-lane exclusion.
+// field of it. The fix needs a re-capture of the goldens, not a default-lane
+// exclusion.
 #[allow(clippy::approx_constant)]
 const TS_RES_INV_PI: f64 = 0.3183;
 

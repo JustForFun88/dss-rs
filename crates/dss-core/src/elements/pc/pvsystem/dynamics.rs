@@ -9,12 +9,12 @@
 //! the trapezoidal predictor/corrector in `SolveDynamic`.
 //!
 //! Scope: the classic GFL path, the grid-forming (GFM) black-start droop
-//! (WPG.17 — `it := 0` init, the `IMaxPPhase`/`ISPDelta`/`FixPhaseAngle` ramp,
+//! (`it := 0` init, the `IMaxPPhase`/`ISPDelta`/`FixPhaseAngle` ramp,
 //! and the `DoDynamicMode` internal-voltage-source injection), and the external
-//! `DynamicEqObj` / `DynamicExp` integration (WP7.7 step 3b — the user equation
+//! `DynamicEqObj` / `DynamicExp` integration (the user equation
 //! replaces `SolveDynamicStep`). The user-written model (`UserModel`,
-//! VoltageModel=3) is the WASM host (`user_model.rs`, WM.4): `DoDynamicMode`
-//! `FCalc` (`:1885`) and `IntegrateStates` `Integrate` (`:2280`).
+//! VoltageModel=3) is the WASM host (`user_model.rs`): `DoDynamicMode`
+//! `FCalc` and `IntegrateStates` `Integrate`.
 
 use num_complex::Complex64;
 
@@ -196,12 +196,12 @@ impl PVSystem {
     /// Pascal `TPVsystemObj.IntegrateStates` (l.2264) — advance the GFL
     /// inverter state by one trapezoidal half-step (dispatching to
     /// `integrate_dyn_eq_phase` per phase when a `DynamicExp` is linked). A loaded
-    /// `UserModel=` integrates itself first via `user_model_fintegrate` (WM.4).
+    /// `UserModel=` integrates itself first via `user_model_fintegrate`.
     pub(super) fn integrate_states_impl(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         self.compute_iterminal(sys, node_v);
 
-        // Pascal IntegrateStates UserModel branch (PVsystem.pas:2278-2282): a
-        // loaded `UserModel=` integrates its own state and returns (WM.4).
+        // IntegrateStates UserModel branch: a loaded `UserModel=` integrates
+        // its own state and returns.
         if self.user_model_fintegrate(sys, node_v) {
             return;
         }
@@ -223,8 +223,7 @@ impl PVSystem {
         // dss_capi 0.15.x (commit 32db066f, port of SVN r3868): the current-limit
         // base changed `PanelkW → FkVArating` ("IBR operational range") — the
         // limit tracks the inverter kVA rating, not the instantaneous DC panel
-        // power. UPGRADE_PLAN WP-U1.2 row D7; ledger DIVERGENCES.md §D7. (Storage
-        // already used FkVArating in both revs; InitStateVars above too.)
+        // power. (Storage uses FkVArating in both revs, InitStateVars above too.)
         let base_kv = self.base.dyn_vars.base_kv;
         self.base.dyn_vars.i_max_p_phase = (self.f_kva_rating / base_kv) / nphases_f;
         let i_max_p_phase = self.base.dyn_vars.i_max_p_phase;
@@ -390,7 +389,7 @@ impl PVSystem {
     }
 
     /// Pascal `TPVsystemObj.DoDynamicMode` (l.1838) — inject the dynamics-mode
-    /// current. GFL is a controlled current source; GFM (WPG.17) is an internal
+    /// current. GFL is a controlled current source; GFM is an internal
     /// balanced voltage source scaled by the integrated filter current `it[0]`.
     pub(super) fn do_dynamic_mode(
         &mut self,
@@ -431,8 +430,7 @@ impl PVSystem {
                 // Pascal `DoDynamicMode` VoltageModel=3 (PVsystem.pas:1884-1895):
                 // `UserModel.FCalc(Vterminal, Iterminal)` (then the shared tail
                 // negates into InjCurrent — done inside `user_model_fcalc`); a
-                // missing model records #5671 + SolutionAbort (WASM_USERMODELS
-                // WM.4).
+                // missing model records #5671 + SolutionAbort.
                 if !self.user_model_fcalc(sys, node_v, errors) {
                     errors.push(crate::diag::DssDiagnostic::abort(
                         format!(
@@ -487,7 +485,7 @@ impl PVSystem {
     /// Pascal `TPVsystemObj.NumVariables` (l.2562) — the 22 classic variables
     /// (13 base + 9 InvDynVars). The linked-`DynamicExp` count is dispatched ahead
     /// of this in the `num_variables` accessor; the `UserModel` count is added
-    /// there too (WM.4).
+    /// there too.
     pub(super) fn num_pv_variables(&self) -> usize {
         NUM_PV_VARS // = 22
     }
@@ -518,8 +516,8 @@ impl PVSystem {
 
     /// Pascal `TPVsystemObj.Get_Variable` (l.2397) (1-based).
     /// Returns -9999.99 for out-of-range `i`; `i > NumPVSystemVariables` routes to
-    /// the `UserModel` tail (Pascal l.2453, WM.4 settle T-WM4-2 — matching the
-    /// Storage sibling; `&mut self` because the guest read may drain effects).
+    /// the `UserModel` tail (matching the Storage sibling; `&mut self` because
+    /// the guest read may drain effects).
     pub(super) fn get_pv_variable(&mut self, i: usize, sys: &SysCtx, node_v: &[Complex64]) -> f64 {
         let nphases = self.cd.nphases;
         // DynamicEqObj <> NIL: read the equation memory directly (Pascal l.2409).
@@ -551,8 +549,7 @@ impl PVSystem {
                 .base
                 .dyn_vars
                 .get_inv_dyn_value(i - NUM_BASE_PV_VARS - 1, nphases),
-            // WASM_USERMODELS WM.4 — i > NumPVSystemVariables reads the `UserModel`
-            // state variable (Pascal PVsystem.pas:2453-2461).
+            // i > NumPVSystemVariables reads the `UserModel` state variable.
             _ => self
                 .get_user_model_variable(i, sys, node_v)
                 .unwrap_or(-9999.99),
@@ -562,7 +559,7 @@ impl PVSystem {
     /// Pascal `TPVsystemObj.GetAllVariables` (l.2543): fill `states[0..21]`
     /// (0-based) with `Variable[1..22]` (1-based). The `DynamicEqObj` memory dump is
     /// handled by the `get_all_variables` accessor short-circuit; the UserModel
-    /// values are appended there (WM.4).
+    /// values are appended there.
     pub(super) fn get_all_pv_variables(
         &mut self,
         sys: &SysCtx,
@@ -610,7 +607,7 @@ impl PVSystem {
     /// Pascal `TPVsystemObj.Set_Variable` (l.2489) (1-based). The write side of
     /// the state-variable interface, reached via the `set_variable` trait method.
     /// A linked `DynamicExp` makes every state variable read-only (msg 566, below);
-    /// i > NumPVSystemVariables routes to the UserModel setter (WM.4, in the
+    /// i > NumPVSystemVariables routes to the UserModel setter (in the
     /// `set_variable` accessor).
     pub(super) fn set_pv_variable(&mut self, i: usize, value: f64) {
         // DynamicEqObj <> NIL: state variables are read-only — the equation drives

@@ -145,9 +145,8 @@ pub(crate) fn alt_dump<'a>(names: impl Iterator<Item = &'a str>) -> String {
 mod tests {
     use super::*;
 
-    /// The oracle's `dump devicelist` bucket layout for the WP8.5 `dump3.dss`
-    /// fixture (probe 2026-07-07): 15 devices in a 30-bucket list; pins the
-    /// rotate-left-5 hash + the create(900) sizing.
+    /// The OpenDSS `dump devicelist` bucket layout for the `dump3.dss` fixture
+    /// pins the rotate-left-5 hash and the create(900) sizing.
     #[test]
     fn device_hash_matches_oracle_probe() {
         let names = [

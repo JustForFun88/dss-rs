@@ -5,29 +5,26 @@
 predates. This dict overrides/adds those, keyed by `<Class>.<prop-lowercase>` (or
 `Command.<name>`), and is applied on top of the wheel parse. Two groups:
 
-1. **Carried-forward pre-r4133 non-wheel help.** Earlier WPs hand-edited these
-   into the previously-"GENERATED" `help_catalog.rs` (LineSpacing 0.15.x
-   equivalent-spacing fields, WP-U1.4; `CNData.SemiconLayer`, the dump3 fix; the
-   A-Diakoptics `tear_circuit` command note). WP-U2.5 folds them into the
-   generator so `python gen_help_catalog.py` reproduces the committed file
-   exactly instead of silently reverting them.
+1. **Pre-r4133 non-wheel help.** Help the wheel lacks (LineSpacing 0.15.x
+   equivalent-spacing fields; `CNData.SemiconLayer`; the A-Diakoptics
+   `tear_circuit` command note), kept in the generator so
+   `python gen_help_catalog.py` reproduces the committed file exactly instead
+   of silently reverting them.
 
-2. **r4133 protection overhaul (WP-U2.1..U2.5).** The 0.14.5 wheel carries the
+2. **r4133 protection overhaul.** The 0.14.5 wheel carries the
    *old* Relay (50-prop), Recloser (24-prop), Fuse (10-prop) and SwtControl
-   (8-prop) help; the port moved those classes to their r4133 surfaces (Relay 71,
-   Recloser 46, Fuse 12, SwtControl 9). Source of truth = the official EPRI r4133
-   engine's own `PropertyHelp` arrays (`.inputs/electricdss-code-r4133-trunk/
-   Version8/Source/Controls/{Relay,Recloser,fuse,SwtControl}.pas`), captured
-   verbatim from the r4133 binary's `Dump commands` output (oddie:r4133,
-   `tools/opendss/bin/r4133`). Only the class-specific props are listed; the
+   (8-prop) help. This engine implements those classes' r4133 surfaces (Relay
+   71, Recloser 46, Fuse 12, SwtControl 9). Source of truth = the official EPRI
+   r4133 engine's own property help, captured verbatim from the r4133 binary's
+   `Dump commands` output (`tools/opendss/bin/r4133`). Only the class-specific props are listed; the
    inherited `basefreq`/`enabled`/`like` tail is rev-identical and stays sourced
    from the wheel.
 
 The `Dump commands` golden's `[Relay]`/`[Recloser]`/`[Fuse]`/`[SwtControl]` blocks
-are pinned self-referentially against this text (the WP8.5 self-referential
+are pinned self-referentially against this text (the self-referential
 regression-pin convention, as `tests/golden/props/relay.json`): the numeric-token
-/ round-trip gates cover the property NAMES and VALUES against oddie:r4133, and no
-byte-exact-vs-Delphi help gate exists (UPGRADE_PLAN.md §1.3-2).
+/ round-trip gates cover the property NAMES and VALUES against r4133, and no
+byte-exact-vs-Delphi help gate exists.
 """
 
 from __future__ import annotations

@@ -23,7 +23,7 @@ use crate::support::mathutil::SymComp;
 /// cache-aware `compute_iterminal`, where r4133 calls an unconditional
 /// scratch-buffer `GetCurrents` (`Common/ShowResults.pas:572`, `:594`, `:616`,
 /// `:639`; the code-1 form's `WriteTerminalCurrents`, `:492`) — the same current
-/// after a solve, Newton included since RF-D00-01 (why: the call site in
+/// after a solve, Newton included (why: the call site in
 /// `report::export::currents`; pinned by
 /// `exec::tests::newton::newton_show_currents_match_the_normal_algorithm`).
 /// `do_ratings` (PD only) enables the `%Normal`/`%Emergency` columns.

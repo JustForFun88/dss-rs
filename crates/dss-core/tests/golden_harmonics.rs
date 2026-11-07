@@ -1,5 +1,4 @@
-//! Harmonics golden gate (PHASE7_PLAN.md WP7.6; part of the former Phase-7
-//! golden bucket): command-replay scenarios that pin the harmonics frequency
+//! Harmonics golden gate: command-replay scenarios that pin the harmonics frequency
 //! sweep — spectrum-driven load/source/DER injection at each harmonic, the
 //! harmonic system Y, and the swept monitor channels — against the pinned
 //! oracle, from `tests/golden/harmonics/` (one `<scenario>.json` per scenario;

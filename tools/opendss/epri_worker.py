@@ -1,5 +1,4 @@
-"""Line-JSON client for the `epri-worker` Rust bridge (`crates/dss-epri`) —
-the functional-parity replacement for the retired AltDSS Oddie bridge.
+"""Line-JSON client for the `epri-worker` Rust bridge (`crates/dss-epri`).
 
 The worker process loads the vendored official EPRI r4133
 `tools/opendss/bin/r4133/OpenDSSDirect.dll`, asserts the version pin
@@ -13,14 +12,17 @@ Two surfaces:
 
 - :class:`EpriWorker` — the raw protocol client (spawn, request, exec, read).
 - :class:`EpriEngine` — a thin `IOddieDSS`-shaped shim (``d.Text.Command``,
-  ``d.ActiveCircuit.Solution`` …) so drivers written against the old Oddie API
+  ``d.ActiveCircuit.Solution`` …) so drivers written against the dss-python API
   (`tools/golden/gen_protection.py::build`, `gen_checkpoints.capture_element`)
-  run unchanged over the Rust bridge, issuing the **same per-property DLL call
-  sequence** the Oddie bridge did (one read per protocol request).
+  run unchanged over the Rust bridge, one per-property DLL call per protocol
+  request.
 
 Binary resolution mirrors the gate (`corpus_gate/engines.rs::epri_worker_bin`):
 `DSS_EPRI_WORKER` env override -> `target/release/epri-worker(.exe)` ->
 `target/debug/...` -> one `cargo build -p dss-epri --bin epri-worker`.
+
+Environment: `DSS_EPRI_WORKER` is the path of the `epri-worker` binary to use
+(a missing file exits non-zero). Unset, the binary is found or built as above.
 """
 
 from __future__ import annotations

@@ -1,19 +1,17 @@
-//! `Save circuit` round-trip + structural gate (PHASE8_PLAN §WP8.5 step 5, §1
-//! gate #3). Faithfulness of `Circuit.Save` is **round-trip**, not byte-equality
-//! with the oracle's Save output (§2.4): we save a solved circuit to a scratch
+//! `Save circuit` round-trip + structural gate. Faithfulness of `Circuit.Save`
+//! is **round-trip**, not byte-equality
+//! with the OpenDSS Save output: we save a solved circuit to a scratch
 //! directory, `clear`, re-`compile` the emitted `Master.dss` on OUR engine, and
 //! re-`solve` — the node voltages must match the pre-save solution (≤1e-6 rel),
 //! the iteration count must be identical, the discrete control state must match
 //! exactly, and the assembled **checkpoint Y** must match entry for entry
 //! ([`Y_TOL`]). A structural test additionally pins the emitted **file set**
-//! against the oracle's probe-proven set (captured with the pinned dss-python
-//! `Circuit.Save`, 2026-07-07).
+//! against the set the pinned dss-python `Circuit.Save` writes.
 //!
-//! **Stage F.4c** added the checkpoint-Y half, which is `DE_PASCALIZE_PLAN.md`
-//! §F-FMT's sequencing guard made executable: "`Save` output in the default lane
-//! must stay re-compilable by our own parser (add a round-trip test: Save →
-//! Compile → same checkpoint Y)". Every number in the emitted script is printed
-//! through the F-FMT seam, so this is the test that says a rendering change may
+//! The checkpoint-Y half keeps `Save` output in the default lane re-compilable
+//! by our own parser: Save → Compile → same checkpoint Y. Every number in the
+//! emitted script is printed
+//! through the float-format seam, so this is the test that says a rendering change may
 //! not alter the model the deck rebuilds — and it says it on the admittance
 //! matrix, which a power flow cannot absorb.
 //!
@@ -91,13 +89,12 @@ fn y_checkpoint(dss: &mut Dss) -> YCheckpoint {
 /// trip.
 ///
 /// This is **not** a physical tolerance: `Save` re-emits every property as text
-/// through the F-FMT seam at 15 significant digits (`util::float_to_str`), so a
+/// through the float-format seam at 15 significant digits (`util::float_to_str`), so a
 /// re-compiled property is the nearest `f64` to a 15-digit decimal — up to
 /// ~5e-16 relative from the original — and the element `YPrim`s assembled from
 /// it inherit that. The floor is therefore a *rendering* floor, and it is the
-/// exact quantity §F-FMT's sequencing guard asks this test to bound: whatever
-/// F-FMT does to how numbers are printed, the saved deck must still rebuild the
-/// same admittance model.
+/// quantity this test bounds: whatever the float-format seam does to how numbers
+/// are printed, the saved deck must still rebuild the same admittance model.
 ///
 /// **Measured**, not guessed (each run re-prints its own figure, see the
 /// `eprintln!` at the comparison): worst relative entry difference is
@@ -138,15 +135,11 @@ fn discrete_state(dss: &Dss) -> DiscreteState {
     )
 }
 
-/// Every bus's `kVBase`, keyed by bus name. RP3.11 settlement (audit finding
-/// T5): the node-voltage / Y / discrete-state compares are all in **absolute**
-/// volts, so none of them can see a base-kV regression — which is exactly how
-/// 0.14.5's `! CalcVoltageBases` comment survived in the emitted
-/// `BusVoltageBases.dss` behind the (retracted) claim that the base list "only
-/// affects per-unit reporting". It does not: per-unit-driven controls read these
-/// bases, and with the line commented out every bus of a re-compiled tree came
-/// back at `kVBase = 0` (RP3.11 P1, `tmp/rp311/out_bisect.txt` §B: the
-/// `expcontrol` PV moved -0.0060 kvar / 14 iterations to +307.94 kvar / 53).
+/// Every bus's `kVBase`, keyed by bus name. The node-voltage / Y /
+/// discrete-state compares are all in **absolute** volts, so none of them can
+/// see a base-kV regression, and per-unit-driven controls read these bases: a
+/// commented-out `CalcVoltageBases` in the emitted `BusVoltageBases.dss` leaves
+/// every bus of a re-compiled tree at `kVBase = 0`.
 /// Compared **exactly**: `CalcVoltageBases` re-derives each base from the same
 /// `Set VoltageBases=(…)` list by the same rule, so a round trip that differs at
 /// all is a Save defect, not a float floor.
@@ -196,7 +189,7 @@ fn round_trip_full(tag: &str, master: PathBuf, pre_only: &[&str], both: &[&str],
 
 /// A deck element whose sizing property and the arrays it sizes must come back
 /// unchanged from a Save round trip — the contract of the Save sizing-property
-/// hoist (`report/save/save.rs::save_order`, RF-D01-04). The solve observables
+/// hoist (`report/save/save.rs::save_order`). The solve observables
 /// [`round_trip_full`] compares cannot see it: a `Ratings` array reloaded as
 /// `[ 400 0]` moves no voltage and no Y entry.
 struct SizedArrays {
@@ -400,14 +393,14 @@ fn round_trip_watch(
         );
     }
 
-    // Checkpoint Y (`DE_PASCALIZE_PLAN.md` §F-FMT sequencing guard: "Save output
-    // in the default lane must stay re-compilable by our own parser — Save →
-    // Compile → same checkpoint Y"). The strongest statement of that guard: the
+    // Checkpoint Y: Save output in the default lane must stay re-compilable by
+    // our own parser — Save → Compile → same checkpoint Y. The strongest
+    // statement of that guard: the
     // *assembled admittance model* of the re-compiled deck, entry for entry,
     // keyed by node name. It is stricter than the node-voltage compare it sits
     // next to — a wrong impedance that the power flow happens to absorb still
     // shows here — and it is exactly what a rendering change could break, since
-    // every number in the emitted script is printed through the F-FMT seam.
+    // every number in the emitted script is printed through the float-format seam.
     assert_eq!(
         pre_y.len(),
         post_y.len(),
@@ -518,7 +511,7 @@ fn save_roundtrip_ieee123() {
     );
 }
 
-/// IEEE 34-bus (PORTING_PLAN §6 literal acceptance). `ieee34Mod1.dss` is a
+/// IEEE 34-bus. `ieee34Mod1.dss` is a
 /// `not_an_entry_point` fragment (its `Run_IEEE34Mod1.dss` driver adds the meter
 /// then solves), so we compile it and attach `Energymeter.M1` on `Line.L1` (the
 /// same meter the canonical run uses) before solving. That meter is `pre_only`,
@@ -537,42 +530,26 @@ fn save_roundtrip_ieee34() {
     );
 }
 
-/// The IEEE-8500 node-voltage round-trip floor, **proven inherent to
-/// `Save circuit` by the oracle** (see below) — NOT a port slack.
+/// The IEEE-8500 node-voltage round-trip floor, inherent to `Save circuit` and
+/// not an engine slack. `Save` re-emits derived quantities (e.g. the substation
+/// source reactor's RPN `X`, and every `%g`-rendered parameter) at 15
+/// significant digits, and the ~thousand service loads in their `Model=1` /
+/// `Vminpu=0.88` constant-Z region amplify the sub-ulp re-parse perturbation at
+/// the deepest secondary nodes. The pinned dss-python reproduces the same shift
+/// on its own `Save`→recompile→resolve (`tools/golden/probe_save_roundtrip_8500.py`).
+/// The discrete control state is still compared exactly, so a real regression
+/// moves a tap, a bank or the whole profile by far more than this band.
 const IEEE8500_SAVE_VTOL: f64 = 3e-4;
 
-/// IEEE 8500-Node (PORTING_PLAN §6 literal acceptance; 8531 nodes / ~6100
-/// devices). The unmodified `Master.dss` embeds no `Solve` and needs
-/// `Maxiterations=20` to converge (as `Run_8500Node.dss` sets); that option is
+/// IEEE 8500-Node (8531 nodes / ~6100 devices). The unmodified `Master.dss`
+/// embeds no `Solve` and needs `Maxiterations=20` to converge (as
+/// `Run_8500Node.dss` sets); that option is
 /// NOT persisted by `Save`, so it is applied on both the pre-save and
 /// post-recompile solves (`both`).
 ///
-/// Unlike the four clean-round-trip feeders above, IEEE-8500's node voltages do
-/// **not** round-trip to 1e-6 — and this is an inherent property of OpenDSS
-/// `Save circuit`, not the port. `Save` re-emits derived quantities (e.g. the
-/// substation source reactor `X=(1.051 0.88 0.001 3 * - - 115 12.47 / sqr *)`,
-/// and every `%g`-rendered parameter) at 15 significant digits; the sub-ulp
-/// re-parse perturbation is then **amplified** by the ~thousand service loads
-/// operating in their `Model=1`/`Vminpu=0.88` constant-Z region into a
-/// worst-case ~2.02e-4 rel shift at the deepest 0.208 kV secondary nodes. The
-/// pinned dss-python oracle (0.15.7) reproduces this **bit-for-bit**: its own
-/// `Save`→recompile→resolve of this deck yields the identical worst node
-/// (`SX3312692A.1`, 2.022253e-4) and the identical pre/post total power
-/// (−11983.486783 → −11983.420712 kW) that our engine produces — so the port is
-/// faithful and 1e-6 is simply unachievable here for either engine. Reproducible
-/// probe: `python tools/golden/probe_save_roundtrip_8500.py` (pinned oracle,
-/// 2026-07-11); numbers recorded in `tests/TOLERANCE_NOTES.md`
-/// §"`Save circuit` round-trip floor — IEEE-8500".
-///
-/// The gate stays strong despite the loosened band: iteration count is exact,
-/// and the **discrete** control state — all 12 RegControl tap numbers + all 10
-/// capacitor bank states — is asserted **exactly** (in `round_trip_full`). A real
-/// regulator/cap/element regression moves a tap, a bank, or the whole profile by
-/// far more than 3e-4 and fails; the 3e-4 band only absorbs the proven,
-/// deterministic Save-precision floor (~1.5× over the observed 2.02e-4).
-///
-/// Runs in the default suite: the four solves + save + recompile measure ~0.34 s
-/// under the test profile's opt-3 engine (measured 2026-07-11) — no expensive gate.
+/// Its node voltages round-trip only to the [`IEEE8500_SAVE_VTOL`] floor that
+/// `Save circuit` itself imposes, while the iteration count and every tap and
+/// bank state round-trip exactly.
 #[test]
 fn save_roundtrip_ieee8500() {
     round_trip_full(
@@ -584,7 +561,7 @@ fn save_roundtrip_ieee8500() {
     );
 }
 
-/// `LineGeometry` conductor-table round-trip (the WP-AD save-fidelity fix). The
+/// `LineGeometry` conductor-table round-trip. The
 /// generic `SaveWrite` collapses `Cond`/`Wire`/`X`/`H`/`Units` — each re-set once
 /// per conductor — to a single property-sequence slot, so it used to emit only
 /// the LAST conductor; the missing per-conductor arrays made a geometry-built
@@ -607,8 +584,7 @@ fn save_roundtrip_ieee13_linegeometry() {
     round_trip("ie13geom", corpus("Test/IEEE13_LineGeometry.dss"));
 }
 
-/// `Line` inline-spacing conductor-array round-trip (the WP-AD save-fidelity
-/// fix, second bug). `Line.Wires`/`CNCables`/`TSCables` alias the one
+/// `Line` inline-spacing conductor-array round-trip. `Line.Wires`/`CNCables`/`TSCables` alias the one
 /// `LineWireData` array, so the generic `SaveWrite` re-emits the *whole* array
 /// under *every* kind that was set: a line built `TSCables=[TS_1/0]
 /// Wires=[CU_1/0]` used to save as `TSCables=[ts_1/0, cu_1/0] Wires=[ts_1/0,
@@ -628,7 +604,7 @@ fn save_roundtrip_ieee13_lineandcablespacing() {
     round_trip("ie13lcs", corpus("Test/IEEE13_LineAndCableSpacing.dss"));
 }
 
-/// Sizing-property hoist, Capacitor `NumSteps` (RF-D01-04, `RP|RP3.11|AC1|AC-1`).
+/// Sizing-property hoist, Capacitor `NumSteps`.
 /// The vendored asymmetric-capacitor deck sets its four-step bank in the corpus
 /// spelling `kvar=600 kv=12.47 numsteps=4 states=[1 0 1 0]`: `kvar` ahead of the
 /// `NumSteps` that sizes its parse (r4133 `PDElements/Capacitor.pas:374`
@@ -703,13 +679,13 @@ fn save_roundtrip_seasons_ratings_hoist() {
     );
 }
 
-/// `Save circuit` round-trip over a **protection-heavy** deck (WP-U2.5): a
+/// `Save circuit` round-trip over a **protection-heavy** deck: a
 /// Relay + Recloser + Fuse + SwtControl, each carrying r4133-surface property
 /// values — renamed props (`PhCurve`/`PhFastCurve`/`CurveMultiplier`), the new
 /// r4133 props (`SinglePhTrip`/`SinglePhLockout`/`Lock`/`RatedCurrent`/
 /// `InterruptingRating`), and the per-phase `Normal`/`State` arrays that render
 /// `[open, closed, closed, ]`. `Save` must serialize this surface such that OUR
-/// own parser re-reads the identical model (the WP8.5 round-trip convention).
+/// own parser re-reads the identical model.
 ///
 /// The gate: snapshot **every** property of every object via `element_properties`
 /// (the byte-proven `?` surface, [`property_snapshot`]), `save circuit`, `clear`,
@@ -757,7 +733,7 @@ fn save_roundtrip_protection() {
         // write does not copy it) — so the round-trip exercises Save serialization
         // and re-parse of a mixed `[open, closed, closed, ]` array on BOTH the
         // Normal and the (physically-applied) State surface, not just the
-        // all-closed default (audit WP-U2.5, finding-4 coverage gap).
+        // all-closed default.
         "new relay.rel monitoredobj=line.br1 monitoredterm=1 type=current phcurve=ph \
          oc_gndcurve=ph phpickup=5000 oc_gndpickup=5000 tdph=1.5 oc_tdgnd=1.1 \
          definitetimedelay=0.1 mechanicaldelay=0.05 singlephtrip=yes singlephlockout=yes \
@@ -981,8 +957,7 @@ fn save_restores_the_active_linegeometry_conductor() {
 
 /// A geometry with no conductor selected reloads from `Save circuit` with its
 /// last written conductor selected: the language has no way to select none
-/// without an error (only `cond=N` selects a conductor, user decision
-/// 2026-10-04). `LineGeometry.604` of `Test/IEEE13_LineGeometry.dss` is a
+/// without an error (only `cond=N` selects a conductor). `LineGeometry.604` of `Test/IEEE13_LineGeometry.dss` is a
 /// `like=` copy, so it has none selected: before the Save `Cond` reads 0,
 /// `X` and `H` empty, the conductor names empty and `Units` the default ft. Its
 /// conductor table comes back row for row and its Lines' impedance with it.
@@ -1290,7 +1265,7 @@ fn save_circuit_writes_no_disabled_circuit_element() {
     std::fs::remove_dir_all(&out).ok();
 }
 
-/// Numeric-token equality (WP8.1 skeleton compare): non-numeric structure exact,
+/// Numeric-token equality: non-numeric structure exact,
 /// numbers within a tight relative floor. A Save→re-parse must reproduce a
 /// property string exactly modulo last-digit `%g` rendering.
 fn assert_prop_token_eq(a: &str, b: &str, ctx: &str) {
@@ -1368,7 +1343,7 @@ fn prop_token_diff(a: &str, b: &str) -> Result<(), String> {
 
 /// [`assert_prop_token_eq`] compares the text between numbers exactly and the
 /// numbers within its floor — the separator after a number included, and not
-/// the number's first digit (both were inverted before RF-D01-04 part 3).
+/// the number's first digit.
 #[test]
 fn prop_token_compare_checks_separators_and_values() {
     assert_prop_token_eq("[ 150 150]", "[ 150 150.0000000000001]", "floor");
@@ -1767,8 +1742,8 @@ fn emitted_set(root: &std::path::Path) -> BTreeSet<String> {
 }
 
 /// Structural test: `save circuit` on `save_forms.dss` (a deck with an
-/// EnergyMeter zone → feeder subdir) emits exactly the oracle's probe-proven
-/// file set (dss-python `Circuit.Save`, 2026-07-07). Round-trip through our own
+/// EnergyMeter zone → feeder subdir) emits exactly the file set the pinned
+/// dss-python `Circuit.Save` writes. Round-trip through our own
 /// parser is covered by the IEEE cases above; here we pin the multi-file layout,
 /// including the `em1/` meter-zone subdirectory (`Branches`/`Loads`/`Capacitors`
 /// with the empty `Transformers`/`Shunts`/`Generators` deleted, not listed).

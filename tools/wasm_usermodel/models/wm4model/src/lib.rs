@@ -1,6 +1,6 @@
 //! wm4model — a small, physically-plausible 3-phase inverter user model for the
-//! WASM_USERMODELS WM.4 Storage/PVSystem gates (there is no vendored upstream
-//! example for Storage/PVSystem user models — plan §WP-WM.4.3).
+//! Storage/PVSystem user-model goldens (OpenDSS ships no example for
+//! Storage/PVSystem user models).
 //!
 //! Two behaviours, dispatched on `TDynamicsRec.SolutionMode` exactly like the
 //! IndMach012a example's `Calc` (power-flow vs dynamics):
@@ -9,7 +9,7 @@
 //!   source, `I[k] = (G + jB)·V[k]`. Used by the PVSystem `UserModel=`
 //!   (VoltageModel=3) gate `wasm_pv_pflow.dss` — a snapshot solve, so the model
 //!   is a pure function of the converged terminal voltage (bit-exact across
-//!   engines, like the WM.3 pflow deck).
+//!   engines, like the Generator pflow deck).
 //! - **Dynamics** (`SolutionMode == DYNAMICMODE = 14`): a first-order current
 //!   lag toward the admittance target, integrated trapezoidally (the OpenDSS
 //!   Storage/PVSystem `IntegrateStates` predictor/corrector). Used by the Storage
@@ -46,7 +46,7 @@ pub const NPHASES: usize = 3;
 pub const DYNAMICMODE: i32 = 14;
 
 /// A minimal complex type (re, im) — the fixture avoids `num_complex` to keep
-/// the wasm module tiny and the toolchain surface stable (plan §2.6).
+/// the wasm module tiny and the toolchain surface stable.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct Cx {
     pub re: f64,
@@ -147,8 +147,8 @@ impl Model {
 
     /// Pascal `Edit`: a minimal `key=value` scanner for `g=`, `b=`, `tau=`
     /// (whitespace/`(...)`-tolerant; unknown keys ignored). Mirrors what a small
-    /// Delphi/C user model's own parser would accept — no dss-parser dependency
-    /// (plan §2.6).
+    /// Delphi/C user model's own parser would accept — no dss-parser
+    /// dependency.
     pub fn edit(&mut self, data: &str) {
         for tok in data
             .split(|c: char| c.is_whitespace() || c == '(' || c == ')' || c == ',')

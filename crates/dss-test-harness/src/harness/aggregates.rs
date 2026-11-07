@@ -1,11 +1,11 @@
-//! `GOLDEN_REBASE_PLAN.md` WP-G1 sub-step **G1.9** — the five `Circuit`
+//! The five `Circuit`
 //! aggregates and the ten `Solution` scalars, compared live on every gating
 //! channel of the unified corpus gate.
 //!
 //! The surface is **unflagged and universal**: it carries no
 //! `G1_SURFACE_FLAGS` entry, no `population_lock.rs::rigor()` token and no
-//! forced population — every live case on every gating channel compares it
-//! (TESTING.md, "adding a live surface"). Both transports emit the identical
+//! forced population — every live case on every gating channel compares it.
+//! Both transports emit the identical
 //! JSON (`tools/oracle/oracle_server.py::capture_aggregates` /
 //! `capture_solution_scalars`, `crates/dss-epri/src/capture.rs`), so the two
 //! capture structs below deserialize one shape.
@@ -38,8 +38,7 @@
 //!   the stiff tiers it is wide, because the summands are already gated
 //!   element-by-element upstream of the sum and what an aggregate adds is
 //!   **membership, units and aggregation** — which is what P1/P1b and the
-//!   in-engine pins (`dss_core::exec::tests::aggregates`) hold. See
-//!   `tests/TOLERANCE_NOTES.md` §"G1.9 circuit aggregates".
+//!   in-engine pins (`dss_core::exec::tests::aggregates`) hold.
 //!
 //! # Ledger-scoped summands
 //!
@@ -51,10 +50,7 @@
 //! the entry's own envelope/pin ran). The **value** arm consumes exactly those
 //! accepted caps, so an already-excluded, already-pinned per-element
 //! divergence is inherited field-by-field instead of being re-stated as its own
-//! `aggregates` ledger row for every deck it touches (measured: 12 cases carry
-//! a deck-wide element scope; re-pinning their echo would have cost ~14 rows
-//! and tripped the §1.1(f) kill criterion for a divergence the ledger already
-//! owns). On a deck where every summand's `losses` is scoped the value arm is
+//! `aggregates` ledger row for every deck it touches. On a deck where every summand's `losses` is scoped the value arm is
 //! then a self-comparison, and that is **inherent, not a slip**: re-stating it
 //! against the oracle's own aggregate with the accepted divergence added to the
 //! envelope is a tautology by the triangle inequality
@@ -63,7 +59,7 @@
 //! must therefore not happen silently is the inheritance *spreading*: the
 //! deck-wide `element` scopes it applies to are pinned by
 //! `corpus_gate::ledger::the_aggregate_value_arms_inherit_exactly_the_recorded_element_scopes`,
-//! so a new one reds until its author records it (the D11 visibility rule).
+//! so a new one reds until its author records it.
 //! `TotalPower` is split by terminal with the port's own layout. Its P1 arm
 //! rebuilds the oracle's aggregate from the oracle's terminal-1 powers, which
 //! is how both oracles compute it. The engine adds every terminal of every
@@ -83,7 +79,7 @@
 //! the raw oracle capture on every case, so no deck loses the arms that carry
 //! the teeth. The two `newton*` decks are the lane-policy analogue: their
 //! `Powers`/`Losses` sub-channels are dropped in both lanes
-//! (`lane::elem_channels_for`, G2.3), so the value arms are dropped with them.
+//! (`lane::elem_channels_for`), so the value arms are dropped with them.
 //!
 //! Units are in the capture key names because upstream does not scale
 //! uniformly: `Circuit.Losses` is raw **W/var** (`DDLL/DCircuit.pas:294` ->
@@ -154,37 +150,31 @@ pub struct SolutionScalarsCap {
 
 /// P1's relative band on the aggregate-vs-its-own-summands reconstruction.
 ///
-/// Derivation (`tests/TOLERANCE_NOTES.md` §"G1.9 circuit aggregates"): the
-/// oracle's aggregate and the reconstruction are the same f64 accumulation of
-/// the same terms in the same order, so the only admissible difference is
-/// `N * eps` rounding — `4889 * 2.22e-16 ~= 1.1e-12` relative on the largest
-/// corpus deck. Measured corpus-wide (3 493 checkpoints, both channels,
-/// 2026-09-04): worst `|recon - oracle| / sum|term|` is `8.259e-16`
-/// (`Circuit.Losses`), `1.610e-14` (`LineLosses`) and `1.497e-16`
-/// (`SubstationLosses`) — 60x to 1200x inside the band. This is an identity
-/// band, not a calibrated floor: it may only ever tighten.
+/// It exists for the summation rounding: the OpenDSS aggregate and the
+/// reconstruction are the same f64 accumulation of the same terms in the same
+/// order, so the only admissible difference is `N * eps` over the largest
+/// deck's summand count. This is an identity band, not a calibrated floor: it
+/// may only ever tighten.
 pub const AGG_SUM_REL: f64 = 1e-12;
 
 /// P1's absolute companion to [`AGG_SUM_REL`] — W for `Circuit.Losses`, kW for
-/// the two kW-valued aggregates.
+/// the two kW-valued aggregates. It keeps the same summation-rounding band
+/// meaningful where the aggregate is near zero.
 pub const AGG_SUM_ABS: f64 = 1e-9;
 
 /// P1b's band on the oracle-internal `AllElementLosses[i] * 1000 ==
-/// elements[i].Losses` identity (W). The two differ only by the `x 0.001`
-/// round-trip upstream applies to one side and not the other
-/// (`DDLL/DCircuit.pas:471` vs `Common/CktElement.pas:707-767`), i.e. one
-/// multiply-rounding; measured corpus-wide worst `4.768e-7 W`
-/// (`Test/Dynamic_Kundur.dss`, `1.935e-16` relative there) and worst relative
-/// `6.449e-16` (`StorageControllerTechNote/PeakShave`) — 1 550x inside the
-/// band.
+/// elements[i].Losses` identity (W). It exists for one multiply rounding: the
+/// two sides differ only by the `x 0.001` round trip OpenDSS applies to one of
+/// them and not the other.
 pub const AEL_IDENT_REL: f64 = 1e-12;
 
-/// P1b's absolute companion to [`AEL_IDENT_REL`] (W).
+/// P1b's absolute companion to [`AEL_IDENT_REL`] (W), for the same multiply
+/// rounding on an element whose losses are near zero.
 pub const AEL_IDENT_ABS: f64 = 1e-9;
 
 /// `Solution.Seconds` (`DynaVars.t`) floor, seconds.
 ///
-/// **Not a new floor**: it is the same `1e-9` the already-gated `dblHour`
+/// **Not a new floor**: it is the same value the already-gated `dblHour`
 /// compare uses in `corpus_gate/runner.rs` — the two are the same clock
 /// (`Update_dblHour` maintains `dblHour` from `intHour` and `t`), so a second
 /// value would be incoherent. Named here so the sibling relationship is
@@ -247,7 +237,7 @@ fn term_loss_w(
 ///
 /// `channels` is [`lane::elem_channels_for`]'s verdict for the case: on the two
 /// `newton*` decks the per-element `Powers`/`Losses` sub-channels are dropped in
-/// **both** lanes (`GOLDEN_REBASE_PLAN.md` G2.3 — no oracle rev reports them at
+/// **both** lanes (no oracle rev reports them at
 /// the converged `NodeV`), and an aggregate built out of exactly those numbers
 /// must be dropped on the same decks rather than get a second skip list.
 /// `accepted` is the runner's `LedgerView::element_rewrites` map (empty when no
@@ -656,7 +646,7 @@ pub fn compare_aggregates(
 ///
 /// Policy, all of it reused rather than invented:
 /// * `mode`, `hour`, `year`, `control_actions_done`, `system_y_changed` —
-///   discrete state, exact in **both** lanes (CLAUDE.md).
+///   discrete state, exact in **both** lanes.
 /// * `load_mult` — a user/mode-set scalar the engine never computes; exact.
 /// * `seconds` — [`CLOCK_ABS_S`], the `dblHour` constant's sibling.
 /// * `control_iterations` — exact on an exact-contract channel, `rust <=
@@ -683,8 +673,7 @@ pub fn compare_solution_scalars(
         cap.total_iterations, oracle_iterations,
         "{ctx}: the oracle's Totaliterations ({}) is no longer its own \
          Iterations ({oracle_iterations}) — `DDLL/DSolution.pas:218-220` \
-         returns `Solution.Iteration` verbatim, so this equivalence (recorded \
-         in TESTING.md instead of being compared twice) has broken",
+         returns `Solution.Iteration` verbatim, so this equivalence has broken",
         cap.total_iterations
     );
 
@@ -778,7 +767,7 @@ mod tests {
             p_kw: p_kw.to_vec(),
             p_kvar: p_kvar.to_vec(),
             loss_w: vec![loss.0, loss.1],
-            // The G1.3a-G1.3c derived channels are not part of this fixture: it
+            // The derived polar and sequence channels are not part of this fixture: it
             // exercises `compare_aggregates`, which never reads them. Spelled
             // out rather than defaulted so a future channel has to be
             // considered here too.
@@ -789,14 +778,14 @@ mod tests {
             res_ang: Vec::new(),
             vma_mag: Vec::new(),
             vma_ang: Vec::new(),
-            // The G1.3d(i) element-extras channels are likewise unread by
+            // The element-extras channels are likewise unread by
             // `compare_aggregates`; spelled out for the same reason.
             n_terms: None,
             n_conds: None,
             n_phases: None,
             energy_meter: None,
             node_order: Vec::new(),
-            // The G1.3d(ii) `PhaseLosses` + control-derived channels are unread by
+            // The `PhaseLosses` + control-derived channels are unread by
             // `compare_aggregates` too; spelled out for the same reason.
             pl_kw: Vec::new(),
             pl_kvar: Vec::new(),
@@ -805,7 +794,7 @@ mod tests {
             ocp_dev_type: None,
             has_volt_control: None,
             has_switch_control: None,
-            // The G1.3b sequence channels (`SeqCurrents`/`SeqVoltages`/
+            // The sequence channels (`SeqCurrents`/`SeqVoltages`/
             // `SeqPowers`) are unread by `compare_aggregates` too; spelled out
             // for the same reason.
             seq_i: Vec::new(),
@@ -856,7 +845,7 @@ mod tests {
                 p_kw: s.powers.iter().map(|c| c.re).collect(),
                 p_kvar: s.powers.iter().map(|c| c.im).collect(),
                 loss_w: vec![s.loss_w.0, s.loss_w.1],
-                // The G1.3a-G1.3c derived channels are not part of this fixture: it
+                // The derived polar and sequence channels are not part of this fixture: it
                 // exercises `compare_aggregates`, which never reads them. Spelled
                 // out rather than defaulted so a future channel has to be
                 // considered here too.
@@ -867,14 +856,14 @@ mod tests {
                 res_ang: Vec::new(),
                 vma_mag: Vec::new(),
                 vma_ang: Vec::new(),
-                // The G1.3d(i) element-extras channels are likewise unread by
+                // The element-extras channels are likewise unread by
                 // `compare_aggregates`; spelled out for the same reason.
                 n_terms: None,
                 n_conds: None,
                 n_phases: None,
                 energy_meter: None,
                 node_order: Vec::new(),
-                // The G1.3d(ii) `PhaseLosses` + control-derived channels are unread by
+                // The `PhaseLosses` + control-derived channels are unread by
                 // `compare_aggregates` too; spelled out for the same reason.
                 pl_kw: Vec::new(),
                 pl_kvar: Vec::new(),
@@ -883,7 +872,7 @@ mod tests {
                 ocp_dev_type: None,
                 has_volt_control: None,
                 has_switch_control: None,
-                // The G1.3b sequence channels (`SeqCurrents`/`SeqVoltages`/
+                // The sequence channels (`SeqCurrents`/`SeqVoltages`/
                 // `SeqPowers`) are unread by `compare_aggregates` too; spelled
                 // out for the same reason.
                 seq_i: Vec::new(),
@@ -946,10 +935,9 @@ mod tests {
     }
 
     /// A ledger scope that rewrites a source's **currents** must NOT switch the
-    /// `Circuit.TotalPower` value arm off: the arm keyed on the source merely
-    /// appearing in the rewrite map until the G1.9 audit settlement (CODE-2),
-    /// which is not field-by-field — `powers` was never excluded here. With the
-    /// old test this drive passed silently.
+    /// `Circuit.TotalPower` value arm off: keying the arm on the source merely
+    /// appearing in the rewrite map is not field-by-field, and `powers` is not
+    /// excluded here.
     #[test]
     #[should_panic(expected = "Circuit.TotalPower differs")]
     fn a_currents_only_scope_leaves_the_total_power_arm_running() {
@@ -971,7 +959,7 @@ mod tests {
             p_kw: src.p_kw.clone(),
             p_kvar: src.p_kvar.clone(),
             loss_w: src.loss_w.clone(),
-            // The G1.3a-G1.3c derived channels are not part of this fixture: it
+            // The derived polar and sequence channels are not part of this fixture: it
             // exercises `compare_aggregates`, which never reads them. Spelled
             // out rather than defaulted so a future channel has to be
             // considered here too.
@@ -982,14 +970,14 @@ mod tests {
             res_ang: Vec::new(),
             vma_mag: Vec::new(),
             vma_ang: Vec::new(),
-            // The G1.3d(i) element-extras channels are likewise unread by
+            // The element-extras channels are likewise unread by
             // `compare_aggregates`; spelled out for the same reason.
             n_terms: None,
             n_conds: None,
             n_phases: None,
             energy_meter: None,
             node_order: Vec::new(),
-            // The G1.3d(ii) `PhaseLosses` + control-derived channels are unread by
+            // The `PhaseLosses` + control-derived channels are unread by
             // `compare_aggregates` too; spelled out for the same reason.
             pl_kw: Vec::new(),
             pl_kvar: Vec::new(),
@@ -998,7 +986,7 @@ mod tests {
             ocp_dev_type: None,
             has_volt_control: None,
             has_switch_control: None,
-            // The G1.3b sequence channels (`SeqCurrents`/`SeqVoltages`/
+            // The sequence channels (`SeqCurrents`/`SeqVoltages`/
             // `SeqPowers`) are unread by `compare_aggregates` too; spelled out
             // for the same reason.
             seq_i: Vec::new(),

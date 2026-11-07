@@ -1,4 +1,4 @@
-// PHASE8_PLAN WP8.5 Save steps fixture: a daily deck with a sampled
+// Save fixture: a daily deck with a sampled
 // EnergyMeter + Monitor so `save` (the meters default branch) writes real
 // MTR_<name>.csv registers, `save voltages` writes <circ>_SavedVoltages.txt
 // from a solved state, and `save circuit`/`save <class>` have a library

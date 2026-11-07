@@ -230,7 +230,7 @@ fn tsdata_tapelap_out_of_range_errors() {
     );
 }
 
-/// The DE_PASCALIZE R3.4 Category-C coupling guard: the classes a conductor
+/// The coupling guard: the classes a conductor
 /// slot can ever receive are exactly the [`ConductorObj`] variants.
 ///
 /// `LineGeometryObj::fwiredata` / `Line::line_wire_data` hold

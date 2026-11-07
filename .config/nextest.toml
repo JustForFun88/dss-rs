@@ -1,5 +1,4 @@
-# cargo-nextest: the gate's test runner (RETRO_FIXES_PLAN.md RF-I00-01 INFRA|3;
-# the command list is CLAUDE.md "## Gate" and TESTING.md).
+# cargo-nextest: the gate's test runner.
 #
 # Pinned runner: cargo-nextest 0.9.146. Install either
 #   cargo install cargo-nextest --version 0.9.146 --locked
@@ -12,11 +11,10 @@
 # gate adds `cargo test --workspace --doc` per lane for those.
 #
 # No test groups and no serialization: no test writes under tests/corpus/
-# (measured per test binary in RF-I00-01 part 1: every former writer and every
-# corpus-gate producer runs a scratch copy, harness/scratch.rs, and the corpus
-# gate fails on a change of the vendored tree during its own walk -
-# scheduler::GateRun::assert_complete). A test that needed a group would be a
-# part-1 gap of RF-I00-01, fixed at the writer, never here. No default-filter
+# (every writer and every corpus-gate producer runs a scratch copy,
+# harness/scratch.rs, and the corpus gate fails on a change of the vendored
+# tree during its own walk, scheduler::GateRun::assert_complete). A test that
+# needs a group is a writer to fix, never a group to add here. No default-filter
 # and no setup scripts either: every test of the workspace runs, with the
 # environment the gate gives it.
 #

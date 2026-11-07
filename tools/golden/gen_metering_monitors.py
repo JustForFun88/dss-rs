@@ -1,5 +1,4 @@
-"""Generate the metering/monitor goldens from the pinned oracle (PHASE6_PLAN
-WP6.9 §1.2; historically "Phase 6").
+"""Generate the metering/monitor goldens from the pinned oracle.
 
 Command-replay style like the time-series goldens. Four scenarios exercise the
 meter/monitor/generator/topology machinery against the oracle; the Rust harness
@@ -8,7 +7,7 @@ meter/monitor/generator/topology machinery against the oracle; the Rust harness
   - monitor_daily_ieee13: IEEE13 (controls active, inlined) + a 24-pt daily
     shape on every load, with four monitors on `line.650632` / `transformer.reg1`
     — mode 0 (V&I), 1 (powers), 2 (tap), 5 (solution vars); 24 daily steps.
-    (The plan suggested `line.671680`, but bus 680 is a dead-end stub with no
+    (Not `line.671680`: bus 680 is a dead-end stub with no
     load, so that line carries only tiny charging current whose angle is
     noise-dominated; `line.650632` is the feeder head with large, well-
     conditioned current. Settled empirically per the project convention.)

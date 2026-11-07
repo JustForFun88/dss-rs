@@ -1,4 +1,4 @@
-! WP-U1.4 (UPGRADE_PLAN §WP-U1.4) — CNData.SemiconLayer capacitance branch.
+! CNData.SemiconLayer capacitance branch.
 ! dss_capi 0.15.x adds CNData.SemiconLayer (default yes = classic ln(RadOut/RadIn)
 ! coaxial capacitance). SemiconLayer=no selects the Synergi / Kersting no-semicon
 ! formula, Denom = ln(RadCN/RadIn) - (1/k)*ln(k*RadStrand/RadCN), a distinct shunt

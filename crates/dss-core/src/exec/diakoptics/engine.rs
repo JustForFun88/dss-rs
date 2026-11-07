@@ -1,7 +1,7 @@
 //! The `ADiakopticsInit` state machine + `ADiakoptics_Tearing` + `get_Statistics`
-//! — a loop-for-loop port of official `Diakoptics.pas:506–796` (plan D10).
+//! — a loop-for-loop port of official `Diakoptics.pas:506–796`.
 //!
-//! Under plan D3 the coordinator is the main [`Dss`] (Pascal `ActiveCircuit[1]`);
+//! The coordinator is the main [`Dss`] (Pascal `ActiveCircuit[1]`);
 //! after `ClearAll` it recompiles `Torn_Circuit/Master_Interconnected.dss` into
 //! its own circuit, and each child in `ad_children` (Pascal `ActiveCircuit[2..]`)
 //! compiles a zone master. "Sending a message" is a synchronous method call.
@@ -149,9 +149,9 @@ impl Dss {
 
         // Clamp the sub-circuit count (Diakoptics.pas:572–573). NOTE: on a host
         // with < 4 logical CPUs this can pull `Num_SubCkts` below a test's
-        // requested value; the AD gates therefore assume ≥ 4 cores (plan D6 —
-        // the count is fixed per test, never derived, but this hard cap is
-        // ported for fidelity).
+        // requested value; the AD gates therefore assume ≥ 4 cores (the count
+        // is fixed per test, never derived, but this hard cap is ported for
+        // fidelity).
         if let Some(ckt) = self.circuit.as_mut()
             && ckt.ad.num_sub_ckts > cpu_cores - 2
         {
@@ -361,9 +361,9 @@ impl Dss {
 
     /// Pascal `get_Statistics()` (Diakoptics.pas:90): the per-zone node-count
     /// reduction/imbalance summary. Machine-independent only because every AD
-    /// test fixes the zone count (D6).
+    /// test fixes the zone count.
     ///
-    /// D4 numeric fidelity: Pascal declares `unbalance, ASize : Array of single`
+    /// Numeric fidelity: Pascal declares `unbalance, ASize : Array of single`
     /// and `GReduct/MaxImbal/AvgImbal : Double`, so each node count and each
     /// `(1 - ASize/MaxSize)·100` imbalance is truncated to **f32** before the
     /// `MaxValue`/`mean` widen the result back to f64. Reproduced 1:1 (the node

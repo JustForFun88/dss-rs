@@ -1,23 +1,20 @@
-//! **GOLDEN_REBASE G1.6b — the `PDElements` surface's gate-level pins and the
-//! read-order contract its two oracle captures must obey.**
+//! **The `PDElements` surface's gate-level pins and the read-order contract its
+//! two OpenDSS captures must obey.**
 //!
 //! # The pins
 //!
 //! `harness::PD_SKIP_FIELDS` stops the value comparison of four
-//! `(channel, class, field)` cells per oracle channel — and only on the elements
-//! the defect reaches, an **in-zone shunt** Capacitor/Reactor
-//! (`harness::pd_skip_applies`) — because both oracles read them out of
-//! **uninitialized memory**: `TEnergyMeter.MakeMeterZoneLists` files
-//! shunt Capacitors and Reactors on the **PC** adjacency list and then writes
-//! through a `TPCElement` cursor that is really pointing at a `TPDElement`
-//! (r4133 `Version8/Source/Meters/EnergyMeter.pas:1868-1869`, capi
-//! `.inputs/dss_capi/src/Meters/EnergyMeter.pas:1927-1929`; the two class
-//! layouts differ, so a different pair of doubles is hit on each channel).
-//! CLAUDE.md's discipline is that such an exclusion is pinned by its own
-//! expected-value test naming **both** numbers, or it is a mask over nothing —
-//! and here the oracle half of "both numbers" is a heap pointer that changes on
-//! every run, so an envelope is impossible and only a pin can hold the port's
-//! value. The table's rows name
+//! `(channel, class, field)` cells per OpenDSS channel — and only on the
+//! elements the bug reaches, an **in-zone shunt** Capacitor/Reactor
+//! (`harness::pd_skip_applies`) — because both OpenDSS engines read them out of
+//! **uninitialized memory**: the meter-zone builder files shunt Capacitors and
+//! Reactors on the **PC** adjacency list and then writes through a PC-element
+//! cursor that is really pointing at a PD element (the two class layouts
+//! differ, so a different pair of doubles is hit on each channel). Such an
+//! exclusion is pinned by its own expected-value test naming **both** numbers,
+//! or it is a mask over nothing — and here the OpenDSS half of "both numbers"
+//! is a heap pointer that changes on every run, so an envelope is impossible
+//! and only a pin can hold this engine's value. The table's rows name
 //! [`pd_elements_shunt_reliability_inputs_survive_the_meter_zone`] and
 //! [`pd_elements_shunt_branch_flt_rate_survives_the_meter_zone`]; both live
 //! below.
@@ -27,9 +24,8 @@
 //! in-zone shunt reactor — every class of the table at once:
 //! `midi_controls.dss` (`engines: "capi_v0145"`) for the four capi rows and
 //! `midi_protection.dss` (`engines: "r4133"` — capi 0.14.5 cannot parse its
-//! `Fuse.curvemultiplier`) for the four r4133 rows. The oracle garbage quoted
-//! at each pin was measured on that same deck and that same channel (part R's
-//! corpus-wide scan).
+//! `Fuse.curvemultiplier`) for the four r4133 rows. The OpenDSS garbage quoted
+//! at each pin was measured on that same deck and that same channel.
 //!
 //! [`pd_elements_walk_on_the_gated_combo_deck`] is the third pin: the walk's
 //! membership, parent linkage, 1-based `FromTerminal` and all-zero `RelCalc`
@@ -40,18 +36,15 @@
 //! # The read-order contract
 //!
 //! `PDElements.ParentPDElement` reassigns `ActiveCktElement` to the parent and
-//! never restores it (capi `CAPI/CAPI_PDElements.pas:245-257`, r4133
-//! `Version8/Source/DDLL/DPDELements.pas:88-97`), so **every** field read after
-//! it in the same record returns the parent's value. fastdss reads it second in
-//! `IPDElements._columns` order and contaminates 215 cells of the 138-element
-//! IEEE 123 walk — identically on both channels (measured, G1.6b part R). Both
-//! captures therefore read it last and only then read the parent's name off the
+//! never restores it, on both OpenDSS engines, so **every** field read after it
+//! in the same record returns the parent's value. Both captures therefore read
+//! it last and only then read the parent's name off the
 //! hijacked cursor.
 //!
 //! Nothing in the type system can enforce that: one transport is Python
 //! (`tools/oracle/oracle_server.py`) and the other a `libloading` bridge
 //! (`crates/dss-epri/src/capture.rs`), and a contaminated capture would still
-//! *look* fine — it would simply compare the port against the parent's numbers.
+//! *look* fine — it would simply compare this engine against the parent's numbers.
 //! The four static tests below therefore read both capture sources and assert
 //! the read sequence and the call-site slot literally;
 //! [`the_read_order_guard_rejects_a_contaminated_capture`] proves the scan is not
@@ -484,7 +477,7 @@ fn the_read_order_guard_rejects_a_contaminated_capture() {
 // The pins
 // ---------------------------------------------------------------------------
 
-/// **Pin (G1.6b-1) — `PD_SKIP_FIELDS`' four `capi_v0145` rows.**
+/// **Pin — `PD_SKIP_FIELDS`' four `capi_v0145` rows.**
 ///
 /// `FaultRate` and `pctPermanent` are the *stored* `TPDElement` reliability
 /// **inputs**; on a shunt Capacitor or Reactor inside an EnergyMeter zone the
@@ -547,7 +540,7 @@ fn pd_elements_shunt_reliability_inputs_survive_the_meter_zone() {
     assert_eq!(v.repair_time, 7.0);
 }
 
-/// **Pin (G1.6b-2) — `PD_SKIP_FIELDS`' four `r4133` rows.**
+/// **Pin — `PD_SKIP_FIELDS`' four `r4133` rows.**
 ///
 /// `Lambda` (`BranchFltRate`) and `AccumulatedL` (`AccumulatedBrFltRate`) are
 /// the reliability sweep's **accumulators**, written only by `CalcFltRate` /
@@ -573,8 +566,8 @@ fn pd_elements_shunt_reliability_inputs_survive_the_meter_zone() {
 /// which proves the four zeros above are live state and not getters that always
 /// answer 0. The shunt rows stay 0 even then, because a shunt PD element is on
 /// the meter's PC list and never enters `SequenceList`. This pin is the
-/// port-side half; the oracle-compared half is **discharged** — G1.6(i) makes
-/// the gate drive `RelCalc` itself on the cases that carry
+/// engine-side half. The OpenDSS-compared half: the gate drives `RelCalc` itself
+/// on the cases that carry
 /// `compare_reliability: true`, so the four fields are live and compared on
 /// both channels (`tests/reliability_pins.rs::`
 /// `pd_elements_relcalc_fields_are_live_after_relcalc`).
@@ -622,8 +615,7 @@ fn pd_elements_shunt_branch_flt_rate_survives_the_meter_zone() {
     }
 }
 
-/// **Pin (G1.6b-3) — the gated deck's walk, parent linkage and `RelCalc`
-/// fields.**
+/// **Pin — the gated deck's walk, parent linkage and `RelCalc` fields.**
 ///
 /// `exec::tests::pd_elements` pins membership/order, the 1-based `FromTerminal`
 /// and the parent linkage on IEEE 123 and on an in-file synthetic feeder; this
@@ -679,7 +671,7 @@ fn pd_elements_walk_on_the_gated_combo_deck() {
 
     // The four `RelCalc`-fed fields are zero on every row without `RelCalc`.
     // Their multi-valued half is `tests/reliability_pins.rs::
-    // pd_elements_relcalc_fields_are_live_after_relcalc` (G1.6(i)), which runs
+    // pd_elements_relcalc_fields_are_live_after_relcalc`, which runs
     // `RelCalc` on three gated decks — one per channel shape — and pins a
     // non-zero witness row on each.
     for v in &walk {

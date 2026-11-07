@@ -1,11 +1,11 @@
-//! MULTITHREADING_PLAN M1 baseline / DE_PASCALIZE P15 proof: end-to-end
+//! Benchmark: end-to-end
 //! compile+solve of the vendored IEEE-8500 node feeder.
 //!
 //! Measures the full snapshot path — parse/build the model, assemble Y, LU
 //! factor, and run the fixed-point loop to convergence — on the largest
 //! standard test feeder. This is the headline "does the whole solve get
-//! faster" number quoted by later stages; the Y-assembly and factor/solve
-//! phases are isolated in `ybuild_8500` and `lu_factor_solve`.
+//! faster" number. The Y-assembly and factor/solve phases are isolated in
+//! `ybuild_8500` and `lu_factor_solve`.
 //!
 //! Run: `cargo bench --bench snapshot_8500`.
 

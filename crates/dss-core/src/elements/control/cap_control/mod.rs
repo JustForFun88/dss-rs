@@ -1,8 +1,7 @@
-//! Port of `Controls/CapControl.pas` — `TCapControlObj`, the capacitor-bank
-//! switching control. **Phase 4 ports the parse-time surface only**
-//! (properties, `capacitor=`/`element=` resolution, `RecalcElementData`'s
-//! bus/phase setup, `MakeLike`); the `Sample`/`DoPendingAction` switching
-//! machinery is Phase 5 (PHASE4_PLAN §WP4.7).
+//! `CapControl`, the capacitor-bank switching control: its properties,
+//! `capacitor=`/`element=` resolution, `RecalcElementData`'s bus/phase setup
+//! and `MakeLike` live here, the `Sample`/`DoPendingAction` switching in
+//! `control_loop`.
 //!
 //! Like every `TControlElem`, a CapControl builds **no Yprim** and its terminal
 //! currents are zero; its single terminal attaches to the monitored element's
@@ -132,10 +131,9 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::mapped_string_enum("PTPhase", enums.mon_phase),
         PropDef::string("VBus"),
         PropDef::boolean("EventLog"),
-        // WASM_USERMODELS WM.5 — the §2.4 uniform activation rule: a `.wasm`
-        // path loads the sandboxed 7-fn CapControl model; a native-DLL name /
-        // missing file warns "Not Loaded" (570) and the built-in control solves
-        // (`CapUserControl.pas`, `CapControl.pas:429-440`).
+        // The uniform activation rule: a `.wasm` path loads the sandboxed 7-fn
+        // CapControl model. A native-DLL name or a missing file warns "Not
+        // Loaded" (570) and the built-in control solves.
         PropDef::string("UserModel").flags(PropFlags::IS_FILENAME),
         PropDef::string("UserData"),
         PropDef::double("pctMinkvar"),
@@ -174,7 +172,7 @@ pub struct CapControl {
     /// `StorageController`'s `Yearly`/`Daily`/`Duty`).
     control_signal_name: String,
     /// `ctrlSignalShape`: a snapshot-clone of the resolved `ControlSignal`
-    /// LoadShape (the WP4.2 `FetchLineCode` pattern), read by the
+    /// LoadShape, read by the
     /// FOLLOWCONTROL arm of `Sample`.
     ctrl_signal_shape: Option<LoadShapeObj>,
 
@@ -199,7 +197,7 @@ pub struct CapControl {
     vmin: f64,
     fpct_minkvar: f64,
     // Runtime switching state (`TCapControlVars`), driven by `Sample`/
-    // `DoPendingAction` (wired into the control loop in WP5.7):
+    // `DoPendingAction`:
     /// `FPendingChange` (CTRL_NONE/OPEN/CLOSE).
     pending_change: ControlAction,
     /// `ShouldSwitch`: an action is pending.
@@ -214,8 +212,7 @@ pub struct CapControl {
     /// `ControlActionHandle` (the queue handle to delete when disarming).
     control_action_handle: i32,
 
-    // WASM_USERMODELS WM.5 — the 7-function CapControl user model
-    // (`UserModel:TCapUserControl`, `CapControl.pas:165-166`):
+    // The 7-function CapControl user model (`UserModel:TCapUserControl`):
     /// `UserModelNameStr` — the `.wasm` path exactly as written.
     user_model_name: String,
     /// `UserModelEditStr` — the last `UserData=` string.
@@ -228,7 +225,7 @@ pub struct CapControl {
     user_model: Option<Box<user_model::CapControlUserModelSlot>>,
     /// Deferred `UserModel=`/`UserData=` load/edit requests queued by the
     /// property side effects, resolved by the executive before `EndEdit`
-    /// (`WASM_USERMODELS` §2.4; the setter cannot reach the filesystem).
+    /// (the setter cannot reach the filesystem).
     pending_user_model_loads: Vec<crate::obj::base::UserModelLoad>,
 }
 
@@ -286,8 +283,7 @@ impl CapControl {
 
     /// Pascal `TCapControlObj.CapControlType` (`Capacitor.pas`... `CapControl.pas:194`
     /// = `ControlType`: `ECapControlType` ordinal, 0=Current … 5=Follow).
-    /// Read-only accessor for the CIM export (`RegulatingControlEnum`, GAPS_PLAN
-    /// WPG.18 Stage D).
+    /// Read-only accessor for the CIM export (`RegulatingControlEnum`).
     pub fn control_type(&self) -> i32 {
         self.control_type.ordinal()
     }
@@ -403,8 +399,8 @@ impl CapControl {
         self.ccd.cd.nphases = ctrl.nphases;
         self.ccd.cd.set_nconds(ctrl.nphases);
         // Pascal syncs `ControlledElement.Closed[0]` with AvailableSteps and
-        // derives PresentState/InitialState here — control actions are Phase 5
-        // and capacitor terminals start (and stay) closed during parse.
+        // derives PresentState/InitialState here. Control actions run in the
+        // solve, and capacitor terminals start (and stay) closed during parse.
 
         // Every control type except FOLLOWCONTROL requires a monitored element
         // and uses it as `effElement` (dss_capi `b9bc87b8`: TIMECONTROL now
@@ -453,7 +449,7 @@ impl CapControl {
             String::new() // Pascal GetBus(i) out of range yields ''
         };
         self.ccd.cd.set_bus(1, &bus);
-        // cBuffer/CondOffset (sampling buffers) are Phase 5.
+        // cBuffer/CondOffset (sampling buffers) are built per sample.
 
         // Alternative override bus: the circuit bus list is only built at
         // solve time, so during parsing the lookup always misses — exactly as

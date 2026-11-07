@@ -17,8 +17,8 @@ use crate::report::table::{Cell, Report, Row};
 
 /// Build the `Show Unserved` text (Pascal `ShowUnserved`). Walks the Loads calling
 /// the mutating `Unserved`/`ExceedsNormal` criteria (they recompute the per-phase
-/// voltage from the present solution and latch `EEN_Factor`/`UE_Factor` —
-/// PHASE8_PLAN §2.1). `ue_only` selects `Unserved` (emergency) over `ExceedsNormal`
+/// voltage from the present solution and latch `EEN_Factor`/`UE_Factor`).
+/// `ue_only` selects `Unserved` (emergency) over `ExceedsNormal`
 /// (normal). The circuit voltage minimums seed the criteria when a load defines
 /// none of its own.
 pub(crate) fn show_unserved(

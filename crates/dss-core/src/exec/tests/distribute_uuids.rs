@@ -1,4 +1,4 @@
-//! `Distribute` (WP8.6 step 5) and `Uuids` (step 6) behavior tests — the
+//! `Distribute` and `Uuids` behavior tests — the
 //! error paths and RNG/persistence semantics the byte-exact goldens
 //! (`golden_reports.rs::distrib_*`/`export_uuids`) cannot pin.
 
@@ -49,11 +49,9 @@ fn distribute_refuses_to_overwrite() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// `How=Random` is RNG-carried upstream (FPC `randomize` + `random`,
-/// `Utilities.pas:1400` — time-seeded, probe-proven class), so it is NEVER
-/// golden-gated (the GAPS_PLAN RNG rule); this smoke test pins the
-/// deterministic frame around the random values: header, row count/shape, and
-/// every `kW=` value within `[0, 2·kW/count)`.
+/// `How=Random` draws from a time-seeded RNG, so it is never golden-gated. This
+/// smoke test pins the deterministic frame around the random values: header,
+/// row count/shape, and every `kW=` value within `[0, 2·kW/count)`.
 #[test]
 fn distribute_random_shape_and_bounds() {
     let dir = scratch("distrib_rand");

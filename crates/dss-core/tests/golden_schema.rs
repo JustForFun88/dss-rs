@@ -1,8 +1,7 @@
-//! AltDSS JSON-schema byte golden (`CAPI_Schema.pas`,
-//! `DSS_ExtractSchema(jsonSchema=True)`). The oracle emits a ~590 KB JSON-Schema
-//! document; the Rust port reproduces the **whole** document (OG-1.5c). This
-//! driver byte-gates it at three granularities, all through the same fpjson
-//! pretty writer the oracle uses:
+//! AltDSS JSON-schema byte golden (`DSS_ExtractSchema(jsonSchema=True)`). The
+//! pinned dss_capi emits a JSON-Schema document and this engine reproduces the
+//! **whole** document. This driver byte-gates it at three granularities, all
+//! through the same fpjson pretty writer dss_capi uses:
 //!
 //! - **fragments** (static `$defs`, the 21 global enum `$defs`, the
 //!   `circuitProperties` head, and each ported per-class `$defs`) vs the
@@ -19,9 +18,12 @@
 //! - **the class-set split** (`every_class_is_gated_or_inventoried`): every
 //!   `DSS_CLASS_LIST_ORDER` class is byte-gated OR port-authored, never both.
 //!
-//! Regenerate the ORACLE side manually: `python tools/golden/gen_schema.py`.
-//! Regenerate the PORT full-document golden: run the test with
-//! `REGEN_SCHEMA_PORT=1` after a reviewed change.
+//! Regenerate the dss_capi side manually: `python tools/golden/gen_schema.py`.
+//!
+//! Knobs:
+//! - `REGEN_SCHEMA_PORT`: set to any value, rewrites this engine's full-document
+//!   golden `json/schema_full_port.json` instead of comparing it (after a
+//!   reviewed change). Unset by default.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -60,15 +62,15 @@ fn load_golden() -> Value {
 /// Render a `$defs`/`properties` value alone at indent 0 — exactly what the
 /// golden stores (see `gen_schema.py`).
 ///
-/// **Stage F.4:** deliberately rendered with [`FPJSON_SPELLING`] rather than the
+/// Deliberately rendered with [`FPJSON_SPELLING`] rather than the
 /// lane's, in *both* lanes. This whole file is a **byte** gate whose subject is
 /// the schema's own content — every property block, ordinal, enum and `$ref`, and
 /// the exact line-oriented shape its divergence surgery below edits by literal
-/// `\r\n`-terminated lines. The F-FMT rows (`compat::json_float`,
+/// `\r\n`-terminated lines. The lane rows (`compat::json_float`,
 /// `compat::JSON_LINE_BREAK`) change only the *spelling* of that document, so
 /// letting them vary here would trade a strong structural gate for a weaker one
 /// and force ~23 line patterns to be written twice. Instead the spelling is
-/// pinned to the oracle's and the default writer is held to the same document by
+/// pinned to dss_capi's and the default writer is held to the same document by
 /// [`lane_spelling_renders_the_same_schema_document`] — the same "assert the
 /// parity kernel in both lanes, then assert the default kernel against it" shape
 /// `fmt_battery.rs` uses.
@@ -279,30 +281,28 @@ fn renumber_field(s: &str, marker: &str, removed: &[i64]) -> String {
     out
 }
 
-/// The per-class walk (`prepareClassJsonSchema`): every ported class def is
-/// byte-exact vs the pinned 0.14.5 oracle **after** removing exactly the
-/// documented r4133 divergences (`schema_divergences.json`). Fails on any
-/// unexplained byte diff AND on a stale inventory entry (a divergence whose
-/// occurrence count no longer matches — i.e. the divergence is gone, or spread
-/// further than recorded). These divergence `kind`s are understood:
-/// - `port_extra_line`: a single line (or embedded-CRLF block) the port emits
-///   that the 0.14.5 oracle lacks; removed `count` times.
-/// - `port_extra_property`: a whole port-only property block (keyed by
-///   `prop_key`, at ordinal `index`/`order`) the port adopted from newer
-///   dss_capi; removed `count` times, after which the trailing
-///   `$dssPropertyIndex`/`$dssPropertyOrder` ordinals are renumbered down (the
-///   positional cascade the extra property causes).
-/// - `port_hidden_property`: a port-only property that is *also* `SUPPRESS_JSON`
-///   in the port (renders no block) but occupies a `$dssPropertyIndex` ordinal
-///   (`index`); only the following props' `$dssPropertyIndex` are renumbered down
-///   (it is absent from `AltPropertyOrder`, so `$dssPropertyOrder` is untouched).
-/// - `port_shown_property`: a property the oracle registers but leaves out of
-///   its JSON (it holds its `$dssPropertyIndex` and renders no block), which the
-///   port renders at `index`/`order`. The block is removed `count` times and only
-///   the following `$dssPropertyOrder` ordinals are renumbered down.
-/// - `port_changed_line`: the port emits a different value for one line (`from`)
-///   than the oracle (`to`) — an r4133-adopted default/semantics change; each of
-///   `count` occurrences is rewritten to the oracle's line before comparing.
+/// Every ported class def is byte-exact vs the pinned 0.14.5 capture after
+/// removing exactly the inventoried divergences (`schema_divergences.json`),
+/// and an inventory entry whose occurrence count no longer matches fails too.
+//
+// The divergence `kind`s:
+// - `port_extra_line`: a single line (or embedded-CRLF block) this engine
+//   emits that the 0.14.5 capture lacks; removed `count` times.
+// - `port_extra_property`: a whole engine-only property block (keyed by
+//   `prop_key`, at ordinal `index`/`order`) adopted from newer dss_capi; removed
+//   `count` times, after which the trailing `$dssPropertyIndex`/
+//   `$dssPropertyOrder` ordinals are renumbered down.
+// - `port_hidden_property`: an engine-only property that is also
+//   `SUPPRESS_JSON` (renders no block) but occupies a `$dssPropertyIndex`
+//   ordinal (`index`); only the following props' `$dssPropertyIndex` are
+//   renumbered down.
+// - `port_shown_property`: a property dss_capi registers but leaves out of its
+//   JSON, which this engine renders at `index`/`order`. The block is removed
+//   `count` times and only the following `$dssPropertyOrder` ordinals are
+//   renumbered down.
+// - `port_changed_line`: this engine emits a different value for one line
+//   (`from`) than dss_capi (`to`), an r4133-adopted default or semantics change;
+//   each of `count` occurrences is rewritten to the captured line first.
 #[test]
 fn ported_class_defs_bytes_match_oracle() {
     let g = load_golden();
@@ -623,16 +623,9 @@ fn dedent(region: &str) -> String {
     out
 }
 
-/// The document the **engine** actually emits (`Dss::extract_schema_json`, the
-/// lane's spelling) is the same document the byte gates above check in the
-/// oracle's spelling.
-///
-/// This is what keeps [`render`]'s decision — pin the spelling to fpjson's in
-/// both lanes — from quietly turning the whole file into a parity-only gate:
-/// every number is compared bit-for-bit and every structural token and string
-/// verbatim, so the only thing the default lane is allowed to do differently is
-/// spell a float and break a line. In the parity lane the two renders are
-/// byte-identical and `compare_json` says so directly.
+/// The document the engine emits in the lane's spelling is the same document
+/// the byte gates check in fpjson's spelling: every number bit-for-bit, every
+/// token and string verbatim, only float spelling and line breaks free.
 #[test]
 fn lane_spelling_renders_the_same_schema_document() {
     let dss = Dss::new();
@@ -984,12 +977,10 @@ fn rendered_ranks(def: &Value, marker: &str) -> BTreeMap<String, i64> {
         .collect()
 }
 
-/// Every `port_hidden_property` / `port_extra_property` / `port_shown_property`
-/// row records the `$dssPropertyIndex` and `$dssPropertyOrder` the engine's
-/// class table gives the property ([`ClassProps::schema_property_order`]). A
-/// row without `order` is a property outside the JSON order. An extra or shown
-/// property's rendered block carries the same two ranks, and every rendered block's index names the
-/// property of the same key in the table, which ties the table to the render.
+/// Every inventoried hidden, extra or shown property carries the
+/// `$dssPropertyIndex`/`$dssPropertyOrder` the engine's class table gives it
+/// ([`ClassProps::schema_property_order`]), and every rendered block's index
+/// names the property of the same key, which ties the table to the render.
 #[test]
 fn inventoried_property_ranks_match_the_class_table() {
     let dss = Dss::new();
@@ -1062,17 +1053,17 @@ fn inventoried_property_ranks_match_the_class_table() {
     }
 }
 
-/// Every hidden row sits in a free slot of `schema_full_port.json`, the slot
-/// its rendered neighbours leave. Between two adjacent properties both
-/// documents render, the port has `(b - a - 1) - (b' - a' - 1)` port-only slots
-/// (`a`, `b` the port's ranks, `a'`, `b'` the oracle's); the inventoried rows
-/// inside fill exactly that many, none on a rendered rank, and where the oracle
-/// renders the two neighbours adjacent every slot between them is port-only, so
-/// the rows' ranks are those slots exactly. Where the oracle leaves its own
-/// slots in the gap (Transformer's BH run) the goldens fix only the count, and
-/// [`inventoried_property_ranks_match_the_class_table`] places the run. A shown
-/// property's index is a slot the oracle holds too, so only its order counts
-/// as port-only.
+/// Every hidden row sits in a free slot of `schema_full_port.json`: between two
+/// adjacent properties both documents render, the inventoried rows fill exactly
+/// the engine-only slots, none on a rendered rank.
+//
+// With `a`, `b` this engine's ranks and `a'`, `b'` dss_capi's, the gap holds
+// `(b - a - 1) - (b' - a' - 1)` engine-only slots. Where dss_capi renders the
+// two neighbours adjacent, every slot between them is engine-only; where it
+// leaves its own slots in the gap (Transformer's BH run) the goldens fix only
+// the count and `inventoried_property_ranks_match_the_class_table` places the
+// run. A shown property's index is a slot dss_capi holds too, so only its order
+// counts as engine-only.
 #[test]
 fn hidden_property_ranks_fill_the_free_slots_of_the_port_document() {
     let port: Value =

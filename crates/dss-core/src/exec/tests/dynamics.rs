@@ -1,7 +1,7 @@
 //! Dynamics solve-mode integration tests: the `Solve mode=dynamic`
-//! predictor/corrector driver (`SolveDynamic`, WP7.7 step 1) and the Generator
+//! predictor/corrector driver (`SolveDynamic`) and the Generator
 //! per-element dynamics state machinery (`InitStateVars`/`IntegrateStates`/
-//! `DoDynamicMode`, WP7.7 step 2a). The static-circuit tests pin the driver (no
+//! `DoDynamicMode`). The static-circuit tests pin the driver (no
 //! machine present → the base `IntegrateStates` is a no-op, so the loop must hold
 //! the snapshot fixpoint); the Kundur test pins the real Generator state vars
 //! against the oracle (mode-3 monitor trajectory).
@@ -89,7 +89,7 @@ fn dynamic_mode_load_multiplier_moves_operating_point() {
     // multiplier arm (the other tests run at loadmult = 1, where the multiply is a
     // no-op) and (b) proves the driver actually re-solves the power flow each step:
     // a driver that skipped `SolveSnap` would leave the snapshot voltages frozen.
-    // The exact magnitude is oracle-pinned in step 4.
+    // The exact magnitude is pinned against dss-python by the gates below.
     let mut dss = static_dyn_dss();
     let v_snap = min_node_vmag(&dss);
 
@@ -173,8 +173,8 @@ fn rel(a: f64, b: f64) -> f64 {
     (a - b).abs() / b.abs().max(1.0)
 }
 
-/// WP7.7 step-2a focused oracle gate: the Generator dynamics state variables on
-/// the undisturbed Kundur run match the pinned dss-python 0.15.7 oracle. The deck
+/// Focused gate: the Generator dynamics state variables on the undisturbed
+/// Kundur run match the pinned dss-python 0.15.7. The deck
 /// enters dynamics (`h=0.001`, 1 step) then runs 1000 more steps with no
 /// disturbance; the macro operating point (Frequency / Theta / Vd / PShaft) holds
 /// constant, while the derivative channels (dSpeed / dTheta) slowly ring around the
@@ -195,7 +195,7 @@ fn generator_dynamics_mode3_holds_operating_point_vs_oracle() {
 
     let m = dss.monitor_view("g1vars").expect("g1vars monitor");
     // The offline `MonitorView` header keeps the two leading time columns
-    // (`hour`/`t(sec)`) that the C-API `Monitors_Get_Header` strips (WP7.6 step 3);
+    // (`hour`/`t(sec)`) that the C-API `Monitors_Get_Header` strips;
     // the 6 GenVars names follow. `channel(i)` already skips the time columns, so
     // `channels[0..6]` line up with the oracle's `Channel(1..6)`.
     assert_eq!(
@@ -218,7 +218,7 @@ fn generator_dynamics_mode3_holds_operating_point_vs_oracle() {
     // Oracle (dss-python 0.15.7) — the undisturbed segment is the swing-equation
     // fixpoint: the last sample equals the init operating point.
     let last = |ch: usize| *m.channels[ch].last().expect("samples") as f64;
-    // All channels pinned at the standard monitor `1e-6` (TOLERANCE_NOTES.md). The
+    // All channels pinned at the standard monitor `1e-6`. The
     // macro channels (Frequency / Theta / Vd / PShaft) match the oracle to the f32
     // floor; the cancellation-residual channels (dSpeed / dTheta) match to ~6e-8
     // f64 / exactly 1 f32-ulp (≈9e-8) — see the dSpeed note.
@@ -345,7 +345,7 @@ fn generator_dynamics_swing_matches_oracle_kundur() {
 }
 
 // ===========================================================================
-// WP7.7 step 3b — DynEqPCE: the Generator driven by a user DynamicExp instead of
+// DynEqPCE: the Generator driven by a user DynamicExp instead of
 // its built-in shaft model. The Kundur Example 13.1 deck (corpus
 // `Dynamic_Expressions/Dynamic_KundurDynExp.dss`) replaces `H/D` with a 6-variable
 // DynamicExp whose swing equation `Speed dt = -(Pterm + Damp*Speed - Pshaft)/Mass;
@@ -418,7 +418,7 @@ fn generator_dynexp_dynamics_mode3_holds_operating_point_vs_oracle() {
 
     let m = dss.monitor_view("g1vars").expect("g1vars monitor");
     // The mode-3 header tail is the DynamicExp memory-slot names (lowercased on the
-    // DynamicExp varnames); the two leading time columns are kept offline (WP7.6).
+    // DynamicExp varnames); the two leading time columns are kept offline.
     assert_eq!(
         &m.header[2..],
         [
@@ -432,7 +432,7 @@ fn generator_dynexp_dynamics_mode3_holds_operating_point_vs_oracle() {
 
     let last = |ch: usize| *m.channels[ch].last().expect("samples") as f64;
     // Oracle DynExp steady values, all pinned at the standard monitor-channel
-    // `1e-6` (TOLERANCE_NOTES.md). The "small" channels (speed / dspeed / dtheta)
+    // `1e-6`. The "small" channels (speed / dspeed / dtheta)
     // are NOT zero and NOT constant — they are the slow ring of the trapezoidal
     // integrator around the fixpoint: `Pshaft`/`Mass` are frozen at init but the
     // electrical power `Pterm` is recomputed each step, so `dspeed` is the residual
@@ -641,7 +641,7 @@ fn a_dynamicexp_machine_starts_every_run_from_its_initial_values() {
 }
 
 // ===========================================================================
-// WP7.7 step 2b — PVSystem / Storage grid-following inverter dynamics
+// PVSystem / Storage grid-following inverter dynamics
 // (InvDynamics.TInvDynamicVars). The classic-+inverter state-variable interface
 // (PVSystem 22 vars = 13 classic + 9 InvDyn; Storage 34 = 25 + 9) is recorded by
 // a mode-3 monitor and pinned against the dss-python 0.15.7 oracle. The decks are
@@ -796,8 +796,8 @@ fn pvsystem_dynamics_mode3_matches_oracle() {
     assert_eq!(m.channels.len(), 22);
     let at = |ch: usize, s: usize| m.channels[ch][s] as f64;
 
-    // All channels pinned at the standard monitor `1e-6` (TOLERANCE_NOTES.md;
-    // measured Rust↔oracle match ~1e-8 on every channel).
+    // All channels pinned at the standard monitor `1e-6` (measured match ~1e-8
+    // on every channel).
     // Classic vars 1..13 are constant over the undisturbed run (no InvControl).
     for (ch, want) in [
         (0, 1.0),     // Irradiance
@@ -807,10 +807,9 @@ fn pvsystem_dynamics_mode3_matches_oracle() {
         (4, 9999.0),  // Vreg
         (12, 500.0),  // kW_out_desired
         (17, 8000.0), // Rated VDC
-        // WP-U1.2 D7: iMaxPPhase base PanelkW(500)→FkVArating(600), ×1.2 =
-        // 27.779484; matches capi015 (`? Monitor` ch, /tmp/probe_pvdyn.py). The
-        // limit is non-binding (it settles at 6.17 ≪ 27.78) so the trajectory
-        // channels 13-20 are unchanged.
+        // iMaxPPhase is based on FkVArating(600), ×1.2 = 27.779484, as in
+        // capi015. The limit is non-binding (it settles at 6.17 ≪ 27.78) so it
+        // does not shape the trajectory channels 13-20.
         (21, 27.779484), // Max. Amps (phase)
     ] {
         assert!(rel(at(ch, 200), want) < 1e-6, "PV ch{ch} = {}", at(ch, 200));
@@ -943,9 +942,7 @@ fn storage_dynamics_mode3_matches_oracle() {
     assert_eq!(m.channels.len(), 34);
     let at = |ch: usize, s: usize| m.channels[ch][s] as f64;
 
-    // SOC integrates during the dynamics run (the WP7.4 `is_dynamic_model`
-    // early-return in `update_storage` was a latent simplification corrected here):
-    // kWh starts at the rated 1000 and drops monotonically as the unit discharges.
+    // SOC integrates during the dynamics run: kWh starts at the rated 1000 and drops monotonically as the unit discharges.
     // All value channels pinned at the standard monitor `1e-6` (measured ~1e-8).
     assert!(rel(at(0, 0), 1000.0) < 1e-9, "SOC[0] = {}", at(0, 0));
     assert!(
@@ -989,10 +986,10 @@ fn storage_dynamics_mode3_matches_oracle() {
     // kWInvLosses is exactly 0 (ideal inverter — the loss decomposition
     // 61.120377 = 56.120377 + 5.0 + 0 pins it). kWIn (discharging) and kvarOut
     // (no kvar dispatched) are near-zero kW/kvar at the monitor abs floor (1e-4,
-    // TOLERANCE_NOTES.md — a flat kW floor for a value that is physically 0).
+    // a flat kW floor for a value that is physically 0).
     assert!(at(7, 200).abs() < 1e-6, "STO kWInvLosses = {}", at(7, 200));
     assert!(at(3, 200).abs() < 1e-4, "STO kWIn = {}", at(3, 200));
-    // Full-interface parity (audit-tests follow-up): pin the remaining classic
+    // Full-interface parity: pin the remaining classic
     // channels by value, not only by header name — the InvControl op-flag defaults
     // (9999), the VW kW limit, and the static caps. A regression corrupting any of
     // these on Storage would otherwise slip past on the name check alone.
@@ -1022,7 +1019,7 @@ fn storage_dynamics_mode3_matches_oracle() {
 
     // The current ramp from rest (sample 0) is PI-controlled, not railed. (it[0]
     // is sub-unity, so the `rel` denominator floors to 1 → a 1e-6 absolute band,
-    // which still distinguishes it from 0/frozen — audit-tests.)
+    // which still distinguishes it from 0/frozen.)
     assert!(
         rel(at(26, 0), 2.9092627) < 1e-6,
         "STO di/dt[0] = {}",
@@ -1149,8 +1146,8 @@ fn pvsystem_gfm_dynamics_mode3_matches_oracle() {
     );
 
     // Mode-3 (22 PV vars) last sample vs oracle (dss-python 0.15.7). Monitor is
-    // f32; pinned at the standard monitor `1e-5` rel band (TOLERANCE_NOTES.md; the
-    // black-start ramp end value is well-conditioned).
+    // f32; pinned at the standard monitor `1e-5` rel band (the black-start ramp
+    // end value is well-conditioned).
     let m = dss.monitor_view("psv").expect("psv monitor");
     assert_eq!(&m.header[2..], PV_VAR_NAMES, "mode-3 header = 22 PV vars");
     assert_eq!(m.channels.len(), 22);
@@ -1172,7 +1169,7 @@ fn pvsystem_gfm_dynamics_mode3_matches_oracle() {
 }
 
 // ===========================================================================
-// WP7.7 step 3a — IndMach012 (induction machine) dynamics.
+// IndMach012 (induction machine) dynamics.
 // ===========================================================================
 
 /// The shared IndMach012 deck (self-contained reproduction of the corpus
@@ -1203,7 +1200,7 @@ fn indmach_deck() -> Dss {
     dss
 }
 
-/// WP7.7 step-3a regression: the snapshot power flow of the induction motor at
+/// Regression: the snapshot power flow of the induction motor at
 /// the **default** node-voltage tolerance (1e-4) matches the pinned dss-python
 /// 0.15.7 oracle exactly. The slip-Newton uses a fixed `dSdP` slope, so it lags
 /// the node-voltage convergence and the snapshot stops at a not-fully-settled
@@ -1269,8 +1266,8 @@ fn indmach_dyn_dss() -> Dss {
     dss
 }
 
-/// WP7.7 step-3a focused oracle gate: the IndMach012 dynamics state variables on
-/// the undisturbed run match the pinned dss-python 0.15.7 oracle. The motor sits at
+/// Focused gate: the IndMach012 dynamics state variables on the undisturbed run
+/// match the pinned dss-python 0.15.7. The motor sits at
 /// its slipping equilibrium, so the electrical state (slip, currents, losses,
 /// power) holds constant while the rotor angle Theta drifts at the slip rate. The
 /// deck is solved to a tight tolerance (`1e-8`) so the slip-Newton (which lags the
@@ -1459,7 +1456,7 @@ fn indmach012_dynamics_fault_response_matches_oracle() {
 }
 
 // ===========================================================================
-// WP7.7 step 3b cont. — PVSystem / Storage driven by a user `DynamicExp` instead
+// PVSystem / Storage driven by a user `DynamicExp` instead
 // of the built-in GFL inverter `SolveDynamicStep`. The mode-3 monitor now records
 // the DynamicExp memory slots (NVariables × [value, derivative]) instead of the
 // 22/34 classic vars. The equation `it dt = (1/L)·(modul·vdc − R·it − vac)`
@@ -1576,21 +1573,18 @@ fn pvsystem_dynexp_dynamics_mode3_matches_oracle() {
     // are large because the seed is far from the equation's fixpoint and the filter L
     // is tiny, `modul` is still the init duty (1.0). (Samples 1..99 ring too hard to
     // pin at f32 — the stiff start-up — but step 0 is one deterministic step.)
-    // WP-U1.2 D7: this deck's `isp = (500000/vgmag)/3 ≈ 23.1457` sat right at the
-    // OLD `iMaxPPhase` clamp boundary (PanelkW/base = 23.14571); the new base
-    // FkVArating(600)/... = 27.78 RELEASES the clamp (isp is now uncapped ~23.146,
-    // matching capi015's clamp logic), so the single-step derivative shifts a
-    // deterministic ~0.035%: `dit@0` 1055150.8 → 1054757.2. `it@0` (the predictor
-    // half-step) is unchanged. The startup transient itself is 0.14.5-shaped and
-    // NOT capi015's (capi015 seeds the DynExp at the fixpoint — a separate,
-    // out-of-scope 0.15.x init change); the BINDING pins are the settled slots
-    // (sample 100+, `it`=23.14571) which match BOTH engines.
+    // This deck's `isp = (500000/vgmag)/3 ≈ 23.1457` stays below the
+    // `iMaxPPhase` clamp (based on FkVArating(600), 27.78, as in capi015), so
+    // the clamp does not bind. The startup transient itself is 0.14.5-shaped and
+    // NOT capi015's (capi015 seeds the DynExp at the fixpoint, a separate 0.15.x
+    // init change). The BINDING pins are the settled slots (sample 100+,
+    // `it`=23.14571), which match BOTH engines.
     assert!(rel(at(0, 0), 673.266) < 1e-6, "PV it@0 = {}", at(0, 0));
     assert!(rel(at(1, 0), 1054757.2) < 1e-6, "PV dit@0 = {}", at(1, 0));
     assert!(rel(at(4, 0), 1.0) < 1e-6, "PV modul@0 = {}", at(4, 0));
 
     // Settled state (sample 100 = past the stiff start-up; sample 200 = end). All
-    // pinned at the standard monitor `1e-6` (TOLERANCE_NOTES.md; channels are f32).
+    // pinned at the standard monitor `1e-6` (channels are f32).
     // `it` (DynOut[0]) relaxes to the ISP current setpoint; `dit` → exactly 0; the
     // duty cycle `modul` settles; `vdc` is the constant Rated VDC; `vac` is the
     // grid voltage. The user L/R differ from the built-in, so `it`'s 23.14571 is

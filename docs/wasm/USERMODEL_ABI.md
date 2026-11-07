@@ -1,7 +1,7 @@
 # USERMODEL_ABI — the frozen WASM user-model ABI (WASM_USERMODELS plan)
 
 **Status: FROZEN at WP-WM.0 (2026-07-18).** Changes only by a recorded decision
-noted in this header and in `STATUS.md` §WASM-UM.
+noted in this header.
 
 Recorded decisions:
 
@@ -19,7 +19,7 @@ Recorded decisions:
   §2.2b does for `deltaQNom` — which makes the wasm `TWindGenVars` image a
   byte-for-byte extension of the wasm `TGeneratorVars` image. `ShaftModel=` is
   deliberately NOT wired: r4133 has the field but registers no property for it
-  (`WindGen.pas:100`, no `PropertyName` row). See §2.6 + STATUS §RP1.3.
+  (no `PropertyName` row). See §2.6.
 - **2026-07-20 (e) — WP-WM.6 callback tail: `DoDSSCommand`/`GetResultStr`
   implemented as an opt-in deferred-drain mechanism; the callback table is now
   complete (no wire-ABI change).** The two re-entrant slots (7/32) leave the
@@ -39,8 +39,7 @@ Recorded decisions:
   silent drop). No reference model needs it — P3 census, `IndMach012a` bundles
   its own parser. The mechanism is exercised by the channel-2 protocol tests
   (which act as the re-entrant host). Additive; the 15/13/7 shapes and every
-  record/callback contract are unchanged. See §4 rows 7/32 + STATUS §WASM-UM
-  WP-WM.6.
+  record/callback contract are unchanged. See §4 rows 7/32.
 - **2026-07-20 (d) — WP-WM.5 CapControl round 2 (build): a native `TCapUserControl`
   twin CANNOT be the gate oracle → the r4133 BUILT-IN VOLTAGE control is
   (fixture/gate-design, NOT a wire-ABI change).** Round 1 proved `get_public_data`
@@ -283,8 +282,7 @@ model's `Calc` output exactly.
 `TStorageVars` / `TPVSystemVars` images would be frozen the same way at their
 owning WP with a probe extension — but WM.4 did **not** need them: the authored
 Storage/PVSystem fixtures read only `V` + `TDynamicsRec` (no `get_public_data`),
-so no StorageVars/PVSystemVars image crosses the boundary (STATUS §WM.4
-deviation (a)). `TCapControlVars` is documented as the dss-rs `get_public_data`
+so no StorageVars/PVSystemVars image crosses the boundary. `TCapControlVars` is documented as the dss-rs `get_public_data`
 payload at §2.5, but the reference CapControl fixture likewise avoids it — it
 reads voltage via the symmetric `get_node_voltages` because `get_public_data` is
 not oracle-gatable for CapControl (the asymmetry finding at §2.5).
@@ -383,7 +381,7 @@ routes `DoPendingAction` back to it correctly.
 > **built-in VOLTAGE** control (its deadband made identical to `OnSetting`/
 > `OffSetting`), not a twin. The dss-rs `control_queue_push` wiring itself is
 > correct and gated (it owns the queue owner host-side); only a *native twin* lacks
-> the owner. See STATUS §WASM-UM WP-WM.5 round 2.
+> the owner.
 
 Note this deliberately **diverges from the native USERCONTROL timing path.** In
 Pascal, `CapControl.Sample`'s `USERCONTROL` arm calls `UserModel.Sample` "Sets the
@@ -408,7 +406,7 @@ coincide and the r4133 twin and Rust engine cannot diverge on action *time*. The
 dss-rs `USERCONTROL` wiring must choose the push channel **deliberately** (direct
 push, matching the gate twin) rather than fall into it — do not route the guest's
 decision through the shared arm/disarm tail without also reconciling the twin.
-This is a WP-WM.5 element-wiring decision recorded in STATUS §WASM-UM WP-WM.5, not
+This is a WP-WM.5 element-wiring decision, not
 an ABI change. The 15/13/7 function shapes and the `TDynamicsRec`/callback contracts
 above do not depend on the `get_public_data` image.
 

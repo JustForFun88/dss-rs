@@ -16,7 +16,7 @@ use super::meter_mut;
 /// Safe read of `buses[i].CoordDefined`. Pascal indexes `buses[BusRef]`
 /// unguarded; a node with no from-bus (`None`, Pascal `0`) would read
 /// `buses[0]` — out of the 1-based array, an undefined heap read. UB is never
-/// reproduced (CLAUDE.md known-bug rule): treat it as "no coordinate".
+/// reproduced: treat it as "no coordinate".
 fn coord_defined(ckt: &Circuit, bus: Option<usize>) -> bool {
     bus.and_then(|b| ckt.buses.get(b))
         .is_some_and(|b| b.coord_defined)
@@ -136,8 +136,8 @@ fn calc_bus_coordinates(
 
     // Pascal reads `Buses^[FirstCoordRef]`/`[SecondCoordRef]` unguarded; a
     // stale `first_coord_ref` from a prior iteration can be unset (`None`, a
-    // from-terminal with no bus) — an OOB heap read upstream, never reproduced
-    // (CLAUDE.md UB rule): no-op instead.
+    // from-terminal with no bus) — an OOB heap read in OpenDSS, never
+    // reproduced: no-op instead.
     let (Some(b1), Some(b2)) = (
         first_coord_ref.and_then(|b| ckt.buses.get(b)),
         second_coord_ref.and_then(|b| ckt.buses.get(b)),

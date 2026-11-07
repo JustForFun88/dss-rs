@@ -3,7 +3,7 @@
 Each scenario is a complete command script (`clear` through `solve`). The
 oracle records the global node order, the complex node voltages, the
 fixed-point iteration count and the convergence flag; the Rust engine must
-replay the identical script and match (PORTING_PLAN.md Phase 3 gate):
+replay the identical script and match:
 
   (a) 2-bus vsource+line+load voltages to 1e-9 rel,
   (b) the "IEEE13-flat" variant (transformers/regulators/caps stripped,

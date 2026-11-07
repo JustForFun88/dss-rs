@@ -1,4 +1,4 @@
-//! Harmonics solve-mode integration tests (WP7.6 step 1): the end-to-end
+//! Harmonics solve-mode integration tests: the end-to-end
 //! `Solve mode=harmonics` pipeline for the current-source family (VSource +
 //! Load), and the loud deferral guard for the DER family.
 
@@ -215,7 +215,7 @@ fn mode_change_resets_monitor_buffer() {
 }
 
 /// The voltage-source-behind-reactance DER family (Generator/PVSystem/Storage)
-/// injects harmonic current from its spectrum in harmonics mode (WP7.6 step 2):
+/// injects harmonic current from its spectrum in harmonics mode:
 /// the solve completes (no loud deferral) and the spectrum-driven injection
 /// produces a non-zero harmonic distortion voltage.
 fn assert_der_harmonic_injects(der_new: &str, full_name: &str) {

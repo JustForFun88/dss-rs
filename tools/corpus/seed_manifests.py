@@ -1,4 +1,4 @@
-"""Bootstrap the corpus manifests (CORPUS_TEST_PLAN.md §2).
+"""Bootstrap the corpus manifests.
 
 Scans the vendored corpus and writes one JSON manifest per status under
 `tests/corpus/manifests/`, so that **every** `.dss` is accounted for in exactly

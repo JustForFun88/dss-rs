@@ -1,5 +1,5 @@
 //! WindGen `UserModel`/`UserData` — EPRI r4133 properties 18/19 and the
-//! `Model=6` behaviour they feed (`R4133_PROPS_PLAN.md` RP1.3).
+//! `Model=6` behaviour they feed.
 //!
 //! r4133 registers `PropertyName^[18] := 'UserModel'` / `[19] := 'UserData'`
 //! (`Version8/Source/PCElements/WindGen.pas:391-395`, Edit arms `:641-642`),
@@ -14,9 +14,9 @@
 //! pinned dss_capi 0.14.5 at all, and r4133 ships only the *loader*
 //! (`PCElements/WindGenUserModel.pas`) — no native WindGen user model exists
 //! anywhere upstream, so the epri-worker bridge cannot be driven through this
-//! path the way `wasm_usermodels.rs` drives the Generator's (WM.3, where an FPC
-//! `.dll` twin of the wasm fixture exists). The acceptance carrier for RP1.3 is
-//! therefore this module plus `crates/dss-usermodel/tests/windgen_shuttle.rs`:
+//! path the way `wasm_usermodels.rs` drives the Generator's (where an FPC `.dll`
+//! twin of the wasm fixture exists). The acceptance carrier is therefore this
+//! module plus `crates/dss-usermodel/tests/windgen_shuttle.rs`:
 //! every number below is derived from the **committed guest fixture's own
 //! documented law** (`tools/wasm_usermodel/models/wgturbine/src/lib.rs`) and from
 //! the engine's own solved node voltages — never captured from a Rust run.
@@ -35,14 +35,12 @@
 //! shuttle, a wrong record offset, a dropped write-back or a mis-routed variable
 //! index fails on the cell that carries it.
 //!
-//! # Non-vacuity (§1.1(f)) — measured, 2026-08-23
+//! # Non-vacuity
 //!
 //! Thirteen mutations were applied in-tree, run, and reverted; each one turns the
 //! tests that own it red (`cargo test -p dss-core --lib windgen_usermodel`). The
-//! `Get_`/`Set_Variable` row was **split** by the audit settlement: the write
-//! half used to be unpinned (reproducing it left all tests green, because the
-//! fixture silently ignored the stray index), and the last four rows are the
-//! settlement's new pins.
+//! `Get_`/`Set_Variable` row is **split** in two, because the fixture silently
+//! ignores a stray index and the write half needs a pin of its own.
 //!
 //! | mutation | red |
 //! |---|---|
@@ -68,7 +66,8 @@ use super::common::query;
 
 /// The committed guest fixture (`tools/wasm_usermodel/build_wgturbine_wasm.ps1`,
 /// sha256 pinned in `tools/wasm_usermodel/PIN.txt`), as an absolute forward-slash
-/// path so the §2.4 activation rule resolves it from any working directory.
+/// path so the activation rule (`docs/wasm/USERMODEL_ABI.md` §5) resolves it from
+/// any working directory.
 fn fixture() -> String {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
@@ -402,8 +401,8 @@ fn the_variable_surface_is_the_native_22_then_the_models_own() {
     assert_eq!(values[30], 0.0, "WgConnEcho = Conn (0 = wye)");
 }
 
-/// **Upstream bug, deliberately not reproduced** (CLAUDE.md — never, in any
-/// lane): `TWindGenObj.Get_Variable` (`WindGen.pas:2735-2743`) and `Set_Variable`
+/// **OpenDSS bug, deliberately not reproduced** (in any lane):
+/// `TWindGenObj.Get_Variable` (`WindGen.pas:2735-2743`) and `Set_Variable`
 /// (`:2777-2784`) put the user-model tail OUTSIDE the `if i < 19 … else case i of
 /// …` chain instead of inside its `else` — contrast `generator.pas:2868-2884`,
 /// where the identical block sits in the `Else`, and WindGen's own correct
@@ -457,9 +456,8 @@ fn the_native_variables_stay_native_while_a_model_is_bound() {
 /// `set_variable` changes nothing for an index it does not own: it therefore
 /// **counts** every out-of-range write in `WgBadSet` (variable 33), and the
 /// assertion is that the counter stays 0. Without it the write-side half of the
-/// not-reproduced mis-nesting had no pin at all — reproducing the upstream
-/// nesting left the whole module green (RP1.3 audit finding, settled 2026-08-23;
-/// re-measured after this test: the same mutation now reds it).
+/// not-reproduced mis-nesting has no pin at all — reproducing the OpenDSS
+/// nesting leaves the rest of the module green.
 #[test]
 fn set_statevar_routes_only_the_tail_to_the_model() {
     let mut lines = deck("6", &bound_tail());
@@ -541,8 +539,7 @@ fn the_record_fields_come_from_the_elements_own_sources() {
 ///
 /// The wye decks everywhere else in this module cannot say so: `Connection::Wye`
 /// is ordinal 0, exactly what an unwritten integer carries, so dropping `conn`
-/// from `wind_gen_vars_from` passed every test (RP1.3 audit finding, settled
-/// 2026-08-23). A delta WindGen answers 1 — and its `NumConductors` drops to 3
+/// from `wind_gen_vars_from` passes every other test. A delta WindGen answers 1 — and its `NumConductors` drops to 3
 /// with it, which is the second cell of the integer block.
 #[test]
 fn a_delta_windgen_echoes_its_own_connection() {
@@ -565,7 +562,7 @@ fn a_delta_windgen_echoes_its_own_connection() {
 
 /// Pascal `RecalcElementData`'s tail (`WindGen.pas:1418`): `If UserModel.Exists
 /// Then UserModel.FUpdateModel`, ported at `nominal.rs`'s
-/// `update_user_models`. It is one of the five model-6 arms RP1.3 owes, and the
+/// `update_user_models`. It is one of the five model-6 arms, and the
 /// only one that leaves no numeric trace of its own — the fixture therefore
 /// counts the calls in `WgUpdCount` (variable 32) and re-reads the boundary
 /// record inside `update_model`, the way the `indmach012a` example does.
@@ -600,7 +597,7 @@ fn recalc_element_data_updates_the_bound_model() {
     );
 }
 
-/// The property table shape RP1.3 closes: `UserModel` at 18 and `UserData` at 19,
+/// The property table shape: `UserModel` at 18 and `UserData` at 19,
 /// everything from `DutyStart` on shifted by two, and the inherited tail landing
 /// at 45/46/47/48 — r4133's `NumPropsThisClass = 44` (`WindGen.pas:255`) plus the
 /// four `TCktElementClass` rows. Ordinal 18 answers `UserModel.Name` (`:2903`)
@@ -678,11 +675,10 @@ fn a_second_usermodel_assignment_reinstantiates_the_model() {
 /// model of its own, carrying the guest's defaults, while `:834-835` copies the
 /// donor's whole property array so `? …userdata` still echoes the donor's text.
 ///
-/// Regression pin for RP1.3 part C: `make_like` used to clone the donor's slot,
-/// and the slot's `Clone` deliberately drops the live wasmi instance — so the
-/// copy reported `exists() == false`, fell back to the native 22-variable surface
-/// and silently injected nothing while still echoing `UserModel=<path>`
-/// (measured).
+/// Regression pin: the slot's `Clone` deliberately drops the live wasmi
+/// instance, so a `make_like` that cloned the donor's slot would report
+/// `exists() == false`, fall back to the native 22-variable surface and silently
+/// inject nothing while still echoing `UserModel=<path>`.
 ///
 /// Both halves separate cleanly because the donor's `UserData=` moves **every**
 /// guest parameter off its default: on the shared bus the donor must draw its
@@ -877,8 +873,7 @@ fn dynamics_integrates_the_guests_first_order_lag() {
 /// Discriminating against the built-in path: after 20 ms of model-1 dynamics the
 /// WTG3 controller states are firmly non-zero (`Pgen ≈ 1.0`, `Vmag ≈ 1.015`,
 /// `WtAct ≈ 1.2`, `thetaPitch ≈ 4.38` — pinned in
-/// `elements::pc::windgen::tests::dynamics_variables_match_the_qmode0_dispatch`,
-/// renamed from `dynamics_variables_match_capi015_reference` at RP3.10),
+/// `elements::pc::windgen::tests::dynamics_variables_match_the_qmode0_dispatch`),
 /// so every one of them reading exactly 0.0 is proof the WTG3 never stepped.
 #[test]
 fn model_6_dynamics_never_touches_the_wtg3_model() {
@@ -980,11 +975,10 @@ fn two_phase_dynamics_aborts_with_5672() {
     assert!(hit.abort, "5672 is followed by `SolutionAbort := TRUE`");
 }
 
-/// The enum admits 1/2/4/5 and — since RP1.3 — 6, and still refuses 3 and 7
+/// The enum admits 1/2/4/5 and 6, and still refuses 3 and 7
 /// (`obj/dss_enum/registry/pc.rs`). r4133 dispatches both (`WindGen.pas:2112`,
-/// `:2116`) but neither `DoPVTypeGen` nor `DoCurrentLimitedPQ` is ported, no
-/// corpus deck sets them and no plan owns them (`R4133_PROPS_PLAN.md` §1.3; the
-/// deferral is a named `ORPHANED_GAPS.md` row). Refusing at the parser is the
+/// `:2116`) but neither `DoPVTypeGen` nor `DoCurrentLimitedPQ` is ported, and
+/// no corpus deck sets them. Refusing at the parser is the
 /// loud alternative to silently dispatching them into the constant-PQ arm.
 #[test]
 fn models_3_and_7_are_still_refused() {
@@ -1010,15 +1004,13 @@ fn models_3_and_7_are_still_refused() {
 
 /// `GetAllVariables` (`WindGen.pas:2793-2812`) appends the `UserModel` block in
 /// BOTH arms — the `If UserModel.Exists` block sits at the same nesting level as
-/// the `if DynamiceqObj = nil … else …`, not inside its `else`. The port used to
-/// return early out of the `DynamicExp` arm, so a WindGen carrying both a
-/// `DynamicEq=` and a `UserModel=` reported no model variables at all (RP1.3
-/// audit finding, settled 2026-08-23).
+/// the `if DynamiceqObj = nil … else …`, not inside its `else`. An early return
+/// out of the `DynamicExp` arm would leave a WindGen carrying both a
+/// `DynamicEq=` and a `UserModel=` with no model variables at all.
 ///
-/// The same deck settles the second half of that finding: the RP1.3 correction
-/// that formed `Edp` from the **record** `Zthev = Xdp/XRdp + jXdp`
-/// (`WindGen.pas:2500-2505`) instead of the WTG3 Thevenin impedance was
-/// documented as unobservable. It is not: `theta = Edp` pairs the `edp` domain
+/// The same deck pins that `Edp` is formed from the **record**
+/// `Zthev = Xdp/XRdp + jXdp` instead of the WTG3 Thevenin impedance, which is
+/// observable: `theta = Edp` pairs the `edp` domain
 /// code (9) to a user state variable, `InitStateVars` seeds it with `Cang(Edp)`
 /// (`:2588`) and `DynamicExp` variables are readable. The equation here holds
 /// both states still (`d/dt = Speed`, and `Speed` starts at 0), so the value read
@@ -1101,10 +1093,10 @@ fn a_dynamic_eq_windgen_still_reports_the_models_variables() {
     );
 }
 
-/// **Dormancy** (`R4133_PROPS_PLAN.md` RP1.3 acceptance): the model-6 arms are
-/// unreachable for the built-in models. A `Model=1` WindGen with the fixture
-/// bound must solve **bit-identically** to the same deck with no `UserModel=` at
-/// all — same node voltages, same terminal currents, to the last bit.
+/// **Dormancy**: the model-6 arms are unreachable for the built-in models. A
+/// `Model=1` WindGen with the fixture bound must solve **bit-identically** to
+/// the same deck with no `UserModel=` at all — same node voltages, same
+/// terminal currents, to the last bit.
 ///
 /// The two differ enormously if the arm leaks: the aerodynamic model injects
 /// ~1.3 kA per phase here against the guest's ~0.6 A.
@@ -1147,9 +1139,9 @@ fn a_bound_model_is_dormant_on_the_built_in_models() {
 /// from the spec on first use — `WindGenUserModelSlot::ensure_live`, replaying
 /// the last `UserData=` so the revived instance carries the same parameters.
 ///
-/// Until the audit settlement every call site guarded on `exists()` *before*
-/// that revive could run, which made it unreachable code and any such snapshot a
-/// silent fallback to the built-in model. This test drives the same
+/// A call site that guarded on `exists()` *before* that revive could run would
+/// make it unreachable code and any such snapshot a silent fallback to the
+/// built-in model. This test drives the same
 /// `clone_ckt` API the dispatch does: `WgSlip` must come back as the deck's
 /// `UserData=` slip, not the 0.0 an unanswered model leaves behind.
 #[test]
@@ -1203,11 +1195,9 @@ fn an_element_snapshot_revives_its_user_model() {
 ///
 /// * `? …UserModel` echoes the name that was **attempted**, whereas r4133 assigns
 ///   `FName` only on success (`WindGenUserModel.pas:190`) and would answer `''`.
-///   This is the established WM.3 convention (`generator/accessors.rs` does the
-///   same) and the #567 suppression below depends on it. No corpus deck sets
-///   `UserModel=` on a WindGen, so neither channel is exposed. Both conventions
-///   are now recorded outside this file as well —
-///   `docs/upgrade/DIVERGENCES.md` §L6 (RP1.3 audit settlement).
+///   This is the established user-model convention (`generator/accessors.rs`
+///   does the same) and the #567 suppression below depends on it. No corpus
+///   deck sets `UserModel=` on a WindGen, so neither channel is exposed.
 /// * No #567 follows. r4133 *would* emit one per iteration (its load failed too,
 ///   so `UserModel.Exists` is false), but for the port a designated-yet-unloadable
 ///   name is the native-DLL case, already reported loudly once as #570;

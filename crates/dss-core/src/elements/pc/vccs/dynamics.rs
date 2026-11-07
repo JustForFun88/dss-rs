@@ -11,7 +11,7 @@
 //! unused) so the intricate `MapIdx`/`OffsetIdx` modular wraparound ports
 //! verbatim. Per faithful reproduction the curves (`bp1`/`bp2`/`filter`) are
 //! `mem::take`-n out of `self` for the duration of a step (their `GetYValue`
-//! hunt-cache mutates) and restored at the end (PORTING_PLAN.md §2.1 fallback).
+//! hunt-cache mutates) and restored at the end.
 
 use num_complex::Complex64;
 

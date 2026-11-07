@@ -1,20 +1,17 @@
-//! Live-oracle transport for the unified corpus gate (schema v2 — two gating
-//! channels). Every transport speaks the identical line-JSON protocol
-//! (`ping`/`run`/`quit`, one compact JSON object per line) and produces the
-//! byte-identical [`CaseResult`] shape, so `harness/mod.rs` comparators are
-//! untouched:
+//! The OpenDSS engine transports of the corpus gate (two gating channels).
+//! Every transport speaks the same line-JSON protocol (`ping`/`run`/`quit`, one
+//! compact JSON object per line) and produces the same [`CaseResult`] shape for
+//! the `harness` comparators:
 //!
-//! * `capi_v0145` channel — the pinned dss-python 0.15.7 / dss_capi 0.14.5
-//!   oracle via `tools/oracle/oracle_server.py`. Served by a persistent
-//!   [`WorkerPool`]; serial/isolate cases use the one-shot [`Oracle`].
-//! * `r4133` channel — the official EPRI `OpenDSSDirect.dll` r4133 via the
-//!   in-house `epri-worker` bridge (Phase A). Served by a persistent
-//!   [`EpriPool`]; serial/isolate cases use the one-shot [`EpriOneShot`].
+//! * `capi_v0145` channel: the pinned dss-python 0.15.7 / dss_capi 0.14.5 via
+//!   `tools/oracle/oracle_server.py`. Served by a persistent [`WorkerPool`],
+//!   serial/isolate cases use the one-shot [`Oracle`].
+//! * `r4133` channel: the official EPRI `OpenDSSDirect.dll` r4133 via the
+//!   in-house `epri-worker` bridge. Served by a persistent [`EpriPool`],
+//!   serial/isolate cases use the one-shot [`EpriOneShot`].
 //!
-//! [`Oracle`] additionally backs the opt-in report tests (`corpus_live_classify`
-//! / `_properties`). The report-only EPRI/Oddie `opendss(rev)` path was retired in
-//! Phase D — the `r4133` channel now gates through the in-house bridge.
-//! [`Channel`] unifies all four transports for the scheduler.
+//! [`Oracle`] also backs the opt-in report tests (`corpus_live_classify` /
+//! `_properties`). [`Channel`] unifies all four transports for the scheduler.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
@@ -36,10 +33,10 @@ use crate::harness::{
 use crate::manifest::SolvableCase;
 
 // ---------------------------------------------------------------------------
-// Response + per-case model (deserialized from the oracle's JSON; unchanged).
+// Response + per-case model (deserialized from the engine's JSON).
 // ---------------------------------------------------------------------------
 
-/// One oracle response: `{ok, error?, result?}`.
+/// One engine response: `{ok, error?, result?}`.
 #[derive(Debug, Deserialize)]
 pub(crate) struct Resp {
     pub(crate) ok: bool,
@@ -49,7 +46,7 @@ pub(crate) struct Resp {
     pub(crate) result: Option<Value>,
 }
 
-/// The per-case model the oracle returns (mirrors the Rust capture).
+/// The per-case model the engine returns (mirrors the Rust capture).
 #[derive(Debug, Deserialize)]
 pub(crate) struct CaseResult {
     pub(crate) node_order: Vec<String>,
@@ -57,7 +54,7 @@ pub(crate) struct CaseResult {
     pub(crate) checkpoints: Vec<Checkpoint>,
     #[serde(default)]
     pub(crate) autoadd_log: Option<String>,
-    /// `GOLDEN_REBASE_PLAN.md` G1.10a — the run-produced FILE SET: every
+    /// The run-produced FILE SET: every
     /// filesystem entry the run created under the case dir, `/`-joined,
     /// ASCII-case-folded, sorted, a trailing `/` marking a created directory
     /// (`dss_epri::guard::normalize_created_name`). Run-level, not per step —
@@ -71,8 +68,7 @@ pub(crate) struct CaseResult {
     /// created nothing" — is the common, legitimate answer.
     #[serde(default)]
     pub(crate) run_files: Option<Vec<String>>,
-    /// `GOLDEN_REBASE_PLAN.md` G1.10b, coordinator decision D40(6) — the
-    /// created-file names (normalized and sorted like [`Self::run_files`])
+    /// The created-file names (normalized and sorted like [`Self::run_files`])
     /// whose CONTENTS the transport copied into this case's sidecar directory
     /// ([`run_file_contents_dir`]). The bytes travel on disk, not in this
     /// reply: the selection reaches ~19 MB per channel per full drive.
@@ -85,7 +81,7 @@ pub(crate) struct CaseResult {
     /// smaller set (`harness::run_files::read_sidecar`).
     #[serde(default)]
     pub(crate) run_file_contents: Option<Vec<String>>,
-    /// `GOLDEN_REBASE_PLAN.md` G1.10c — the run-created demand-interval tree's
+    /// The run-created demand-interval tree's
     /// CONTENTS, as `normalized member name -> path relative to the request's
     /// sidecar directory` ([`di_sidecar_dir`]). The files themselves are copied
     /// there by the transport, because the channel's own `CorpusGuard` sweeps
@@ -98,28 +94,25 @@ pub(crate) struct CaseResult {
     /// deck wrote no DI tree" — is the common, legitimate answer.
     #[serde(default)]
     pub(crate) di: Option<std::collections::BTreeMap<String, String>>,
-    /// `GOLDEN_REBASE_PLAN.md` G1.10a, coordinator decision D32(2) — the
-    /// created entries the channel's OWN hygiene guard could not remove
+    /// The created entries the channel's OWN hygiene guard could not remove
     /// (`tools/oracle/corpus_guard.py::CorpusGuard.sweep_failed`,
     /// `dss_epri::guard::CorpusGuard::finish`), normalized like
     /// [`Self::run_files`].
     ///
     /// Not flag-gated: every transport reports it on every case, because a
     /// dropping one producer leaves behind is in the NEXT producer's pre-run
-    /// snapshot and silences that name in its created set — which is exactly how
-    /// dss_capi's never-closed Storage trace stream
-    /// (`src/PCElements/Storage.pas:872`) made the `r4133` channel look green.
-    /// [`crate::runner::assert_swept_clean`] fails the case on a non-empty list,
-    /// naming the producer.
+    /// snapshot and silences that name in its created set, which is how
+    /// dss_capi's never-closed Storage trace stream can make the `r4133`
+    /// channel look green. [`crate::runner::assert_swept_clean`] fails the case
+    /// on a non-empty list, naming the producer.
     ///
-    /// `Option` since the G1.10a audit settlement (finding AT-3): as a plain
-    /// `Vec<String>` behind `serde(default)` a reply that stopped emitting the
-    /// key deserialized to `[]` and disarmed the D32(2) rail in silence. `None`
-    /// is now a broken transport and fails the case, `Some([])` the clean sweep.
+    /// `Option`, not a defaulted `Vec<String>`: a reply that stopped emitting
+    /// the key would deserialize to `[]` and disarm the sweep rail in silence.
+    /// `None` is a broken transport and fails the case, `Some([])` the clean
+    /// sweep.
     #[serde(default)]
     pub(crate) sweep_failed: Option<Vec<String>>,
-    /// `GOLDEN_REBASE_PLAN.md` G1.10a, coordinator decision D33(1) — the
-    /// message of the exception the transport's own D32(2)(a) teardown `clear`
+    /// The message of the exception the transport's own teardown `clear`
     /// raised, or `None` when it completed. The pinned dss_capi 0.14.5 faults
     /// on that second `clear` on the two AutoAdd decks
     /// (`tools/oracle/oracle_server.py::run_case`), and the whole compared
@@ -128,9 +121,8 @@ pub(crate) struct CaseResult {
     /// the case normally. The transport that raised exits after replying, so a
     /// pooled worker is respawned rather than reused
     /// ([`WorkerPool::checkin`]). The `r4133` transport issues no teardown
-    /// `clear` (its engines close their own trace files, r4133
-    /// `Version8/Source/PCElements/Storage.pas:1085`) and therefore always
-    /// omits the key — `serde(default)` makes that `None`.
+    /// `clear` (r4133 closes its own trace files) and therefore always omits
+    /// the key — `serde(default)` makes that `None`.
     #[serde(default)]
     pub(crate) teardown_error: Option<String>,
 }
@@ -158,9 +150,9 @@ pub(crate) struct Checkpoint {
     pub(crate) monitors: Vec<MonitorCap>,
     #[serde(default)]
     pub(crate) meters: Vec<MeterCap>,
-    /// GOLDEN_REBASE G1.6b: the `PDElements` interface walk. `Option`, not
-    /// `Vec`: 96 of the 372 walked live capi cases legitimately hold no PD
-    /// element, so `None` ("the channel was not asked / did not answer") must
+    /// The `PDElements` interface walk. `Option`, not `Vec`: some walked live
+    /// cases legitimately hold no PD element, so `None` ("the channel was not
+    /// asked / did not answer") must
     /// stay distinguishable from `Some([])` ("asked, this circuit has none").
     /// Both transports emit exactly that (`oracle_server.py` sends `null` with
     /// the flag off; `dss-epri`'s `Checkpoint.pd_elements` is the same
@@ -168,7 +160,7 @@ pub(crate) struct Checkpoint {
     /// first shape into a case failure.
     #[serde(default)]
     pub(crate) pd_elements: Option<Vec<PdElementCap>>,
-    /// GOLDEN_REBASE G1.6(i): the `Meters` reliability payload, carried by the
+    /// The `Meters` reliability payload, carried by the
     /// LAST checkpoint only — `RelCalc` runs once per case, after the last
     /// solve, on all three engines (it is not idempotent). `Option` for the
     /// [`super::harness::capture_guard::require_capture_opt`] reason
@@ -187,62 +179,58 @@ pub(crate) struct Checkpoint {
     pub(crate) ctrlqueue: Vec<String>,
     #[serde(default)]
     pub(crate) all_properties: Vec<PropsCap>,
-    /// `GOLDEN_REBASE_PLAN.md` G1.9 — the five `Circuit` aggregates. Optional
+    /// The five `Circuit` aggregates. Optional
     /// in the schema only so a transport that predates the surface deserializes;
     /// the comparator DEMANDS it on every live case (the surface is unflagged
     /// and universal), so `None` fails the case rather than skipping it.
     #[serde(default)]
     pub(crate) aggregates: Option<AggregatesCap>,
-    /// `GOLDEN_REBASE_PLAN.md` G1.9 — the ten `Solution` scalars, same
+    /// The ten `Solution` scalars, same
     /// presence contract as [`Checkpoint::aggregates`].
     #[serde(default)]
     pub(crate) solution_scalars: Option<SolutionScalarsCap>,
-    /// G1.4a: every bus's voltage surface, in the oracle's `BusList` order.
-    /// Later sub-steps appended their arms to the SAME per-bus walk rather than
-    /// taking a checkpoint slot of their own — `Distance` (G1.4b), the six
-    /// short-circuit arrays (G1.5, behind the `zsc` request field), the
-    /// sequence/line-to-line pairs (G1.4c) and the two at-bus name lists
-    /// (G1.4d, read last because they are the r4133 channel's only
+    /// Every bus's voltage surface, in the engine's `BusList` order. The other
+    /// per-bus arms extend the same walk rather than taking a checkpoint slot of
+    /// their own: `Distance`, the six short-circuit arrays (behind the `zsc`
+    /// request field), the sequence/line-to-line pairs and the two at-bus name
+    /// lists (read last because they are the r4133 channel's only
     /// `ModeEffect::Impure` bus reads). All of them ride the one `compare_bus`
     /// flag; `crates/dss-core/tests/corpus_gate.rs` pins that from both
     /// transports' source text.
     #[serde(default)]
     pub(crate) buses: Vec<BusCap>,
-    /// G1.4a: `Circuit.AllBusVmagPu` — every NODE's per-unit voltage magnitude,
-    /// in bus-list order x the bus's INTERNAL node index (the `AllNodeNames`
+    /// `Circuit.AllBusVmagPu`: every node's per-unit voltage magnitude, in
+    /// bus-list order x the bus's internal node index (the `AllNodeNames`
     /// permutation, which is neither the per-bus ascending-node-number order of
-    /// [`BusCap`] nor the gated `YNodeOrder`). `CAPI_Circuit.pas:521-548` ==
-    /// r4133 `Circuit.AllBusMagPu`, `DCircuit.pas:481-500`.
+    /// [`BusCap`] nor the gated `YNodeOrder`). r4133 names it
+    /// `Circuit.AllBusMagPu`.
     #[serde(default)]
     pub(crate) all_bus_vmag_pu: Vec<f64>,
-    /// G1.4b: `Circuit.AllBusDistances` — each bus's `DistFromMeter` in km,
-    /// `BusList` order, the same sequence [`Checkpoint::buses`] walks
-    /// (`CAPI_Circuit.pas:671-688` == r4133 `DCircuit.pas:566-580`, `CircuitV`
-    /// 12). Rides the `compare_bus` flag on both transports.
+    /// `Circuit.AllBusDistances`: each bus's `DistFromMeter` in km, `BusList`
+    /// order, the same sequence [`Checkpoint::buses`] walks. Rides the
+    /// `compare_bus` flag on both transports.
     #[serde(default)]
     pub(crate) all_bus_distances: Vec<f64>,
-    /// G1.4b: `Circuit.AllNodeDistances` — the owning bus's `DistFromMeter`
-    /// repeated once per node, in the SAME permutation as
-    /// [`Checkpoint::all_bus_vmag_pu`] (bus x internal node index,
-    /// `CAPI_Circuit.pas:697-722` == r4133 `DCircuit.pas:582-604`, `CircuitV`
-    /// 13) — not the per-bus ascending-node-number order.
+    /// `Circuit.AllNodeDistances`: the owning bus's `DistFromMeter` repeated
+    /// once per node, in the same permutation as
+    /// [`Checkpoint::all_bus_vmag_pu`] (bus x internal node index), not the
+    /// per-bus ascending-node-number order.
     #[serde(default)]
     pub(crate) all_node_distances: Vec<f64>,
-    /// `GOLDEN_REBASE_PLAN.md` G1.7 — the six order-free `ITopology` quantities.
-    /// Unlike G1.9's two, this surface is **flag-gated**
+    /// The six order-free `ITopology` quantities.
+    /// Unlike the aggregates and solution scalars, this surface is **flag-gated**
     /// (`SolvableCase::compare_topology`), so `None` is the honest reply when the
     /// case did not request it; the comparator's presence rail
     /// (`harness::capture_guard::require_capture_opt`) turns `None` into a
     /// failure exactly when the flag IS on.
     ///
     /// Both transports read it **strictly last** in a step — the first
-    /// `Topology` read builds the memoized tree and rewrites
-    /// `Checked`/`IsIsolated`/`BusChecked` on every element (r4133
-    /// `Common/Circuit.pas:2932-2950`, `:2937-2947`) — and
+    /// `Topology` read builds the memoized tree and rewrites the checked and
+    /// isolated flags on every element, and
     /// `crates/dss-core/tests/capture_order.rs` asserts that from their source.
     #[serde(default)]
     pub(crate) topology: Option<TopologyCap>,
-    /// `GOLDEN_REBASE_PLAN.md` G1.8 — the four flat incidence quantities
+    /// The four flat incidence quantities
     /// (`IncMatrix`, `Laplacian`, `IncMatrixRows`, `IncMatrixCols`), read after
     /// one `CalcIncMatrix` + `CalcLaplacian` pair. Flag-gated exactly like
     /// [`Checkpoint::topology`] (`SolvableCase::compare_inc_matrix`), with the
@@ -251,10 +239,9 @@ pub(crate) struct Checkpoint {
     /// the flag IS on.
     ///
     /// Both transports read it **strictly last** in a step, after `topology`:
-    /// building the matrix is a state write that on r4133 also moves
-    /// `ActiveCktElement` (`AddSeriesReac2IncMatrix` calls `ActiveDSSClass.First`,
-    /// `Common/Solution.pas:3007-3010`), and it must not precede the topology
-    /// read that memoizes `Branch_List`.
+    /// building the matrix is a state write that on r4133 also moves the active
+    /// circuit element (its series-reactor pass walks the class), and it must
+    /// not precede the topology read that memoizes the branch list.
     /// `crates/dss-core/tests/capture_order.rs` asserts that from their source.
     #[serde(default)]
     pub(crate) inc_matrix: Option<IncMatrixCap>,
@@ -272,30 +259,30 @@ pub(crate) fn oracle_timeout() -> Duration {
     )
 }
 
-/// The `oracle_server.py` `run` request for a case — the single builder both
-/// transports share (byte-compatible with the pre-Phase-B request).
+/// The `oracle_server.py` `run` request for a case, the single builder both
+/// transports share.
 ///
-/// `deck` is what the producer compiles — its own scratch copy of the case
-/// (`scratch::ScratchCopy`, RETRO_FIXES RF-I00-01) — while `case_path`, the
+/// `deck` is what the producer compiles, its own scratch copy of the case
+/// (`scratch::ScratchCopy`), while `case_path`, the
 /// VENDORED deck, keys the gate's sidecars (`run_file_contents_dir`, and the
 /// DI sidecar through the gate-side `sidecar_key` field the transports never
 /// read), so a sidecar's location is the same for every copy of one case.
 ///
-/// RF-I00-01 part 2: `deck`'s folder is what each transport's corpus guard
+/// `deck`'s folder is what each transport's corpus guard
 /// (`dss_epri::guard::CorpusGuard`, `corpus_guard.py::CorpusGuard`) brackets,
 /// so a vendored `deck` is refused here, before any transport sees it
 /// ([`crate::scratch::not_vendored`]).
 pub(crate) fn build_run_request(deck: &str, case_path: &str, c: &SolvableCase) -> Value {
     crate::scratch::not_vendored(std::path::Path::new(deck), "engines::build_run_request");
-    // G1.5: the six short-circuit arms are appended to the ONE per-bus walk
-    // `buses` drives on BOTH transports, so `zsc` alone would ship an empty
-    // surface that `require_capture` — not the comparator — would have to
-    // catch. Asserted here, where the two flags meet, instead of or-ing them
-    // into the request behind the manifest's back (§2.a).
+    // The six short-circuit arms extend the one per-bus walk `buses` drives on
+    // both transports, so `zsc` alone would ship an empty surface that
+    // `require_capture` (not the comparator) would have to catch. Asserted
+    // here, where the two flags meet, instead of or-ing them into the request
+    // behind the manifest's back.
     assert!(
         c.compare_bus || !c.compare_zsc,
         "{case_path}: compare_zsc without compare_bus — the short-circuit arms \
-         ride the bus walk; set both (GOLDEN_REBASE_PLAN.md WP-G1 G1.5 §2.a)"
+         ride the bus walk; set both"
     );
     let probes: Vec<Value> = c
         .probes
@@ -320,11 +307,11 @@ pub(crate) fn build_run_request(deck: &str, case_path: &str, c: &SolvableCase) -
         "all_properties": c.compare_all_properties,
         "pd_elements": c.compare_pdelements,
         "reliability": c.compare_reliability,
-        // G1.7: both transports honor this key (`oracle_server.py` reads
+        // Both transports honor this key (`oracle_server.py` reads
         // `req["topology"]`, `dss-epri`'s `RunRequest::topology`) and both read
         // the surface strictly last in the step.
         "topology": c.compare_topology,
-        // G1.8: same contract — both transports honor this key
+        // Same contract: both transports honor this key
         // (`oracle_server.py` reads `req["inc_matrix"]`, `dss-epri`'s
         // `RunRequest::inc_matrix`) and both drive the `CalcIncMatrix` +
         // `CalcLaplacian` pair and read its four quantities STRICTLY LAST in
@@ -332,21 +319,20 @@ pub(crate) fn build_run_request(deck: &str, case_path: &str, c: &SolvableCase) -
         "inc_matrix": c.compare_inc_matrix,
         "global_result": c.compare_global_result,
         "autoadd_log": c.compare_autoadd_log,
-        // G1.10a: same contract — both transports honor this key
+        // Same contract: both transports honor this key
         // (`oracle_server.py` reads `req["run_files"]`, `dss-epri`'s
         // `RunRequest::run_files`) and both report the set from the very
         // `CorpusGuard` that sweeps the case dir, STRICTLY LAST of the run
         // (after `autoadd_log`, which itself reads a file off disk) and inside
         // the guard's scope.
         "run_files": c.compare_run_files,
-        // G1.10b: the CONTENTS half of the same flag. The SELECTION is computed
+        // The contents half of the same flag. The selection is computed
         // once here, on the gate side, and shipped as data — both transports
         // match it with one shared rule (`dss_epri::guard::selects_contents` and
         // its Python twin `tools/oracle/corpus_guard.py::selects_contents`) and
         // neither re-derives which files it must hand back. The bytes come back
-        // through the gate-owned sidecar directory (decision D40(6)), never
-        // inline. Off ⇒ an empty list and no directory, and the reply omits the
-        // key, which keeps it byte-identical to a pre-G1.10b one.
+        // through the gate-owned sidecar directory, never inline. Off ⇒ an
+        // empty list and no directory, and the reply omits the key.
         "run_file_contents": if c.compare_run_files {
             dss_epri::guard::RUN_FILE_CONTENTS_PATTERNS.to_vec()
         } else {
@@ -355,39 +341,38 @@ pub(crate) fn build_run_request(deck: &str, case_path: &str, c: &SolvableCase) -
         "run_file_contents_dir": c
             .compare_run_files
             .then(|| run_file_contents_dir(case_path).to_string_lossy().into_owned()),
-        // G1.10c: same contract, one key honored by BOTH transports
+        // Same contract, one key honored by both transports
         // (`oracle_server.py` reads `req["di"]`, `dss-epri`'s
         // `RunRequest::di`). The sidecar directory the transports copy into
         // travels with it as `di_dir`, attached per CHANNEL by
         // [`attach_di_sidecar`] — a request built here is channel-agnostic.
         "di": c.compare_di,
-        // WP-G1 G1.3a: the per-element derived polar channels. One key for the
+        // The per-element derived polar channels. One key for the
         // whole `compare_derived` surface, honored by BOTH transports —
         // `tools/oracle/oracle_server.py::capture_all_elements` (capi_v0145) and
         // `crates/dss-epri/src/capture.rs::RunRequest::derived` (r4133) — so the
         // two channels can never disagree about what was requested. Absent ⇒ off
-        // on both, which is what keeps an off-flag reply byte-identical to the
-        // pre-G1.3a payload.
+        // on both.
         "derived": c.compare_derived,
-        // WP-G1 G1.3d(i): the per-element discrete index/name scalars
+        // The per-element discrete index/name scalars
         // (`NumTerminals`/`NumConductors`/`NumPhases`/`EnergyMeter`/`NodeOrder`
         // plus `Enabled`). One key for the whole `compare_element_extras`
         // surface, honored by BOTH transports —
         // `tools/oracle/oracle_server.py::capture_all_elements` (capi_v0145)
         // and `crates/dss-epri/src/capture.rs::RunRequest::element_extras`
-        // (r4133). Absent ⇒ off on both. G1.3d(ii) widens the same key.
+        // (r4133). Absent ⇒ off on both.
         "element_extras": c.compare_element_extras,
         "warn_and_continue": !c.expect_warnings.is_empty(),
     })
 }
 
 /// The gate-owned sidecar directory one case's run-file CONTENTS travel
-/// through (`GOLDEN_REBASE_PLAN.md` G1.10b, coordinator decision D40(6)).
+/// through.
 ///
 /// Under the gate's own scratch root ([`gate_scratch_root`]), never inside
 /// `tests/corpus/` and never in the case directory: a byte the gate writes next
 /// to a vendored deck would be a corpus dropping, and one inside the case dir
-/// would land in the very created-file SET G1.10a compares.
+/// would land in the very created-file set the run-file surface compares.
 ///
 /// One directory per CASE, not per channel, and the transport WIPES it before
 /// copying: the scheduler runs a `both` case's channels strictly in sequence
@@ -399,8 +384,7 @@ pub(crate) fn build_run_request(deck: &str, case_path: &str, c: &SolvableCase) -
 /// and the case would fail loudly.
 ///
 /// The key is [`case_key`] — the one sidecar naming convention this gate has,
-/// shared with G1.10c's demand-interval sidecar since the G1.10c landing deduped
-/// the two (coordinator decision D42(5)): the case path made filename-safe plus
+/// shared with the demand-interval sidecar: the case path made filename-safe plus
 /// a process-stable FNV-1a digest of the whole path, so two decks whose
 /// sanitized spellings collide still get their own directory.
 pub(crate) fn run_file_contents_dir(case_path: &str) -> PathBuf {
@@ -450,10 +434,10 @@ fn describe_exit_code(code: i32) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// One-shot oracle (fresh process per request).
+// One-shot engine (fresh process per request).
 // ---------------------------------------------------------------------------
 
-/// A handle to a pinned/target-rev oracle driven ONE request per subprocess:
+/// A handle to the pinned dss-python driven ONE request per subprocess:
 /// write one line, close stdin (server EOFs after replying), drain
 /// stdout/stderr on threads with a deadline.
 pub(crate) struct Oracle {
@@ -468,21 +452,19 @@ impl Oracle {
         Oracle {
             python,
             server: oracle_server_path(),
-            // Pin the engine selector EXPLICITLY (audit WP-U0): an ambient
-            // `DSS_ORACLE_ENGINE=capi015|oddie` must never re-bind the DEFAULT
-            // pinned 0.14.5 oracle.
+            // Pin the engine selector explicitly: an ambient
+            // `DSS_ORACLE_ENGINE` must never re-bind the pinned 0.14.5 engine.
             envs: vec![("DSS_ORACLE_ENGINE", "capi".to_string())],
         }
     }
 
-    /// Construct **and ping-verify** the pinned `capi_v0145` one-shot oracle.
-    /// `spec` must be `None` (the target-rev one-shot shim retired in Phase C —
-    /// the `r4133` channel now gates through the [`EpriPool`]/[`EpriOneShot`]);
-    /// a `Some(_)` is a caller bug.
+    /// Construct **and ping-verify** the pinned `capi_v0145` one-shot engine.
+    /// `spec` must be `None` (the `r4133` channel gates through the
+    /// [`EpriPool`]/[`EpriOneShot`]); a `Some(_)` is a caller bug.
     pub(crate) fn for_spec(spec: Option<&str>) -> Oracle {
         assert!(
             spec.is_none(),
-            "Oracle::for_spec target-rev shim retired (§4 Phase C) — r4133 gates via the epri pool"
+            "Oracle::for_spec takes no revision — r4133 gates via the epri pool"
         );
         let o = Oracle::new();
         o.ping();
@@ -614,7 +596,7 @@ impl Oracle {
 
     /// Run one case and return the oracle's per-step model.
     pub(crate) fn run_case(&self, case_path: &str, c: &SolvableCase) -> CaseResult {
-        // RF-I00-01: the oracle compiles its own fresh scratch copy of the case,
+        // The engine compiles its own fresh scratch copy of the case,
         // removed (or the case failed naming the producer) before this returns.
         let copy = crate::scratch::ScratchCopy::new(case_path, CAPI_TAG);
         // This one-shot is the `capi_v0145` transport, so the DI sidecar is the
@@ -636,18 +618,15 @@ impl Oracle {
 
 /// Recycle a worker after this many served cases. **Default 1** (a fresh worker
 /// per case). Persistent `oracle_server.py` / `epri-worker` processes accumulate
-/// global state that `clear` does NOT fully reset — `Set` options and
-/// memory-mapped loadshape handles chief among them (the plan's R2 risk). The
-/// Phase D flip to `engines:"both"` widened the r4133 pool's exposure enough to
-/// surface this live as *intermittent* cross-deck contamination on BOTH channels
-/// (a pooled worker that had served, e.g., a relay/harmonics/geometry deck would
-/// occasionally hand the next deck a stale option/mmap → ~1e-3 divergences that
-/// vanish serial/one-shot). Recycling per case makes every case see a never-used
-/// worker, so the gate is **deterministic** (verified over consecutive full runs).
-/// The persistent-pool win is now only the amortized *startup* (workers are still
-/// spawned once up front); per-case respawn on check-in overlaps across the pool
-/// and keeps the full BOTH gate well under the §3.4 target. Raise via
-/// `DSS_GATE_RECYCLE_AFTER=<n>` for a faster, non-deterministic dev loop.
+/// global state that `clear` does not fully reset, `Set` options and
+/// memory-mapped loadshape handles chief among them, so a pooled worker that
+/// served one deck can hand the next a stale option or mapping: intermittent
+/// cross-deck contamination on both channels that vanishes in a serial or
+/// one-shot run. Recycling per case makes every case see a never-used worker,
+/// so the gate is **deterministic**. The persistent pool then only amortizes
+/// startup (workers are spawned once up front), and per-case respawn on
+/// check-in overlaps across the pool. Raise via `DSS_GATE_RECYCLE_AFTER=<n>`
+/// for a faster, non-deterministic dev loop.
 fn recycle_after() -> usize {
     static N: OnceLock<usize> = OnceLock::new();
     *N.get_or_init(|| {
@@ -876,7 +855,7 @@ impl WorkerPool {
 // r4133 channel: the in-house `epri-worker` bridge (persistent pool + one-shot).
 // ---------------------------------------------------------------------------
 
-/// Resolve the `epri-worker` binary (§3.1): `DSS_EPRI_WORKER` env override →
+/// Resolve the `epri-worker` binary: `DSS_EPRI_WORKER` env override →
 /// `$CARGO_TARGET_DIR/<profile>/epri-worker(.exe)` (when the target dir is
 /// redirected, which is where the fallback build below actually writes) →
 /// `<workspace>/target/<profile>/…` → OnceLock `cargo build` fallback (loud
@@ -906,22 +885,20 @@ fn epri_worker_bin() -> PathBuf {
             let root: PathBuf = [env!("CARGO_MANIFEST_DIR"), "..", ".."].iter().collect();
             // `CARGO_TARGET_DIR` first when it is set: the fallback build below
             // honours it, so the in-tree `target/` would otherwise be searched for
-            // a binary cargo just wrote somewhere else (RP3.13 audit note T7 — it
-            // blocked running the gate from an out-of-tree copy).
+            // a binary cargo just wrote somewhere else, and the gate could not
+            // run from an out-of-tree copy.
             let candidates: Vec<PathBuf> = std::env::var_os("CARGO_TARGET_DIR")
                 .map(PathBuf::from)
                 .into_iter()
                 .chain(std::iter::once(root.join("target")))
                 .map(|d| d.join(profile).join(exe))
                 .collect();
-            // Freshness, not mere existence (G1.4a audit settlement T5): a scoped
+            // Freshness, not mere existence: a scoped
             // `cargo test -p dss-core --test corpus_gate` does NOT rebuild the
             // bridge, so an existing binary can predate a `crates/dss-epri`
-            // change — which is how a scoped r4133 run could silently gate
-            // against a worker without the D13 registry pins (measured: F9's
-            // first poisoned-registry probe read 50/50 off a four-minute-old
-            // worker, 60/60 after a rebuild). An out-of-date binary falls
-            // through to the build below.
+            // change, and a scoped r4133 run would silently gate against a
+            // stale worker. An out-of-date binary falls through to the build
+            // below.
             let epri = root.join("crates").join("dss-epri");
             let src_mtime = [
                 newest_mtime(&epri.join("src")),
@@ -973,18 +950,14 @@ fn epri_worker_bin() -> PathBuf {
         .clone()
 }
 
-/// The r4133 channel's premise, asserted rather than assumed (G1.4a audit
-/// settlement T5): the `epri-worker` the gate resolves is not older than the
-/// bridge sources it was built from. [`epri_worker_bin`] rebuilds a stale one,
-/// so this test fails only if the rebuild itself failed to refresh the binary —
-/// and it names the hazard the D13 rule (`TESTING.md`) depends on: a scoped
-/// `cargo test -p dss-core --test corpus_gate` builds no workspace binary.
-///
-/// `DSS_EPRI_WORKER` is an explicit operator override (a hand-built or archived
-/// bridge): the resolver honours it verbatim, so the freshness claim is about
-/// the resolved default only.
+/// The `epri-worker` the gate resolves is not older than the bridge sources it
+/// was built from, since a scoped `cargo test -p dss-core --test corpus_gate`
+/// builds no workspace binary. An explicit `DSS_EPRI_WORKER` is honoured
+/// verbatim, so the claim covers the resolved default only.
 #[test]
 fn the_epri_worker_binary_is_not_older_than_its_bridge_sources() {
+    // `epri_worker_bin` rebuilds a stale binary, so this fails only if the
+    // rebuild itself failed to refresh it.
     let bin = epri_worker_bin();
     assert!(
         bin.is_file(),
@@ -1013,28 +986,23 @@ fn the_epri_worker_binary_is_not_older_than_its_bridge_sources() {
     );
 }
 
-/// Coordinator decision **D33(1)**: the D32(2)(a) teardown `clear` is guarded,
-/// and a PERSISTENT worker whose teardown raised must still deliver its reply
-/// and then LEAVE, so the pool hands the next case a fresh process instead of
-/// one an access violation may have poisoned.
-///
-/// The producer is the pinned dss_capi 0.14.5 on the AutoAdd decks
-/// (`tests/corpus/modes/autoadd/*.dss`): the second `clear` of the run raises
-/// `DSSException (#303) ... Access violation` — the same backend instability the
-/// manifest note already records as a process-EXIT segfault (`GAPS_PLAN.md`
-/// 2.2). Driven on a COPY of the deck in a scratch directory, never on the
-/// corpus row, so this test can never write into the window of the manifest case
-/// of the same name (the same-directory race of D33(2)).
-///
-/// Three claims, in order: the reply survives the fault in full (the whole
-/// surface is captured BEFORE the teardown); the worker is gone by the next
-/// request (`Worker::request` -> `None`, i.e. `broken`); and
-/// [`WorkerPool::call`]'s respawn path serves the SAME faulting case twice in a
-/// row without losing one. If the pinned oracle is ever fixed, the first
-/// assertion fires — read it as "the guard and `teardown_error` can go", not as
-/// a regression.
+/// A persistent capi worker whose guarded teardown `clear` raises still delivers
+/// its whole reply and then exits, so the pool hands the next case a fresh
+/// process. The pinned dss_capi 0.14.5 faults on that second `clear` of an
+/// AutoAdd deck.
 #[test]
 fn a_capi_worker_whose_teardown_clear_raises_replies_in_full_then_exits_for_respawn() {
+    // Driven on a copy of the deck in a scratch directory, never on the corpus
+    // row, so this test never writes into the window of the manifest case of
+    // the same name.
+    //
+    // Three claims, in order: the reply survives the fault in full (the whole
+    // surface is captured before the teardown), the worker is gone by the next
+    // request (`Worker::request` -> `None`, i.e. `broken`), and
+    // `WorkerPool::call`'s respawn path serves the same faulting case twice in a
+    // row without losing one. If the pinned engine is ever fixed, the first
+    // assertion fires: read it as "the guard and `teardown_error` can go", not as
+    // a regression.
     let root: PathBuf = [env!("CARGO_MANIFEST_DIR"), "..", ".."].iter().collect();
     let deck = root.join("tests/corpus/modes/autoadd/autoadd.dss");
     let dir = std::env::temp_dir().join(format!("dss_teardown_d33_{}", std::process::id()));
@@ -1070,12 +1038,12 @@ fn a_capi_worker_whose_teardown_clear_raises_replies_in_full_then_exits_for_resp
     let err = cr.teardown_error.unwrap_or_else(|| {
         panic!(
             "the pinned dss_capi 0.14.5 no longer faults on the AutoAdd teardown \
-             `clear` — D33(1)'s guard, `teardown_error` and this test can be retired"
+             `clear` — the teardown guard, `teardown_error` and this test can be retired"
         )
     });
     assert!(
         err.contains("clear") && err.contains("Access violation"),
-        "unexpected teardown fault (D33(1) measured `#303 ... clear ... Access violation`): {err}"
+        "unexpected teardown fault (expected `#303 ... clear ... Access violation`): {err}"
     );
     // The fault is a TEARDOWN: everything compared is read before it.
     assert_eq!(
@@ -1222,9 +1190,9 @@ fn assert_epri(w: &mut Worker, timeout: Duration) {
 /// A pool of N persistent `epri-worker` processes (r4133 channel), mirroring
 /// [`WorkerPool`]'s lifecycle: one in-flight request each, per-request deadline
 /// → kill/respawn/retry-once-then-fail-case, recycled per [`recycle_after`]
-/// (default 1 — a fresh worker per case, the Phase-D determinism fix; see its
-/// doc). A DLL crash (`#303`, never sent — ledgered `skip` in Phase D) kills
-/// only that worker.
+/// (default 1, a fresh worker per case for determinism, see its doc). A DLL
+/// crash (`#303`, whose decks are never sent, a ledger `skip`) kills only that
+/// worker.
 pub(crate) struct EpriPool {
     idle: Mutex<Vec<Worker>>,
     cv: Condvar,
@@ -1333,8 +1301,7 @@ impl EpriOneShot {
     /// build a request by hand and call this one-shot directly must drive the
     /// SAME request shape the scheduler sends — otherwise the capi half of such
     /// a test would get a sidecar and the r4133 half the transport's loud "asked
-    /// for the demand-interval tree without a sidecar directory" (G1.10c audit
-    /// settlement, finding AT3-5).
+    /// for the demand-interval tree without a sidecar directory".
     pub(crate) fn call(&self, req: &Value) -> Resp {
         let req = attach_di_sidecar(req, crate::harness::PropsChannel::R4133.tag());
         let mut w = spawn_epri_worker(&self.bin);
@@ -1353,12 +1320,12 @@ impl EpriOneShot {
 }
 
 // ---------------------------------------------------------------------------
-// GOLDEN_REBASE G1.10c: the DI sidecar directory.
+// The DI sidecar directory.
 // ---------------------------------------------------------------------------
 
 /// The `capi_v0145` channel tag. It cannot be `PropsChannel::CapiV0145.tag()`
 /// (not a `const fn`), so [`the_channel_tags_are_the_gates_one_vocabulary`] ties
-/// the two spellings instead (G1.10c audit settlement, finding AT3-4).
+/// the two spellings instead.
 const CAPI_TAG: &str = "capi_v0145";
 
 /// The gate's own scratch root, `<target dir>/corpus_gate`.
@@ -1413,24 +1380,22 @@ pub(crate) fn case_digest(folded: &str) -> u64 {
 }
 
 /// Where one (case, channel) DI capture is copied to:
-/// `<target>/corpus_gate/di/<case key>/<channel>` (coordinator decision D42(5)).
+/// `<target>/corpus_gate/di/<case key>/<channel>`.
 ///
 /// The demand-interval tree is run-created, so the channel's guard sweeps it
 /// away at the end of the run (inside the channel's scratch copy, which is then
-/// removed — RF-I00-01) — while the comparison happens here, later, after the
-/// port has re-run the same case in its own copy. The
-/// transport therefore COPIES the selected files into this directory (never
-/// moves them: the guard must still sweep the original and G1.10a must still see
-/// its name).
+/// removed), while the comparison happens here, later, after this engine has
+/// re-run the same case in its own copy. The transport therefore COPIES the
+/// selected files into this directory (never moves them: the guard must still
+/// sweep the original and the run-file surface must still see its name).
 ///
-/// Lifetime, as it actually is (GOLDEN_REBASE G1.10c audit finding AC-2): the
-/// directory is prepared — and emptied of the previous run's copies — where the
-/// channel identity lives — in [`Channel::call`] (`attach_di_sidecar` →
-/// [`prepare_di_sidecar`]) as the request that asks for the tree goes out, and
-/// in the two one-shot handles' own calls ([`Oracle::run_case`],
-/// [`EpriOneShot::call`]) so a request built by hand carries one too (finding
-/// AT3-5); the attachment is idempotent. The
-/// runner removes it after a SUCCESSFUL
+/// Lifetime: the directory is prepared (and emptied of the previous run's
+/// copies) where the channel identity lives, in [`Channel::call`]
+/// (`attach_di_sidecar` → [`prepare_di_sidecar`]) as the request that asks for
+/// the tree goes out, and in the two one-shot handles' own calls
+/// ([`Oracle::run_case`], [`EpriOneShot::call`]) so a request built by hand
+/// carries one too. The attachment is idempotent. The runner removes it after a
+/// SUCCESSFUL
 /// compare (`runner.rs`, [`remove_di_sidecar`]). A case that FAILED keeps its
 /// copies deliberately, for triage, and the next run of that case empties them.
 /// No guard ever sweeps this tree — it lives under the gate's own scratch root,
@@ -1462,20 +1427,20 @@ pub(crate) fn remove_di_sidecar(case_path: &str, channel: &str) {
 /// demand-interval tree, creating it empty.
 ///
 /// [`build_run_request`] is channel-agnostic (it sees the manifest row, not the
-/// transport), while the sidecar must not be shared by the two channels — the
-/// port runs once per channel and each run writes its own DI tree. The channel
+/// transport), while the sidecar must not be shared by the two channels — this
+/// engine runs once per channel and each run writes its own DI tree. The channel
 /// handle is therefore where the two meet, exactly as it is for the channel tag
 /// itself. A request that does not ask for the tree is passed through untouched,
 /// so every other command stays byte-identical.
 fn attach_di_sidecar(req: &Value, channel: &str) -> Value {
     // Idempotent: the r4133 one-shot attaches on its own way out too, so a
     // request that already carries its sidecar is passed through rather than
-    // re-prepared (finding AT3-5).
+    // re-prepared.
     if req.get("di").and_then(Value::as_bool) != Some(true) || req.get("di_dir").is_some() {
         return req.clone();
     }
     // Keyed by the VENDORED deck (`sidecar_key`, set by `build_run_request`),
-    // not by the scratch copy the producer compiles (RF-I00-01); a request
+    // not by the scratch copy the producer compiles; a request
     // built by hand without it keys by its `case_path`, as before.
     let case_path = req
         .get("sidecar_key")
@@ -1505,10 +1470,7 @@ impl Channel<'_> {
     /// This channel's tag, DELEGATED to `harness::PropsChannel::tag` — the
     /// gate's one vocabulary for the two gating channels, and the same spelling
     /// the sidecar read-back resolves the directory through
-    /// (`runner::channel_tag`). It was a second copy of the two literals until
-    /// the G1.10c audit settlement (finding AT3-4): a re-spelling on one side
-    /// then failed loudly (a member missing from the sidecar) rather than
-    /// silently, but nothing tied the two.
+    /// (`runner::channel_tag`), so the two spellings cannot drift apart.
     pub(crate) fn tag(&self) -> &'static str {
         match self {
             Channel::CapiPool(_) | Channel::CapiOneShot(_) => {
@@ -1521,7 +1483,7 @@ impl Channel<'_> {
     }
 
     pub(crate) fn call(&self, req: &Value) -> Resp {
-        // G1.10c: a request that asks for the demand-interval tree is given THIS
+        // A request that asks for the demand-interval tree is given THIS
         // channel's sidecar directory here, where the channel identity lives;
         // everything else is passed through untouched.
         let req = &attach_di_sidecar(req, self.tag());
@@ -1547,13 +1509,9 @@ mod di_sidecar_tests {
         })
     }
 
-    /// GOLDEN_REBASE G1.10c — the reply contract the presence rail rests on:
-    /// **`None` is "not requested", `{}` is "requested, and this deck wrote no
-    /// demand-interval tree"**. Both transports emit exactly that
-    /// (`tools/oracle/oracle_server.py::run_case`,
-    /// `dss_epri::capture::run_case`), and a transport that stopped emitting the
-    /// key must not deserialize into the empty answer — that is the AT-3
-    /// finding's shape on `sweep_failed`, which cost the D32(2) rail its teeth.
+    /// A reply without the `di` key deserializes to "not requested" and `{}` to
+    /// "requested, and this deck wrote no demand-interval tree". A transport
+    /// that stopped emitting the key must not read as the empty answer.
     #[test]
     fn a_reply_without_the_di_key_is_none_and_an_empty_tree_is_some() {
         let none: CaseResult = serde_json::from_value(minimal_reply()).expect("minimal reply");
@@ -1581,11 +1539,9 @@ mod di_sidecar_tests {
         );
     }
 
-    /// The two channel tags are ONE vocabulary: the sidecar is written under
-    /// [`Channel::tag`] and read back through `harness::PropsChannel::tag`
-    /// (`runner::channel_tag`), so a re-spelling on either side must be
-    /// impossible rather than merely loud (G1.10c audit settlement, finding
-    /// AT3-4).
+    /// The sidecar is written under [`Channel::tag`] and read back through
+    /// `harness::PropsChannel::tag`, so the two channel tags must be one
+    /// vocabulary.
     #[test]
     fn the_channel_tags_are_the_gates_one_vocabulary() {
         assert_eq!(CAPI_TAG, crate::harness::PropsChannel::CapiV0145.tag());
@@ -1602,7 +1558,7 @@ mod di_sidecar_tests {
         assert_ne!(
             di_sidecar_dir(a, CAPI_TAG),
             di_sidecar_dir(a, "r4133"),
-            "the port runs once per channel and each run writes its own DI tree"
+            "this engine runs once per channel and each run writes its own DI tree"
         );
         assert_ne!(
             di_sidecar_dir(a, CAPI_TAG),
@@ -1634,12 +1590,9 @@ mod di_sidecar_tests {
         );
     }
 
-    /// The run-file CONTENTS sidecar obeys the same one convention since the
-    /// G1.10c landing deduped the two (coordinator decision D42(5)): the gate's
-    /// own scratch root plus [`case_key`]. Its twin was pinned and it was not
-    /// (merge settlement of the lane-e G1.10c landing, finding MT-3/MC-3) — and
-    /// its key moved from `DefaultHasher` to FNV-1a at that dedup, so the
-    /// per-case claim is now the one worth stating.
+    /// The run-file contents sidecar follows the DI sidecar's convention: the
+    /// gate's own scratch root plus [`case_key`], per case and never inside the
+    /// case directory.
     #[test]
     fn the_run_file_contents_sidecar_shares_the_one_sidecar_convention() {
         let a = "/corpus/family_one/x/master.dss";
@@ -1697,19 +1650,16 @@ mod di_sidecar_tests {
         }
     }
 
-    /// RF-I00-01: a request that names a scratch copy as its `case_path` and the
-    /// vendored deck as its `sidecar_key` is given the sidecar keyed by the
-    /// VENDORED deck, where the runner reads it back — never one keyed by the
-    /// copy, which the runner would not read (so a stale sidecar a failed run
-    /// kept for triage could be compared as this run's output).
-    ///
-    /// Its own fixture key: nextest runs every test in its own process, and
-    /// `only_a_request_that_asks_for_the_di_tree_is_given_a_sidecar` creates
-    /// `/corpus/x/master.dss`'s sidecar and asserts it exists, so a shared key
-    /// would let this rail's removal race that assert (RF-I00-01 settlement
-    /// audit SA-3).
+    /// A request that names a scratch copy as its `case_path` and the vendored
+    /// deck as its `sidecar_key` gets the sidecar keyed by the vendored deck,
+    /// where the runner reads it back. A sidecar keyed by the copy would leave a
+    /// stale one, kept for triage, to be compared as this run's output.
     #[test]
     fn the_di_sidecar_is_keyed_by_the_vendored_deck_not_the_copy() {
+        // Its own fixture key: nextest runs every test in its own process, and
+        // `only_a_request_that_asks_for_the_di_tree_is_given_a_sidecar` creates
+        // `/corpus/x/master.dss`'s sidecar and asserts it exists, so a shared
+        // key would let this test's removal race that assert.
         let (copy, vendored) = (
             "/scratch/0123/port/run/keyed/master.dss",
             "/corpus/keyed/master.dss",
@@ -1735,9 +1685,8 @@ mod di_sidecar_tests {
     }
 }
 
-/// RF-I00-01 (coordinator ruling 2026-09-26 14:30, answer 2): the one duty the
-/// two persistent transports keep in the copy protocol — step back to their
-/// startup directory before they reply — each with its own rail.
+/// The one duty the two persistent transports keep in the copy protocol (step
+/// back to their startup directory before they reply), each with its own rail.
 #[cfg(all(test, windows))]
 mod transport_cwd_tests {
     use super::*;
@@ -1748,8 +1697,7 @@ mod transport_cwd_tests {
 
     /// Run [`CASE`] on a live, persistent `worker` in a fresh copy, then remove
     /// the copy WHILE the worker still runs, then ping it. Both engines leave
-    /// the process working directory in the compiled deck's folder (r4133
-    /// `Executive/ExecHelper.pas:752-754`, dss_capi `SetCurrentDSSDir`), and
+    /// the process working directory in the compiled deck's folder, and
     /// Windows refuses to remove a directory that is a live process's working
     /// directory, so a transport that replied from inside the copy fails the
     /// removal here. The gate itself cannot see it: its pooled workers are
@@ -1793,14 +1741,13 @@ mod transport_cwd_tests {
         steps_out(spawn_epri_worker(&epri_worker_bin()), "r4133");
     }
 
-    /// RF-I00-01 part 2 — the request builder never hands a transport's corpus
-    /// guard a vendored deck: the request for [`CASE`] names its copy (and keys
-    /// its sidecars by the vendored deck), and the vendored deck itself is
-    /// refused before any transport could see it. Only the second call may
-    /// panic (settlement: a `should_panic` on the whole body also passed a
-    /// builder that refused the copy).
+    /// The request for [`CASE`] names its copy and keys its sidecars by the
+    /// vendored deck, and a request for the vendored deck itself is refused
+    /// before any transport could see it.
     #[test]
     fn a_request_for_a_vendored_deck_is_refused() {
+        // Only the second call may panic: a `should_panic` on the whole body
+        // would also pass a builder that refused the copy.
         let abs = crate::manifest::corpus_file(CASE);
         let case = crate::manifest::load_solvable()
             .into_iter()
@@ -1827,8 +1774,8 @@ mod transport_cwd_tests {
     }
 }
 
-/// RF-I00-02: a one-shot oracle that dies before it replies names its exit
-/// status and hands over its whole stderr.
+/// A one-shot engine that dies before it replies names its exit status and
+/// hands over its whole stderr.
 #[cfg(test)]
 mod one_shot_exit_tests {
     use super::*;

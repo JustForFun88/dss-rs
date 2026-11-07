@@ -9,9 +9,9 @@ dss-compat = { path = "../dss-compat" }
 dss-metis = { path = "../dss-metis" }
 dss-parser = { path = "../dss-parser" }
 dss-sparse = { path = "../dss-sparse" }
-# WASM user-model host (WASM_USERMODELS_PLAN §2.1): the sandboxed wasmi
-# replacement for the upstream user-written-DLL loader. Consumed by the
-# Generator (WM.3) / Storage / PVSystem / CapControl (WM.4/WM.5) call sites.
+# WASM user-model host: the sandboxed wasmi replacement for the OpenDSS
+# user-written-DLL loader. Consumed by the Generator / Storage / PVSystem /
+# CapControl call sites.
 dss-usermodel = { path = "../dss-usermodel" }
 comfy-table.workspace = true
 miette.workspace = true
@@ -23,23 +23,22 @@ uuid.workspace = true
 
 [dev-dependencies]
 serde.workspace = true
-# P5b diagnostic-render snapshots: the graphical (miette `fancy`) handler is a
+# Diagnostic-render snapshots: the graphical (miette `fancy`) handler is a
 # TEST-ONLY dependency — the shipped library stays protocol-only (the release
-# build compiles no dev-deps), matching the nushell layering. `dss-cli` (P5c)
+# build compiles no dev-deps), matching the nushell layering. `dss-cli`
 # enables it as a real dependency for the binary.
 miette = { workspace = true, features = ["fancy-no-backtrace"] }
-# MULTITHREADING_PLAN M1 benchmark baseline (also the measured proof for
-# DE_PASCALIZE P15 dss-sparse allocation hygiene). `default-features = false`
+# Benchmarks (`benches/`). `default-features = false`
 # drops the html/plotters report stack — only the timing core is needed.
 criterion = { version = "0.5", default-features = false }
 dss-sparse = { path = "../dss-sparse" }
 num-complex.workspace = true
-# Content digests for the golden provenance lock (GOLDEN_REBASE_PLAN.md §1.2,
-# `tests/golden_lock.rs`). Pure Rust, already in the workspace lock file via
+# Content digests for the golden provenance lock (`tests/golden_lock.rs`).
+# Pure Rust, already in the workspace lock file via
 # `dss-usermodel`'s fixture-hash scaffold — same version, no new closure.
 sha2 = "0.10"
 # `tests/capture_order.rs` resolves each `capture-order: <Name> (<A|B|C>)`
-# marker's D3 group through `dss_epri::modes::capture_group_of`, so the capture
+# marker's capture group through `dss_epri::modes::capture_group_of`, so the capture
 # bodies and the gate that checks them share the ONE mode table. Test-only:
 # `dss-epri` is `publish = false`, so nothing here reaches the shipped engine.
 #

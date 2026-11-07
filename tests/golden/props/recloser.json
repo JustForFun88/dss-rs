@@ -2,7 +2,7 @@
  "schema": 1,
  "oracle": {
   "engine": "EPRI OpenDSS r4133 (v11.0.0.1 Charlottesville) via AltDSS Oddie; DSS-Python 0.16.0b2",
-  "note": "WP-U2.2 r4133 Recloser rewrite (24->46 props). Regenerated per UPGRADE_PLAN 1.5; values are the Rust r4133 renders, cross-validated against oddie:r4133 (SwitchedObj/RecloseIntervals/Enabled/EventLog per 1.3-2 report-format, numeric-token compared)."
+  "note": "r4133 Recloser surface (46 props). Values are the Rust r4133 renders, cross-validated against r4133 through Oddie (SwitchedObj/RecloseIntervals/Enabled/EventLog compared on numeric tokens, the report format differs)."
  },
  "class": "recloser",
  "scenarios": [

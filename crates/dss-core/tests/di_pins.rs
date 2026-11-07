@@ -1,57 +1,49 @@
-//! **GOLDEN_REBASE G1.10c — the expected-value pins behind the demand-interval
-//! tree surface** (`compare_di`: the CONTENTS of every CSV a run creates under
+//! **The expected-value pins behind the demand-interval tree surface**
+//! (`compare_di`: the CONTENTS of every CSV a run creates under
 //! `<OutputDirectory><CaseName>/DI_yr_<year>/`, compared as a file set, header
 //! verbatim, row and field counts exact, and every cell at the calibrated tier
-//! of the physical quantity its column carries — coordinator decision
-//! **D42(1)**, the class table in `crates/dss-test-harness/src/harness/di.rs`).
+//! of the physical quantity its column carries — the class table in
+//! `crates/dss-test-harness/src/harness/di.rs`).
 //!
 //! Four facts about that surface are settled by something other than "the two
-//! sides matched", and CLAUDE.md wants each of them pinned by an expected-value
-//! test that names BOTH numbers:
+//! sides matched", and each is pinned by an expected-value test that names both
+//! numbers:
 //!
 //! * the ckt7 hourly **`kvarh`** column — the near-cancellation where no engine
 //!   computes an independent value at all, carried by two
 //!   `tests/corpus/ledger.json` rows
 //!   ([`the_ckt7_hourly_kvarh_is_a_cross_engine_indeterminate`] and its drive
-//!   [`the_ckt7_kvarh_scope_masks_that_column_and_nothing_else`], coordinator
-//!   decision **D44(1)**);
+//!   [`the_ckt7_kvarh_scope_masks_that_column_and_nothing_else`]);
 //! * the ckt7 **`Min LV Bus`** column — an argmin over a three-way tie, where
 //!   each of the three names is a correct answer
 //!   ([`the_ckt7_min_lv_bus_is_an_argmin_over_a_tie`] and
-//!   [`the_ckt7_min_lv_bus_scope_masks_that_column_and_nothing_else`],
-//!   **D42(2)(b)**, data confirmed by **D44(4)**);
+//!   [`the_ckt7_min_lv_bus_scope_masks_that_column_and_nothing_else`]);
 //! * the **capture point** — the gate reads the tree where all three producers
 //!   hold the LAST CLOSED demand-interval cycle, never the in-flight one
-//!   ([`the_di_capture_reads_the_last_closed_cycle`], **D42(6)**);
+//!   ([`the_di_capture_reads_the_last_closed_cycle`]);
 //! * the class table's **exhaustiveness over the live population**
-//!   ([`the_di_class_table_covers_every_column_of_every_live_di_file`],
-//!   **D42(1)**): the five decks' 36 files, 1 454 classified columns and
-//!   4 922 812 classified cells, re-derived from the port's own trees.
+//!   ([`the_di_class_table_covers_every_column_of_every_live_di_file`]),
+//!   re-derived from this engine's own trees.
 //!
 //! Each pin drives the **gate-side** comparator (`harness::di::compare_di` and
 //! `harness::di::classify_member`, the very code `corpus_gate::runner` calls)
-//! and takes the port's side from the port itself: the five vendored corpus
-//! decks are run, each in a fresh scratch copy (`harness::scratch`, RETRO_FIXES
-//! RF-I00-01), through the gate's own `harness::run_files::RunFileProbe`, and
-//! each tree is read exactly where the runner reads it — after the engine is
-//! dropped, before the probe sweeps. Never `.inputs/` at runtime (CLAUDE.md).
+//! and takes this engine's side from the engine itself: the five vendored
+//! corpus decks are run, each in a fresh scratch copy (`harness::scratch`),
+//! through the gate's own `harness::run_files::RunFileProbe`, and each tree is
+//! read exactly where the runner reads it — after the engine is dropped, before
+//! the probe sweeps. Never `.inputs/` at runtime.
 //!
-//! The ORACLE side of the two ckt7 pins is a literal, because the tree is
-//! run-created: each oracle transport's own `CorpusGuard` sweeps it away at the
-//! end of that run and there is nothing left here to read. Every oracle number
-//! below was measured at the gate's own capture slot by the G1.10c R part
-//! (`tmp/g110c/{capi,r4133}_files/ckt7/…`, extracted at full precision into
-//! `tmp/g110c/f4_kvarh.json` and by `tmp/g110c/f4_extract2.py`) and re-driven
-//! live by F3's full 526-case gate in both lanes; every PORT number is read live
-//! on each run of this binary, so a port-side move reds here instead of ageing
-//! into a comment.
+//! The OpenDSS side of the two ckt7 pins is a literal, because the tree is
+//! run-created: each transport's own `CorpusGuard` sweeps it away at the end of
+//! that run and there is nothing left here to read. Every OpenDSS number below
+//! was measured at the gate's own capture slot on both channels and is
+//! re-driven live by the corpus gate in both lanes; every number of this engine
+//! is read live on each run of this binary, so a move on this side reds here
+//! instead of ageing into a comment.
 //!
-//! Upstream provenance of the surface: the fastdss harness this replaces walks
-//! the same CSVs but SKIPS a file the other side does not have
-//! (`.inputs/DSS-Python`, `origin/fastdss:tests/compare_outputs.py:412-421`) and
-//! merely PRINTS a cell mismatch with its `raise` commented out (`:517-527`), so
-//! nothing there fails a run — which is why the gate's version compares the file
-//! set first and fails loudly on every difference.
+//! The gate compares the file set first and fails loudly on every difference,
+//! where the fastdss harness skips a file the other side does not have and only
+//! prints a cell mismatch.
 //!
 //! **Windows-only**, like the surface: its `r4133` channel is a Win64 DLL, so
 //! `harness::di` and `harness::run_files` are declared under `#[cfg(windows)]`.
@@ -87,7 +79,7 @@ struct DiCase {
     files: &'static [&'static str],
 }
 
-/// The population coordinator decision **D42(3)** fixed at **5** cases
+/// The population, fixed at **5** cases
 /// (`Run_Demo1.dss` issues `CloseDI` without ever enabling `DemandInterval` and
 /// writes no tree; it is pinned DI-free by
 /// `corpus_gate::scheduler::DI_FREE_CLOSEDI_CASE`, not here).
@@ -176,7 +168,7 @@ const DI_CASES: [DiCase; 5] = [
     },
 ];
 
-/// ckt7's three tied service buses (the `Min LV Bus` argmin, D42(2)(b)).
+/// ckt7's three tied service buses (the `Min LV Bus` argmin).
 const TIE_BUSES: [&str; 3] = ["s1x_1001577", "s2x_1001577", "s3x_1001577"];
 
 /// What one run of one [`DI_CASES`] row produced: the case's demand-interval
@@ -188,22 +180,20 @@ struct CaseRun {
     ckt7_tie: Vec<(String, Vec<f64>)>,
 }
 
-/// One memo PER DECK, index-aligned with [`DI_CASES`] (RETRO_FIXES RF-I00-03).
+/// One memo PER DECK, index-aligned with [`DI_CASES`].
 ///
 /// A memo lives as long as its process. The gate's runner, `cargo-nextest`, runs
-/// every test in its own process, so the single five-deck memo this replaced
-/// (`PORT`) made each of the six tests that read it run all five decks — three
-/// of them yearly runs over EPRI feeders — measured at ~155 s per test
-/// (RF-I00-01 part 3). With one memo per deck each test runs only the decks it
-/// reads: the five ckt7 pins run ckt7 alone, and only the class-table pin runs
+/// every test in its own process, so a single five-deck memo would make every
+/// test that reads it run all five decks — three of them yearly runs over EPRI
+/// feeders. With one memo per deck each test runs only the decks it reads: the five ckt7 pins run ckt7 alone, and only the class-table pin runs
 /// all five. Under `cargo test` (one process) every deck still runs once per
 /// binary, shared by every test that reads it.
 static CASE_RUNS: [OnceLock<CaseRun>; DI_CASES.len()] = [const { OnceLock::new() }; DI_CASES.len()];
 
 /// ckt7's three tied buses at the operating point the capi probe used for
 /// [`TIE_MAGNITUDES_HEX`] — `compile Master_ckt7.dss` + one `solve`
-/// (`tmp/g110c/probe_tie.py`), so the two sides of that comparison are the same
-/// feeder at the same point (audit findings AC-6 / AT-5). Read by
+/// so the two sides of that comparison are the same feeder at the same point.
+/// Read by
 /// [`the_ckt7_min_lv_bus_is_an_argmin_over_a_tie`] alone, so it has its own memo.
 static CKT7_SNAPSHOT_TIE: OnceLock<Vec<(String, Vec<f64>)>> = OnceLock::new();
 
@@ -247,7 +237,7 @@ fn corpus_deck(rel: &str) -> PathBuf {
 /// `crates/dss-core/src/solution/meters/demand_interval.rs:515-570`
 /// `close_all_di_files`) and before `RunFileProbe::finish_and_clean`, which
 /// sweeps the tree away. The deck runs in its own fresh scratch copy
-/// (`harness::scratch`, RETRO_FIXES RF-I00-01), removed after the sweep; the
+/// (`harness::scratch`), removed after the sweep; the
 /// vendored corpus is never written.
 fn run_di_case(case: &DiCase) -> CaseRun {
     let mut ckt7_tie = Vec::new();
@@ -291,14 +281,14 @@ fn run_di_case(case: &DiCase) -> CaseRun {
 
 /// Repeat, on the port, the probe that measured [`TIE_MAGNITUDES_HEX`] on
 /// `capi_v0145`: `clear` → `compile Master_ckt7.dss` → one `solve` → the three
-/// tied buses' per-node per-unit magnitudes (`tmp/g110c/probe_tie.py`).
+/// tied buses' per-node per-unit magnitudes.
 ///
 /// The yearly run above ends at hour 8 760 of the loadshape; the oracle triple
 /// is a snapshot of the same feeder at its own point, and the two are NOT the
 /// same state. Reading the port at the probe's point is what makes
 /// [`the_ckt7_min_lv_bus_is_an_argmin_over_a_tie`]'s oracle comparison a
 /// measurement at the case's calibrated voltage class instead of a hand-chosen
-/// cross-snapshot band (audit findings AC-6 / AT-5).
+/// cross-snapshot band.
 ///
 /// Its own scratch copy and run-file bracket: the compile writes the same
 /// droppings every other run of this deck does, and they are swept here
@@ -456,9 +446,8 @@ fn assert_records(measured: f64, recorded: f64, what: &str) {
     assert!(
         (measured - recorded).abs() <= 1e-9 * recorded.abs(),
         "{what}: measured {measured:e}, but this pin records {recorded:e}. The \
-         literals are the G1.10c capture (`tmp/g110c/f4_kvarh.json`, re-driven by \
-         F3's live gate); if the port moved, triage the move — never re-spell the \
-         literal to match it."
+         literals are the gate's own capture, re-driven by the live gate; if this \
+         engine moved, triage the move — never re-spell the literal to match it."
     );
 }
 
@@ -466,7 +455,7 @@ fn assert_records(measured: f64, recorded: f64, what: &str) {
 // The ledger scopes the drives run under.
 // ---------------------------------------------------------------------------
 
-/// One `tests/corpus/ledger.json` entry, checked to be the G1.10c `di` exclusion
+/// One `tests/corpus/ledger.json` entry, checked to be the `di` exclusion
 /// it claims to be, with its own `name_re` compiled into the predicate the
 /// drives use.
 ///
@@ -510,8 +499,7 @@ fn nothing_excluded(_: &str) -> bool {
 
 /// **The pins measure the state the GATE measures** — [`DI_CASES`]' run recipe
 /// and the tier the pins band at are read back out of
-/// `tests/corpus/manifests/solvable_now.json` instead of being trusted
-/// (G1.10c audit settlement, findings AT2-6 and AC2-11).
+/// `tests/corpus/manifests/solvable_now.json` instead of being trusted.
 ///
 /// Two ways this could rot silently without it: a manifest edit to `post` or
 /// `n_steps` would leave the pins running the case at a DIFFERENT operating
@@ -580,7 +568,7 @@ fn the_di_pin_cases_are_the_manifest_rows() {
 }
 
 // ---------------------------------------------------------------------------
-// (1) the ckt7 hourly `kvarh` column — D44(1).
+// (1) the ckt7 hourly `kvarh` column.
 // ---------------------------------------------------------------------------
 
 /// The two ckt7 files that carry the meter's registers. One meter, so the totals
@@ -592,9 +580,8 @@ const KVARH_FILES: [&str; 2] = [
 
 /// Every `kvarh` cell of `Example_ckt7/DI_yr_0/{DI_Totals,25607}_1.csv` that
 /// falls outside the energy class on at least one channel: `(Time, capi_v0145,
-/// r4133)`, spelled exactly as the two oracle transports wrote them at the
-/// gate's own capture slot (`tmp/g110c/f4_kvarh.json`, extracted from
-/// `tmp/g110c/{capi,r4133}_files/ckt7/`).
+/// r4133)`, spelled exactly as the two OpenDSS transports wrote them at the
+/// gate's own capture slot.
 ///
 /// **20** of these fail on `capi_v0145` and **17** on `r4133` (13 on both), out
 /// of 8 760 rows × 68 columns per file. The port's own value at each row is read
@@ -659,10 +646,8 @@ const KWH_MIN: f64 = 2106.0996;
 /// (a) `kWh / |kvarh|` over the 24 cells: the summands of the hourly reactive
 /// integration are this many times the net they cancel to.
 ///
-/// D44(1)(a) writes the range as "57x … 11 000x": **57.24** is the minimum over
-/// the 20 cells that fail on `capi_v0145` (Time 478); over ALL 24 excluded cells
-/// — what this pin asserts — it is **46.376** (Time 7395, an `r4133`-only cell).
-/// The wider, measured range is the one recorded.
+/// The minimum is taken over ALL 24 excluded cells, `r4133`-only ones
+/// included, not only over the cells that fail on `capi_v0145`.
 const SUMMAND_RATIO_MIN: f64 = 46.37619368540396;
 const SUMMAND_RATIO_MAX: f64 = 11031.672192265261;
 /// (b) the port's own absolute gap against either oracle. Measured maximum
@@ -682,8 +667,8 @@ const GAP_OVER_MAXKVA_MAX: f64 = 1.6014062985305886e-6;
 /// (b) …so `i_rel(large)·Max kVA` bounds the gap on 22 of the 24 cells and is
 /// exceeded on two, by at most `1.6014062985305888×` (Time 478 vs `capi_v0145`;
 /// the `r4133` side of that row is `1.4605026770812282×` and Time 475's `r4133`
-/// side `1.0457771659642237×`). D42(2) asserted that bound universally; D44(1)
-/// withdrew it as measured false and records the excess instead.
+/// side `1.0457771659642237×`). The bound is not universal, so the excess is
+/// recorded.
 const IREL_EXCESS_TIMES: [usize; 2] = [475, 478];
 const IREL_EXCESS_WORST: f64 = 1.6014062985305888;
 /// (c) the two KLU oracles' disagreement with EACH OTHER on the same column:
@@ -696,16 +681,15 @@ const ORACLE_FRACTION_MIN: f64 = 0.02711183780275688;
 const ORACLE_FRACTION_MAX: f64 = 0.8880252369020646;
 /// (c) …and on **6** of the 24 cells that disagreement exceeds the energy class
 /// outright, worst `4.021027186072549×` at Time 359 (`capi_v0145`
-/// `1.01464560883437` vs `r4133` `1.01383583996829`). D42(2) asserted this of
-/// EVERY excluded cell; D44(1) withdrew that too — the measured six are named.
+/// `1.01464560883437` vs `r4133` `1.01383583996829`). It does not hold for
+/// every excluded cell, so the measured six are named.
 const ORACLE_CLASS_FAIL_TIMES: [usize; 6] = [359, 477, 827, 850, 2596, 8517];
 const ORACLE_WORST_RATIO: f64 = 4.021027186072549;
 /// The per-channel cell counts the two ledger entries carry (`measured.cells`).
 const KVARH_CLASS_FAILS: (usize, usize) = (20, 17);
 
-/// The WHOLE masked column on the port's own side, measured 2026-09-12 from the
-/// live tree (audit finding AT-1 — see
-/// [`the_masked_kvarh_column_is_pinned_whole`]): 8 760 rows, their annual net
+/// The WHOLE masked column on this engine's own side, measured from the live
+/// tree (see [`the_masked_kvarh_column_is_pinned_whole`]): 8 760 rows, their annual net
 /// and absolute sums (left-to-right `f64`, the file's own row order), the two
 /// extremes with the Time that carries them, and two censuses — the rows inside
 /// the cancellation regime the exclusion rests on ([`KVARH_ABS_MAX`]) and the
@@ -721,23 +705,14 @@ const KVARH_NEGATIVE_ROWS: usize = 581;
 /// **`Example_ckt7/DI_yr_0/{DI_Totals,25607}_1.csv:kvarh` — no engine computes
 /// an independent value there** (`tests/corpus/ledger.json`
 /// `di-ckt7-hourly-kvarh-cancels-{capi,r4133}`, cause
-/// `di-hourly-reactive-energy-cancels`; coordinator decisions **D42(2)(a)** and
-/// **D44(1)**).
+/// `di-hourly-reactive-energy-cancels`).
 ///
-/// The EnergyMeter integrates every zone element's kvar over the hour (r4133
-/// `Version8/Source/Meters/EnergyMeter.pas:1267` `TakeSample` → `:1324`
-/// `Integrate(Reg_kvarh, S_Local.im, Delta_Hrs)`, `Integrate` itself at
-/// `:1247`, the zone's own kvar summed in `Accumulate_Load` `:2247-2318`
-/// (`:2264`); written out by `WriteDemandIntervalData` `:2990`, the hourly
-/// register row at `:3001-3003`; the port
-/// `crates/dss-core/src/solution/meters/demand_interval.rs`). Citation
-/// corrected by the G1.10c audit settlement, finding AT2-1: the range that
-/// stood here was `Accumulate_Load`'s body under `TakeSample`'s name, and its
-/// `:2943-2949` was the **dss_capi 0.14.5** `WriteDemandIntervalData` (capi
-/// `src/Meters/EnergyMeter.pas:2944`) attributed to r4133. On ckt7 the
+/// The EnergyMeter integrates every zone element's kvar over the hour and
+/// writes the hourly register row (this engine:
+/// `crates/dss-core/src/solution/meters/demand_interval.rs`). On ckt7 the
 /// capacitive and inductive halves of the feeder very nearly cancel, and the
-/// three claims below are the decomposition CLAUDE.md asks for — measured, not
-/// argued, over ALL 24 excluded cells:
+/// three claims below are the proof by decomposition — measured, not argued,
+/// over ALL 24 excluded cells:
 ///
 /// * **(a) the cancellation.** `|kvarh| ≤ 76.7594` on the port's side of every
 ///   one of them (`≤ 76.7674` including the oracles) while the same row's
@@ -902,9 +877,9 @@ fn the_ckt7_hourly_kvarh_is_a_cross_engine_indeterminate() {
     assert_eq!(
         irel_excess, IREL_EXCESS_TIMES,
         "{ctx}: (b) `i_rel(large)·Max kVA` is exceeded at Times {irel_excess:?}, \
-         recorded {IREL_EXCESS_TIMES:?} — D44(1) withdrew D42(2)'s universal \
-         precisely because these two exist; a move either way is a measurement, \
-         never a re-spelling"
+         recorded {IREL_EXCESS_TIMES:?} — the bound is not universal precisely \
+         because these two exist; a move either way is a measurement, never a \
+         re-spelling"
     );
     assert_records(irel_worst, IREL_EXCESS_WORST, "(b) worst i_rel excess");
 
@@ -944,7 +919,7 @@ fn the_ckt7_hourly_kvarh_is_a_cross_engine_indeterminate() {
 }
 
 /// **(d), the comparator drive behind
-/// [`the_ckt7_hourly_kvarh_is_a_cross_engine_indeterminate`]** (D44(1)(d)):
+/// [`the_ckt7_hourly_kvarh_is_a_cross_engine_indeterminate`]**:
 /// under the real ledger scope the 24 cells pass; without it they red naming
 /// BOTH numbers; and the `kWh` / `Max kVA` columns of the SAME rows stay
 /// compared either way.
@@ -1051,11 +1026,10 @@ fn the_ckt7_kvarh_scope_masks_that_column_and_nothing_else() {
 }
 
 /// **The masked column, end to end** — the exclusion above hides
-/// `2 × 8 760` cells to admit 24, so the other 8 736 rows are pinned here
-/// (GOLDEN_REBASE G1.10c audit finding **AT-1**).
+/// `2 × 8 760` cells to admit 24, so the other 8 736 rows are pinned here.
 ///
 /// **Why the ledger scope is not narrowed to the 24 cells instead.** Measured
-/// 2026-09-12 over the R part's captures: the port-vs-oracle ratio across this
+/// over the gate's captures: the engine-vs-OpenDSS ratio across this
 /// column is a CONTINUUM, not a set of 24 outliers — over the energy class on
 /// `20 / 17` cells (capi / r4133), over half of it on `60 / 54`, over a quarter
 /// on `193 / 192`, over a tenth on `968 / 963`, median `0.037`, and the largest
@@ -1118,8 +1092,8 @@ fn the_masked_kvarh_column_is_pinned_whole() {
     // Left-to-right over the file's own row order: expected VALUES of a
     // deterministic reduction, recorded through the file's own `assert_records`
     // identity (1e-9 relative — the epsilon every literal in this file is
-    // recorded at, not a comparison band). Measured 2026-09-12 in the
-    // settlement's own gate: the parity lane writes this column's last
+    // recorded at, not a comparison band). Measured in the gate: the parity
+    // lane writes this column's last
     // printed digit differently on a handful of hours, so its annual net sum is
     // 4432951.126747187 against the default lane's 4432951.126747186 — ONE ulp
     // at 4.4e6 (2.1e-16 relative), the precision-compat kernels' own footprint.
@@ -1129,7 +1103,7 @@ fn the_masked_kvarh_column_is_pinned_whole() {
     // (0.1509 kvarh at |kvarh| = 1508.1), 12.3x at the column's median
     // (0.0545 at |kvarh| = 544.4) — but on 54 of the 8 760 cells, those with
     // |kvarh| < 43.3, the gate's own band is TIGHTER than this sum's slack
-    // (round-2 audit finding SA-3; measured over the captured column). So the
+    // (measured over the captured column). So the
     // sum reds an off-row regression on the overwhelming majority of the
     // column; on the smallest cancellation rows — the ones the exclusion is
     // about — the watchers are the two censuses below (a cell drifting across
@@ -1221,7 +1195,7 @@ fn the_masked_kvarh_column_is_pinned_whole() {
 }
 
 // ---------------------------------------------------------------------------
-// (2) the ckt7 `Min LV Bus` column — D42(2)(b), data confirmed by D44(4).
+// (2) the ckt7 `Min LV Bus` column.
 // ---------------------------------------------------------------------------
 
 const VOLTEX_FILE: &str = "example_ckt7/di_yr_0/di_voltexceptions_1.csv";
@@ -1238,14 +1212,13 @@ const MIN_LV_BUS_COUNTS: [(&str, usize); 3] = [
 /// the number both ledger entries carry.
 const MIN_LV_BUS_DIFFERING_ROWS: usize = 7316;
 /// The tie itself on `capi_v0145`, recorded BUS BY BUS: each tied bus's three
-/// per-unit node magnitudes, bit for bit, as `tmp/g110c/probe_tie.py` read them
+/// per-unit node magnitudes, bit for bit, as the pinned dss-python reads them
 /// (`Bus.puVmagAngle[0::2]` after `clear` → `compile Master_ckt7.dss` → one
-/// `solve`; re-read 2026-09-12, `tmp/g110c/probe_tie_run2.txt`, identical).
+/// `solve`, identical on a re-read).
 ///
 /// The three rows are equal to each other — that equality IS the tie this
 /// exclusion rests on, so it is recorded as three measurements and asserted
-/// below, never summarized into one vector (audit finding AT2-5, settlement
-/// round 2 SA-5).
+/// below, never summarized into one vector.
 const TIE_MAGNITUDES_HEX: [(&str, [&str; 3]); 3] = [
     (
         "s1x_1001577",
@@ -1276,8 +1249,7 @@ const TIE_MAGNITUDES_HEX: [(&str, [&str; 3]); 3] = [
 /// **`Example_ckt7/DI_yr_0/DI_VoltExceptions_1.csv:Min LV Bus` — an argmin over
 /// a tie, where all three names are correct** (`tests/corpus/ledger.json`
 /// `di-ckt7-min-lv-bus-argmin-tie-{capi,r4133}`, cause
-/// `di-voltexception-argmin-tie`; coordinator decision **D42(2)(b)**, data
-/// confirmed by **D44(4)**).
+/// `di-voltexception-argmin-tie`).
 ///
 /// `TEnergyMeter.WriteVoltageReport` scans the buses in list order and keeps the
 /// FIRST STRICT minimizer (r4133 `Version8/Source/Meters/EnergyMeter.pas:3620` …
@@ -1295,14 +1267,13 @@ const TIE_MAGNITUDES_HEX: [(&str, [&str; 3]); 3] = [
 /// all **8 760** — 7 316 differing rows. The oracle side of the tie is
 /// [`TIE_MAGNITUDES_HEX`], which records ALL THREE buses' magnitudes as capi
 /// read them, so their bit-identity is asserted from that measurement here
-/// instead of being claimed in prose (audit finding AT2-5 / round-2 SA-5); the
+/// instead of being claimed in prose; the
 /// port's own three magnitudes are read LIVE here and agree
 /// across the three buses inside the case's own voltage class, which is what
 /// makes each of the three a correct answer — and the port is read a second
 /// time at the probe's OWN operating point ([`ckt7_snapshot_tie`]) so that the
 /// comparison against the oracle triple is state-for-state at that same class,
-/// not the cross-snapshot 1 % band this pin used to close with (audit findings
-/// AC-6 / AT-5).
+/// not a cross-snapshot band.
 ///
 /// The value column carries everything the name column loses:
 /// [`the_ckt7_min_lv_bus_scope_masks_that_column_and_nothing_else`] shows `Min
@@ -1367,14 +1338,13 @@ fn the_ckt7_min_lv_bus_is_an_argmin_over_a_tie() {
         }
     }
     // …and the oracle's own tie, at the same three buses AND at the same
-    // operating point: `tmp/g110c/probe_tie.py` read capi after
+    // operating point: the probe read capi after
     // `compile Master_ckt7.dss` + one `solve`, so the port is read there too
     // ([`ckt7_snapshot_tie`]) instead of holding the yearly run's last state
     // against a snapshot. Both sides are then the same state and the comparison
-    // is the case's own calibrated voltage class — the 1 % cross-snapshot band
-    // that stood here is gone (audit findings AC-6 / AT-5). The oracle side is
-    // recorded per BUS, so its own tie is asserted from that measurement rather
-    // than resting on prose (audit finding AT2-5, round-2 SA-5): the three rows
+    // is the case's own calibrated voltage class. The OpenDSS side is recorded
+    // per BUS, so its own tie is asserted from that measurement rather than
+    // resting on prose: the three rows
     // must name the three scanned buses and carry the SAME hex magnitudes.
     assert_eq!(
         TIE_MAGNITUDES_HEX.map(|(bus, _)| bus),
@@ -1558,7 +1528,7 @@ fn hex_f64(s: &str) -> f64 {
 }
 
 // ---------------------------------------------------------------------------
-// (3) the capture point — D42(6).
+// (3) the capture point.
 // ---------------------------------------------------------------------------
 
 fn scratch_dir(tag: &str) -> PathBuf {
@@ -1572,7 +1542,7 @@ fn scratch_dir(tag: &str) -> PathBuf {
 /// port-side producer and return its demand-interval tree, optionally closing
 /// the second cycle before the capture.
 fn di_cycle_tree(tag: &str, close_second_cycle: bool) -> DiTree {
-    // The master compiles from its own scratch copy (RF-I00-01), like every
+    // The master compiles from its own scratch copy, like every
     // vendored deck a test runs.
     let master_copy = ScratchCopy::new(
         &corpus_deck("electricdss-tst/Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss")
@@ -1584,7 +1554,7 @@ fn di_cycle_tree(tag: &str, close_second_cycle: bool) -> DiTree {
     // The probe's "case directory" is the deck's parent, so the fixture deck must
     // exist BEFORE the snapshot — otherwise it is itself run-created.
     let deck = scratch.join("di_cycle.dss");
-    std::fs::write(&deck, "! GOLDEN_REBASE G1.10c capture-point fixture\n")
+    std::fs::write(&deck, "! capture-point fixture\n")
         .unwrap_or_else(|e| panic!("write {}: {e}", deck.display()));
     let ctx = format!("di_pins:di_cycle_{tag}");
 
@@ -1614,9 +1584,9 @@ fn di_cycle_tree(tag: &str, close_second_cycle: bool) -> DiTree {
     tree
 }
 
-/// **The demand-interval capture reads the LAST CLOSED cycle** (coordinator
-/// decision **D42(6)**: the read sits after `autoadd_log`, before `created()`
-/// and before the `capi_v0145` teardown `clear`).
+/// **The demand-interval capture reads the LAST CLOSED cycle** (the read sits
+/// after `autoadd_log`, before `created()` and before the `capi_v0145` teardown
+/// `clear`).
 ///
 /// The demand-interval streams stay open across a yearly run and reach disk only
 /// on `CloseDI` / `Set year=` / a mode change. The ENGINE half of that is
@@ -1671,7 +1641,7 @@ fn the_di_capture_reads_the_last_closed_cycle() {
 }
 
 // ---------------------------------------------------------------------------
-// (4) the class table over the live population — D42(1).
+// (4) the class table over the live population.
 // ---------------------------------------------------------------------------
 
 /// Every `(file stem, columns classified, the header carries the column names)`
@@ -1710,9 +1680,9 @@ const DI_LIVE_COLUMNS: usize = 1454;
 const DI_LIVE_CELLS: usize = 4_922_812;
 
 /// **The class table covers every column of every live demand-interval file**
-/// (coordinator decision **D42(1)**: each column is compared at the calibrated
-/// tier of the quantity it carries, and a column no rule classifies FAILS the
-/// case instead of inheriting a default band).
+/// (each column is compared at the calibrated tier of the quantity it carries,
+/// and a column no rule classifies FAILS the case instead of inheriting a
+/// default band).
 ///
 /// That refusal is implemented once, in `harness::di::column_specs`, and this
 /// pin drives it over the whole live population instead of letting the table

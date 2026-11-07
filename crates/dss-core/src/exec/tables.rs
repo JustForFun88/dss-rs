@@ -377,11 +377,11 @@ pub(crate) const EXEC_OPTIONS: &[&str] = &[
     "NUMANodes",
     // dss_capi 0.15.0b4 (`e936d210`) appended these after the PM block (the
     // `DSS_CAPI_ADIAKOPTICS` block is compiled out of the oracle build, so it
-    // does not shift the ordinals). `IgnoreGenQLimits`/`NCIMQGain` are NCIM
-    // (WP-U1.7); `PyPath` is NOT_PORTED (loud, §0); `AllowForms`/
+    // does not shift the ordinals). `IgnoreGenQLimits`/`NCIMQGain` are NCIM;
+    // `PyPath` is NOT_PORTED (loud); `AllowForms`/
     // `AllowProgressBar` are GUI no-ops. `StateVar`/`IterNumber`/
     // `CtrlIterNumber`/`InjCurrent`/`ITerminal`/`YPrim`/`IntegrationFlag` are
-    // the WP-U1.9 PCE force hooks. `AllowForms`/`AllowProgressBar` are accepted
+    // the PCE force hooks. `AllowForms`/`AllowProgressBar` are accepted
     // headless no-ops (`Set` stores the flag, `Get` reads it back — capi015
     // silently accepts them; erroring would diverge). Names must equal FPC
     // `GetEnumName`.
@@ -437,7 +437,7 @@ pub(crate) mod opt {
 
     // The GUI plot-marker style options (ExecOptions.pas Set arms :615-682 /
     // Get arms :978-1041): headless-inert Circuit fields emitted into the
-    // plot-callback `Markers` object (WPG.17 Plot audit settlement).
+    // plot-callback `Markers` object.
     pub const MARK_SWITCHES: usize = 74;
     pub const SWITCH_MARKER_CODE: usize = 75;
     pub const MARK_TRANSFORMERS: usize = 77;
@@ -467,7 +467,7 @@ pub(crate) mod opt {
 
     /// `Set Type=`/`Set Class=` both activate a class (Pascal `1, 12:
     /// SetObjectClass`). `Set Element=`/`Set Object=` both select an object
-    /// (Pascal `2, 13: SetObject`). WP-U1.1 item 5.
+    /// (Pascal `2, 13: SetObject`).
     pub const TYPE: usize = 1;
     pub const ELEMENT: usize = 2;
     pub const HOUR: usize = 3;
@@ -563,16 +563,16 @@ pub(crate) mod opt {
     /// reactive-power injection gain `Solution.NCIM_GenGain`.
     pub const NCIM_Q_GAIN: usize = 130;
 
-    // WP-U1.9 PCE force-hook options, appended in dss_capi 0.15.0b4
+    // PCE force-hook options, appended in dss_capi 0.15.0b4
     // (`ExecOptions.pas` @ `e936d210`) after the PM block (NUMANodes = ordinal
     // 128 in the oracle/runtime `EXEC_OPTIONS`). `IgnoreGenQLimits` (129) /
-    // `NCIMQGain` (130) are NCIM (WP-U1.7). Ordinals verified against the runtime
+    // `NCIMQGain` (130) are NCIM. Ordinals verified against the runtime
     // `option_list.get_command` (an in-array comment made a naive source count
     // read one high).
     /// `Set StateVar <pce> <name> <value>` / `Get StateVar <pce> <name>`:
     /// write/read a PC element's dynamic state variable (A5-r3723 option).
     pub const STATE_VAR: usize = 131;
-    /// `Set PyPath=` — pyControl co-simulation server launch; NOT_PORTED (§0).
+    /// `Set PyPath=` — pyControl co-simulation server launch; NOT_PORTED.
     pub const PY_PATH: usize = 132;
     /// `Get IterNumber` (read-only): `Solution.Iteration`.
     pub const ITER_NUMBER: usize = 133;

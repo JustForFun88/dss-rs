@@ -1,5 +1,4 @@
-"""Probe the pinned oracle (dss-python 0.15.7 / backend 0.14.5) for WP7.1 step 3b
-— the Line `spacing=`/`wires=`/`cncables=` path.
+"""Probe the pinned oracle (dss-python 0.15.7 / backend 0.14.5) for the Line `spacing=`/`wires=`/`cncables=` path.
 
 For each scenario it builds the SAME multi-conductor line two ways in the oracle
 — once via `geometry=` (already pinned by step 3a) and once via `spacing=` +

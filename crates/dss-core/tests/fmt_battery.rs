@@ -1,20 +1,19 @@
-//! FPC-RTL float→ASCII battery gate (audit follow-up, WP8.5 step 3b) — and,
-//! since Stage F.4, the **expected-value pin of the F-FMT `%g` row**.
+//! FPC-RTL float→ASCII battery gate, and the **expected-value pin of the
+//! `%g` print quirk** of the parity lane.
 //!
-//! `tests/golden/fmt_battery.csv` holds 13 198 f64 bit patterns rendered by
-//! the **real FPC 3.2.2 RTL** (the pinned oracle backend's compiler) through
-//! every float→string entry point the port mirrors — see
+//! `tests/golden/fmt_battery.csv` holds f64 bit patterns rendered by
+//! the **real FPC 3.2.2 RTL** (the compiler of the pinned dss_capi) through
+//! every float→string entry point this engine mirrors — see
 //! `tools/fpc/fmt_battery/README.md`. A regression in the Grisu1 pipeline
 //! silently corrupts every Show/Export/Dump/Save report in the parity lane, so
 //! it is pinned directly, not only incidentally through the report goldens.
 //!
-//! Three obligations, all discharged in **either** build (the F-FMT mechanism
-//! keeps both kernels compiled):
+//! Three obligations, all discharged in **either** build (the lane seam keeps
+//! both kernels compiled):
 //!
 //! 1. [`fmt_battery_matches_fpc_rtl`] — the *parity* kernel
 //!    (`util::fmt_g_fpc_impl`, plus the un-split `report::format::fpc_sci_w`)
-//!    is byte-equal to the FPC RTL on all 13 198 × 7 renders. Stronger than
-//!    before F.4, which asserted whatever the seam happened to select.
+//!    is byte-equal to the FPC RTL on every render of the battery.
 //! 2. [`native_kernel_differs_from_fpc_only_by_the_rounding_rule`] — the
 //!    *default* kernel (`util::fmt_g_native_impl`) agrees with FPC everywhere
 //!    except the documented two-stage-rounding population, whose size and worst
@@ -98,40 +97,17 @@ fn fmt_battery_matches_fpc_rtl() {
     assert_eq!(renders, rows.len() * 7);
 }
 
-/// The default kernel's disagreement with FPC is exactly the rounding rule the
-/// F-FMT row exists for — nothing that moves a *value*.
-///
-/// Swept over [`ENGINE_SIGS`], the `%g` precisions the engine actually renders
-/// at, not the four the battery was first written for. That distinction is the
-/// point: the earlier version asserted, as a structural property, that a
-/// divergence can never change the notation and can never make the default
-/// render more than one character wider — justified by the two kernels sharing
-/// a digit budget and a notation window. **Both claims are false**, and the
-/// committed battery itself disproves them at `sig = 6`, the engine's
-/// second-most-used precision. The window rule *is* shared, but it is applied
-/// to the **rounded** decimal exponent, and the two kernels round differently:
-///
-/// * `9.999994999999999e5` at sig 6 → FPC `"1E6"`, native `"999999"` — a
-///   notation flip, and three characters wider;
-/// * `8.999999999999995e-13` at sig 15 → FPC `"9E-13"` (5 chars), native
-///   `"8.99999999999999E-13"` (20) — FPC's aggressive round-up collapses the
-///   mantissa to one digit that trailing-zero stripping then leaves alone;
-/// * `9.95e-6` at sig 2 → FPC `"0.00001"`, native `"9.9E-6"`.
-///
-/// So notation and width are **measured populations, pinned as data**
-/// ([`NOTATION_FLIPS`], [`WIDEST_DEFAULT_EXCESS`]) rather than asserted
-/// invariants. What genuinely *is* a kernel property, and is still asserted on
-/// every render, is the value: the two strings re-parse to `f64`s no further
-/// apart than one unit in the last printed place. That is what makes the
-/// default lane's parsed-numeric golden comparison meaningful — F-FMT re-spells
-/// numbers, it never moves them — and the bound comes from the printed
-/// precision itself, not from a tolerance.
-///
-/// The width population is not a live column hazard: after F.4 the `Show`
-/// tables are content-sized and `Export` is comma-separated, and the surviving
-/// fixed-width `%g` sites (`report/save/dump/solution.rs`, `report/save/dump.rs`,
-/// `exec/solve.rs`) would fail their default-lane token compare *loudly* on a
-/// widened render, never silently. It is pinned so that stays a checked claim.
+/// The default kernel differs from FPC only by FPC's two-stage rounding: every
+/// pair of renders re-parses to values within one unit in the last printed
+/// place, so the quirk re-spells numbers and never moves them. Notation and
+/// width differ on a measured population, pinned as data.
+//
+// The two kernels share the notation window, but apply it to the rounded
+// decimal exponent and round differently, so a divergence can flip the
+// notation or widen the render (`9.999994999999999e5` at sig 6: FPC `1E6`,
+// native `999999`). `Show` tables are content-sized and `Export` is
+// comma-separated; the fixed-width `%g` sites would fail their default-lane
+// token compare loudly on a widened render.
 #[test]
 fn native_kernel_differs_from_fpc_only_by_the_rounding_rule() {
     let rows = battery();
@@ -182,10 +158,10 @@ fn native_kernel_differs_from_fpc_only_by_the_rounding_rule() {
         }
     }
 
-    // Measured over the committed battery (13 198 values × 11 precisions):
-    // FPC's `GRISU1_F2A_HALF_ROUNDUP` + `GRISU1_F2A_AGRESSIVE_ROUNDUP`
-    // re-round of an already-rounded 17-digit decimal disagrees with a single
-    // correct rounding on this many renders. Move the number only in the commit
+    // Over the committed battery at every engine precision, FPC's
+    // `GRISU1_F2A_HALF_ROUNDUP` + `GRISU1_F2A_AGRESSIVE_ROUNDUP` re-round of an
+    // already-rounded 17-digit decimal disagrees with a single correct rounding
+    // on this many renders. Move the number only in the commit
     // that changes a kernel — never to make a run pass.
     assert_eq!(
         diverged, FPC_VS_NATIVE_DIVERGENCES,
@@ -217,22 +193,18 @@ fn native_kernel_differs_from_fpc_only_by_the_rounding_rule() {
 
 /// The `%g` significant-digit counts the engine renders at, from a sweep of
 /// every `g`/`g_w`/`g_left_w`/`fmt_g` call site in `crates/dss-core/src`.
-///
-/// The battery used to sweep `[2, 5, 8, 15]`, which happens to be exactly the
-/// subset on which the notation and width claims above hold.
 const ENGINE_SIGS: [usize; 11] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 15];
 
-/// Renders where the two kernels choose a different **notation**: 2, both at
+/// Renders where the two kernels choose a different **notation**, all at
 /// `sig = 6` (`±9.999994999999999e5`).
 const NOTATION_FLIPS: usize = 2;
 
 /// The largest number of characters by which the default render exceeds the
-/// parity one: **3**, at the same `sig = 6` pair (`1E6` → `999999`).
+/// parity one, at the same `sig = 6` pair (`1E6` → `999999`).
 const WIDEST_DEFAULT_EXCESS: usize = 3;
 
 /// The measured FPC-vs-native `%g` divergence count over the committed battery
-/// at every precision in [`ENGINE_SIGS`] — 225 at sig 15, 2 at sig 6, 2 at
-/// sig 11 — see
+/// at every precision in [`ENGINE_SIGS`], see
 /// [`native_kernel_differs_from_fpc_only_by_the_rounding_rule`].
 const FPC_VS_NATIVE_DIVERGENCES: usize = 229;
 
@@ -247,12 +219,8 @@ fn last_place_unit(s: &str) -> f64 {
     10f64.powi(exp - frac)
 }
 
-/// The seam selects the lane's kernel — the F-FMT `%g` row's lane assertion.
-///
-/// `0.8258283333333335` is the value the parity kernel's own documentation
-/// names (`loadshape.default`'s computed `FMean`): its 17-digit ties-to-even
-/// form ends `…3350`, which FPC then re-rounds *up* half-away-from-zero, while a
-/// single correct rounding of the true `f64` keeps `…333`.
+/// The `%g` seam selects the lane's kernel, on the value whose 17-digit
+/// ties-to-even form FPC re-rounds up while a single correct rounding keeps it.
 #[test]
 fn fmt_g_is_the_lane_kernel() {
     let v = 0.8258283333333335_f64;

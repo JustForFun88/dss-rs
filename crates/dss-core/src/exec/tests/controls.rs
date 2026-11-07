@@ -1,7 +1,7 @@
 use super::common::query;
 use crate::exec::*;
 
-/// Build the 2-bus regulator micro-circuit the WP5.7 oracle probes used.
+/// Build the 2-bus regulator micro-circuit the dss-python probes used.
 fn reg_two_bus(dss: &mut Dss, reg_props: &str) {
     dss.command("New circuit.ctl basekv=12.47 pu=1.0 phases=3 mvasc3=2000");
     dss.command(
@@ -14,7 +14,7 @@ fn reg_two_bus(dss: &mut Dss, reg_props: &str) {
     dss.command("CalcVoltageBases");
 }
 
-/// WP5.7: the live control loop drives the regulator to the oracle's tap.
+/// The live control loop drives the regulator to the tap dss-python reports.
 /// Oracle probe (pinned dss-python): iterations=6, winding-2 tap=1.01875.
 #[test]
 fn control_loop_regulates_two_bus_to_oracle_tap() {
@@ -34,7 +34,7 @@ fn control_loop_regulates_two_bus_to_oracle_tap() {
     );
 }
 
-/// WP7.1 step 4: a *direct* `Transformer.X.Taps=` edit moves the winding tap
+/// A *direct* `Transformer.X.Taps=` edit moves the winding tap
 /// without going through the regulator, so the control's parse-time tap snapshot
 /// goes stale. Pascal `Get_TapNum` reads the live transformer
 /// `PresentTap[TapWinding]`; the executive `regcontrol_tap_numbers` view must
@@ -63,7 +63,7 @@ fn regcontrol_tap_number_reads_live_transformer_after_manual_tap() {
     );
 }
 
-/// WP5.7 step 5: a control that cannot settle within `maxcontroliter`
+/// A control that cannot settle within `maxcontroliter`
 /// stops with the 485 warning and aborts the solution. Oracle probe:
 /// `maxcontroliter=2` + `maxtapchange=1` → iterations=4, tap=1.00625,
 /// error 485; the next *external* command resets the abort flag
@@ -114,7 +114,7 @@ fn gen_disp_two_bus(dss: &mut Dss, gd_props: &str) {
     dss.command("CalcVoltageBases");
 }
 
-/// WP6.8: the control loop's GenDispatcher redispatches its generators so
+/// The control loop's GenDispatcher redispatches its generators so
 /// the monitored line power approaches `kWLimit`. Oracle probe (pinned
 /// dss-python): equal weights → g1 = g2 = 1511.569498763734 kW.
 #[test]
@@ -162,7 +162,7 @@ fn gendispatcher_no_list_dispatches_all_gens() {
     }
 }
 
-/// WP6.8: the QDiff (kvar) redispatch path, exercised end-to-end. The gens
+/// The QDiff (kvar) redispatch path, exercised end-to-end. The gens
 /// run at `pf=0.95` so they carry a dispatchable `kvarBase`, and both
 /// `kWLimit` and `kvarLimit` bind. Oracle probe (pinned dss-python): equal
 /// weights → g1 = g2 = (1509.8126154343354 kW, 591.2600618943429 kvar).
@@ -189,7 +189,7 @@ fn gendispatcher_redispatches_kvar_to_oracle() {
     }
 }
 
-/// WP6.8: the monitored *terminal* is honored (not hard-wired to 1). A later
+/// The monitored *terminal* is honored (not hard-wired to 1). A later
 /// `terminal=2` overrides the helper's `terminal=1`; terminal 2 of the line
 /// sits at the load/gen bus, so the measured power drives `PDiff` strongly
 /// negative and both gens floor at `Max(1.0, …)` — a result distinct from
@@ -317,7 +317,7 @@ fn storagecontroller_peakshave_holds_target() {
 }
 
 // ---------------------------------------------------------------------------
-// RP3.7 — the per-phase SwtControl switch-state render (`Normal` / `State`)
+// The per-phase SwtControl switch-state render (`Normal` / `State`)
 // ---------------------------------------------------------------------------
 
 /// Compile a vendored corpus deck by absolute path and return the live engine.
@@ -327,7 +327,7 @@ fn storagecontroller_peakshave_holds_target() {
 /// write no file, so no directory guard is needed; the vendored
 /// `electricdss-tst` decks read by the second pin are likewise read-only
 /// (`civanlar.dss` has no active `export`/`show`/`save`). Never `.inputs/` —
-/// the corpus tree is the one the live gate reads (CLAUDE.md).
+/// the corpus tree is the one the live gate reads.
 fn compile_corpus_deck(rel: &str) -> Dss {
     let deck = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/corpus")
@@ -348,15 +348,14 @@ fn compile_corpus_deck(rel: &str) -> Dss {
 /// phase from `Create` (`:299-307`) — and its two getters render **one token per
 /// CONTROLLED-ELEMENT phase**: property 6 `Normal` at `:589-599`, property 7
 /// `State` at `:600-610`. The pinned dss_capi 0.14.5 has no per-phase model at
-/// all and renders one bare word, so RP3.7's port of the r4133 model reds those
+/// all and renders one bare word, so this engine's per-phase model reds those
 /// five capi-gated cases on exactly these cells. The entries pin both sides of
-/// that divergence; this pin is what says the port's side is **right** rather
-/// than merely stable (the obligation the RP3.6 audit created, 2026-08-29).
+/// that divergence. This pin is what says this engine's side is **right** rather
+/// than merely stable.
 ///
 /// Every expected value below was read off the r4133 DLL (Version 11.0.0.1,
-/// `tools/opendss/bin/r4133`) on 2026-09-02 over the gated decks themselves —
-/// transcripts `tmp/rp37/out_b2_r4133.txt` (the five capi decks) — not derived
-/// from the port. The three shapes are the three the ledger entries carry:
+/// `tools/opendss/bin/r4133`) over the gated decks themselves — not derived
+/// from this engine. The three shapes are the three the ledger entries carry:
 ///
 /// * **3-phase, ganged closed** (`swtcontrol_lock.dss`, and the two IEEE_519
 ///   controls) → `[closed, closed, closed, ]`;
@@ -440,21 +439,18 @@ fn swtcontrol_state_renders_one_token_per_controlled_phase() {
 }
 
 /// **The holder for the pair's 80 in-scope cells** — the three r4133-gating
-/// decks that carry every one of them, and that **no oracle channel could
-/// witness when this pin was written**: the pinned dss_capi 0.14.5 cannot render
-/// the array at all, and the r4133 property compare was masked until RP4.1
-/// (plan §1.1(e)). Plan §1.1(c) asks for exactly this pin, and it keeps its job
-/// after RP4.1's unmask (2026-09-03): the r4133 channel compares these cells now
-/// and agrees byte-for-byte, so the gate can only say "equal" — only this pin
-/// says WHAT the two engines agree on.
+/// decks that carry every one of them. The pinned dss_capi 0.14.5 cannot render
+/// the array at all. The r4133 channel compares these cells and agrees
+/// byte-for-byte, so the gate can only say "equal" — only this pin says WHAT the
+/// two engines agree on.
 ///
 /// `swtcontrol.normal` and `swtcontrol.state` are 59 census cells each, 40 of
 /// them in scope, and the split is these three decks: `midi_swtcontrol.dss`
 /// (1 control × 12 steps), `swtcontrol_time.dss` (1 × 12) and `civanlar.dss`
 /// (16 × 1) = 40. The other 19 are the capi-gated cases the ledger entries pin.
 ///
-/// Every value below was read off the r4133 DLL on 2026-09-02, right after
-/// `compile`, on these very decks (`tmp/rp37/out_b2_r4133b.txt`). Note what the
+/// Every value below was read off the r4133 DLL right after `compile`, on these
+/// very decks. Note what the
 /// two `duty`-mode decks say: `Normal` stays `[closed, closed, closed, ]` after
 /// the manifest's `action=open` fires, because `normal=closed` was typed
 /// explicitly, so r4133's `NormalStateSet` latch (`SwtControl.pas:42`, `:220-228`)
@@ -466,9 +462,7 @@ fn swtcontrol_state_renders_one_token_per_controlled_phase() {
 /// and three open.
 ///
 /// Its `Normal` is all-CLOSED on every one of the sixteen, and the mechanism is
-/// the Edit supplemental, not an untyped property (RP3.7 audit settlement,
-/// 2026-09-02 — the earlier wording here said `Create`'s initialisation, which
-/// is not what answers). Every `New` line declares `Action=c` (`civanlar.dss`
+/// the Edit supplemental, not an untyped property. Every `New` line declares `Action=c` (`civanlar.dss`
 /// `:51-66`); arm 3 runs `InterpretSwitchState` and then the
 /// `{Supplemental Actions}` block (`SwtControl.pas:219-228`) copies the
 /// now-CLOSED Present into Normal and latches `NormalStateSet` — which is

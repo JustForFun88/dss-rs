@@ -1,16 +1,16 @@
-//! Anti-shrink guard for the gated corpus population (FA fix 3).
+//! Anti-shrink guard for the gated corpus population.
 //!
 //! The mandatory gate defines its own population: `solvable_now.json` lists the
-//! decks `corpus_live.rs` compiles + live-compares against the oracle, and the
-//! other manifests bucket the rest. Because that classification is *self-defined*,
-//! a port regression could be silently "neutralized" by moving a deck out of
+//! decks the corpus gate compiles and live-compares against the OpenDSS engines,
+//! and the other manifests bucket the rest. Because that classification is
+//! *self-defined*, an engine regression could be silently "neutralized" by moving a deck out of
 //! `solvable_now` into a skip bucket — `cargo test` stays green while real
 //! coverage shrinks, invisibly, in a one-line manifest edit.
 //!
 //! This test makes any such change a **loud, reviewed event**. A committed
 //! snapshot (`tests/corpus/manifests/population.lock.json`) records, per manifest
 //! class, the case count; a per-case **rigor fingerprint** for every `solvable_now`
-//! case **and** (schema v2 — the fixed asymmetry) every synthetic-family case
+//! case **and** every synthetic-family case
 //! (kind/tolerance-tier, `engines` channel, `isolate`, `defer_ledger`, `n_steps`,
 //! and every compare-depth flag — `selected_elements`/`check_meters_monitors`/
 //! `probes`/`compare_variables`/eventlog/ctrlqueue/all-properties/global-result/
@@ -31,6 +31,11 @@
 //!
 //! writes the lock from the current manifests and passes. Commit the resulting
 //! `population.lock.json` diff together with the manifest change that caused it.
+//!
+//! # Knobs
+//!
+//! - `DSS_UPDATE_POPULATION_LOCK`: set to any value, rewrites the lock from the
+//!   current manifests instead of checking it. Unset by default.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -88,8 +93,7 @@ struct Case {
     compare_global_result: bool,
     #[serde(default)]
     compare_autoadd_log: bool,
-    // WP-G1 compare-depth surface flags (`GOLDEN_REBASE_PLAN.md` §1.1(d),
-    // sub-step G1.0). The vocabulary is declared once in
+    // Compare-depth surface flags. The vocabulary is declared once in
     // `corpus_gate/manifest.rs::SolvableCase`; this mirror exists because the
     // lock is a manifest-only reader in its own test binary, and it is kept
     // honest by [`RIGOR_FLAG_TOKENS`] + the source-text drift guard
@@ -118,16 +122,15 @@ struct Case {
     pending: bool,
     #[serde(default)]
     expect_solve_abort: Option<String>,
-    /// Schema v2 (UNIFIED_GATE_PLAN.md §1.2/§1.4): gating channel(s). Replaces
-    /// the retired `oracle` target-rev field in the rigor fingerprint.
+    /// Gating channel(s), part of the rigor fingerprint.
     #[serde(default = "default_engines")]
     engines: String,
-    /// Schema v2 (§1.4): throwaway-worker flag — part of the rigor fingerprint so
+    /// Throwaway-worker flag — part of the rigor fingerprint so
     /// flipping it lands as a reviewed lock diff.
     #[serde(default)]
     isolate: bool,
-    /// Schema v2 (§4 Phase C step c): Phase-D-ledger deferral flag — parking a
-    /// case from live compare is a reviewed lock diff, never silent.
+    /// Ledger deferral flag — parking a case from live compare is a reviewed
+    /// lock diff, never silent.
     #[serde(default)]
     defer_ledger: Option<String>,
 }
@@ -149,7 +152,7 @@ impl Case {
     /// lock trips. Kept human-diffable so the reviewer sees *which* knob moved.
     ///
     /// `ledger_tag` is the case's per-channel sorted `id@content-digest` ledger
-    /// entries (§1.4, [`ledger_tags`]): every ledger add/widen/flip on this case —
+    /// entries ([`ledger_tags`]): every ledger add/widen/flip on this case —
     /// including an in-place envelope/scope edit of an existing entry — changes the
     /// tag → a reviewed lock diff, so an envelope can never grow (or a mask appear)
     /// without leaving a trail.
@@ -204,14 +207,13 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
 
 /// Load `tests/corpus/ledger.json` and map each case key (`<source>:<path>`) to a
 /// deterministic per-channel sorted tag of `id@digest` pairs for the rigor
-/// fingerprint (§1.4): `capi_v0145:id1@a1b2…,id2@…;r4133:id3@…`, empty for a case
+/// fingerprint: `capi_v0145:id1@a1b2…,id2@…;r4133:id3@…`, empty for a case
 /// with no ledger entries. The digest is FNV-1a64 over the entry's FULL serialized
 /// JSON (scopes, envelopes, steps, kind — everything), so not just adding/removing
 /// an entry but WIDENING an existing one (raising `max_rel`/`num_rel`, adding a
 /// scope, cutting `steps`) changes the case's tag → the same reviewed lock diff as
-/// a manifest edit (pre-E/F audit UGA-1: an id-only tag let envelope widening
-/// escape the lock). The ledger can never become a silent soft-tolerance backdoor
-/// (§5 R3).
+/// a manifest edit (an id-only tag would let envelope widening escape the
+/// lock). The ledger can never become a silent soft-tolerance backdoor.
 fn ledger_tags() -> BTreeMap<String, String> {
     let p = corpus_dir().join("ledger.json");
     let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
@@ -267,8 +269,8 @@ struct PopulationLock {
     /// `<family name> -> case count` for the three synthetic families.
     family_counts: BTreeMap<String, usize>,
     /// `<family name> -> {case path -> per-case rigor fingerprint}` for the three
-    /// synthetic families. Schema v2 (§1.4) fixes the documented asymmetry: the
-    /// family manifests are now rigor-covered too (the keys are the membership
+    /// synthetic families. The family manifests are rigor-covered like
+    /// `solvable_now` (the keys are the membership
     /// guard — a deck swap changes the key set; the values catch an in-place
     /// weakening exactly as for `solvable_now`).
     family_rigor: BTreeMap<String, BTreeMap<String, String>>,
@@ -372,15 +374,14 @@ fn current_lock() -> PopulationLock {
     }
 }
 
-const COMMENT: &str = "Anti-shrink guard (FA fix 3; UNIFIED_GATE Phase C schema v2: per-case rigor \
-now covers solvable_now AND the three families, engines/isolate/defer fields; Phase D §1.4: + the \
-ledger= component = each case's sorted per-channel divergence-ledger entry ids): committed fingerprint \
-of the gated corpus population. Trips on any drift — a path leaving solvable_now or a family, a \
+const COMMENT: &str = "Anti-shrink guard (per-case rigor covers solvable_now AND the three families, \
+with the engines/isolate/defer fields and the ledger= component = each case's sorted per-channel \
+divergence-ledger entry ids): committed fingerprint of the gated corpus population. Trips on any drift — a path leaving solvable_now or a family, a \
 retained deck weakened in place (kind/tolerance-tier flip, steps/probes/meters cut, engines narrowed, \
 a case deferred, a ledger entry added/widened/flipped — see the rigor fingerprints), a family deck \
 swapped, or any manifest/family case-count change. Regenerate DELIBERATELY with \
 `DSS_UPDATE_POPULATION_LOCK=1 cargo test -p dss-core --test population_lock` and commit the diff \
-alongside the manifest change. See TESTING.md \u{00a7}Anti-shrink population lock.";
+alongside the manifest change.";
 
 fn lock_path() -> PathBuf {
     manifests_dir().join(LOCK_FILE)
@@ -525,7 +526,7 @@ fn population_lock_matches_manifests() {
 }
 
 // ---------------------------------------------------------------------------
-// Anti-drift guard for the rigor fingerprint (GOLDEN_REBASE_PLAN.md G1.0).
+// Anti-drift guard for the rigor fingerprint.
 // ---------------------------------------------------------------------------
 
 /// Every `compare_*` field of `corpus_gate::SolvableCase`, with the token it
@@ -559,12 +560,12 @@ const RIGOR_FLAG_TOKENS: &[(&str, &str)] = &[
     ("compare_di", "di"),
 ];
 
-/// The `compare_*` flags that predate WP-G1 and therefore own no
+/// The `compare_*` flags that predate the surface-flag table and therefore own no
 /// `corpus_gate::manifest::G1_SURFACE_FLAGS` row: their request + comparator
 /// have always been wired, so the "an unwired flag may not be set" refusal does
 /// not apply to them.
 ///
-/// Everything else must own a row (G1.0 audit settlement T2). Without this
+/// Everything else must own a row. Without this
 /// partition the unwired-flag protection is opt-in: an eleventh surface flag
 /// added to `SolvableCase` and to [`RIGOR_FLAG_TOKENS`] — which the drift guard
 /// does force — but *not* to `G1_SURFACE_FLAGS` would silently lose the
@@ -628,8 +629,7 @@ fn compare_fields(src: &str, decl: &str) -> std::collections::BTreeSet<String> {
         if t.starts_with("//") || t.starts_with("#[") {
             continue;
         }
-        // Strip ANY visibility keyword, not just `pub(crate) ` (G1.0 audit
-        // settlement T1): a field spelled `pub compare_x: bool` is legal inside
+        // Strip ANY visibility keyword, not just `pub(crate) `: a field spelled `pub compare_x: bool` is legal inside
         // the struct and would otherwise be invisible to this scan, escaping
         // both the count check and the coverage loop — the one spelling of the
         // silent drift this guard exists to make loud.
@@ -699,7 +699,7 @@ fn rigor_format_literal(src: &str) -> String {
 }
 
 /// Non-vacuity of the two source scanners the drift guard is built on, driven
-/// over **synthetic** source text (G1.0 audit settlement T1/T2).
+/// over **synthetic** source text.
 ///
 /// Committed rather than demonstrated once by mutating the real files: the
 /// guard's whole value is that it sees a field the author spelled differently,
@@ -757,15 +757,14 @@ fn the_drift_guard_scanners_see_every_visibility_and_every_flag_row() {
     );
 }
 
-/// The rails that keep the fingerprint honest as the manifest schema grows
-/// (`GOLDEN_REBASE_PLAN.md` G1.0): every `compare_*` manifest field owns a rigor
+/// The rails that keep the fingerprint honest as the manifest schema grows:
+/// every `compare_*` manifest field owns a rigor
 /// token, every token is actually emitted, and no table row is orphaned.
 ///
 /// A **source-text** gate because what it polices is exactly what a compiled mirror cannot see: this test binary
 /// deserializes its own [`Case`], so a `compare_*` field added to
 /// `corpus_gate::SolvableCase` and *not* mirrored here compiles, loads, and
-/// silently drops out of the fingerprint. WP-G1 adds ten such fields
-/// (`GOLDEN_REBASE_PLAN.md` §1.1(d)); this is what makes the eleventh safe.
+/// silently drops out of the fingerprint.
 #[test]
 fn every_manifest_compare_flag_has_a_rigor_token() {
     let manifest_src = std::fs::read_to_string(
@@ -829,9 +828,9 @@ fn every_manifest_compare_flag_has_a_rigor_token() {
              a row here, and regenerate the lock in the same commit."
         );
     }
-    // (iv) every compare flag is either a pre-WP-G1 one or owns a
+    // (iv) every compare flag is either a pre-table one or owns a
     // `G1_SURFACE_FLAGS` row, so the unwired-flag refusal cannot be opted out of
-    // by forgetting one table (G1.0 audit settlement T2).
+    // by forgetting one table.
     let g1 = g1_surface_flag_names(&manifest_src);
     assert!(
         !g1.is_empty(),
@@ -841,7 +840,7 @@ fn every_manifest_compare_flag_has_a_rigor_token() {
         let pre = PRE_G1_COMPARE_FLAGS.contains(&field.as_str());
         assert!(
             pre != g1.contains(field),
-            "{field:?} must be EITHER a named pre-WP-G1 flag (PRE_G1_COMPARE_FLAGS) OR own \
+            "{field:?} must be EITHER a named pre-table flag (PRE_G1_COMPARE_FLAGS) OR own \
              a `G1_SURFACE_FLAGS` row in corpus_gate/manifest.rs, not both and not neither: \
              without a row it silently loses the unwired-flag refusal and a case that sets \
              it compares an empty capture against an empty capture"

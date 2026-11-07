@@ -1,26 +1,23 @@
-//! The G1.0 mode-capability acceptance test for the r4133 bridge
-//! (`GOLDEN_REBASE_PLAN.md` WP-G1, sub-step G1.0; coordinator decision D2).
+//! The mode-capability acceptance test for the r4133 bridge.
 //!
 //! The vendored `OpenDSSDirect.dll` exports no per-property `*_Get_*` symbol, so
-//! "does this DLL revision serve the property WP-G1 needs?" cannot be answered
-//! by a `GetProcAddress` miss. It is answered here instead, once for all of
-//! WP-G1: every row of [`dss_epri::modes::WP_G1_MODES`] is driven against the
-//! **real** DLL on a solved IEEE13 and must classify
-//! [`ModeStatus::Served`] — that is D2's "either a working capture proven on one
-//! gated r4133 case, or a recorded miss", executed as a table walk. The
-//! discriminator is the companion case: a mode index past every family's last
+//! "does this DLL revision serve the property the capture needs?" cannot be
+//! answered by a `GetProcAddress` miss. It is answered here instead: every row
+//! of [`dss_epri::modes::WP_G1_MODES`] is driven against the **real** DLL on a
+//! solved IEEE13 and must classify [`ModeStatus::Served`], a table walk in
+//! place of a recorded miss. The discriminator is the companion case: a mode
+//! index past every family's last
 //! `case` arm must classify `UnknownMode`, carrying that family's own sentinel
 //! literal.
 //!
 //! The two [`dss_epri::modes::DO_NOT_CALL`] rows are exercised through the same
 //! entry points the accessors use and must be refused **before** any FFI. That
-//! refusal is not merely asserted: `Bus` V:17 (`ZSC012Matrix`,
-//! `DBus.pas:803-838`, nil `Zsc` with no `Assigned` guard) was measured to kill
-//! the worker process outright on a bus with no fault study, so a leak of the
-//! refusal would abort this test binary rather than fail an assertion.
+//! refusal is not merely asserted: `Bus` V:17 (`ZSC012Matrix`) kills the worker
+//! process outright on a bus with no fault study, so a leak of the refusal
+//! would abort this test binary rather than fail an assertion.
 //!
-//! Needs no oracle installed — only the git-tracked r4133 DLL and the vendored
-//! IEEE13 deck.
+//! Needs no dss-python installed — only the git-tracked r4133 DLL and the
+//! vendored IEEE13 deck.
 
 #![cfg(windows)]
 
@@ -34,7 +31,7 @@ use dss_epri::smoke::Ieee13Copy;
 /// the whole DDLL is `SolutionI(51)`), so it always reaches the `else` branch.
 const BOGUS_MODE: i32 = 987;
 
-/// The families WP-G1 reads, with the ABI shapes each one actually exports
+/// The families the capture reads, with the ABI shapes each one actually exports
 /// (`crate::families::REGISTRY`): `Topology` has no `F` entry point and
 /// `PDElements` has no `V`.
 const WP_G1_FAMILIES: &[(&str, &[ModeKind])] = &[
@@ -59,8 +56,8 @@ const WP_G1_FAMILIES: &[(&str, &[ModeKind])] = &[
     ("PDElements", &[ModeKind::I, ModeKind::F, ModeKind::S]),
 ];
 
-/// The walk's engine and the scratch copy it compiled (RETRO_FIXES
-/// RF-I00-01): the DLL compiles a fresh copy of the vendored IEEE13
+/// The walk's engine and the scratch copy it compiled: the DLL compiles a
+/// fresh copy of the vendored IEEE13
 /// ([`Ieee13Copy`]), never `tests/corpus/`, and the test removes the copy
 /// after the walk, stepping back out of it (the DLL is never unloaded) — a
 /// copy that survives the budget fails the test naming the producer.
@@ -107,12 +104,9 @@ fn select_fixture(e: &Engine) {
     assert!(e.set_active_bus("671") >= 0, "bus 671 must exist in IEEE13");
 }
 
-/// The whole G1.0 mode-capability proof, in one `#[test]`.
-///
-/// The DDLL is a process-global, single-threaded singleton (`crate::dss`
-/// module doc): two `#[test]`s driving it from cargo's thread pool corrupt each
-/// other's circuit, so every phase below runs sequentially against **one**
-/// engine, the way `tests/protocol.rs` drives its worker.
+/// The whole mode-capability proof, in one `#[test]`: the DDLL is a
+/// process-global, single-threaded singleton, so every phase runs sequentially
+/// against **one** engine.
 #[test]
 fn r4133_mode_capability_is_complete_for_wp_g1() {
     let (e, copy) = solved_ieee13();
@@ -137,12 +131,10 @@ fn r4133_mode_capability_is_complete_for_wp_g1() {
 }
 
 /// The fixture the family rows read from is what it claims to be, pinned by
-/// exact readings of the vendored r4133 DLL on the vendored IEEE13
-/// (2026-09-04). This is not decoration: `Meters.First` moves
-/// `ActiveCktElement` to the meter, and an earlier ordering of
-/// [`select_fixture`] silently pointed every `CktElement`/`PDElements` row at
-/// `EnergyMeter.m1` (NumTerminals 1, TotalPowers `[0.0, 0.0]`) while still
-/// classifying every mode `Served`.
+/// exact readings of the vendored r4133 DLL on the vendored IEEE13. This is not
+/// decoration: `Meters.First` moves `ActiveCktElement` to the meter, so a wrong
+/// ordering of [`select_fixture`] points every `CktElement`/`PDElements` row at
+/// `EnergyMeter.m1` while still classifying every mode `Served`.
 fn the_fixture_selects_the_line_the_bus_and_the_meter(e: &Engine) {
     select_fixture(e);
     assert_eq!(e.ckt_element_num_terminals().unwrap(), 2, "Line.650632");
@@ -177,18 +169,16 @@ fn the_fixture_selects_the_line_the_bus_and_the_meter(e: &Engine) {
     assert_eq!(e.solution_iterations().unwrap(), 2, "IEEE13 snapshot solve");
 }
 
-/// G1.0 audit settlement (T4): the walk above proves *capability* — that each
-/// mode exists and decodes into its declared shape — not *identity*: a mode
-/// index transposed with a sibling of the same family and shape would still
-/// classify `Served`. These are exact readings of the vendored r4133 DLL on the
-/// vendored IEEE13 fixture (measured 2026-09-04) chosen so that a transposition
-/// inside a family moves the number, family by family.
+/// The walk above proves *capability* — that each mode exists and decodes into
+/// its declared shape — not *identity*: a mode index transposed with a sibling
+/// of the same family and shape would still classify `Served`. These are exact
+/// readings of the vendored r4133 DLL on the vendored IEEE13 fixture, chosen so
+/// that a transposition inside a family moves the number, family by family.
 ///
 /// `Meters` is deliberately absent: every one of its `I:20..27` / `F:0..6`
 /// reliability registers reads `0` / `0.0` on this fixture (no `RelCalc`), so no
-/// pin there could discriminate. G1.6 wires that surface and gets its own
-/// values; the full per-mode value validation is D2's job for each surface
-/// sub-step, not this rail's.
+/// pin there could discriminate. That surface is pinned by
+/// [`the_relcalc_protocol_and_the_section_cursor`].
 fn distinguishing_readings_separate_same_shape_modes_within_a_family(e: &Engine) {
     // Circuit V:0 (whole-circuit PD losses, W) vs V:1 (Line losses only, kW) vs
     // V:3 (source power) — three `myType = 3` rows of one family.
@@ -244,8 +234,8 @@ fn distinguishing_readings_separate_same_shape_modes_within_a_family(e: &Engine)
     );
 }
 
-/// **The G1.0 acceptance**: every mode WP-G1 will read is served by the
-/// vendored r4133 DLL — no expected-miss list, no per-channel mask.
+/// Every mode the capture reads is served by the vendored r4133 DLL — no
+/// expected-miss list, no per-channel mask.
 ///
 /// The same walk records each row's `myType` for the `V` rows through
 /// [`Engine::read_mode`], which fails when the observed tag is not the one the
@@ -269,7 +259,7 @@ fn every_wp_g1_mode_is_served(e: &Engine) {
     }
     assert!(
         misses.is_empty(),
-        "{} of {} WP-G1 modes are not served by this DLL:\n  {}",
+        "{} of {} capture modes are not served by this DLL:\n  {}",
         misses.len(),
         modes::WP_G1_MODES.len(),
         misses.join("\n  ")
@@ -277,7 +267,7 @@ fn every_wp_g1_mode_is_served(e: &Engine) {
 }
 
 /// The discriminator for the test above: a mode index past every family's last
-/// `case` arm must classify [`ModeStatus::UnknownMode`] on **every** WP-G1
+/// `case` arm must classify [`ModeStatus::UnknownMode`] on **every** captured
 /// family and shape, carrying that family's own sentinel — the `-1` / `-1.0`
 /// scalars, the per-family `S` literal, and a `V` phrase matched by
 /// containment.
@@ -339,7 +329,7 @@ fn the_bus_v_sentinel_is_only_caught_by_containment(e: &Engine) {
     };
     assert_eq!(
         sentinel, "Error, parameter not recognizedCommand not recognized",
-        "the measured 2026-09-04 concatenation moved"
+        "the concatenation moved"
     );
     // The rule this pins: equality against the family's own phrase misses it,
     // containment catches it.
@@ -351,7 +341,7 @@ fn the_bus_v_sentinel_is_only_caught_by_containment(e: &Engine) {
 /// Neither [`modes::DO_NOT_CALL`] row may reach the DLL through the accessor
 /// path or the probe. The proof that the refusal really is pre-FFI is the test
 /// binary still running: `Bus` V:17 nil-derefs inside the DLL and kills the
-/// process outright on a bus with no fault study (measured, G1.0 probe).
+/// process outright on a bus with no fault study.
 fn the_do_not_call_modes_are_refused_before_any_ffi(e: &Engine) {
     select_fixture(e);
     for (family, kind, mode, why) in modes::DO_NOT_CALL {
@@ -565,31 +555,24 @@ fn every_wp_g1_mode_has_a_typed_accessor_that_reads_the_solved_deck(e: &Engine) 
     let missing: Vec<&str> = expected.difference(&seen).copied().collect();
     assert!(
         missing.is_empty(),
-        "these WP-G1 rows have no typed accessor call: {missing:?}"
+        "these capture rows have no typed accessor call: {missing:?}"
     );
     assert_eq!(seen.len(), modes::WP_G1_MODES.len());
 }
 
-/// **G1.9 bridge pin.** The two `Solution` flag rows come back from r4133 as
-/// `0|1` *ints*, not booleans: `SolutionI(37)` is
-/// `if ...SystemYChanged then Result:=1 else Result:=0`
-/// (`DDLL/DSolution.pas:192-197`) and `SolutionI(42)` is
-/// `Result:=0; ... if ...ControlActionsDone then Result := 1`
-/// (`:226-230`).
+/// The two `Solution` flag rows (`SolutionI(37)` `SystemYChanged`,
+/// `SolutionI(42)` `ControlActionsDone`) come back from r4133 as `0|1` *ints*,
+/// not booleans.
 ///
 /// `capture::capture_solution_scalars` converts both with `!= 0` so this
 /// transport's `CaseResult` JSON stays shape-identical to
 /// `oracle_server.capture_solution_scalars`, whose dss-python reads are already
-/// Python `bool`s (decision D4: a sentinel/shape difference between the two
-/// channels is a bridge normalization plus one pin, never a ledger row). This
-/// is that pin: it fixes both the `{0, 1}` codomain the conversion relies on and
-/// the values the vendored DLL actually returns on the solved fixture.
-///
-/// The two readings are the ones measured across the whole G1.9 sample
-/// (14 decks x every step, snapshot and daily): `SystemYChanged` is `0` after
-/// every solve — the solve rebuilds Y and clears the flag, including here where
-/// the fixture adds an EnergyMeter between `Compile` and `Solve` — and
-/// `ControlActionsDone` is `1`, the control loop having run to completion.
+/// Python `bool`s: a sentinel/shape difference between the two channels is a
+/// bridge normalization plus one pin, never a ledger row. This is that pin: it
+/// fixes both the `{0, 1}` codomain the conversion relies on and the values the
+/// vendored DLL returns on the solved fixture. `SystemYChanged` is `0` after a
+/// solve, which rebuilds Y and clears the flag, and `ControlActionsDone` is
+/// `1`, the control loop having run to completion.
 fn r4133_solution_flags_are_zero_one_ints(e: &Engine) {
     select_fixture(e);
     let syc = e.solution_system_y_changed().expect("SolutionI(37)");
@@ -608,7 +591,7 @@ fn r4133_solution_flags_are_zero_one_ints(e: &Engine) {
     assert_eq!(cad, 1, "a converged solve leaves ControlActionsDone set");
 }
 
-/// **G1.9 table pin.** The five `Circuit` aggregate rows are *not* pure reads,
+/// The five `Circuit` aggregate rows are *not* pure reads,
 /// and the table must say so: each one walks a `TPointerList` to exhaustion and
 /// leaves its cursor at the end, and each one refreshes the `Iterminal` cache of
 /// every element it walks (`Get_Losses`/`Get_Power` call `ComputeIterminal` —
@@ -652,21 +635,9 @@ fn the_five_circuit_aggregate_rows_are_impure() {
 }
 
 /// `Bus.AllPCEatBus`/`Bus.AllPDEatBus` are reads that move `ActiveCktElement`
-/// (GOLDEN_REBASE G1.4d, coordinator decision D26).
-///
-/// r4133 answers both from `TDSSCircuit.getPCEatBus`/`getPDEatBus`
-/// (`Common/Circuit.pas:1540-1581` / `:1493-1535`), which drive
-/// `DSS_Class.First`/`Next` over every PC/PD class's element list; those two
-/// entry points (`Common/DSSClass.pas:342-371`) assign
-/// `ActiveCircuit.ActiveCktElement` (`:352`, `:367`) — so a caller that reads
-/// either row mid-element-walk and trusts a `Pure` label reads the wrong object.
-/// Its capi twin (`CAPI/CAPI_Bus.pas:773-805` over a `TDSSPointerEnumerator`,
-/// `Shared/DSSPointerList.pas:17-27`) is genuinely pure; only the r4133 channel
-/// carries this hazard, which is why the label lives on the mode row and not in
-/// the capture. The behavioural half is
+/// on r4133, which walks every PC/PD class's element list to answer them, so
+/// the mode table must label them impure. Needs no DLL: the behavioural half is
 /// [`the_at_bus_reads_move_the_active_element`].
-///
-/// Needs no DLL: it is a statement about [`modes`]' own table.
 #[test]
 fn the_two_at_bus_rows_are_impure() {
     let rows: [(&str, &ModeSpec); 2] = [
@@ -703,20 +674,17 @@ fn the_two_at_bus_rows_are_impure() {
     }
 }
 
-/// The behavioural half of GOLDEN_REBASE G1.6b's read-order contract: the
+/// The behavioural half of the `PDElements` read-order contract: the
 /// `ParentPDElement` trap is real on this DLL, and
 /// [`dss_epri::capture::capture_pd_elements`] does not fall into it.
 ///
-/// `PDElementsI(6)` (`DPDELements.pas:88-97`) does
-/// `ActiveCktElement := ActivePDElement.ParentPDElement` and never restores it,
-/// so every field read after it in the same record returns the **parent's**
-/// value. fastdss reads it second (`IPDElements._columns`) and contaminates 215
-/// of the 138-element IEEE123 walk's own cells (measured on both oracle
-/// channels, 2026-09-04), which is why the capture reads it last.
+/// `PDElementsI(6)` moves `ActiveCktElement` to the parent PD element and never
+/// restores it, so every field read after it in the same record returns the
+/// **parent's** value, which is why the capture reads it last.
 ///
-/// Every number below was read off the vendored r4133 DLL on this fixture
-/// (2026-09-04); the trap is only *observable* on a pair whose values differ, so
-/// the `assert_ne!` guards this test against becoming a tautology.
+/// Every number below was read off the vendored r4133 DLL on this fixture. The
+/// trap is only *observable* on a pair whose values differ, so the
+/// `assert_ne!` guards this test against becoming a tautology.
 fn the_parent_read_hijacks_the_active_element_and_the_capture_reads_it_last(e: &Engine) {
     select_fixture(e);
     // (1) The trap, live. `Line.632670` serves 10 downstream customers; its
@@ -773,7 +741,7 @@ fn the_parent_read_hijacks_the_active_element_and_the_capture_reads_it_last(e: &
     assert_eq!(rec.parent_class_index, 1);
     assert_eq!(rec.parent_name, "Line.650632");
     // No `RelCalc` ran on this deck, so the four reliability-sweep fields are
-    // untouched zeros (GOLDEN_REBASE G1.6(i) is the sub-step that fills them).
+    // untouched zeros (`the_relcalc_protocol_and_the_section_cursor` fills them).
     assert_eq!(
         (
             rec.section_id,
@@ -806,19 +774,17 @@ fn the_parent_read_hijacks_the_active_element_and_the_capture_reads_it_last(e: &
     assert_eq!(shunts, vec!["Capacitor.cap1", "Capacitor.cap2"]);
 }
 
-/// The r4133 half of GOLDEN_REBASE G1.6(i)'s run protocol, proven against the
-/// DLL itself: the `RelCalc` abort is tolerated *and reported*, the feeder-section
+/// The r4133 half of the reliability run protocol, proven against the DLL
+/// itself: the `RelCalc` abort is tolerated *and reported*, the feeder-section
 /// cursor behaves as [`dss_epri::capture::capture_reliability`] assumes, and
 /// `Meters.Totals` ends the meter walk.
 ///
 /// Runs **last** in the phase sequence because it executes `RelCalc` and adds a
-/// Recloser and a second EnergyMeter to the circuit — which is also what makes
-/// it the discharge of G1.6b's deferred demo: the four reliability-sweep
-/// `PDElements` fields are zero for every phase above (asserted there) and live
-/// here.
+/// Recloser and a second EnergyMeter to the circuit. It is also the
+/// non-vacuity demo of the four reliability-sweep `PDElements` fields: zero for
+/// every phase above (asserted there) and live here.
 ///
-/// Every literal below was read off the vendored r4133 DLL on this fixture
-/// (2026-09-04).
+/// Every literal below was read off the vendored r4133 DLL on this fixture.
 fn the_relcalc_protocol_and_the_section_cursor(e: &Engine) {
     select_fixture(e);
 
@@ -976,14 +942,13 @@ fn the_relcalc_protocol_and_the_section_cursor(e: &Engine) {
     // *values* are an uninitialised read on this engine — `AllocateSensorArrays`
     // (`Meters/MeterElement.pas:45-52`) `ReallocMem`s without zeroing and only
     // `AllocateLoads` ever writes them — so only the shape is asserted here
-    // (measured on this fixture: `m2.alloc_factors[2] = 1.10343781146e-312`,
-    // process-dependent garbage; GOLDEN_REBASE G1.6(i) decision D-i-3).
+    // (process-dependent garbage).
     for m in &cap.meters {
         assert_eq!(m.calc_current.len(), 3);
         assert_eq!(m.alloc_factors.len(), 3);
     }
 
-    // (6) G1.6b's deferred non-vacuity demo, discharged: the four
+    // (6) The non-vacuity demo: the four
     // reliability-sweep `PDElements` fields are all zero before `RelCalc`
     // (asserted in the phase above) and live after it. `m1`'s zone completed, so
     // its branches also carry a `SectionID`; `m2`'s aborted after the backward
@@ -1018,7 +983,7 @@ fn the_relcalc_protocol_and_the_section_cursor(e: &Engine) {
     );
 }
 
-/// **The G1.6(ii) bridge measurement.** The eight per-bus reliability columns
+/// The eight per-bus reliability columns
 /// ([`modes::BUS_LAMBDA`] … [`modes::BUS_SECTION_ID`]) read live off the
 /// vendored r4133 DLL, on the state the phase above leaves behind: `m1`'s zone
 /// has a completed `RelCalc` (one Recloser section) and `m2`'s aborted at 52902
@@ -1027,8 +992,8 @@ fn the_relcalc_protocol_and_the_section_cursor(e: &Engine) {
 ///
 /// It proves **identity**, not merely capability: six `F` rows and two `I` rows
 /// are same-shape siblings of one family, so a transposed mode index would sail
-/// through the `Served` walk. Every literal is an exact reading measured
-/// 2026-09-05 on this fixture, and the closing loop re-derives the
+/// through the `Served` walk. Every literal is an exact reading on this
+/// fixture, and the closing loop re-derives the
 /// discrimination instead of trusting the hand-picked buses — for each pair of
 /// same-shape rows there must be a bus where the two disagree.
 ///
@@ -1164,8 +1129,7 @@ fn the_bus_reliability_columns_are_live_after_relcalc(e: &Engine) {
 /// [`dss_epri::capture::capture_all_buses`] read this pair last inside the
 /// per-bus record instead of paying a bus re-selection per bus.
 ///
-/// Every literal below was read off the vendored r4133 DLL on this fixture
-/// (2026-09-06, GOLDEN_REBASE G1.4d).
+/// Every literal below was read off the vendored r4133 DLL on this fixture.
 fn the_at_bus_reads_move_the_active_element(e: &Engine) {
     // (1) `Bus.AllPCEatBus`, live. Bus 671 carries one PC element: the 3-phase
     // delta load. The PC set is `TPCClass` + Capacitor + Reactor by name, and

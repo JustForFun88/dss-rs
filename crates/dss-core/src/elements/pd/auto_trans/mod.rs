@@ -10,17 +10,11 @@
 //!   winding's first node in `SetNodeRef`, "Magic happens here").
 //! - Reactances are `XHX`/`XHT`/`XXT` (not `XHL`/`XHT`/`XLT`), and `RNeut`/
 //!   `XNeut` are absent (the auto has no brought-out neutral impedance).
-//!   `XfmrCode` *is* present (property 39, R4133_PROPS RP1.2) but is read
+//!   `XfmrCode` *is* present (property 39) but is read
 //!   through the auto's own `FetchXfmrCode`, which forces the first two
 //!   windings' connections and remaps `XHL/XHT/XLT` onto `puXHX/puXHT/puXXT`.
 //! - `CalcY_Terminal` applies the auto corrections (`ZCorrected`, the 3-winding
 //!   `puXst`, `kVSeries`) — Dommel (6.45/6.46/6.50).
-//!
-//! The electrical core (`SetNodeRef` magic, `CalcY_Terminal`, `GICBuildYTerminal`,
-//! `GetCurrents` fold, the Series arms of the winding readouts) lands in
-//! WPG.15 Stage B; Stage A is the class skeleton (props, `RecalcElementData`,
-//! `CalcY_Terminal`, dump) and defers the `CalcYPrim`/solve path behind a loud
-//! error so the pending corpus decks stay red until Stage B.
 //!
 //! Split into submodules mirroring the transformer layout:
 //! - [`windings`]: winding/tap queries, `SetTermRef`, `RotatePhases`, the winding
@@ -49,10 +43,8 @@ mod yterminal;
 /// 1-based property ordinals (EPRI r4133 `TAutoTrans.DefineProperties`,
 /// `Version8/Source/PDElements/AutoTrans.pas:270-336`, + the class tails).
 ///
-/// Slot 39 is `XfmrCode` (R4133_PROPS RP1.2). dss_capi 0.14.5 deleted the row
-/// outright — `//XfmrCode=39, // removed, unused`,
-/// `.inputs/dss_capi/src/PDElements/AutoTrans.pas:76,125` — so the port's table
-/// is one name longer than the pinned oracle's and the row is allowlisted
+/// Slot 39 is `XfmrCode`. dss_capi 0.14.5 deleted the row outright, so this
+/// engine's table is one name longer than dss_capi's and the row is allowlisted
 /// (`PROPS_015X`) + [`PropFlags::HIDE_R4133`].
 pub mod prop {
     pub const PHASES: usize = 1;
@@ -177,9 +169,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("%IMag"),
         PropDef::double("ppm_Antifloat").scale(1.0e-6),
         PropDef::double_array_on_struct("%Rs", WINDINGS).scale(pct),
-        // Property 38. **The port implements it; r4133 does not** — an inherited
-        // divergence, recorded here because RP1.2 read this exact pair of Edit
-        // arms. r4133 keeps the assignment commented out (`38: {XfmrBank :=
+        // Property 38. **This engine implements it; r4133 does not** — an
+        // inherited divergence. r4133 keeps the assignment commented out (`38: {XfmrBank :=
         // Param};`, `AutoTrans.pas:519`) and answers the write with
         // `DoSimpleMsg('Bank Property not used with AutoTrans object.', 100130)`
         // (`:566`), so its `XfmrBank` is always `''` and every auto is its own
@@ -195,9 +186,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // corpus deck writes `bank=` on an AutoTrans (every `bank=` in the
         // corpus is a Transformer), the property echo agrees on both channels,
         // and the CIM goldens are capi-captured. Adopting #100130 is an open
-        // decision: record `docs/phase-records/r4133-props-rp0-rp1.md` §RP1.2,
-        // tracker rows in `ORPHANED_GAPS.md` and `docs/upgrade/DIVERGENCES.md`
-        // (AutoTrans `bank=`), the port's behaviour pinned by
+        // decision. The port's behaviour is pinned by
         // `exec::tests::autotrans_xfmrcode::bank_is_stored_silently_where_r4133_logs_100130`.
         PropDef::string("Bank"),
         // EPRI r4133 property 39 (`AutoTrans.pas:329`, help `:414`), read by the

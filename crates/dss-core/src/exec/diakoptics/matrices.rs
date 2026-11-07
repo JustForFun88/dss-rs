@@ -1,20 +1,21 @@
 //! The four A-Diakoptics matrix builders — a loop-for-loop port of
-//! official `Diakoptics.pas` (plan D10). Each writes into the coordinator's
+//! official `Diakoptics.pas`. Each writes into the coordinator's
 //! `circuit.ad` sparse-complex slots.
 //!
 //! - [`Dss::calc_c_matrix`]  — `Calc_C_Matrix` (Diakoptics.pas:314): the
 //!   contours (node ↔ link) incidence, `±1` per phase per link, node lookup by
-//!   name **substring** (D5 quirk).
+//!   name **substring** (reproduced quirk).
 //! - [`Dss::calc_zll`]       — `Calc_ZLL` (Diakoptics.pas:411): per link, the
 //!   inverted 3×3 self-block of the link `Line`'s Yprim, on the ZLL block diag.
 //! - [`Dss::calc_zcc`]       — `Calc_ZCC` (Diakoptics.pas:229): per contour
 //!   column solve `Y_torn·z = c` → ZCT, then `ZCC = Contoursᵀ·ZCT + ZLL`
-//!   (`re≠0 AND im≠0` ZCT drop, D5 quirk).
+//!   (`re≠0 AND im≠0` ZCT drop, reproduced quirk).
 //! - [`Dss::calc_y4`]        — `Calc_Y4` (Diakoptics.pas:169): `Y4 = ZCC⁻¹` via
-//!   dense `CMatrix::invert` (the double-`.re` drop, D5 quirk).
+//!   dense `CMatrix::invert` (the double-`.re` drop, reproduced quirk).
 //!
-//! The D5 quirks are marked `NOTE(upstream-quirk)` at each site (Part II has no
-//! oracle → no compat marker); the fixture goldens pin them.
+//! The quirks are marked `NOTE(upstream-quirk)` at each site. A-Diakoptics has
+//! no OpenDSS comparison channel, so they carry no compat marker. The fixture
+//! goldens pin them.
 
 use num_complex::Complex64;
 
@@ -24,8 +25,8 @@ use crate::support::cmatrix::CMatrix;
 
 /// NOTE(upstream-quirk): the ZCT keep test (Diakoptics.pas:274) is
 /// `(CTemp.re <> 0) and (CTemp.im <> 0)` — a solved column entry with **exactly
-/// one** zero part (`re=0 xor im=0`) is dropped. Part II has no oracle, so this
-/// predicate is pinned directly by the unit tests (a "cleanup" to `re≠0 OR
+/// one** zero part (`re=0 xor im=0`) is dropped. A-Diakoptics has no OpenDSS
+/// comparison channel, so this predicate is pinned directly by the unit tests (a "cleanup" to `re≠0 OR
 /// im≠0` would change it). Reproduced 1:1.
 fn zct_keep(v: Complex64) -> bool {
     v.re != 0.0 && v.im != 0.0
@@ -204,7 +205,7 @@ impl Dss {
             // silently yields a garbage/near-singular inverse and the AD init
             // proceeds. Here `invert` returns an error — we surface it as the ZLL
             // error path (`error_flag`), which stops the init with a summary
-            // (plan D5: the 3-phase-Line cut constraint is the eligibility rule).
+            // (the 3-phase-Line cut constraint is the eligibility rule).
             if link_prim.invert().is_err() {
                 error_flag = true;
                 continue;
@@ -278,7 +279,7 @@ impl Dss {
                 break;
             }
 
-            // Insert into ZCT with the D5 drop test ([`zct_keep`]).
+            // Insert into ZCT with the drop test ([`zct_keep`]).
             for (k, v) in zvector.iter().enumerate() {
                 if zct_keep(*v) {
                     ckt.ad.zct.insert(k as i32, idx2, *v);
@@ -293,7 +294,7 @@ impl Dss {
     }
 
     /// Pascal `Calc_Y4()` (Diakoptics.pas:169): `Y4 = ZCC⁻¹` via the dense
-    /// `TcMatrix.Invert`, then copied back into the sparse `Y4` with the D5
+    /// `TcMatrix.Invert`, then copied back into the sparse `Y4` with the
     /// double-`.re` drop quirk.
     pub(crate) fn calc_y4(&mut self) {
         let Some(ckt) = self.circuit.as_mut() else {
@@ -324,7 +325,7 @@ impl Dss {
         for idx in 0..n {
             for c in 0..n {
                 let value = temp.get(idx, c);
-                // D5 double-`.re` drop ([`y4_keep`]).
+                // Double-`.re` drop ([`y4_keep`]).
                 if y4_keep(value) {
                     ckt.ad.y4.insert(idx as i32, c as i32, value);
                 }

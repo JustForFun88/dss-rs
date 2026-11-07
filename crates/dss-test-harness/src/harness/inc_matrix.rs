@@ -1,4 +1,4 @@
-//! `GOLDEN_REBASE_PLAN.md` WP-G1 sub-step **G1.8** — the flat branch-to-node
+//! The flat branch-to-node
 //! incidence surface, compared live on every gating channel of the unified
 //! corpus gate.
 //!
@@ -29,18 +29,15 @@
 //!   (`crates/dss-epri/src/modes.rs`'s `DO_NOT_CALL` register), and a quantity
 //!   only one channel can answer is not a gate.
 //! * **The hierarchical `CalcIncMatrix_O` build**, because it runs `GetTopology`
-//!   (r4133 `Common/Solution.pas:3173`) — which builds and memoizes the very
-//!   `Branch_List` G1.7's two decline censuses are defined on.
+//!   — which builds and memoizes the very `Branch_List` the topology surface's
+//!   two decline censuses are defined on.
 //!
-//! Both keep their byte-exact `tests/golden/inc_matrix/` `org_*` coverage
-//! (`GOLDEN_REBASE_PLAN.md` §G3.2c, re-scoped in the same commit).
+//! Both keep their byte-exact `tests/golden/inc_matrix/` `org_*` coverage.
 //!
 //! # Fully discrete — no tolerance, deliberately
 //!
-//! Every field is an integer triple stream or an identifier list; nothing here
-//! is a float, so this surface introduces **no** band and gets no
-//! `tests/TOLERANCE_NOTES.md` floor. The absence is recorded there in one
-//! sentence so a later reader does not read it as an omission.
+//! Every field is an integer triple stream or an identifier list. Nothing here
+//! is a float, so this surface has **no** band: the compare is exact.
 //!
 //! # Shape: three transport normalizations, only *asserted* here
 //!
@@ -53,7 +50,7 @@
 //!   arrays and leaves the last one unwritten (`CAPI_Solution.pas:910` and
 //!   `:873`, both carrying upstream's own `//TODO: remove the +1`), so a capi
 //!   reply is always `3·NZero + 1` long. The transport asserts the trailing cell
-//!   is `0` — this sub-step's kill criterion — and drops it.
+//!   is `0` and drops it.
 //! * **N2, the r4133 nil/empty sentinel.** `SetLength(myIntArray, 1)` runs
 //!   unconditionally and a nil/empty matrix answers the single cell `[0]`
 //!   (`DSolution.pas:544-547`, `:642-646`) — decoded to `[]`.
@@ -62,12 +59,11 @@
 //!   (`DSolution.pas:605`, `:636`) — decoded to `[]` only where the engine can
 //!   reach it.
 //!
-//! After N1–N3 the two channels are byte-identical: 358 both-gated cases, 0
-//! disagreements on all four quantities (`tmp/g18/` sweeps, spec §3.1).
+//! After N1–N3 the two channels are byte-identical on all four quantities.
 //!
 //! This module does **not** re-normalize. A repair here would hide a transport
-//! regression behind a green gate (§1.1(f): a comparator must fail, never
-//! quietly fix up), so [`assert_transport_shape`] requires the arriving capture
+//! regression behind a green gate (a comparator must fail, never quietly fix
+//! up), so [`assert_transport_shape`] requires the arriving capture
 //! to be at the transports' fixpoint already and names the transport to fix — the
 //! `harness::topology::assert_normalized` precedent.
 //!
@@ -84,7 +80,7 @@
 //! `IncMatrixRows` *is* "the PD-element name per incidence-matrix row"
 //! (exported as `B2N Incidence Matrix Row Names (PDElements)`).
 //!
-//! CLAUDE.md is binding: no upstream bug is reproduced in any lane. The port
+//! No OpenDSS bug is reproduced in any lane. The engine
 //! emits dense rows (`solution::inc_matrix::add_series_reactors`) and this
 //! comparator re-derives upstream's index **positively** — it applies
 //! `IncMatrixView::upstream_row_index` to the port's own triples and requires
@@ -100,7 +96,7 @@
 //!
 //! # Read and compared strictly last in the step
 //!
-//! Both transports capture this surface after everything else, including G1.7's
+//! Both transports capture this surface after everything else, including the
 //! topology read, and `corpus_gate/runner.rs` calls [`compare_inc_matrix`] last
 //! in a step for the same two reasons:
 //!
@@ -112,9 +108,13 @@
 //!   alone, `.inputs/dss_capi/src/Common/Solution.pas:1464-1473` — the stronger
 //!   channel sets the rule for both);
 //! * it must FOLLOW the topology read, which is the one that builds and memoizes
-//!   `Branch_List`; G1.7's `TOPOLOGY_STALE_DECLINES` /
+//!   `Branch_List`. The topology surface's `TOPOLOGY_STALE_DECLINES` /
 //!   `LOOPED_PAIR_WINDOW_DECLINES` are defined on a tree nothing else has
 //!   touched.
+//!
+//! Knob: `DSS_GATE_ONLY`, when set (a filtered partial run), skips the
+//! decline-population pin [`assert_declines_are_the_pinned_population`]. Unset
+//! by default, so the pin runs.
 
 use std::collections::BTreeSet;
 use std::sync::Mutex;
@@ -168,7 +168,7 @@ pub struct IncMatrixCap {
 ///
 /// * `3·NZero`: a capi reply that still carries its `+1` cell arrives
 ///   `len % 3 == 1`, which is exactly what a transport that stopped applying N1
-///   would produce — and a length that is not `3·NZero (+1)` is this sub-step's
+///   would produce — and a length that is not `3·NZero (+1)` is the surface's
 ///   kill criterion, so it is re-checked at the gate and not only in the
 ///   capture.
 /// * No empty or whitespace-only name: a row label always carries its `Class.`
@@ -191,7 +191,7 @@ pub fn assert_transport_shape(cap: &IncMatrixCap, ctx: &str) {
              cell it over-allocates, CAPI_Solution.pas:910 / :873; the r4133 \
              bridge decodes the one-cell `[0]` nil sentinel, DSolution.pas:544 / \
              :642), so this is a transport failure, not a divergence — and a \
-             non-`3*NZero` length is G1.8's kill criterion",
+             non-`3*NZero` length is the incidence surface's kill criterion",
             v.len()
         );
     }
@@ -279,8 +279,8 @@ pub fn assert_oracle_self_consistent(cap: &IncMatrixCap, ctx: &str) {
 ///
 /// Only the row component is rewritten, through
 /// `IncMatrixView::upstream_row_index` — the reconstruction the engine exposes
-/// for exactly this (module doc, settlement S-INC; the
-/// `TopologyView::looped_pair_candidates` precedent of decision D16). Columns
+/// for exactly this (module doc, settlement S-INC, as
+/// `TopologyView::looped_pair_candidates` does for the topology surface). Columns
 /// and values are the port's own.
 ///
 /// The two asserts are the port's own consistency arms, the mirror of
@@ -469,7 +469,7 @@ pub struct DeclineCensus {
 
 /// Which gating channels the **manifests** ask the incidence surface for, read
 /// off the four manifests by the caller (`corpus_gate::scheduler`) rather than
-/// off this run's own counters — the arming predicate G1.7 landed
+/// off this run's own counters — the arming predicate of the topology surface
 /// (`scheduler::assert_topology_declines_are_the_pinned_population`) and the
 /// reason a re-mask of the comparator's call site cannot go quiet here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -541,8 +541,8 @@ fn record_row_decline(case: &str, step: usize) {
 /// upstream's row cursor runs past `Inc_Mat_Rows` and [`compare_inc_matrix`]
 /// therefore compares its remapped answer instead of a bare one.
 ///
-/// Measured 2026-09-05 over the forced incidence population (every live
-/// non-`large` case), independently on both channels and identically:
+/// Measured over the forced incidence population (every live non-`large` case),
+/// independently on both channels and identically:
 /// `solvable_now:…/NEVTestCase/NEVMASTER.DSS` (step 0),
 /// `solvable_now:…/NEVTestCase/Run_NEV.dss` (step 0, the same deck),
 /// `asymmetric:reactor/reactor_asym.dss` (step 0) and
@@ -555,7 +555,7 @@ pub const INC_UPSTREAM_ROW_DECLINES: (usize, usize) = (4, 5);
 
 /// **The decline population is re-derived on every full gate run and pinned in
 /// BOTH directions** — the fail-on-stale rule the 0-ledger-row settlement S-INC
-/// hangs on (the D15/D16 shape G1.7 landed on this lane).
+/// hangs on (the shape of the topology surface's D15/D16 censuses).
 ///
 /// A population that GREW means a case-step started declining and nobody looked;
 /// one that SHRANK means the pin behind it is a statement about nothing — in
@@ -573,10 +573,9 @@ pub const INC_UPSTREAM_ROW_DECLINES: (usize, usize) = (4, 5);
 ///   the manifest reader is the corpus-gate binary's, which this library cannot name.
 ///
 /// It is emphatically **not** silent when the manifests do request the surface
-/// and nothing was compared. That is the G1.8 audit-settlement fix (2026-09-05,
-/// findings G18-CODE-1 / G18-T1): the previous arming predicate was this run's
-/// own `compared` counter, so deleting or narrowing the comparator's call site
-/// (`corpus_gate::runner`'s `if c.compare_inc_matrix` block) silenced the whole
+/// and nothing was compared. An arming predicate on this run's own `compared`
+/// counter would let a deleted or narrowed call site
+/// (`corpus_gate::runner`'s `if c.compare_inc_matrix` block) silence the whole
 /// surface with a green gate — [`capture_guard::require_capture_opt`] lives
 /// INSIDE that block, `population.lock.json` records only the manifest flag, and
 /// the forced-population re-derivation only sees the scheduler-side flag. The
@@ -755,7 +754,7 @@ pub fn compare_inc_matrix(
     }
     COMPARED.fetch_add(1, AtomicOrd::Relaxed);
     // Per channel too, so a re-mask that keeps ONE channel walking still reds in
-    // the epilogue (G1.8 audit settlement, finding G18-T1). An unknown tag is
+    // the epilogue. An unknown tag is
     // counted in the total only — `PropsChannel::tag` is the single producer
     // (`corpus_gate::runner::channel_tag`) and the epilogue's per-channel arms
     // are keyed on exactly those two spellings.
@@ -1053,15 +1052,15 @@ mod tests {
             r4133: false,
         };
         // Nothing REQUESTED: silent — a fact about the manifests, not about this
-        // run's counters (G1.8 audit settlement, G18-CODE-1 / G18-T1).
+        // run's counters.
         check_census(c(0, (0, 0)), "report", none);
         // Nothing requested yet the comparator ran: impossible, and refused.
         let msg = panic_message(|| check_census(c(4, (0, 0)), "report", none));
         assert!(msg.contains("yet the incidence comparator ran"), "{msg}");
         let msg = panic_message(|| check_census(c(0, (1, 1)), "report", none));
         assert!(msg.contains("yet the incidence comparator ran"), "{msg}");
-        // Requested but never compared — the call site went quiet. The OLD
-        // predicate passed here; this is the finding's regression test.
+        // Requested but never compared — the call site went quiet. A predicate
+        // on the run's own counters would pass here.
         let msg = panic_message(|| check_census(c(0, (0, 0)), "report", both));
         assert!(msg.contains("the incidence compare never ran"), "{msg}");
         // And requested on a channel that never ran, while the other did.

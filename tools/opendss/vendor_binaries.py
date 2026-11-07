@@ -11,7 +11,7 @@ absolute path):
   - `kmetis.exe`        — the METIS k-way partitioner the engine spawns from
   - `pmetis.exe`          `DSSDirectory` (= the DLL's own directory) when
                           A-Diakoptics tears a circuit (`set ADiakoptics=True`,
-                          `Tear_Circuit`) — see DIAKOPTICS_PSTCALC_PLAN.md D9;
+                          `Tear_Circuit`);
   - `License.txt`       — EPRI license shipped alongside the binaries.
 
 Deliberately NOT copied:

@@ -1,4 +1,4 @@
-// r4133 twin of Version8/Distrib/Examples/InductionMachine/Run.dss (WP-U2.1 re-evaluation).
+// r4133 twin of Version8/Distrib/Examples/InductionMachine/Run.dss.
 // See indmach_snap.dss for why the vendored original cannot run under r4133 (fuse
 // overhaul: CurveMultiplier=65 restores the original RatedCurrent=65 TCC coordination).
 // Driver mirrors Run.dss: snapshot solve, then 5001 dynamics steps at h=166.67us with

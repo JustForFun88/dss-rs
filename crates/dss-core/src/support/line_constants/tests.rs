@@ -2,8 +2,7 @@
 //! (PIN.txt 0.15.7 / backend 0.14.5). Reference matrices were probed by
 //! building the same geometry through a `Line` and reading `Rmatrix`/`Xmatrix`
 //! (ohm per unit length, here ohm/m) and `Cmatrix` (nF per unit length, here
-//! nF/m) — i.e. the engine outputs that the geometry path produces. See the
-//! WP7.1 probe in STATUS.md.
+//! nF/m) — i.e. the engine outputs that the geometry path produces.
 
 use super::*;
 
@@ -79,8 +78,8 @@ fn build_ts() -> LineConstants {
     lc
 }
 
-/// Build a 4-conductor CN cable (3 phases + a 4th bare-neutral core at x = 0.3),
-/// mirroring `cn_reduce()` in the WP7.1 probe. The caller sets nphases = 3 so the
+/// Build a 4-conductor CN cable (3 phases + a 4th bare-neutral core at x = 0.3).
+/// The caller sets nphases = 3 so the
 /// CN self-Z/capacitance loops run over phases only and the 4th core acts as a
 /// bare neutral that gets Kron-reduced out.
 fn build_cn4() -> LineConstants {
@@ -199,13 +198,11 @@ fn deri_full_3cond() {
 /// `from_polar` form) and still matches the x86_64 FPC `ucomplex` RTL
 /// bit-for-bit, which is what the Carson DERI and cable earth terms need.
 ///
-/// The `cmod`/`cln` halves are now asserted the other way round: the port used
-/// to hand-roll them (naive `√(re²+im²)`, `ln(cmod)+j·atan2`) on the assumption
-/// that `num_complex` would round differently, and F.3y measured that it does
-/// not — `.norm()`/`.ln()` land on the **same RTL bits**. So the hand-rolled
-/// pair is gone and this test pins the equality that let it go: if a future
-/// toolchain's `hypot` ever stopped agreeing with the naive form, this fails
-/// loudly instead of drifting the parity lane's DERI goldens in silence.
+/// The `cmod`/`cln` halves are asserted the other way round: `.norm()`/`.ln()`
+/// land on the **same RTL bits** as the naive `√(re²+im²)` and
+/// `ln(cmod)+j·atan2`. If a future toolchain's `hypot` ever stopped agreeing
+/// with the naive form, this fails loudly instead of drifting the parity lane's
+/// DERI goldens in silence.
 #[test]
 fn fpc_complex_primitives_match_ucomplex_not_num_complex() {
     // General sqrt: FPC algebraic (NR) vs num_complex polar — 1 ULP apart.
@@ -245,8 +242,7 @@ fn fpc_complex_primitives_match_ucomplex_not_num_complex() {
 /// The naive FPC modulus and `f64::hypot` are the *same function* on every
 /// operand the engine can reach, and differ only where the naive one breaks.
 ///
-/// This is the measurement that removed `cabs_fpc`/`cln_fpc` from the engine
-/// (F.3y) — stated as an executable claim rather than as a note, because the
+/// It is stated as an executable claim rather than as a note, because the
 /// whole justification for using the crate's forms in the **parity** lane is
 /// that they are bit-identical there.
 ///
@@ -303,8 +299,8 @@ fn naive_modulus_equals_hypot_until_the_square_overflows() {
 }
 
 /// `csqrt_fpc` is kept over `num_complex`'s `.sqrt()` because it is the **more
-/// accurate** kernel, not because the oracle needs it — the same verdict F.3e
-/// reached for `compat::cdiv`, and the reason this row carries no lane split.
+/// accurate** kernel, not because the OpenDSS engines need it — the same verdict
+/// as for `compat::cdiv`, and the reason this row carries no lane split.
 ///
 /// Measured against a 60-digit `mpmath` reference over 20 000 operands
 /// (|z| ∈ 1e-12…1e12): mean error 0.339 ULP (FPC, real part) vs 2.413 ULP
@@ -395,10 +391,10 @@ fn simple_carson_full_3cond() {
     let mut lc = build(&COORDS3);
     lc.calc(60.0, SIMPLE_CARSON);
     // capi015 (dss-python 0.16.0b2 / dss_capi 0.15.0b4) reference: the
-    // SimpleCarson De constant moved 658.5 → 658.8530451057239 (UPGRADE_PLAN
-    // WP-U1.2 B2/D1). Probed via `? Line.l1.Xmatrix` on the earthmodel=carson
-    // overhead deck, ÷1000 for ohm/m. Only the earth-return reactance shifts;
-    // resistance (`fw·MU0/8`) and capacitance are De-independent.
+    // SimpleCarson De constant is 658.8530451057239. Probed via
+    // `? Line.l1.Xmatrix` on the earthmodel=carson overhead deck, ÷1000 for ohm/m.
+    // Only the earth-return reactance shifts; resistance (`fw·MU0/8`) and
+    // capacitance are De-independent.
     let z_ref = [
         (3.592176235097e-04, 9.081135553905e-04),
         (5.921762350974e-05, 5.086298569577e-04),
@@ -593,7 +589,7 @@ fn ts_cable_deri_3cond() {
 fn cn_cable_carson_3cond() {
     let mut lc = build_cn();
     lc.calc(60.0, SIMPLE_CARSON);
-    // capi015 reference (De 658.5 → 658.8530451057239, WP-U1.2 B2/D1). The
+    // capi015 reference (De = 658.8530451057239). The
     // Kron reduction of the concentric neutral couples the earth-return
     // reactance shift into the reduced phase resistances too, so both parts
     // move (unlike the overhead case).
@@ -637,8 +633,8 @@ fn cn_cable_fullcarson_3cond() {
 fn ts_cable_carson_3cond() {
     let mut lc = build_ts();
     lc.calc(60.0, SIMPLE_CARSON);
-    // capi015 reference (De 658.5 → 658.8530451057239, WP-U1.2 B2/D1); tape
-    // shield reduced like the CN case, so both parts move.
+    // capi015 reference (De = 658.8530451057239). The tape shield is reduced
+    // like the CN case, so both parts move.
     let z_ref = [
         (4.690156700538e-04, 4.983328807955e-04),
         (3.559636177789e-04, 2.469602347117e-04),
@@ -880,8 +876,8 @@ const IN: i32 = 6; // LineUnits::Inch code
 /// `Version8/Source/General/LineConstants.pas:689-696`), feeding a value
 /// declared "always saved in meters here" (`:71`, `:97`) into a setter whose
 /// argument is a user-unit number (`:676-687`) — so 5 ft becomes 1.524 m and is
-/// then re-read as 1.524 in. Neither lane reproduces it
-/// (`GOLDEN_REBASE_PLAN.md` G2.1h; `issue-28`): both call the class's own
+/// then re-read as 1.524 in. Neither lane reproduces it (`issue-28`): both
+/// call the class's own
 /// `Get_FheightOffset` (`:396-399`, [`LineConstants::height_offset`]) one
 /// statement earlier. The pinned 0.14.5 backend has no height-offset surface at
 /// all, so these line numbers resolve against r4133 only.

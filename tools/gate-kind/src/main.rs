@@ -4,10 +4,10 @@
 //!
 //! With `--head` it grades the committed range `<base>..<head>`, without it
 //! `<base>` against the working tree (`git diff --raw -z -M100% <base>` plus
-//! every untracked, not ignored path as added), because a stage gate runs
-//! before its Commit stage. Any error (a bad argument, a failing git, an
+//! every untracked, not ignored path as added), because a lane's gate runs
+//! before its commit. Any error (a bad argument, a failing git, an
 //! unknown rev, a panic) prints its reason and `GATE_KIND=Code`. The tool never
-//! decides by itself what to run (`RETRO_FIXES_PLAN.md` RF-I00-05).
+//! decides by itself what to run.
 
 #![forbid(unsafe_code)]
 

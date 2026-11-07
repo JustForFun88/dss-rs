@@ -1,37 +1,26 @@
-//! Port of `Controls/InvControl.pas` — `TInvControlObj`, the smart-inverter
-//! control over a fleet of PVSystem/Storage (`TInvBasedPCE`) elements. It is the
-//! single largest unit in Phase 7 (3586 lines, eight control modes:
-//! VOLTVAR / VOLTWATT / DRC / WATTPF / WATTVAR / AVR / GFM + the VV_VW / VV_DRC
-//! combi modes), so the port lands in sub-steps (PHASE7_PLAN WP7.5 step 2):
+//! `InvControl`, the smart-inverter control over a fleet of PVSystem/Storage
+//! (`TInvBasedPCE`) elements, with eight control modes (VOLTVAR / VOLTWATT / DRC /
+//! WATTPF / WATTVAR / AVR / GFM + the VV_VW / VV_DRC combi modes).
 //!
-//! - **step 2a (this commit) — the parse-only skeleton.** The class, its 34
-//!   properties (`define_properties!`), the seven smart-inverter enums, `Create`
-//!   defaults, `PropertySideEffects` (incl. the `ValidateXYCurve` curve
-//!   range-checks and the DbVMin/DbVMax/LPFTau/RiseFallLimit guards), `MakeLike`,
-//!   and class registration. The DER fleet (`MakeDERList`), the per-DER runtime
-//!   state (`TInvVars`), and the control behavior (`Sample` / `DoPendingAction` /
-//!   the `Calc*` per-mode math) are **deferred to step 2b+**: until then a
-//!   sampled InvControl records an explicit NOT_PORTED error (never a silent
-//!   no-op — `solution/controls/dispatch.rs`).
+//! This module holds the class, its properties (`define_properties!`), the seven
+//! smart-inverter enums, `Create` defaults, `PropertySideEffects` (incl. the
+//! `ValidateXYCurve` curve range-checks and the DbVMin/DbVMax/LPFTau/RiseFallLimit
+//! guards), `MakeLike`, class registration and the per-DER runtime state
+//! ([`InvVars`]). The DER fleet build and the control behavior live in `compute`.
 //!
 //! Like every `TControlElem`, an InvControl builds **no Yprim** and its terminal
 //! currents are zero. Its single terminal attaches to the first DER element's
-//! bus (deferred to step 2b's `RecalcElementData`).
+//! bus (`RecalcElementData`).
 //!
 //! The five control curves (`VVC_Curve1` / `VoltWatt_Curve` / `VoltWattCH_Curve`
 //! / `WattPF_Curve` / `WattVar_Curve`) resolve to `XYcurve` objects via the
-//! snapshot-clone ObjectRef pattern (WP4.2). `PropertySideEffects` runs Pascal's
+//! snapshot-clone ObjectRef pattern. `PropertySideEffects` runs
 //! `ValidateXYCurve`: a curve whose per-unit Y values fall outside the mode's
 //! valid band (VOLTWATT/WATTPF/WATTVAR) is dropped (set to `None`) with error
-//! 381 — VOLTVAR (`VVC_Curve1`) is unchecked.
+//! 381. VOLTVAR (`VVC_Curve1`) is unchecked.
 //!
-//! **Deferred to step 2b+ (the behavior):** `MakeDERList` (the
-//! PVSystem/Storage fleet resolution), `RecalcElementData`'s
-//! bus/monitored-element setup, the `monBus` per-bus node parsing
-//! (`FMonBuses`/`FMonBusesNodes` — consumed only by `Sample`'s `GetMonVoltage`),
-//! and the entire `Sample`/`DoPendingAction`/`Reset` dispatch. `MakePosSequence`
-//! is ported (WPG.21) as a NIL-deref-safe partial (the defined 3-phase resync +
-//! resolved-DER bus adopt, empty-list deref safe-skipped — see [`accessors`]).
+//! `MakePosSequence` is a NIL-deref-safe partial (the defined 3-phase resync +
+//! resolved-DER bus adopt, empty-list deref skipped, see [`accessors`]).
 
 mod accessors;
 mod compute;
@@ -480,7 +469,7 @@ impl PICtrl {
 }
 
 /// Pascal `TInvVars` — the per-controlled-DER runtime state (one record per fleet
-/// member). Carries the fields the WP7.5 **step 2b–2e-ii** dispatch (VOLTVAR /
+/// member). Carries the fields the dispatch (VOLTVAR /
 /// VOLTWATT / VV_VW / DRC / VV_DRC / WATTPF / WATTVAR / AVR) + the shared machinery
 /// (`UpdateInvControl`, `Calc_QHeadRoom`, `Change_deltaQ_factor`,
 /// `UpdateDERParameters`) read/write. Field names mirror the Pascal record for a
@@ -524,7 +513,7 @@ pub(crate) struct InvVars {
     /// persists across `Sample` calls. Unused on the Linear path.
     pub pi_ctrl: PICtrl,
 
-    // --- DRC / VV_DRC reactive-power state (sub-step 2d) ---
+    // --- DRC / VV_DRC reactive-power state ---
     /// `QDesiredDRC` — the DRC kvar set-point pushed to the DER.
     pub q_desired_drc: f64,
     /// `QDesiredVVDRC` — the VV_DRC combi kvar set-point pushed to the DER.
@@ -543,7 +532,7 @@ pub(crate) struct InvVars {
     pub f_drc_operation: f64,
     pub f_vvdrc_operation: f64,
 
-    // --- WATTPF / WATTVAR reactive-power state (sub-step 2e-i) ---
+    // --- WATTPF / WATTVAR reactive-power state ---
     /// `QDesiredWP` / `QDesiredWV` — the watt-pf / watt-var kvar set-point pushed
     /// to the DER.
     pub q_desired_wp: f64,
@@ -555,7 +544,7 @@ pub(crate) struct InvVars {
     pub f_wp_operation: f64,
     pub f_wv_operation: f64,
 
-    // --- AVR (active voltage regulation) reactive-power state (sub-step 2e-ii) ---
+    // --- AVR (active voltage regulation) reactive-power state ---
     /// `QDesiredAVR` — the AVR kvar set-point pushed to the DER.
     pub q_desired_avr: f64,
     /// `QOldAVR` — the prior AVR kvar (convergence history). Pascal seeds it to
@@ -578,7 +567,7 @@ pub(crate) struct InvVars {
     /// baseline (`v`) at control iteration 3.
     pub f_avgp_avr_vpu_prior: f64,
 
-    // --- volt-watt active-power state (VOLTWATT / VV_VW; sub-step 2c) ---
+    // --- volt-watt active-power state (VOLTWATT / VV_VW) ---
     /// `PLimitVW` — the volt-watt kW set-point pushed to the DER.
     pub p_limit_vw: f64,
     /// `PLimitVWpu` — the kW limit (pu of `PBase`) read off the volt-watt curve.
@@ -601,7 +590,7 @@ pub(crate) struct InvVars {
     /// `FdeltaPFactor` — the adaptive convergence damping factor for volt-watt.
     pub f_delta_p_factor: f64,
 
-    // --- LPF / Rise-Fall rate-of-change limiting (sub-step 2e-iii) ---
+    // --- LPF / Rise-Fall rate-of-change limiting ---
     /// `QDesireOptionpu` / `PLimitOptionpu` — the desired Q / P limit (pu) *after*
     /// the LPF / Rise-Fall filter, fed into `Check_Qlimits` / `Check_Plimits`.
     pub q_desire_optionpu: f64,
@@ -615,7 +604,7 @@ pub(crate) struct InvVars {
     /// Storage `kWrating`), `FpctDCkWRated` (PVSystem `puPmpp` / Storage
     /// `pctkWrated`), `FEffFactor` — the volt-watt power-base inputs, refreshed each
     /// Sample by `UpdateDERParameters`. The Storage `%Available` base reads the live
-    /// `TStorageObj.DCkW` at `Calc_PBase` time instead of `f_dckw` (WPG.10).
+    /// `TStorageObj.DCkW` at `Calc_PBase` time instead of `f_dckw`.
     pub f_dckw: f64,
     pub f_dckw_rated: f64,
     pub f_pct_dckw_rated: f64,
@@ -684,10 +673,9 @@ impl InvVars {
     }
 }
 
-/// `TInvControlObj`. The parse-time surface (step 2a) plus the WP7.5 step-2b
-/// VOLTVAR dispatch state: the resolved DER fleet (`fleet`), the per-DER
-/// [`InvVars`] (`ctrl_vars`), and the rolling-average solution-voltage bookkeeping.
-/// VOLTWATT / DRC / WATTPF / WATTVAR / AVR + the combi modes land in 2c–2e.
+/// `TInvControlObj`. The parse-time surface plus the dispatch state: the
+/// resolved DER fleet (`fleet`), the per-DER [`InvVars`] (`ctrl_vars`), and the
+/// rolling-average solution-voltage bookkeeping.
 #[derive(Debug, Clone)]
 pub struct InvControl {
     pub ccd: ControlElemData,
@@ -725,7 +713,7 @@ pub struct InvControl {
     /// `Fwattvar_curve` — watt-var curve.
     wattvar_curve_name: String,
     wattvar_curve: Option<XyCurveObj>,
-    /// `pf_wp_nominal` — watt-pf nominal pf (computed during Sample, step 2b);
+    /// `pf_wp_nominal` — watt-pf nominal pf (computed during Sample);
     /// carried for `Create`/`MakeLike` fidelity.
     pf_wp_nominal: f64,
 
@@ -777,7 +765,7 @@ pub struct InvControl {
     /// `CtrlModel` (`TInvControlModel`: Linear / Exponential).
     ctrl_model: InvControlModel,
 
-    // --- WP7.5 step-2b runtime state (the DER fleet + dispatch) ---
+    // --- Runtime state (the DER fleet + dispatch) ---
     /// `FDERPointerList` — the resolved PVSystem/Storage fleet, built lazily on the
     /// first `Sample` (empty until then), cached across samples like Pascal. An
     /// empty fleet re-triggers the build (Pascal `FDERPointerList.Count = 0`); a
@@ -900,8 +888,7 @@ impl InvControl {
         &self.der_name_list
     }
 
-    // --- Read-only accessors for the CIM `TIEEE1547Controller` export (WPG.18
-    // Stage F, `ExportCIMXML.pas` `PullFromInvControl`). No behavior change. ---
+    // --- Read-only accessors for the CIM `TIEEE1547Controller` export. ---
 
     /// `MonBusesNameList` — the raw monitored-bus strings (`FindSignalTerminals`).
     pub(crate) fn mon_buses_name_list(&self) -> &[String] {

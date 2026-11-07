@@ -241,9 +241,9 @@ impl IndMach012Model {
     /// Pascal `Compute_dSdP` (`IndMach012Model.pas:363-372`) — dSdP based on
     /// rated slip and rated voltage.
     ///
-    /// TODO(compat): `1.732` reproduces upstream's truncated sqrt(3)
-    /// (`kvGeneratorBase*1000.0/1.732`); full-precision fix deferred to the
-    /// DE_PASCALIZE Stage F sweep.
+    /// TODO(compat): `1.732` reproduces OpenDSS's truncated sqrt(3)
+    /// (`kvGeneratorBase*1000.0/1.732`). Clean fix: full-precision sqrt(3),
+    /// with a rebuilt `.wasm` fixture (this crate is outside the lane switch).
     fn compute_dsdp(&mut self, genvars: &GeneratorVars) -> f64 {
         self.v1 = cmplx(genvars.kv_generator_base * 1000.0 / 1.732, 0.0);
         if self.s1 != 0.0 {
@@ -460,10 +460,10 @@ impl IndMach012Model {
                 // in Single, and FPC evaluates constant expressions at the
                 // lowest common precision of their operands), so the twin's
                 // conversion factor is the f32 quotient — proven bit-exact by
-                // the var14 decomposition probe (scratch var14_probe2.py →
-                // docs/wasm/probes/p6_twin_expected.txt pin; a plain f64
-                // `3.0/746.0` misses the twin by 2.6e-8 rel). Clean fix
-                // (full-precision factor) deferred to DE_PASCALIZE Stage F.
+                // the var14 decomposition probe (pinned by
+                // docs/wasm/probes/p6_twin_expected.txt: a plain f64
+                // `3.0/746.0` misses the twin by 2.6e-8 rel). Clean fix:
+                // the full-precision f64 factor, with a rebuilt `.wasm`.
                 const HP_PER_WATT: f64 = (3.0f32 / 746.0f32) as f64;
                 result = HP_PER_WATT
                     * (sqr(cabs(self.ir1)) * (1.0 - self.s1) / self.s1
@@ -509,7 +509,7 @@ fn do_help_cmd(msg: &mut dyn FnMut(&[u8])) {
 
 /// Pascal `InitTraceFile` (`IndMach012Model.pas:559-570`) writes
 /// `IndMach012_Trace.CSV`. Deliberately a no-op here: the WASM sandbox has no
-/// filesystem (plan §2.9-7 / ABI §6); the trace is a local debugging aid with
+/// filesystem (ABI §6); the trace is a local debugging aid with
 /// no numeric or host-observable contract. NOT a compat marker — this is the
 /// documented sandbox policy, not an inexactness reproduction.
 fn init_trace_file() {}

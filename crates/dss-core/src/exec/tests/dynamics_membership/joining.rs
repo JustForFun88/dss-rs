@@ -33,8 +33,8 @@
 //! mode=faultstudy` is reported converged with 0 A on every bus of `Export
 //! Faultstudy`, where the circuit gives 19101 A at `WBUS` with it disabled.
 //! `Disable` and `Enable` with no step between continue the run on both, and
-//! the engine refuses that form too, since the ruling names an element enabled
-//! again after a disable.
+//! the engine refuses that form too, since it is an element enabled again after
+//! a disable.
 //!
 //! A VCCS without the curves of its model fails the dynamics `Solve` with 482
 //! `Access violation` on both oracles (no curves, the RMS model without

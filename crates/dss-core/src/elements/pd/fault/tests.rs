@@ -253,7 +253,7 @@ fn temporary_fault_clears_below_minamps() {
 // (montefault.dss runs `random=none`). Expected values are derived externally
 // from the seed-12345 draw sequence pinned in `support::mathutil::rng` — the
 // canonical MT19937 stream verified there against `mt19937ar.out` / CPython —
-// never captured from `randomize` itself (GAPS_PLAN.md §2.1). `Gauss(0,1) =
+// never captured from `randomize` itself. `Gauss(0,1) =
 // Σ12 Random − 6.0` exactly, so `Gauss(1,s) = G01·s + 1` and
 // `QuasiLognormal(1) = exp(G01)` bit-for-bit.
 

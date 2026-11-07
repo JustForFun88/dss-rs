@@ -12,8 +12,7 @@
 //! Snapshot mode `factor = GenMultiplier`, so `Pnom = 1000·kW·factor / nphases`).
 //! A regression that re-substituted `default_recalc_ctx()` (`GenMultiplier=1`) at
 //! either the create (`recalc_pc_create`) or edit (`end_edit`) site would drop
-//! the factor and fail these — the silent-revert the audits flagged as otherwise
-//! uncaught (it is masked on every existing gate).
+//! the factor and fail these — a silent revert that every other gate masks.
 
 use crate::exec::*;
 

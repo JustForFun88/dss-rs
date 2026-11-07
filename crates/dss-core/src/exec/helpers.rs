@@ -6,7 +6,7 @@ use super::*;
 
 /// The active circuit element as a mutable PC element, or its full name if the
 /// active element is not a PCE / not set (Pascal
-/// `(cktElem.DSSObjType and BASECLASSMASK) = PC_ELEMENT`). WP-U1.9 force hooks.
+/// `(cktElem.DSSObjType and BASECLASSMASK) = PC_ELEMENT`). Used by the force hooks.
 pub(crate) fn active_pce<'a>(
     classes: &'a mut [DssClass],
     ckt: &Circuit,
@@ -28,13 +28,13 @@ pub(crate) fn active_pce<'a>(
 
 /// Whether the `(class, object)` pair is a PC element (Pascal
 /// `ActiveCktElement is TPCElement`). Used by the `Set/Get StateVar` guard
-/// (error 7103 "is not a valid PC element"). WP-U1.9.
+/// (error 7103 "is not a valid PC element").
 pub(crate) fn is_pce(ckt: &Circuit, ci: usize, oi: usize) -> bool {
     ckt.pc_elements.contains(&ElemId::new(ci, oi))
 }
 
 /// Resolve `Class.Name` (or a bare name searched across circuit-element classes)
-/// to `(class idx, object idx)` (Pascal `TDSSCircuit.SetElementActive`). WP-U1.9.
+/// to `(class idx, object idx)` (Pascal `TDSSCircuit.SetElementActive`).
 pub(crate) fn resolve_ckt_element(
     classes: &mut [DssClass],
     class_by_name: &HashMap<String, usize>,
@@ -66,8 +66,8 @@ pub(crate) fn resolve_ckt_element(
     None
 }
 
-/// Pascal `LookupVariable(name, true)` (case-insensitive, PCElement.pas D15 fix):
-/// 1-based index of state variable `name`, or `None`. WP-U1.9.
+/// Pascal `LookupVariable(name, true)` (case-insensitive): 1-based index of
+/// state variable `name`, or `None`.
 pub(crate) fn lookup_variable(elem: &dyn CktElement, name: &str) -> Option<usize> {
     (1..=elem.num_variables()).find(|&i| elem.variable_name(i).eq_ignore_ascii_case(name))
 }
@@ -120,7 +120,7 @@ pub(crate) fn interpret_time_step_size(
 }
 
 /// `DSS.LoadShapeClass.Find(name)`, snapshot-cloned for the circuit defaults
-/// (same staleness semantics as the Load/VSource shape refs — STATUS §1c).
+/// (same staleness semantics as the Load/VSource shape refs).
 pub(crate) fn find_load_shape(
     classes: &[DssClass],
     name: &str,
@@ -342,8 +342,8 @@ pub(crate) fn do_keeper_bus_list(
 /// `Set ReduceOption=` value into a [`crate::circuit::ReductionStrategy`]. The
 /// first character (case-insensitive) selects the mode; an `S` is
 /// disambiguated Switch-vs-Shortlines by `CompareTextShortest(S, 'SWITCH')`.
-/// The stored strategy is consumed by the WP8.7 `ReduceZone` dispatch
-/// (`report/reduce.rs`).
+/// The stored strategy is consumed by the `ReduceZone` dispatch
+/// (`exec/reduce.rs`).
 pub(crate) fn set_reduce_strategy(ckt: &mut Circuit, s: &str, errors: &mut crate::diag::ErrorLog) {
     use crate::circuit::ReductionStrategy as Rs;
     ckt.reduction_strategy_string = s.to_string();

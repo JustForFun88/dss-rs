@@ -1,9 +1,8 @@
 //! Port of `PDElements/Line.pas` — `TLineObj`. Impedance sources: symmetrical
 //! components (R1/X1/R0/X0/C1/C0/B1/B0), the direct matrix specification
-//! (rmatrix/xmatrix/cmatrix), the LineCode catalog (Phase 4), the
-//! `LineGeometry` Carson path (`geometry=`, WP7.1 step 3a), and the
-//! `spacing=`/`wires=`/`cncables=`/`tscables=` forms (step 3b —
-//! `FMakeZFromSpacing` via a throwaway geometry, see `line_spacing_obj`).
+//! (rmatrix/xmatrix/cmatrix), the LineCode catalog, the `LineGeometry` Carson
+//! path (`geometry=`), and the `spacing=`/`wires=`/`cncables=`/`tscables=`
+//! forms (`FMakeZFromSpacing` via a throwaway geometry, see `line_spacing_obj`).
 //!
 //! For the sym/matrix/linecode sources `Z`/`Yc` hold ohms (resp. susceptance)
 //! **per unit length** at base frequency and `CalcYPrim` applies length, units
@@ -173,7 +172,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::mapped_string_enum("Units", enums.units).unit_words(LENGTH_WORDS),
         PropDef::object_ref_class("LineSpacing", "Spacing").flags(PropFlags::REQUIRED_IN_SPEC_SET),
         // SVN r3902/r3913 (0.15.x): the conductor lists accept `none` entries
-        // (NIL slot) — `TPropertyFlag.AllowNoneItem`. WP-U1.1 item 3. `Wires`
+        // (NIL slot) — `TPropertyFlag.AllowNoneItem`. `Wires`
         // renders as the JSON key `Conductors` (see below) and is the required
         // member of the "Spacing, Wires" spec set (Pascal `Line.pas:341`).
         PropDef::object_ref_array("WireData", "Wires")
@@ -200,11 +199,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         //
         // HIDE_015X defers these from the *full-enumeration* 0.14.5-gated surfaces
         // — the `Dump` text report and the AltDSS JSON export — whose byte-exact
-        // goldens are pinned to 0.14.5. capi015 FULL DOES emit all three (probed
-        // 2026-07-16), but the Line Dump/JSON surface cannot flip to capi015 until
-        // the sibling wt-u14cnts lands `Conductors` (index 34, emitted between
-        // HeightUnit and NormAmps). The `?` named-query + props-table (PROPS_015X)
-        // surfaces still expose them (`linemedium.json` golden pins the rendering).
+        // goldens are pinned to 0.14.5. capi015 FULL DOES emit all three, but the
+        // Line Dump/JSON surface stays pinned to 0.14.5. The `?` named-query +
+        // props-table (PROPS_015X) surfaces still expose them (`linemedium.json`
+        // golden pins the rendering).
         PropDef::double("EpsRMedium").flags(PropFlags::HIDE_015X),
         PropDef::double("HeightOffset").flags(PropFlags::HIDE_015X),
         PropDef::mapped_string_enum("HeightUnit", enums.units)
@@ -216,13 +214,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // The spacing-spec-set required member (0.15.x replaced `Wires` with
         // `Conductors` in `'Spacing, Conductors'`). HIDE_015X keeps the byte-exact
         // 0.14.5 Dump/JSON/`Dump commands` goldens green (`gen_json.py` is
-        // 0.14.5-pinned; DIVERGENCES.md §Line Conductors). Text parse resolves
-        // class-prefixed items by a CASE-INSENSITIVE class match (r4133
-        // `LowerCase(CondClass)`; the reproduced capi015 `GetDSSClass` case bug was
-        // dropped in the 0.15.x-adoption sweep) — see `parse_conductor_proxy`; the
+        // 0.14.5-pinned). Text parse resolves class-prefixed items by a
+        // CASE-INSENSITIVE class match (r4133 `LowerCase(CondClass)`, not the
+        // capi015 `GetDSSClass` case bug) — see `parse_conductor_proxy`; the
         // JSON "Conductors" key is still emitted via the `Wires` masquerade below.
         // Un-hiding this prop WITHOUT dropping that masquerade emits the key
-        // twice in one object (measured, Stage F.3aa — see the flag's doc in
+        // twice in one object (measured — see the flag's doc in
         // `obj/props/prop_flags.rs` and the two pins in `exec/tests/compat_quirks.rs`).
         PropDef::object_ref_array_proxy(
             "Conductors",
@@ -304,10 +301,9 @@ pub struct Line {
     /// (with `Load::daily_shape_ref`, `Transformer::xfmr_code_ref`, …).
     ///
     /// r4133 keeps no such handle of its own — its `LineCodeObj` is a *local* of
-    /// `FetchLineCode` (`:376`) — and since RP3.6(b) split the flag from the name
-    /// it has **no product reader left** either: every site that used to ask
-    /// `line_code_ref.is_some()` now reads [`Line::line_code_specified`], which is
-    /// the field r4133 branches on. It is kept, and taken/dropped in lockstep with
+    /// `FetchLineCode` (`:376`) — and it has **no product reader** either:
+    /// every site reads [`Line::line_code_specified`], which is the field r4133
+    /// branches on. It is kept, and taken/dropped in lockstep with
     /// that flag (`FetchLineCode` / [`Line::kill_line_code_specified`]), so the
     /// class-wide handle invariant still has a Line to check and a future reader
     /// cannot resolve a superseded code through it.
@@ -325,8 +321,8 @@ pub struct Line {
     /// the linecode state, independent of `line_code_name`. Set by
     /// `FetchLineCode` (`:413`), cleared by every impedance/matrix/geometry/
     /// spacing/cable override (`:685`, `:691`, `:1832`, `:1853`, `:1952`,
-    /// `:2016`, `:2075`, `:2131`) — but **not** by `switch=` (`:694-700`,
-    /// RP3.6(a)) — and by the constructor (`:853`). It gates the property-3
+    /// `:2016`, `:2075`, `:2131`) — but **not** by `switch=` (`:694-700`) —
+    /// and by the constructor (`:853`). It gates the property-3
     /// render (`3: If FLineCodeSpecified Then Result := CondCode else Result :=
     /// ''`, `:1357`), the `units=` conversion branch (`:626-627`) and the CIM
     /// `Conductor.length` / `LineCodeRefNode` branch
@@ -366,8 +362,10 @@ pub struct Line {
     /// expressed in (`SetUserHeightUnit`). Default `UNITS_M` (Meters).
     pub height_units: i32,
     /// Pascal `LineGeometryObj` — the snapshot-cloned geometry a `geometry=`
-    /// reference attaches (the WP4.2 `FetchLineCode` pattern). `Some` activates
-    /// the Carson matrix path in [`Line::calc_yprim`], driving `Z`/`Yc` from the
+    /// reference attaches (the `FetchLineCode` pattern). `Some` activates the
+    /// Carson matrix path in
+    /// [`CktElement::calc_yprim`](crate::elements::traits::CktElement::calc_yprim),
+    /// driving `Z`/`Yc` from the
     /// geometry instead of the sym/linecode data.
     pub geometry_obj: Option<LineGeometryObj>,
     /// The resolved geometry object's name (the `geometry=` dump value).
@@ -399,7 +397,7 @@ pub struct Line {
     ///   `FLineSpacingObj`, `FLineWireData` and `FPhaseChoice` standing — the
     ///   `linecode=` side effect (`:663`) and the `switch=` arm (`:696`).
     ///
-    /// Measured on the r4133 DLL (RP3.6 audit settlement, 2026-08-29): after
+    /// Measured on the r4133 DLL: after
     /// `spacing=sp1 wires=[…]` a `switch=yes` still lets a following
     /// `conductors=[…]` run, while the same deck edited with `r1=0.7` instead
     /// crashes r4133 inside `FetchConductorList` on the nil `FLineSpacingObj`

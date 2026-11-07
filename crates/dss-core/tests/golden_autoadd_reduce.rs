@@ -1,15 +1,15 @@
-//! WP6.8 (3/4 + 4/4) gate: replay `tests/golden/autoadd_reduce.json` (generated
-//! by `tools/golden/gen_autoadd_reduce.py` against the pinned oracle) and match
+//! AutoAdd / Reduce gate: replay `tests/golden/autoadd_reduce.json` (generated
+//! by `tools/golden/gen_autoadd_reduce.py` against the pinned dss-python) and match
 //! the AutoAdd / circuit-reduction option surface byte-for-byte:
 //!
 //!   - every `Get` echo (float `%-g`, `IntArrayToString`, AddType device word);
 //!   - `Set addtype=<unknown>` -> CAPADD default, no error;
 //!   - `Set ueregs=(10 abc 13)` -> `[10, 0, 0]` + a logged conversion error
-//!     (oracle #303), the audit-hardened `parseIntArray` behavior;
+//!     (OpenDSS error #303), the hardened `parseIntArray` behavior;
 //!   - `13.7 -> 14` decimal rounding;
 //!   - `Reduce` #1890 (no meter) and #262 (named meter missing, uppercased);
-//!   - (WP8.7) a metered feeder solved → `Reduce` (DEFAULT strategy) →
-//!     re-solved: the oracle-captured post-reduce node count and surviving-bus
+//!   - a metered feeder solved → `Reduce` (DEFAULT strategy) →
+//!     re-solved: the captured post-reduce node count and surviving-bus
 //!     voltage magnitudes, the observable proof the reduced model is
 //!     electrically equivalent (the tight full-model comparison lives in the
 //!     always-on `corpus_live` modes gate; this pins a self-contained scenario).
@@ -37,10 +37,10 @@ struct Scenario {
     /// surfaces the message text, not the number).
     #[allow(dead_code)]
     error_number: Option<i32>,
-    /// Substring the Rust port must surface in its error log; `None` means the
+    /// Substring this engine must surface in its error log; `None` means the
     /// scenario must run clean.
     error_contains: Option<String>,
-    /// Post-reduce re-solve probes (WP8.7): the oracle-captured circuit-wide
+    /// Post-reduce re-solve probes: the captured circuit-wide
     /// node count and surviving-bus voltage magnitudes. Absent on the `Get`-echo
     /// scenarios.
     #[serde(default)]

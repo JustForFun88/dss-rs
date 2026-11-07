@@ -13,8 +13,7 @@
 //! ([`ncim_vsource_reported_currents_match_oracle`]) is instead pinned against the
 //! **live r4133** oracle (EPRI `OpenDSSDirect.dll` r4133 via `epri-worker`): r4133
 //! fixed the capi015 0.15.0b4 one-conductor shift in `CalcInjCurrAtBus`, and the
-//! capi015 probe venv is retired, so r4133 is the oracle-of-record for NCIM
-//! (oracle-of-record flip capi015→r4133, 2026-07-20; `docs/upgrade/DIVERGENCES.md`).
+//! capi015 probe venv is retired, so r4133 is the reference engine for NCIM.
 //!
 //! **NCIM does not converge to the same node voltages as the default fixed-point
 //! (`Normal`).** NCIM holds the swing (source) bus at the ideal EMF with *no*
@@ -234,8 +233,8 @@ fn ncim_pv_regulating_matches_oracle() {
 /// than the +1500 kvar limit, so `UpdateGenQ` clamps Q and converts the
 /// generator to model-4 (PQ). **r4133 converges in 4 iters at Q=1500** (live
 /// `epri-worker` probe 2026-07-26, `Solution.Iterations`; the retired capi015
-/// r4103 cadence took 8 — see ORPHANED_GAPS §1.6 / `DIVERGENCES.md`). The
-/// converged node voltages are the same fixpoint on both engines.
+/// r4103 cadence took 8). The converged node voltages are the same fixpoint on
+/// both engines.
 #[test]
 fn ncim_pv_qlimit_pv2pq_matches_oracle() {
     let mut dss = solve_ncim(&pv_circuit("1.01"));
@@ -302,7 +301,7 @@ fn assert_gen_q_clamped(dss: &mut Dss) {
 /// The retired capi015 r4103 cadence instead ran the PQ→PV test unconditionally,
 /// so the generator flip-flopped PV↔PQ around `|genbus| = VTarget = 7343.55 V`
 /// and both capi015 and the port ran out at `MaxIterations` (15). Adopting the
-/// r4133 cadence (ORPHANED_GAPS §1.6) removed that stall — this test now pins the
+/// r4133 cadence removed that stall — this test now pins the
 /// convergence so a regression back to the chattering form is caught.
 #[test]
 fn ncim_pv_aggressive_qlimit_converges_matches_r4133() {
@@ -362,9 +361,8 @@ fn ncim_resolve_is_stable() {
 /// 11.0.0.1 (64-bit build)" via `epri-worker`, own probe 2026-07-20). r4133's
 /// offset-write `GetCurrents(@(ElmCurrents[1]))` (l.1123) reads the connected
 /// element's conductors UNSHIFTED — phase-A of the source is the negated phase-A
-/// branch current. This replaces the retired capi015 0.15.0b4 one-conductor shift
-/// (oracle-of-record flip capi015→r4133; `docs/upgrade/DIVERGENCES.md`,
-/// `solution::solution::ncim::ncim_stamp_swing_source_currents`).
+/// branch current, not the capi015 0.15.0b4 one-conductor shift
+/// (`solution::solution::ncim::ncim_stamp_swing_source_currents`).
 #[test]
 fn ncim_vsource_reported_currents_match_oracle() {
     let mut dss = solve_ncim(&pq_circuit(1));
@@ -474,23 +472,22 @@ fn ncim_options_roundtrip() {
 }
 
 // ---------------------------------------------------------------------------
-// RP3.13 — the NCIM reporting/sizing pins.
+// The NCIM reporting/sizing pins.
 //
-// Three port defects found by RP3.11/RP3.13 (own measurements 2026-09-03; the
-// live oracle is the EPRI `OpenDSSDirect.dll` r4133 through `epri-worker`,
-// "Version 11.0.0.1 (64-bit build)"):
+// Three defects these pins guard (the live engine is the EPRI
+// `OpenDSSDirect.dll` r4133 through `epri-worker`, "Version 11.0.0.1 (64-bit
+// build)"):
 //
-// * `deltaQNom` was sized to **1** for a machine born `model=4`
-//   (`InitPQGen`, r4133 `Common/Solution.pas` l.1678-1679) while the PQ→PV
-//   promotion arm (l.2255) writes it per phase — the port panicked
-//   (`ncim.rs`: "index out of bounds: the len is 1 but the index is 1");
-//   r4133 writes past the end of the dynamic array and **deadlocks**.
-// * `DOForceFlatStart` writes `NodeV[1..3]` on any circuit (l.1650-1654) — the
-//   port panicked on a 2-node circuit; r4133 overruns and corrupts its heap.
-// * `TGeneratorObj.GetCurrents`' NCIM arm (`PCElements/generator.pas` l.1406)
-//   was missing, so every ordinary reader (`Export Powers`/`Currents`, `Show`,
-//   the CLI, monitors) reported the *declared* `kvar` through `varBase` instead
-//   of the solver's dispatched `deltaQNom`, and KCL failed at the generator bus.
+// * `deltaQNom` is sized per phase for a machine born `model=4`, because the
+//   PQ→PV promotion arm writes it per phase. Sized to **1**, this engine would
+//   panic ("index out of bounds: the len is 1 but the index is 1"), and r4133
+//   writes past the end of the dynamic array and **deadlocks**.
+// * `DOForceFlatStart` writes `NodeV[1..3]` on any circuit. This engine must
+//   not panic on a 2-node circuit, where r4133 overruns and corrupts its heap.
+// * The generator's NCIM `GetCurrents` arm makes every ordinary reader
+//   (`Export Powers`/`Currents`, `Show`, the CLI, monitors) report the solver's
+//   dispatched `deltaQNom`, not the *declared* `kvar` through `varBase`, so KCL
+//   holds at the generator bus.
 // ---------------------------------------------------------------------------
 
 /// The **ordinary** reporting path for one element: `ComputeIterminal` →
@@ -588,18 +585,16 @@ fn gen_ncim_state(dss: &Dss, name: &str) -> (i32, bool, i32, f64, Vec<f64>, Vec<
 /// **P1** — a generator born `model=4` that the NCIM PQ→PV arm promotes must
 /// solve, not panic, and the promotion's own state must stay self-consistent.
 ///
-/// The deck (`tmp/rp313/repro_pq2pv.dss`) is `pv_circuit` with the machine
+/// The deck is `pv_circuit` with the machine
 /// authored `model=4 PF=0.88` and `vpu=0.95`, so `UpdateGenQ`'s ELSE arm finds
 /// `|V| > VTarget` with `deltaQNom[0] > 0` and promotes it to PV
 /// (r4133 `Common/Solution.pas` l.2216-2258). That write —
 /// `deltaQNom[j] := qMax|qMin` for `j := 0 .. NPhases-1` over the array
-/// `InitPQGen` sized to **1** (l.1678-1679) — is the defect: the port panicked
-/// ("index out of bounds: the len is 1 but the index is 1"), and the unchecked
-/// overrun **corrupts the r4133 DLL**.
+/// `InitPQGen` sized to **1** (l.1678-1679) — is the defect: sized that way this
+/// engine would panic ("index out of bounds: the len is 1 but the index is 1"),
+/// and the unchecked overrun **corrupts the r4133 DLL**.
 ///
-/// What r4133 can and cannot answer here, re-measured in the RP3.13 audit
-/// settlement (2026-09-03; the sub-step's first probe read elements and so
-/// recorded the whole deck as unanswerable — it is not): the **solve** answers
+/// What r4133 can and cannot answer here: the **solve** answers
 /// in seconds — `converged=True`, `iterations=5` and the six `YNodeVarray`
 /// entries pinned below — and the DLL then **hangs on the first element access
 /// after it** (`set_active_element Line.l1` never returns; a run killed at 150 s
@@ -608,7 +603,7 @@ fn gen_ncim_state(dss: &Dss, name: &str) -> (i32, bool, i32, f64, Vec<f64>, Vec<
 /// against live r4133, and only the terminal-power leg — which needs the element
 /// rows r4133 cannot hand out on this deck — is physics (KCL).
 ///
-/// What the port now does, with `deltaQNom` sized per phase: promote to PV on
+/// What this engine does, with `deltaQNom` sized per phase: promote to PV on
 /// the first pass (which is why `NCIM_ExPV` can be set at all — only the PV→PQ
 /// conversion sets it, and only a model-3 machine reaches that), overshoot the
 /// −1500 kvar limit, convert back to PQ at `qMin`, and converge in 5 iterations
@@ -698,9 +693,8 @@ fn ncim_pq2pv_promotion_does_not_panic_and_closes_kcl() {
     );
 }
 
-/// **P2** — `Set VoltageBases` without `CalcVoltageBases`: the 11-line RP3.11
-/// repro (`tmp/rp311/repro_panic.dss`) that first exposed the length-1
-/// `deltaQNom` write. Every bus keeps `kVBase = 0`, so the promoted machine's
+/// **P2** — `Set VoltageBases` without `CalcVoltageBases`: an 11-line repro of
+/// the length-1 `deltaQNom` write. Every bus keeps `kVBase = 0`, so the promoted machine's
 /// `VTarget = VBase·Vpu = 0` and the Newton step diverges — but it must
 /// *diverge*, not panic.
 ///
@@ -760,9 +754,8 @@ fn ncim_missing_voltage_bases_does_not_panic() {
 /// **P3** — a circuit with fewer than three nodes must not panic in the NCIM
 /// flat start. `DOForceFlatStart` writes `NodeV[1..3]` unconditionally (r4133
 /// `Common/Solution.pas` l.1650-1654); on this 1-phase, 2-node,
-/// generator-free deck (`tmp/rp313/repro_1ph_nogen.dss`) the port indexed
-/// `node_v[3]` of a length-3 vector and panicked
-/// ("index out of bounds: the len is 3 but the index is 3").
+/// generator-free deck that write would index `node_v[3]` of a length-3 vector
+/// and panic ("index out of bounds: the len is 3 but the index is 3").
 ///
 /// NCIM is 3-phase-shaped throughout — `CalcInjCurr` zeroes `deltaF[0..5]` as
 /// "the swing bus" (l.1874-1875), which on a 2-node circuit is the whole
@@ -840,7 +833,7 @@ fn ncim_generator_reports_the_dispatched_q_not_the_declared_kvar() {
     );
     let kcl = s + term_power_kw(&mut dss, "Load.ld1", 1) + term_power_kw(&mut dss, "Line.l1", 2);
     assert!(kcl.norm() < 1e-6, "KCL at genbus = {kcl:?} kW/kvar");
-    // The printed reports, i.e. what RP3.11 measured against r4133's own files.
+    // The printed reports, measured against r4133's own files.
     assert_eq!(
         export_row(&mut dss, "powers", "Generator.G1"),
         "\"Generator.G1\",   1, -800.0, -1500.0",
@@ -884,17 +877,15 @@ fn ncim_generator_reports_the_dispatched_q_not_the_declared_kvar() {
     assert!(kcl.norm() < 1e-9, "KCL at b5 = {kcl:?} kW/kvar");
 }
 
-/// **P5** — the gate reader and the ordinary reader are now one live state.
+/// **P5** — the gate reader and the ordinary reader are one live state.
 ///
-/// Until RP3.13 the corpus gate's reader ([`Dss::snapshot_elements`]) carried a
-/// private `ncim_generator_currents` override that recomputed
-/// `-conj((Pnom + j·deltaQNom[j]) / V)` — r4133's `UpdateGenQ` stamp
-/// (`Common/Solution.pas` l.2108) — while the element's own `GetCurrents`
-/// returned the stale model-kernel current. That is why the gate never saw
-/// [`ncim_generator_reports_the_dispatched_q_not_the_declared_kvar`]. The
-/// override is deleted; this pin carries its arithmetic and proves the deletion
-/// lossless: the retired formula, the gate reader and the ordinary element path
-/// must agree **exactly** (`==`, not a tolerance).
+/// The corpus gate's reader ([`Dss::snapshot_elements`]) has no private
+/// generator-current override. A reader that recomputed
+/// `-conj((Pnom + j·deltaQNom[j]) / V)` — r4133's `UpdateGenQ` stamp — while the
+/// element's own `GetCurrents` returned a stale model-kernel current would hide
+/// [`ncim_generator_reports_the_dispatched_q_not_the_declared_kvar`] from the
+/// gate. This pin carries that formula: it, the gate reader and the ordinary
+/// element path must agree **exactly** (`==`, not a tolerance).
 #[test]
 fn ncim_gate_reader_and_ordinary_reader_agree() {
     let mut dss = solve_ncim(&pv_circuit("1.01"));
@@ -942,16 +933,16 @@ fn ncim_gate_reader_and_ordinary_reader_agree() {
     }
 }
 
-/// **P7** — the tripwire behind "the corpus gate cannot move" (RP3.13 §3).
+/// **P7** — the tripwire behind "the corpus gate cannot move".
 ///
 /// The swing source's NCIM reported current is the Kirchhoff sum at its bus
 /// (`TVsourceObj.GetCurrents` → `CalcInjCurrAtBus`, r4133 `VSource.pas` l.1194;
 /// port `solution::solution::ncim::ncim_stamp_swing_source_currents`), summed
-/// from the connected elements' `Iterminal`. Two RP3.13 changes therefore *would*
-/// move that sum, but only for a **PC element other than the swing source sitting
-/// on the swing bus**: making the generator's `Iterminal` the NCIM dispatch stamp,
-/// and (from the audit settlement) subtracting the PC terms where r4133 adds them
-/// (`VSource.pas` l.1169 — the upstream KCL sign bug, documented at
+/// from the connected elements' `Iterminal`. Two rules of this engine therefore
+/// move that sum, but only for a **PC element other than the swing source
+/// sitting on the swing bus**: the generator's `Iterminal` is the NCIM dispatch
+/// stamp, and the PC terms are subtracted where r4133 adds them (the OpenDSS
+/// KCL sign bug, documented at
 /// `ncim_stamp_swing_source_currents` and pinned by
 /// [`ncim_swing_sum_subtracts_pc_terminals_and_closes_kcl`]). None of the five
 /// r4133-gated NCIM cases has such an element, and this pin checks all five:
@@ -1139,9 +1130,9 @@ fn pc_bindings_to_bus(dir: &std::path::Path, bus: &str) -> Vec<String> {
 /// ncim_midi     Vsource.SOURCE,  124.964, 161.49,  124.964,  41.49,  124.964,  -78.51, 0, 0.00, 1.57857E-011, -41.50, 0, 0.00, ...
 /// ```
 ///
-/// RP3.13 stamps the `CalcInjCurrAtBus` sum into `Iterminal` at the converged
+/// This engine stamps the `CalcInjCurrAtBus` sum into `Iterminal` at the converged
 /// `NodeV` (`solution::solution::ncim::ncim_stamp_swing_source_currents`) and the
-/// element's NCIM arm echoes it, so the port now prints those same three rows
+/// element's NCIM arm echoes it, so it prints those same three rows
 /// cell for cell. The fifth cell of each row is the terminal-1 **residual**
 /// (`Iresid` = the three phase currents summed): both engines print numerical
 /// zero there — r4133 `4.3961E-012` / `1.13153E-012` / `1.57857E-011`, the port
@@ -1150,7 +1141,7 @@ fn pc_bindings_to_bus(dir: &std::path::Path, bus: &str) -> Vec<String> {
 /// divergence; it is neither pinned nor read by any gate channel.
 ///
 /// The fourth NCIM case, `Xmission_System_Kundur2Area` (r4133 `20295.6 A`,
-/// port-before `0.0106809 A`), is not a leg here: its `Master.dss` ends in
+/// `YPrim·V - Iinj` reading `0.0106809 A`), is not a leg here: its `Master.dss` ends in
 /// `export`/`show`/`summary`, which a unit test would write into the vendored
 /// corpus tree. It is covered live instead — the corpus gate solves it on the
 /// `r4133` channel and compares `Vsource.source` in `snapshot_elements`, which
@@ -1160,7 +1151,7 @@ fn ncim_vsource_export_currents_match_oracle() {
     let base =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/corpus/modes/ncim");
     // (deck, r4133 `Export Currents` row prefix, r4133 |I1| / ∠, the PD element
-    // sharing the swing bus, the port's pre-RP3.13 |I1|).
+    // sharing the swing bus, the |I1| of the `YPrim·V - Iinj` reading).
     let cases: [(&str, &str, f64, f64, f64, &str, &str); 3] = [
         (
             "ncim_pq.dss",
@@ -1205,14 +1196,14 @@ fn ncim_vsource_export_currents_match_oracle() {
         assert!(
             row.starts_with(r4133_row),
             "{deck}: Export Currents row\n  port  {row}\n  r4133 {r4133_row} ...\n  \
-             (port before RP3.13: |I1| = {port_before} A — `YPrim·V - Iinj` cancelling \
+             (the `YPrim·V - Iinj` reading gives |I1| = {port_before} A, cancelling \
              at the ideal-EMF swing bus)"
         );
         let i = elem_currents(&mut dss, "Vsource.source");
         assert!(
             (i[0].norm() - r4133_mag).abs() < mag_tol && (cdang(i[0]) - r4133_ang).abs() < 5e-3,
             "{deck}: Vsource.source |I1| ∠ = {} ∠{}; r4133 {r4133_mag} ∠{r4133_ang}, \
-             port before RP3.13 {port_before}",
+             `YPrim·V - Iinj` reading {port_before}",
             i[0].norm(),
             cdang(i[0])
         );
@@ -1221,8 +1212,8 @@ fn ncim_vsource_export_currents_match_oracle() {
         // power and the connected line's must cancel. Under the stamp the current
         // is the negated branch current by construction, so this holds the sign
         // convention and proves `Get_Power` reads the same live state as
-        // `GetCurrents` (before RP3.13 the source's power was ~0 while the line
-        // carried megawatts).
+        // `GetCurrents` (the `YPrim·V - Iinj` reading gives the source ~0 power
+        // while the line carries megawatts).
         let sp = term_power_kw(&mut dss, "Vsource.source", 1);
         let pp = term_power_kw(&mut dss, partner, 1);
         assert!(
@@ -1284,7 +1275,7 @@ fn ncim_vsource_export_currents_match_oracle() {
 }
 
 /// **P8** — a *second* `Vsource` on the global slack node reports its own
-/// terminal current, not the swing stamp (RP3.13 micro-part S2).
+/// terminal current, not the swing stamp.
 ///
 /// [`ncim_vsource_export_currents_match_oracle`]'s stamp/echo pair
 /// (`solution::solution::ncim::ncim_stamp_swing_source_currents` writes the
@@ -1313,9 +1304,8 @@ fn ncim_vsource_export_currents_match_oracle() {
 /// `0.02·7199.5578 V / (12.47² / 1500 Ω)` = `1389.0 A`, and the stamp is the
 /// Kirchhoff sum over the bus.
 ///
-/// That sum's **PC sign** was left open when this pin first landed and was
-/// settled by the RP3.13 audit settlement: r4133's `cadd` (`VSource.pas` l.1169,
-/// against `csub` for the PD loop at l.1135) is an upstream **bug**, measured on
+/// That sum's **PC sign**: r4133's `cadd` (against `csub` for the PD loop) is an
+/// OpenDSS **bug**, measured on
 /// a deck r4133 *can* answer and not reproduced here — see
 /// [`ncim_swing_sum_subtracts_pc_terminals_and_closes_kcl`] and the sign-bug
 /// paragraph on `ncim_stamp_swing_source_currents`. So the identity asserted
@@ -1354,7 +1344,7 @@ fn ncim_second_slack_node_vsource_reports_its_own_current() {
         assert!(
             (i.norm() - expect).abs() < 1e-6 * expect,
             "Vsource.src2 conductor {k}: |I| = {} A, Thevenin |E2-V|/|Z1| = {expect} A \
-             (RP3.13 regression: the swing echo printed 0 here)",
+             (regression: an echo of the swing stamp prints 0 here)",
             i.norm()
         );
     }
@@ -1373,7 +1363,7 @@ fn ncim_second_slack_node_vsource_reports_its_own_current() {
 
     // The swing source still takes the stamp, and the stamp is the Kirchhoff sum
     // over every element at the bus — `-Σ PD - Σ other PC` (`VSource.pas`
-    // l.1135 / l.1169, the PC term with the upstream sign bug fixed). With `SRC2`
+    // l.1135 / l.1169, the PC term with the OpenDSS sign bug fixed). With `SRC2`
     // echoing a stamp it never received this identity read
     // `I(SOURCE) = -I(Line.l1 t1)` instead.
     let i_source = elem_currents(&mut dss, "Vsource.source");
@@ -1397,7 +1387,7 @@ fn ncim_second_slack_node_vsource_reports_its_own_current() {
 }
 
 /// **P9** — the swing-bus Kirchhoff sum subtracts PC terminal currents; r4133
-/// adds them and violates KCL (RP3.13 audit settlement, 2026-09-03).
+/// adds them and violates KCL.
 ///
 /// `TVsourceObj.CalcInjCurrAtBus` (r4133 `PCElements/VSource.pas` l.1085)
 /// subtracts every PD terminal current at the swing bus (`csub`, l.1135) and
@@ -1405,8 +1395,8 @@ fn ncim_second_slack_node_vsource_reports_its_own_current() {
 /// the current flowing *into* the element — "Gets total Currents going INTO a
 /// device's terminals", for PD and PC alike, which is why a load reports `+P` and
 /// a generator `−P` — so KCL at the bus is `I(source) + Σ I(others) = 0` and both
-/// loops must subtract. The `cadd` is an upstream **sign bug**, and CLAUDE.md
-/// (2026-08-02) forbids reproducing it in any lane.
+/// loops must subtract. The `cadd` is an OpenDSS **sign bug**, and this engine
+/// reproduces it in no lane.
 ///
 /// The deck below is the measurement: a 1000 kW / 400 kvar `Load.ldswing` bonded
 /// straight onto `sourcebus`, which is the only shape where the two engines can
@@ -1544,7 +1534,7 @@ fn ncim_swing_sum_subtracts_pc_terminals_and_closes_kcl() {
 }
 
 // ---------------------------------------------------------------------------
-// RF-D00-05 — a generator that joins the NCIM solve late.
+// A generator that joins the NCIM solve late.
 // ---------------------------------------------------------------------------
 
 /// `pv_circuit`'s network without its generator: `sourcebus → genbus` and the
@@ -1608,9 +1598,9 @@ fn assert_twin_matches_r4133(
         (s.re - gen_kw_kvar.0).abs() < 1e-6 && (s.im - gen_kw_kvar.1).abs() < 1e-6,
         "twin Generator.g1 = {s:?} kW/kvar vs live r4133 {gen_kw_kvar:?}"
     );
-    // RP3.13's per-phase sizing on the first-solve path (RF-D00-05 settlement,
-    // audit AT-3): every registry access is checked now, so r4133's length-1
-    // seed would silently drop the PQ->PV promotion's phase-1..n writes.
+    // The per-phase sizing on the first-solve path: every registry access is
+    // checked, so r4133's length-1 seed would silently drop the PQ->PV
+    // promotion's phase-1..n writes.
     let (_, _, _, _, dq, _) = gen_ncim_state(twin, "g1");
     assert_eq!(dq.len(), 3, "g1's deltaQNom is sized per phase: {dq:?}");
 }
@@ -1686,7 +1676,7 @@ const R4133_M4_TWIN: [(f64, f64); 6] = [
 /// [`R4133_M4_TWIN`]'s `Generator.g1` terminal kvar (three phases).
 const R4133_M4_TWIN_KVAR: f64 = -3.0 * 143.93141923682322;
 
-/// **P10** (RF-D00-05) — a `model=3` (PV) generator *created* after the first
+/// **P10** — a `model=3` (PV) generator *created* after the first
 /// NCIM solve must solve, not panic. `ncim_init_gen_q` (r4133 `InitGenQ`) is a
 /// one-shot flag — set only in `TSolutionObj.Create` (`Common/Solution.pas`
 /// l.648), cleared after the first Newton pass (l.1157) — and both registry
@@ -1742,7 +1732,7 @@ fn ncim_generator_added_after_first_solve_does_not_panic_model3() {
     }
 }
 
-/// **P11** (RF-D00-05) — the `model=4` (PQ) arm of **P10**: the late machine's
+/// **P11** — the `model=4` (PQ) arm of **P10**: the late machine's
 /// empty `deltaQNom` panicked in `UpdateGenQ`'s ELSE arm instead (the PQ→PV
 /// test's `deltaQNom[0]` read, r4133 l.2209). `model=4` does not clear
 /// `SolutionInitialized`, so the twin is the straight up-front deck, which
@@ -1758,7 +1748,7 @@ fn ncim_generator_added_after_first_solve_does_not_panic_model4() {
     assert_late_generator_lands_on_the_twin(&mut late, &mut twin, 4, 3);
 }
 
-/// **P12** (RF-D00-05) — the same defect reached without creating anything: a
+/// **P12** — the same defect reached without creating anything: a
 /// machine declared `enabled=no`, enabled between two NCIM solves, `model=3`
 /// and `model=4`. `InitPQGen` and `GetNumGenerators` both skip disabled
 /// machines (r4133 l.1676, l.1919), so it too entered `UpdateGenQ` with an
@@ -1784,15 +1774,15 @@ fn ncim_generator_enabled_between_solves_does_not_panic() {
     }
 }
 
-/// **P13** (RF-D00-05) — a late `model=3` machine on a bus that did not exist
+/// **P13** — a late `model=3` machine on a bus that did not exist
 /// at the first NCIM solve (a new line's far end). Beside the empty registry,
 /// the per-node NCIM vectors were one bus short: r4133 rebuilds them only on
 /// `SystemYChanged or not NCIMRdy` (`Common/Solution.pas` l.1123), and
 /// `SolveCircuit`'s `WHOLEMATRIX` rebuild (l.2805-2808) has already cleared
 /// `SystemYChanged` (`Common/Ymatrix.pas` l.271). The port panicked ("index
 /// out of bounds: the len is 7 but the index is 7", `ncim_get_num_generators`'
-/// per-node Q-limit tally); r4133 raises #482 on this very deck (settlement
-/// probe `late_m3_newbus`, 2026-09-26, offset 87EDD4) and on its `model=4`
+/// per-node Q-limit tally); r4133 raises #482 on this very deck (probe case
+/// `late_m3_newbus`, offset 87EDD4) and on its `model=4`
 /// variant, with the new bus's `NodeV` uninitialised (`5e-322`). The port now
 /// re-initialises the NCIM node space when it no longer spans the circuit:
 /// the re-solve converges, the PV equation holds at the new bus and Kirchhoff
@@ -1800,7 +1790,7 @@ fn ncim_generator_enabled_between_solves_does_not_panic() {
 /// bus starts from a real voltage only because `model=3` in the `New` clears
 /// `SolutionInitialized` (generator.pas l.702), so `SolveYDirect` seeds it
 /// before NCIM runs; a `model=4` machine or a load there starts at 0 V and
-/// does not converge (an open item of the RF-D00-05 settlement).
+/// does not converge (an open defect).
 #[test]
 fn ncim_generator_on_a_new_bus_after_first_solve_does_not_panic() {
     let mut late = ncim_resolve_after(
@@ -1877,7 +1867,7 @@ fn genbus_kcl(dss: &mut Dss) -> Complex64 {
         + term_power_kw(dss, "Line.l1", 2)
 }
 
-/// **P14** (RF-D00-05) — the reverse direction: a machine that took part in
+/// **P14** — the reverse direction: a machine that took part in
 /// the first NCIM solve is disabled before the next, `model=3` and `model=4`.
 /// r4133 answers this itself (cases `disable_m3` / `disable_m4` of the
 /// [`R4133_NO_GEN`] probe): converged in 3 iterations onto the generator-free
@@ -1911,7 +1901,7 @@ fn ncim_generator_disabled_between_solves_resolves_without_it() {
     }
 }
 
-/// **P15** (RF-D00-05) — disable, re-solve, re-enable, re-solve (`model=3` and
+/// **P15** — disable, re-solve, re-enable, re-solve (`model=3` and
 /// `model=4`): the machine rejoins with the registry it left with (P14), and
 /// both engines warm-start from it. r4133 answers (cases `reenable_m3` /
 /// `reenable_m4` of the [`R4133_NO_GEN`] probe): converged in 3 iterations,
@@ -1947,7 +1937,7 @@ fn ncim_generator_reenabled_between_solves_resumes_from_its_kept_q() {
     }
 }
 
-/// **P16** (RF-D00-05) — a machine *removed* between two NCIM solves.
+/// **P16** — a machine *removed* between two NCIM solves.
 /// `Remove` takes PD elements only (r4133 `Executive/ExecHelper.pas`
 /// l.4575-4591, error 28728 otherwise), so the machine goes with its branch:
 /// `Remove ElementName=Line.l2 KeepLoad=no` disables `Line.l2` and every shunt
@@ -1993,7 +1983,7 @@ fn ncim_generator_removed_with_its_branch_resolves_on_the_fresh_deck() {
     }
 }
 
-/// **P17** (RF-D00-05) — a `model=3` machine re-phased 1 → 3 between two NCIM
+/// **P17** — a `model=3` machine re-phased 1 → 3 between two NCIM
 /// solves (`phases=3 bus1=genbus kv=12.47 …`, `model` untouched): the first
 /// solve sized its registry for one phase. r4133 reads and writes past its
 /// end — the second `Solve` answers `DSS error #482 … Invalid pointer
@@ -2018,10 +2008,10 @@ fn ncim_generator_rephased_between_solves_does_not_panic() {
     assert_late_generator_lands_on_the_twin(&mut late, &mut twin, 3, 3);
 }
 
-/// **P18** (RF-D00-05 settlement, audit AC-1) — the model-4 arm of
+/// **P18** — the model-4 arm of
 /// [P17](ncim_generator_rephased_between_solves_does_not_panic): a 1-phase
 /// `model=4` machine re-phased to 3 phases between two NCIM solves. r4133
-/// answers this deck (live `epri-worker` probe of the RF-D00-05 audit, case
+/// answers this deck (live `epri-worker` probe, case
 /// `ph1to3_m4`): converged in 3 iterations onto its straight up-front twin,
 /// [`R4133_M4_TWIN`] (the late machine's grown registry reads the 1-phase
 /// seed, which equals the 3-phase `Qnominalperphase` on this deck).
@@ -2039,7 +2029,7 @@ fn ncim_generator_rephased_between_solves_model4_matches_r4133() {
     assert_twin_matches_r4133(&mut late, 3, &R4133_M4_TWIN, (-800.0, R4133_M4_TWIN_KVAR));
 }
 
-/// **P19** (RF-D00-05 settlement, audit AT-6) — a `model=3` machine with zero
+/// **P19** — a `model=3` machine with zero
 /// Q-limits created after the first NCIM solve is demoted to PQ on its own
 /// initialising pass and logged as converted (`ncim_expv`, read by
 /// `Show PV2PQ`), exactly as on a first solve (r4133 l.1936-1939 logs it under
@@ -2106,7 +2096,7 @@ const MIXED_G1: &str = "New Generator.g1 bus1=genbus.1 phases=1 kv=7.2 \
 const MIXED_G2: &str = "New Generator.g2 bus1=genbus phases=3 kv=12.47 kw=800 model=3 \
                         maxkvar=1500 minkvar=-1500 vpu=1.0";
 
-/// **P20** (RF-D00-05 settlement, audit AC-1) — two `model=3` machines on one
+/// **P20** — two `model=3` machines on one
 /// bus whose conductors do not line up (a 1-phase g1 on `genbus.1` first, a
 /// 3-phase g2 on `genbus`), declared up-front or g2 created after the first
 /// NCIM solve. r4133 reserves g1's one-row block for both and drops g2's
@@ -2152,7 +2142,7 @@ fn ncim_mixed_phase_pv_machines_on_one_bus_regulate_every_node() {
     }
 }
 
-/// **P21** (RF-D00-05 settlement, audit AC-1) — a 3-phase `model=3` machine
+/// **P21** — a 3-phase `model=3` machine
 /// with a conductor tied to ground (`bus1=genbus.1.2.0`). r4133 addresses
 /// Jacobian column `2·0 - 1` for it, which KLUSolve drops, leaving an empty
 /// regulation row: live `epri-worker` probe 2026-09-26 (case `grounded_D` of
@@ -2182,7 +2172,7 @@ const R4133_QLIMIT_WARM: [(f64, f64); 6] = [
     (-3545.817965931437, 6281.555473474465),
 ];
 
-/// **P22** (RF-D00-05 settlement, audit AT-2) — the kept-Q rule's observable:
+/// **P22** — the kept-Q rule's observable:
 /// the machine of `pv_circuit("1.01")` (the corpus deck
 /// `modes/ncim/ncim_pv_pq.dss`) is converted PV->PQ at its 500 kvar/phase
 /// `maxkvar` limit on the first solve, and a warm re-solve resumes from that clamped
@@ -2190,7 +2180,7 @@ const R4133_QLIMIT_WARM: [(f64, f64); 6] = [
 /// 2026-09-26, case `qlimit_warm` of the P20 probe, re-derived by sending
 /// this deck and a second `Solve` through `epri-worker`: 4, then 2
 /// iterations), onto r4133's warm node voltages ([`R4133_QLIMIT_WARM`])
-/// with the machine still at its -1500 kvar clamp (settlement round 2, SA-5).
+/// with the machine still at its -1500 kvar clamp.
 /// Re-seeding the registries on every solve takes 5.
 #[test]
 fn ncim_converted_machine_resolves_warm_from_its_clamped_q() {
@@ -2258,7 +2248,7 @@ const R4133_PV_PAIR: [(f64, f64); 6] = [
 const R4133_PV_PAIR_G1_KVAR: [f64; 3] =
     [-312.5064124155081, -312.50641241551676, -312.50641241550346];
 
-/// **P23** (RF-D00-05 settlement round 2, SA-1) — a PV block in a different
+/// **P23** — a PV block in a different
 /// conductor order: g1 on `genbus`, then g2 on `genbus.2.3.1`, one NCIM solve.
 /// r4133 keys g2 at GENBUS.2's row, so GENBUS.1's equation lands past the
 /// block and its reserved row stays empty: not converged after 15 iterations,
@@ -2319,7 +2309,7 @@ const R4133_OVERLAP_SWAPPED: [(f64, f64); 6] = [
 const R4133_OVERLAP_SWAPPED_G2_KVAR: [f64; 3] =
     [-394.1583813523667, -307.32203198516214, -425.55290348788816];
 
-/// **P24** (RF-D00-05 settlement round 2, SA-1) — overlapping PV blocks: a
+/// **P24** — overlapping PV blocks: a
 /// 1-phase g1 on `genbus.2` declared before a 3-phase g2 on `genbus`. g2's
 /// first node is new, so r4133 reserves it three rows, a second one for
 /// GENBUS.2; `PVBusIdx` is last-writer (`Common/Solution.pas` l.1319), so

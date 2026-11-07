@@ -1,6 +1,6 @@
-//! Channel-2 protocol tests (WASM_USERMODELS_PLAN §2.5): the whole host
-//! protocol driven against tiny inline-WAT guests — hermetic, per-commit,
-//! zero external tooling. Covers the WP-WM.1 prescription: happy-path
+//! Channel-2 protocol tests: the whole host protocol driven against tiny
+//! inline-WAT guests — hermetic, per-commit, zero external tooling. Covers the
+//! happy-path
 //! 15-function round trip, record byte-exact round trip, each callback tier
 //! (parser callbacks against the owned AuxParser, `control_queue_push`
 //! queuing), missing export → the exact 569-path name, and the loud typed
@@ -1234,7 +1234,7 @@ fn import_write_out_of_bounds_is_typed_oob() {
 /// The unsupported imports are loud attributed errors when called (ABI doc §4
 /// rows 7/30/32) — never a silent no-op. `get_active_element_ptr` is permanent;
 /// `do_dss_command`/`get_result_str` are loud here because this instance did
-/// **not** opt into the WP-WM.6 deferred-command mechanism
+/// **not** opt into the deferred-command mechanism
 /// (`enable_dss_commands` — the dss-rs element call sites likewise do not opt
 /// in, so a real deck model hits this loud path rather than a silent drop).
 #[test]
@@ -1286,11 +1286,11 @@ fn unsupported_imports_raise_loud_attributed_errors() {
 }
 
 // ---------------------------------------------------------------------------
-// Callback tier C: the WP-WM.6 deferred DSS-command pair
+// Callback tier C: the deferred DSS-command pair
 // (do_dss_command / get_result_str)
 // ---------------------------------------------------------------------------
 
-/// The WP-WM.6 deferred-drain cycle end-to-end, with the test acting as the
+/// The deferred-drain cycle end-to-end, with the test acting as the
 /// re-entrant executive host (which the dss-rs element call sites cannot be —
 /// ABI §4 rows 7/32):
 ///  1. the guest `calc` calls `do_dss_command("? Load.L1.kW")` then reads
@@ -1301,7 +1301,7 @@ fn unsupported_imports_raise_loud_attributed_errors() {
 ///     the one observable ordering difference from Pascal's synchronous call
 ///     (the first call sees the pre-drain empty result).
 #[test]
-fn wm6_deferred_dss_command_cycle() {
+fn deferred_dss_command_cycle() {
     let imports = r#"
   (import "dss_env" "do_dss_command" (func $do_cmd (param i32 i32)))
   (import "dss_env" "get_result_str" (func $get_result (param i32 i32)))
@@ -1375,7 +1375,7 @@ fn wm6_deferred_dss_command_cycle() {
 /// Multiple `do_dss_command` calls in one guest call queue in order, and the
 /// `CapControlInstance` shares the same mechanism.
 #[test]
-fn wm6_deferred_commands_queue_in_order_on_cap_control() {
+fn deferred_commands_queue_in_order_on_cap_control() {
     let wat = r#"(module
   (import "dss_env" "do_dss_command" (func $do_cmd (param i32 i32)))
   (import "dss_env" "get_result_str" (func $get_result (param i32 i32)))
@@ -1461,7 +1461,7 @@ fn wm6_deferred_commands_queue_in_order_on_cap_control() {
 /// With the mechanism NOT enabled, a `CapControlInstance` guest that calls
 /// `do_dss_command` fails loudly (parity with the Generator not-opted-in path).
 #[test]
-fn wm6_cap_control_do_dss_command_loud_without_opt_in() {
+fn cap_control_do_dss_command_loud_without_opt_in() {
     let wat = r#"(module
   (import "dss_env" "do_dss_command" (func $do_cmd (param i32 i32)))
   (memory (export "memory") 1)

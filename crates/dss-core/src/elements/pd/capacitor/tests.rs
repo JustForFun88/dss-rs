@@ -170,7 +170,7 @@ fn yprim_3ph_cmatrix_matches_oracle() {
     }
 }
 
-/// WP-U1.2 B1: a Cmatrix (SpecType=3) capacitor WITH a series filter reactance
+/// A Cmatrix (SpecType=3) capacitor WITH a series filter reactance
 /// (`R`/`XL` > 0 => `has_zl`) reaches `MakeYprimWork`'s SpecType-3 invert path.
 /// dss_capi 0.15.x multiplies each work-matrix diagonal by `1.000001` before the
 /// first `Invert()` ("add a little bit so it will invert"), the same trick the
@@ -253,7 +253,7 @@ fn numsteps_splits_kvar() {
     assert_eq!(c.flast_step_in_service, 3);
 }
 
-// --- WPG.21 — TCapacitorObj.MakePosSequence (Capacitor.pas:768-819) -----------
+// --- TCapacitorObj.MakePosSequence --------------------------------------------
 
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, balance};
 
@@ -483,7 +483,7 @@ fn make_pos_sequence_two_phase_cmatrix_keeps_the_banks_power() {
 }
 
 /// Above three conductors a `cmatrix` reduces to the mean of the diagonal
-/// minus the mean over all off-diagonal pairs (user ruling 2026-10-04). Action
+/// minus the mean over all off-diagonal pairs. Action
 /// level only: four conductors have no positive-sequence power to keep. The
 /// unbalanced matrix tells the rule from the three-conductor sum, which would
 /// give 16.
@@ -1072,7 +1072,7 @@ fn make_pos_sequence_cmatrix_single_phase_is_base() {
     assert!(plan.run_base);
 }
 
-// --- `SQR`-binds-first pins (og(json-a) settle) ------------------------------
+// --- `SQR`-binds-first pins --------------------------------------------------
 //
 // Pascal writes the derived capacitance and the derived kvar total with `SQR`
 // as an ATOM: `w * SQR(PhasekV) * 1000.0` is `w * (kv*kv) * 1000.0`, NOT

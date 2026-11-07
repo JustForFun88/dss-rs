@@ -441,8 +441,8 @@ impl Reactor {
     ///   `Y = (R + jX)⁻¹` inverted as the stamp inverts it;
     /// - parallel form, two or three phases: `R = 0`, `X = −1 / S(B)` and
     ///   `Rp = 1 / S(G)`, from the `G = R⁻¹` and `B = −X⁻¹` the stamp uses;
-    /// - above three phases: `S(rmatrix)` and `S(xmatrix)` (user ruling
-    ///   2026-10-04), as `R` and `X` for the series form, as `Rp` and `X` with
+    /// - above three phases: `S(rmatrix)` and `S(xmatrix)`, as `R` and `X` for
+    ///   the series form, as `Rp` and `X` with
     ///   `R = 0` for the parallel form.
     ///
     /// A zero self term has no finite element and takes the open fallback of

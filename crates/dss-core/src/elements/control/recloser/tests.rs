@@ -172,7 +172,7 @@ fn default_is_inert_3ph_closed_recloser() {
     assert_eq!(r.ccd.cd.nconds, 3);
     assert_eq!(r.ccd.cd.nterms, 1);
     assert_eq!(r.ccd.element_terminal, 1);
-    // D2: default curves removed -> inert.
+    // No default curves -> inert.
     assert_eq!(r.ph_fast_name, "none");
     assert_eq!(r.ph_slow_name, "none");
     assert!(r.ph_fast.is_none());
@@ -190,7 +190,7 @@ fn default_is_inert_3ph_closed_recloser() {
     assert!(r.ccd.cd.yprim.is_none());
 }
 
-/// A default (no-curve) recloser never arms — the D2 breaking default.
+/// A default (no-curve) recloser never arms.
 #[test]
 fn inert_default_recloser_never_arms() {
     let mut r = Recloser::new("r1");
@@ -223,9 +223,8 @@ fn sample_arms_open_then_reclose_on_overcurrent() {
     assert_eq!(sc.queue.queue_size(), 2);
 }
 
-/// Pins the queued OPEN / reclose CLOSE times and the D3 inst-delay single-count:
-/// `TripTime = TDPhFast·GetTCCTime(10) = 2·0.1 = 0.2`, OPEN at
-/// `TripTime + MechanicalDelay = 0.25`, reclose at `+ RecloseIntervals[0] = 0.75`.
+/// Pins the queued OPEN and reclose CLOSE times: the OPEN at the TCC trip time plus
+/// one `MechanicalDelay`, the CLOSE one reclose interval later.
 #[test]
 fn sample_queues_trip_and_reclose_at_correct_times() {
     let mut r = armed_recloser();
@@ -247,8 +246,8 @@ fn sample_queues_trip_and_reclose_at_correct_times() {
     assert!((t_close - 0.75).abs() < 1e-9, "reclose time = {t_close}");
 }
 
-/// D3: an instantaneous trip fires at a bare `0.01` + one `MechanicalDelay` (not
-/// the r4088 `0.01 + 2·delay`).
+/// An instantaneous trip fires at its bare trip time plus one `MechanicalDelay`,
+/// the delay counted once.
 #[test]
 fn inst_trip_single_counts_the_mechanical_delay() {
     let mut r = armed_recloser();

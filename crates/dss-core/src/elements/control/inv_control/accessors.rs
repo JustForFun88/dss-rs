@@ -1,8 +1,8 @@
-//! The `CktElement` and `DssObject` trait impls for `InvControl` (step 2a): the
+//! The `CktElement` and `DssObject` trait impls for `InvControl`: the
 //! typed property accessors, the curve `set_object_ref` resolution +
 //! `ValidateXYCurve`, `PropertySideEffects`, and `MakeLike`. The DER-fleet build
 //! and the control behavior (`Sample`/`DoPendingAction`/`RecalcElementData`)
-//! land in step 2b.
+//! live in `compute`.
 
 use num_complex::Complex64;
 
@@ -177,17 +177,13 @@ impl CktElement for InvControl {
         curr.fill(Complex64::ZERO);
     }
 
-    /// Pascal `TInvControlObj.MakePosSequence` (`Controls/InvControl.pas:943`).
-    /// **NIL-deref hazard** (Access violation #303, probes `1`/`S1`,
-    /// `docs/wpg21_makeposseq_probes.md`): with an empty DER list Pascal's
-    /// `Setbus(1, MonitoredElement.GetBus(..))` dereferences the NIL
-    /// `MonitoredElement`; in dss-python 0.15.7 even the *populated* case faults
-    /// (at object creation). Per CLAUDE.md UB is never reproduced. We transcribe
-    /// the *defined* scalar resync (`FNphases := 3; Nconds := 3`) and safe-skip
-    /// the NIL-deref `Setbus` when no monitored element is resolved; when a
-    /// monitored DER *is* resolved (the populated path), adopt its `Firstbus` /
-    /// phase count. The empty-list `RecalcElementData` (DER-list rebuild) needs
-    /// solve context and sits on the crash path, so it is not reproduced here.
+    /// `MakePosSequence`. With an empty DER list the OpenDSS body dereferences
+    /// the NIL `MonitoredElement` and crashes, which this engine does not
+    /// reproduce. It applies the defined scalar resync (`FNphases := 3; Nconds
+    /// := 3`), skips `Setbus` when no monitored element is resolved, and adopts the
+    /// `Firstbus` and phase count of a resolved monitored DER. The empty-list
+    /// `RecalcElementData` (DER-list rebuild) needs solve context and is not run
+    /// here.
     fn make_pos_sequence(&mut self, ctx: &PosSeqCtx) -> PosSeqPlan {
         // FNphases := 3; Nconds := 3 (defined; independent of the DER list).
         self.ccd.cd.nphases = 3;
@@ -540,8 +536,7 @@ impl DssObject for InvControl {
                         Err(_) => (entry.clone(), Vec::new()),
                     };
                     self.mon_buses.push(bus);
-                    // dss_capi 0.15.x C8 (`e6607efd`, `InvControl.pas` l.694-698):
-                    // a `MonBus` entry with NO node numbers is a hard error #2024111
+                    // A `MonBus` entry with NO node numbers is a hard error #2024111
                     // that aborts the side-effect (Pascal `Exit`) — the monitored
                     // per-phase voltage is undefined without an explicit node list.
                     if nodes.is_empty() {

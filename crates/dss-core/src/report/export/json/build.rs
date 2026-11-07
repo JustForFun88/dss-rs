@@ -4,7 +4,7 @@
 //! (`:1201-1254`). The header (`Name`/`DSSClass`), the default set-order sweep
 //! with the redundant/array-alternative `iPropNext2` deferral, the `Full` sweep,
 //! and the skip flags all live here; the value of each surviving property comes
-//! from [`ClassProps::get_json_value`](crate::obj::props::class_props).
+//! from [`ClassProps::get_json_value`](crate::obj::props::ClassProps::get_json_value).
 
 use crate::elements::pc::dyneq_pce::DynInitValue;
 use crate::obj::arena::ClassArena;

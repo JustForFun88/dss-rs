@@ -1,5 +1,5 @@
-// WP-U1.3 / row D4 (docs/upgrade/DIVERGENCES.md) -- delta-connected DER
-// monitored voltage is line-to-line, oracle capi015. SNAPSHOT.
+// Delta-connected DER
+// monitored voltage is line-to-line, gated on r4133. SNAPSHOT.
 //
 // A single DELTA-connected PVSystem under VOLTVAR. dss_capi 0.15.x (D4,
 // InvControl.pas l.1647-1652, r3822) monitors the DER's LINE-TO-LINE terminal

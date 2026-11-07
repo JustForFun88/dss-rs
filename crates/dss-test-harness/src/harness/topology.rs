@@ -1,4 +1,4 @@
-//! `GOLDEN_REBASE_PLAN.md` WP-G1 sub-step **G1.7** — the `ITopology` interface,
+//! The `ITopology` interface,
 //! compared live on every gating channel of the unified corpus gate.
 //!
 //! # The surface
@@ -37,10 +37,8 @@
 //!
 //! # Fully discrete — no tolerance, deliberately
 //!
-//! Every field is a count or an identifier list; nothing here is a float, so
-//! this surface introduces **no** band and gets no `tests/TOLERANCE_NOTES.md`
-//! row. The absence is recorded there in one sentence so a later reader does not
-//! read it as an omission.
+//! Every field is a count or an identifier list. Nothing here is a float, so
+//! this surface has **no** band: the compare is exact.
 //!
 //! # Shape: the two transport-side normalizations, and why they are only
 //! *asserted* here
@@ -84,15 +82,15 @@
 //! `Common/Circuit.pas:2932-2950`, `:703`, `:2308`; capi
 //! `CAPI_Topology.pas:47-63` over the same `GetTopology`), so an `Open`/`Close`
 //! between two reads is invisible to it. `Dss::topology_view` rebuilds the tree
-//! on every call and answers from the present conductor state (CLAUDE.md: an
-//! upstream defect is never reproduced in any lane).
+//! on every call and answers from the present conductor state: an OpenDSS bug
+//! is never reproduced in any lane.
 //!
 //! Building that tree stamps the Pascal flags upstream stamps
 //! (`Checked`/`IsIsolated`/`BusChecked`, r4133 `Common/Circuit.pas:2937-2947`),
 //! which is why both transports read this surface **last** in a checkpoint and
 //! why `corpus_gate/runner.rs` calls [`compare_topology`] last in a step.
 //!
-//! # The two upstream defects, asserted positively (coordinator D15 + D16)
+//! # The two OpenDSS defects, asserted positively (D15, D16)
 //!
 //! Not memoizing and not reproducing upstream's pair dedup make the port
 //! *differ* from both oracles in two measured, fully explained ways. Neither is
@@ -201,7 +199,7 @@ pub fn normalize_topo_names(raw: &[String]) -> Result<Vec<String>, String> {
 ///
 /// The transports normalize; this module does **not** re-normalize, because a
 /// repair here would hide a transport regression behind a green gate
-/// (`GOLDEN_REBASE_PLAN.md` §1.1(f): a comparator must fail, never quietly fix
+/// (a comparator must fail, never quietly fix
 /// up). So the capture is required to be normalized, and the refusal names which
 /// transport to look at.
 #[track_caller]
@@ -287,8 +285,8 @@ fn preview_pairs(v: &[(String, String)]) -> String {
 // D16 — the two dedup rules over one candidate sequence
 // ---------------------------------------------------------------------------
 
-/// **Upstream's** looped-pair dedup, applied to a candidate sequence — the
-/// gate's model of the oracle (coordinator decision D16).
+/// **OpenDSS's** looped-pair dedup, applied to a candidate sequence — the
+/// gate's model of the OpenDSS engines (D16).
 ///
 /// r4133 `Version8/Source/DDLL/DTopology.pas:277-301` (`k := -1` at `:277`, the
 /// scan at `:286-296`, the append at `:297-301`) and capi 0.14.5
@@ -311,7 +309,7 @@ fn preview_pairs(v: &[(String, String)]) -> String {
 /// the port's own dedup (`exec/view.rs`) is too, and the sequence this runs over
 /// comes entirely from the port's element store in one spelling. The
 /// case-insensitive [`eq`] belongs where an ORACLE name meets a PORT name — the
-/// comparator arms, never the model (G1.7 audit settlement).
+/// comparator arms, never the model.
 pub fn window_dedup(candidates: &[(String, String)]) -> Vec<(String, String)> {
     let mut buf: Vec<String> = Vec::new();
     for (a, b) in candidates {
@@ -745,7 +743,7 @@ fn compare_isolation(port: &IsolationSnapshot, cap: &TopologyCap, ctx: &str, bas
     );
 }
 
-/// The `AllLoopedPairs` arm (coordinator decision **D16**): the oracle's flat
+/// The `AllLoopedPairs` arm (**D16**): the oracle's flat
 /// list, paired up, must equal `model` — [`window_dedup`] applied to the port's
 /// own candidate sequence — ordered, case-insensitive, both members.
 ///
@@ -756,8 +754,8 @@ fn compare_isolation(port: &IsolationSnapshot, cap: &TopologyCap, ctx: &str, bas
 /// **window** scan (`i := i + 1` over `(buf[i-1], buf[i])`,
 /// `DTopology.pas:286-296`, capi `:181-190`) that also drops a genuinely new
 /// candidate coinciding with a straddling window, contradicting its own comment
-/// "see if we already found this pair"; the port keeps the correct per-pair
-/// dedup and never reproduces the defect (CLAUDE.md), exposing its raw candidate
+/// "see if we already found this pair". This engine keeps the correct per-pair
+/// dedup and never reproduces the defect, exposing its raw candidate
 /// sequence as `TopologyView::looped_pair_candidates` so the mechanism is
 /// asserted positively instead of the field being skipped.
 ///
@@ -812,7 +810,7 @@ mod tests {
         xs.iter().map(|x| (*x).to_string()).collect()
     }
 
-    /// **Pin (`GOLDEN_REBASE_PLAN.md` G1.7 §3.1-S2/S3).** The capi channel
+    /// **Pin.** The capi channel
     /// appends exactly ONE trailing `''` to a non-empty `AllIsolatedBranches` /
     /// `AllIsolatedLoads` and r4133 does not, while `AllLoopedPairs` carries none
     /// on either channel — so the rule drops one trailing empty and refuses every
@@ -912,8 +910,7 @@ mod tests {
 
     /// The flat wire shape is paired left-to-right, and the ordered compare has
     /// teeth in BOTH members and in the order (a swapped member, a reordering and
-    /// a dropped pair all red) — the comparator half of the plan's §4.1-B
-    /// corruption drive. Driven on the D16 shape: the first argument is the
+    /// a dropped pair all red). Driven on the D16 shape: the first argument is the
     /// window model of the port's candidates, the third the oracle's flat list.
     #[test]
     fn the_looped_pair_arm_is_ordered_and_two_sided() {
@@ -1000,7 +997,7 @@ mod tests {
     #[test]
     fn the_isolation_arm_states_the_basis_it_compares_against() {
         // `controls:recloser/recloser_perm.dss`: step 0 fresh == the oracle's
-        // memoized answer for every later step (measured, tmp/g17/stale_r4133.json).
+        // memoized answer for every later step.
         let step0 = IsolationSnapshot {
             num_isolated_branches: 0,
             num_isolated_loads: 0,
@@ -1069,8 +1066,8 @@ mod tests {
         assert_eq!(cases_and_steps(&BTreeSet::new()), (0, 0));
     }
 
-    /// The ordered name arm rejects a reordering, a rename and a length change —
-    /// the comparator half of the plan's §4.1-C corruption drive. A set compare
+    /// The ordered name arm rejects a reordering, a rename and a length change.
+    /// A set compare
     /// would pass the first of the three, which is why this one is a sequence
     /// compare.
     #[test]
@@ -1109,9 +1106,8 @@ mod tests {
     /// failure and never as a Rust divergence.
     ///
     /// Driven through the real [`compare_topology`], because that is the only
-    /// place the arms live (G1.7 audit settlement: this test used to assert
-    /// properties of its own fixture and so could not fail for the reason its
-    /// name gives). Both arms panic *before* `dss.topology_view()`, which is why
+    /// place the arms live, so it can fail for the reason its name gives. Both
+    /// arms panic *before* `dss.topology_view()`, which is why
     /// an engine with no circuit is enough — and why the census statics, written
     /// by arms 5 and 6, stay untouched by this case.
     #[test]
@@ -1155,9 +1151,8 @@ mod tests {
     ///
     /// Cannot bite on live data (two DSS elements cannot differ only in case, and
     /// every candidate comes from the port's own store in one spelling), which is
-    /// exactly why the divergence had to be pinned rather than argued: before the
-    /// G1.7 audit settlement both models compared with `eq_ignore_ascii_case`
-    /// while their engine-side twins used `==`.
+    /// exactly why the case-sensitive match is pinned rather than argued: the
+    /// engine-side twins of both models use `==`.
     #[test]
     fn the_dedup_models_match_names_case_sensitively() {
         let mixed = vec![

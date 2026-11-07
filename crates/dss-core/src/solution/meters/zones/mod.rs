@@ -1,7 +1,7 @@
 //! EnergyMeter zone building — Pascal `TEnergyMeter.ResetMeterZonesAll` /
 //! `SetHasMeterFlag` / `TEnergyMeterObj.MakeMeterZoneLists` plus
 //! `Circuit.DoResetMeterZones`. Implemented as free functions over the registry
-//! (the WP5.7 control-sweep pattern): the meter's zone topology is built in
+//! (the control-sweep pattern): the meter's zone topology is built in
 //! local data structures while the **other** circuit elements' flags/refs and
 //! the buses' `DistFromMeter` are mutated through the store, then the result is
 //! installed into the meter object.

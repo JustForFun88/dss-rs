@@ -1,14 +1,12 @@
-//! `GOLDEN_REBASE_PLAN.md` G1.10b — the per-report **CELL** comparison of the
-//! run-produced report files (spec `tmp/g110b/spec.md` §2.3, coordinator
-//! decision **D40**).
+//! The per-report **CELL** comparison of the run-produced report files.
 //!
-//! G1.10a compares the created-file **set**; micro-part F1 of this sub-step
-//! carries the selected members' **bytes** to the gate
+//! [`super::run_files`] compares the created-file **set** and carries the
+//! selected members' **bytes** to the gate
 //! ([`super::run_files::compare_run_file_contents`], which returns the matched
 //! `(name, oracle, port)` triples). This module is what turns those triples into
 //! a comparison: it gives every compared report kind a **column map** — per
 //! column the quantity it carries and the Pascal `Format` string that renders
-//! it, each cited to the r4133 writer line — and compares a cell by the D40(1)
+//! it, each cited to the r4133 writer line — and compares a cell by the cell
 //! rule
 //!
 //! ```text
@@ -17,17 +15,16 @@
 //!
 //! **Neither term is a free parameter, and this module introduces no constant.**
 //! The first term is the case's own calibrated in-memory floor
-//! ([`Tolerances`], derived in `tests/TOLERANCE_NOTES.md` and used by the live
+//! ([`Tolerances`], used by the live
 //! `element` / `bus` / `voltages` comparators on the very same numbers); the
 //! second is exact arithmetic from the report's print format — `%N.df` resolves
 //! to `10^-d`, `%N.sg` to `10^(1-s)·10^floor(log10 m)`. Two engines whose
 //! underlying f64s agree inside the floor can still render one step apart when
 //! the shared value straddles a rounding boundary, and one step is exactly what
-//! the ulp term admits. The derivation, the measured worst cell per class and
-//! the pins that carry them live in `tests/TOLERANCE_NOTES.md`
-//! §"G1.10b run-file contents".
+//! the ulp term admits. The pins in `crates/dss-core/tests/run_file_contents_pins.rs`
+//! carry one measured cell per class.
 //!
-//! **Live-only** (D40(2) guard rail 1): `tests/golden_reports.rs` keeps comparing
+//! **Live-only**: `tests/golden_reports.rs` keeps comparing
 //! the committed golden bytes with its own exact [`ExportPolicy`] values, lifted
 //! unchanged into [`super::export_policies`]; every kind here names the policy
 //! its golden names, so "same report, same policy" is a compile-time fact
@@ -36,7 +33,7 @@
 //!
 //! **What is NOT compared** and why is declared once in
 //! [`CONTENTS_NOT_SELECTED`]; the column sets that are declined inside a
-//! compared file (the FPC-vs-Delphi `%-.g` trace columns, D40(3)) are declared
+//! compared file (the FPC-vs-Delphi `%-.g` trace columns) are declared
 //! as [`PrintFmt::DeclinedG`] in the column map itself and counted by the
 //! census, never silently skipped.
 //!
@@ -45,8 +42,8 @@
 //! own capture is part of the file: the rule is stated at
 //! [`ReportKind::accounts_readback_tail`] and the measured tail is reported to
 //! the caller ([`CellTally::trace_tail`], [`trace_tail_census`]) for the
-//! scheduler's fail-on-stale `TRACE_READBACK_RECORDS` epilogue — coordinator
-//! decision **D43(1)**.
+//! scheduler's fail-on-stale `TRACE_READBACK_RECORDS` epilogue (the read-back
+//! tail rule).
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -120,12 +117,12 @@ pub enum Quantity {
     /// so only the print ulp separates the two renders.
     Distance,
     /// An EnergyMeter-style register accumulation. Floor
-    /// `energy_abs + energy_rel·m` (the integration policy, PORTING_PLAN §4).
+    /// `energy_abs + energy_rel·m`, the case's register tier: a register
+    /// integrates the same powers over time, so it inherits their floor.
     Energy,
     /// A cell that re-prints a quantity some other live comparator already pins
     /// **exactly** — the bus `kVBase` of `Export Voltages`' second column, which
-    /// `harness::compare_bus` compares with `rel = abs = 0` (G1.4a, and D11's
-    /// `float_roundtrip` is what made that exact compare possible). Floor `0`,
+    /// `harness::compare_bus` compares with `rel = abs = 0`. Floor `0`,
     /// print ulp only.
     ExactElsewhere,
     /// The ARGUMENT, in degrees, of the magnitude `mag_back` columns earlier.
@@ -135,7 +132,7 @@ pub enum Quantity {
     /// ([`polar_angle_band`]), and completely free once `|I| ≤ allowed` — where
     /// the two engines legitimately report angles up to 180° apart for the same
     /// cancellation residual. The magnitude used is `max(|oracle|, |port|)`,
-    /// which makes the rule **two-sided** (D40(1)) and supersedes the golden's
+    /// which makes the rule **two-sided** and supersedes the golden's
     /// one-sided `GateSpec::PrevCol(1e-6)` on this surface: that gate reads the
     /// ORACLE's magnitude only and deliberately never fires on an exact `0`, so
     /// it cannot see the class where the oracle prints `0` and the port a
@@ -164,10 +161,7 @@ pub enum PrintFmt {
     /// `1.32348898008484E-026` vs `6.6E-27`. At two significant digits any
     /// numeric band would be vacuous (a 2 % straddle: capi `5.5` vs the port's
     /// `5.4` for `kWTotalLosses`), so the column SET is **declined on both
-    /// channels** with a census row and a both-numbers pin — never a tolerance
-    /// (coordinator decision **D40(3)**). WP-G4 **G4.1** tears the `fmt_g`
-    /// kernel down; once the port prints at r4133's precision the decline is
-    /// re-measured and shrinks to the capi channel.
+    /// channels** with a census row and a both-numbers pin — never a tolerance.
     DeclinedG,
 }
 
@@ -269,7 +263,7 @@ impl ReportKind {
     /// ships to both oracle transports, so a kind whose pattern left
     /// [`dss_epri::guard::RUN_FILE_CONTENTS_PATTERNS`] would be a kind whose
     /// bytes silently stop travelling (pinned by
-    /// [`tests::every_selection_pattern_has_a_kind_and_every_kind_a_pattern`]).
+    /// `tests::every_selection_pattern_has_a_kind_and_every_kind_a_pattern`).
     pub fn pattern(self) -> &'static str {
         match self {
             ReportKind::Currents => "*_exp_currents.csv",
@@ -301,7 +295,7 @@ impl ReportKind {
     /// The golden [`ExportPolicy`] this kind shares with its byte golden — the
     /// compile-time half of "the live compare uses the same policy as the
     /// golden". The live comparator reads the policy's `sep` and `header_lines`
-    /// out of it (never its own literals) and compares values by the D40(1)
+    /// out of it (never its own literals) and compares values by the
     /// cell rule instead of the golden's `rel`/`abs`, which stay pinned to the
     /// committed bytes.
     ///
@@ -344,7 +338,7 @@ impl ReportKind {
     }
 
     /// Whether this kind's data row count is a property of the RUN alone, or
-    /// also of the READER — coordinator decision **D43(1)**.
+    /// also of the READER — the read-back tail rule.
     ///
     /// An `Export` report is written once, in full, by the command that names
     /// it: its row count is an equality, and a differing one is a finding. The
@@ -359,15 +353,13 @@ impl ReportKind {
     /// times after the last solve (the A/B/C capture partition, `capture_order`)
     /// and therefore append six tail records; the port's
     /// `dss_core::exec::view::snapshot_elements` recomputes ONCE at the
-    /// converged `NodeV` (GOLDEN_REBASE **G2.3**, the Newton stale-`Iterminal`
-    /// fix) and touches it twice. Measured live on `Storage_price.dss`, both
-    /// channels: 96 identical solve records on all three engines, oracle 102
-    /// rows vs port 98 (`tmp/g110b/f_F2_unexpected.md`). The gap is the
+    /// converged `NodeV` and touches it twice. The solve records are identical
+    /// on all three engines, and the oracle's file is longer. The gap is the
     /// footprint of the gate's own reader and the port's BETTER behaviour is
     /// what produces it, so equality would gate the capture, not the engine.
     ///
     /// For such a kind [`compare_one`] asserts `port_rows <= oracle_rows`,
-    /// compares every cell of the first `port_rows` records under the D40(1)
+    /// compares every cell of the first `port_rows` records under the cell
     /// rule, and REPORTS `oracle_rows − port_rows` to the caller
     /// ([`CellTally::trace_tail`], [`trace_tail_census`]), where the scheduler
     /// epilogue holds it against the re-derived population constant
@@ -591,12 +583,11 @@ fn yprim_layout() -> Layout {
 /// `PCElements/PVsystem.pas:404-409` — `kWh`, `kvarh`, `Max kW`, `Max kVA`,
 /// `Hours`, `Price($)`), and `Max kW`/`Max kVA` are maxima of instantaneous
 /// power, which the gate bands at `i_abs + i_rel·m` everywhere else — three
-/// orders tighter than the accumulator band. Coordinator decision **D42(1)**
-/// classes exactly this quantity (`Max/Peak …` powers) at `i_rel`/`i_abs` on the
-/// sibling DI surface; this map says the same thing about the same registers.
+/// orders tighter than the accumulator band. The sibling DI surface classes
+/// exactly this quantity (`Max/Peak …` powers) at `i_rel`/`i_abs`, and this map
+/// says the same thing about the same registers.
 /// `Hours` and `Price($)` accumulate like `kWh`/`kvarh` and keep the energy
-/// class. (G1.10b audit settlement, finding AC1-2; nothing observable moves —
-/// the `:10:0` print ulp of 1.0 dominates every reading on the live population.)
+/// class.
 ///
 /// Because the columns come from the header there is no repeating group, so a
 /// data row wider than the header it was written under is a loud refusal
@@ -657,7 +648,7 @@ fn register_layout(header: &[String], ctx: &str) -> Layout {
 /// data column, which is why the variable count subtracts them.
 ///
 /// Columns `t` and `LoadMultiplier` (`:2411`) and every variable cell (`:2424`)
-/// are `%-.g` → [`PrintFmt::DeclinedG`] (D40(3)).
+/// are `%-.g` → [`PrintFmt::DeclinedG`].
 fn storage_trace_layout(header: &[String], ctx: &str) -> Layout {
     let count = |p: &str| header.iter().filter(|h| h.trim().starts_with(p)).count();
     let (n_inj, n_term, n_vterm) = (count("|Iinj"), count("|Iterm"), count("|Vterm"));
@@ -719,39 +710,36 @@ fn storage_trace_layout(header: &[String], ctx: &str) -> Layout {
 }
 
 // ---------------------------------------------------------------------------
-// What is deliberately NOT selected (D40(5)).
+// What is deliberately NOT selected.
 // ---------------------------------------------------------------------------
 
 /// The report kinds a run can produce whose contents this surface does **not**
-/// compare, each with the reason — a census row, never an ad-hoc comparison
-/// (coordinator decision **D40(5)**).
+/// compare, each with the reason — a census row, never an ad-hoc comparison.
 ///
 /// They never reach [`compare_run_file_cells`] at all: the selection
 /// ([`dss_epri::guard::RUN_FILE_CONTENTS_PATTERNS`]) does not name them, so their
 /// bytes never leave the case directory. This table is where the reason lives,
-/// and [`tests::nothing_declined_is_also_selected`] holds the two halves
+/// and `tests::nothing_declined_is_also_selected` holds the two halves
 /// consistent.
 pub const CONTENTS_NOT_SELECTED: [(&str, &str); 8] = [
     (
         "monitor CSV",
-        "A6: f32 channel data, and an unsampled monitor is a known oracle artifact \
-         (TESTING.md §monitors). Names compared by G1.10a, contents never.",
+        "f32 channel data, and an unsampled monitor's file is an artifact of the \
+         OpenDSS engines. Names compared by the run-file set, contents never.",
     ),
     (
         "eventlog CSV",
-        "the event log is already compared IN MEMORY on both channels \
-         (G1.10a class A, coordinator decision D30(1)); re-comparing its file \
-         would gate the same strings twice.",
+        "the event log is already compared IN MEMORY on both channels, so \
+         re-comparing its file would gate the same strings twice.",
     ),
     (
         "demand-interval tree (DI_yr_*)",
-        "owned by sub-step G1.10c (the `compare_di` manifest flag).",
+        "owned by the demand-interval surface (the `compare_di` manifest flag).",
     ),
     (
         "Show / Dump text reports",
-        "the two oracles disagree with EACH OTHER on `MaxBusNameLength` column \
-         padding (29 065 differing tokens on one 8500-node file, measured \
-         tmp/g110b/STOP.md §6) — the `Show` width class, WP-G4/G2.6 territory.",
+        "the two OpenDSS engines disagree with EACH OTHER on `MaxBusNameLength` column \
+         padding — the `Show` width class.",
     ),
     (
         "NCIM Jacobian / deltaF / deltaZ",
@@ -776,13 +764,12 @@ pub const CONTENTS_NOT_SELECTED: [(&str, &str); 8] = [
          (`golden_reports::export_capacity_matches_oracle`, \
          `::export_ycurrents_matches_oracle`, \
          `::export_ynodelist_matches_oracle`), but the \
-         only corpus decks that export them are `large*` rows the G1.10a force \
+         only corpus decks that export them are `large*` rows the run-file force \
          rule never reaches (`ckt7`, `GFM_AmpsLimit_123`), so no column map was \
          written and none could be MEASURED against the two oracles. Declaring \
          `compare_run_files` on such a row must add the map first — \
          [`tests::every_default_export_name_the_corpus_produces_is_selected_or_declined`] \
-         is what makes that a red instead of a silent skip (settlement of the \
-         G1.10b code audit, finding AC-4).",
+         is what makes that a red instead of a silent skip.",
     ),
 ];
 
@@ -822,7 +809,7 @@ pub struct CellTally {
     pub trace_files: usize,
     /// The total `oracle_rows − port_rows` over those files: the records the
     /// ORACLE transport's own post-solve element reads appended and the port's
-    /// single G2.3 recompute did not (coordinator decision **D43(1)(iii)**).
+    /// single recompute did not.
     ///
     /// One call of [`compare_run_file_cells`] is one (case, channel), so this
     /// is the quantity the scheduler epilogue holds against the re-derived
@@ -833,7 +820,7 @@ pub struct CellTally {
 
 /// One Storage `DebugTrace` comparison's row accounting — the observation the
 /// `TRACE_READBACK_RECORDS` epilogue re-derives its population constant from
-/// (**D43(1)(iii)**).
+/// (the read-back tail rule).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TraceTail {
     /// `"<case label> [<channel>] <file> contents"` — the (case, channel, file)
@@ -863,7 +850,7 @@ static TRACE_TAILS: Mutex<Vec<TraceTail>> = Mutex::new(Vec::new());
 /// transport that grew an element read; a gap that shrinks to zero is a port
 /// that started logging the gate's own capture. Both are visible instead of
 /// silent, which is the whole point of accounting the footprint instead of
-/// declining the file (D43(1), options B and C refused).
+/// declining the file.
 pub fn trace_tail_census() -> Vec<TraceTail> {
     TRACE_TAILS
         .lock()
@@ -882,8 +869,8 @@ pub fn trace_tail_census() -> Vec<TraceTail> {
 /// over `RUN_FILE_CONTENTS_COMPARED`/`RUN_FILE_CONTENTS_DECLINES`, fail-on-stale
 /// in BOTH directions, the `SCRATCH_FILE_DECLINES` shape). What these two
 /// accessors give is this module's own self-check view — used by
-/// [`tests::the_census_is_per_kind`] to prove a comparison lands on its own
-/// kind's row. (G1.10b audit settlement, finding AT1-4.)
+/// `tests::the_census_is_per_kind` to prove a comparison lands on its own
+/// kind's row.
 pub fn cell_census() -> (usize, usize, usize) {
     (
         FILES.load(Ordering::Relaxed),
@@ -913,7 +900,7 @@ pub fn cell_census_by_kind() -> Vec<(&'static str, usize, usize, usize)> {
 // ---------------------------------------------------------------------------
 
 /// The calibrated in-memory floor for `q` at magnitude `m` — the first term of
-/// the D40(1) rule. Every number here comes from [`Tolerances`]; this module
+/// the cell rule. Every number here comes from [`Tolerances`]; this module
 /// defines none of its own.
 fn class_floor(q: Quantity, tol: &Tolerances, m: f64) -> f64 {
     match q {
@@ -935,7 +922,7 @@ fn class_floor(q: Quantity, tol: &Tolerances, m: f64) -> f64 {
 /// the golden's text fallback would compare r4133's three-digit exponent
 /// `+j 2.220446049E-016` against the port's `+j 2.220446049E-16` as *strings*
 /// and fail on a spelling. Strip the marker on both sides and compare the
-/// numbers (coordinator decision **D40(4)**).
+/// numbers.
 ///
 /// Returns `(payload, marker_present)`; the caller asserts the two sides agree
 /// on the marker, so dropping it can never hide a layout change.
@@ -955,7 +942,7 @@ enum Cell {
     Fail(String),
 }
 
-/// Compare one non-angle cell under the D40(1) rule.
+/// Compare one non-angle cell under the cell rule.
 ///
 /// [`Quantity::Angle`] never arrives here — the row loop dispatches it to
 /// [`compare_angle`], which needs the paired magnitude column's class and both
@@ -1020,7 +1007,7 @@ fn compare_cell(c: Col, tol: &Tolerances, port: &str, oracle: &str) -> Cell {
 ///
 /// `Δθ ≤ rad2deg·allowed/|I| + ulp(angle format)`, with
 /// `allowed = floor(magnitude class, |I|)` and `|I| = max(|I_oracle|, |I_port|)`
-/// (two-sided, D40(1)). [`polar_angle_band`] returns `None` once `|I| ≤ allowed`
+/// (two-sided). [`polar_angle_band`] returns `None` once `|I| ≤ allowed`
 /// — the phasor is indistinguishable from zero at the accepted precision and
 /// its argument carries no information, which is exactly the measured class
 /// where the oracle prints `0.00°` at an exact `0 A` and the port `45.00°` at
@@ -1083,9 +1070,8 @@ fn compare_angle(
 /// Structure before values, always: the header lines verbatim, then the data row
 /// count, then each row's field count and identity key, and only then the cells.
 /// A structural failure names the row; a cell failure names the column, the two
-/// numbers and the two terms of the band it exceeded — the shape the kill
-/// criterion needs (D40(9): a cell outside the rule is a FINDING → STOP, never a
-/// ledger row).
+/// numbers and the two terms of the band it exceeded. A cell outside the rule
+/// is a finding to investigate, never a ledger row.
 #[track_caller]
 pub fn compare_run_file_cells(
     channel: &str,
@@ -1115,7 +1101,7 @@ pub fn compare_run_file_cells(
             rows,
         } = compare_one(&ctx, kind, &ol, &rl, tol);
         if let Some((oracle_rows, port_rows)) = rows {
-            // D43(1)(iii): the reader's footprint is REPORTED, never absorbed.
+            // The reader's footprint is REPORTED, never absorbed.
             tally.trace_files += 1;
             tally.trace_tail += oracle_rows - port_rows;
             TRACE_TAILS
@@ -1186,8 +1172,8 @@ fn compare_one(
              a deliberate lane divergence (`compat::profile_ll_pu_divisor`, the \
              four-digit 1732.0 divisor), excluded from the byte goldens in the \
              default lane by `harness::lane::profile_ll_policy` and pinned by \
-             `export_profile_ll_pu_is_the_lane_kernel`. No corpus deck exported \
-             one when G1.10b landed; wiring one needs the same field exclusion \
+             `export_profile_ll_pu_is_the_lane_kernel`. No corpus deck exports \
+             one; wiring one needs the same field exclusion \
              here, deliberately — never a band."
         );
     }
@@ -1205,7 +1191,7 @@ fn compare_one(
     let odata = &ol[header_lines..];
     let rdata = &rl[header_lines..];
     let rows = if kind.accounts_readback_tail() {
-        // D43(1) option A: the oracle's file is the port's plus the tail the
+        // The oracle's file is the port's plus the tail the
         // transports' own post-solve element reads appended, so the port can
         // never be the longer of the two — and the cell loop below, which zips,
         // compares exactly the common `port_rows`-record prefix.
@@ -1216,9 +1202,8 @@ fn compare_one(
              of `GetTerminalCurrents` (r4133 PCElements/Storage.pas:2874, \
              capi 0.14.5 :2356), so the oracle's file is the port's plus \
              the gate's own read-back tail; a longer PORT file means it \
-             started writing records the authority does not \
-             (`ReportKind::accounts_readback_tail`, coordinator decision \
-             D43(1))",
+             started writing records the OpenDSS engines do not \
+             (`ReportKind::accounts_readback_tail`)",
             kind.label(),
             rdata.len(),
             odata.len()
@@ -1282,8 +1267,8 @@ fn compare_one(
         // and judged under a neighbouring column's quantity class and print
         // format instead of being refused. The width of a group row is
         // `head + k·group` by construction of every r4133 writer this module
-        // maps, so assert it. (G1.10b audit settlement, finding AT1-2; the
-        // group-free kinds are refused by `col_at` returning `None` below.)
+        // maps, so assert it. (The group-free kinds are refused by `col_at`
+        // returning `None` below.)
         if !layout.group.is_empty() {
             assert!(
                 value_cols >= layout.head.len()
@@ -1318,11 +1303,10 @@ fn compare_one(
                     )
                 };
                 // The `+j` marker must agree on both sides here too: the
-                // tokenization (D40(4)) normalizes the marker away, and
+                // tokenization normalizes the marker away, and
                 // `compare_cell` asserts the two sides carry the same one so a
                 // layout change can never hide behind it. The angle arm does not
                 // go through `compare_cell`, so it states the same rule itself.
-                // (G1.10b audit settlement, finding AC1-5.)
                 for (f, what) in [(mj, "paired magnitude"), (j, "angle")] {
                     assert_eq!(
                         strip_j(&rf[f]).1,
@@ -1438,7 +1422,7 @@ mod tests {
     }
 
     /// The floor term is [`Tolerances`] and nothing else — one assertion per
-    /// quantity class, at the `feeder` tier the forced G1.10b population runs at
+    /// quantity class, at the `feeder` tier the forced population runs at
     /// (`v_rel 1e-8 / v_abs 1e-6 / i_rel 1e-7 / i_abs 1e-5 / y_rel 1e-8 /
     /// y_abs 1e-6`, `energy 1e-4/1e-4`).
     #[test]
@@ -1464,7 +1448,7 @@ mod tests {
             1e-5 / 1000.0 + 1e-7 * 1.342
         );
         // Tighter than reading the kW-calibrated `abs` against the same MW
-        // number, which is what the class did before the audit settlement…
+        // number…
         assert!(
             class_floor(Quantity::PowerMega, &t, 1.342) < class_floor(Quantity::Power, &t, 1.342),
             "the MW class must be the TIGHTER reading of the same printed number"
@@ -1529,7 +1513,7 @@ mod tests {
     }
 
     // `every_compared_kind_uses_the_same_policy_as_its_golden` is NOT here: it
-    // is one of the sub-step's registered pins and lives with the others in
+    // is one of this surface's registered pins and lives with the others in
     // `crates/dss-core/tests/run_file_contents_pins.rs`, where it reads
     // [`ReportKind::structure`] and [`ReportKind::golden_policy`] through the
     // same public surface the live gate uses.
@@ -1539,17 +1523,17 @@ mod tests {
     ///
     /// The disjointness is asserted over a NAME each row stands for — the
     /// spelling the corpus actually produces for that kind — run through the
-    /// shipped matcher. Until the G1.10b audit settlement this clause compared
-    /// the row's prose LABEL against the glob patterns
-    /// (`!patterns.any(|p| p.contains(what))`), which no label can ever satisfy:
-    /// the assertion was unconditionally true and a row naming a kind the gate
-    /// DOES select would have passed (findings AC1-1 / AT1-1 / AT3-2).
+    /// shipped matcher. Comparing the row's prose LABEL against the glob patterns
+    /// (`!patterns.any(|p| p.contains(what))`) could never fail, since no label
+    /// matches a pattern: the assertion would be unconditionally true and a row
+    /// naming a kind the gate
+    /// DOES select would pass.
     #[test]
     fn nothing_declined_is_also_selected() {
         // One produced name per census row, in the table's own order — the
         // same measured spellings the registered pin
         // `run_file_contents_pins::a_report_without_a_policy_is_recorded_not_compared`
-        // uses (`tmp/g110b/census.txt`, `tmp/g110a/oracle_diff.txt`).
+        // uses.
         let witness: [(&str, &str); 8] = [
             ("monitor CSV", "ieee13_mon_m1_1.csv"),
             ("eventlog CSV", "ieee13_eventlog.csv"),
@@ -1595,22 +1579,16 @@ mod tests {
     }
 
     /// **The selection and the decline census are jointly exhaustive over the
-    /// export kinds the vendored corpus actually issues** — the settlement of
-    /// the G1.10b code audit's finding AC-4.
+    /// export kinds the vendored corpus actually issues**. A default-named kind
+    /// that is neither selected nor named by a census row would be skipped with
+    /// no census movement and no recorded reason — exactly the silence the
+    /// census exists to prevent.
     ///
-    /// Before it, three default-named kinds that DO have golden policies
-    /// (`capacity`, `ycurrents`, `ynodelist`, produced by the `large*` rows
-    /// `ckt7` and `GFM_AmpsLimit_123`) were neither selected nor named by a
-    /// census row: declaring `compare_run_files` on such a row would have
-    /// skipped their contents with no census movement and no recorded reason —
-    /// exactly the silence the census exists to prevent.
-    ///
-    /// The fixture is the measured export population of the corpus
-    /// (`tmp/g110b/sweep_exports.txt`: `monitors` 230, `currents` 28,
-    /// `losses` 24, `powers` 19, `voltages` 13, `monitor` 12, `eventlog` 10,
-    /// `profile` 2 and one each of `pvsystem`, `mon`, `deltaf`, `deltaz`,
-    /// `jacobian`, `y`, `yprims`, `capacity`, `ycurrents`, `ynodelist`,
-    /// `cim100`), each mapped to the name the run produces — r4133's default
+    /// The fixture is the export population of the corpus (`monitors`,
+    /// `currents`, `losses`, `powers`, `voltages`, `monitor`, `eventlog`,
+    /// `profile`, `pvsystem`, `mon`, `deltaf`, `deltaz`, `jacobian`, `y`,
+    /// `yprims`, `capacity`, `ycurrents`, `ynodelist`, `cim100`), each mapped
+    /// to the name the run produces — r4133's default
     /// `<CircuitName>_` + the `ExportOptions.pas:333-396` table entry, or a
     /// deck-chosen name where the corpus always passes `file=`. Every one of
     /// them must be either SELECTED (and carry a column map) or claimed by a
@@ -1619,9 +1597,7 @@ mod tests {
     /// The table therefore has **20** rows: those 19 export kinds plus the
     /// Storage `DebugTrace` writer, which is not an `Export` at all but lands
     /// in the same created-file set and so has to be selected by the same
-    /// patterns (settlement of the settlement audit's finding SA-5, which
-    /// measured that the table declared "19" while holding 18 export kinds and
-    /// one non-export, with `ynodelist` asserted only half-way after the loop).
+    /// patterns.
     #[test]
     fn every_default_export_name_the_corpus_produces_is_selected_or_declined() {
         // (export sub-command, the produced file name, `None` = selected,
@@ -1634,8 +1610,7 @@ mod tests {
             ("y", "nev_exp_y.csv", None),
             ("yprims", "nev_exp_yprim.csv", None),
             ("pvsystem /m", "exp_pv_pv.csv", None),
-            // Not an `Export` at all: the Storage `DebugTrace` writer G1.10a's
-            // F4a ported (r4133 `PCElements/Storage.pas:1075`).
+            // Not an `Export` at all: the Storage `DebugTrace` writer.
             ("(storage debugtrace)", "stor_storage1.csv", None),
             (
                 "monitors",
@@ -1718,106 +1693,15 @@ mod tests {
         }
     }
 
-    /// **The `tests/TOLERANCE_NOTES.md` column-map table and the layouts here
-    /// are ONE claim**: the print formats the table names for a kind are the
-    /// formats that kind's [`Layout`] declares — settlement of the G1.10b audit
-    /// findings AC-1/T3, where the table gave `Export Voltages`' angle column as
-    /// `Fixed(2)` while the writer prints `%6.1f`
-    /// (r4133 `Common/ExportResults.pas:288`) and the code maps `Fixed(1)`.
-    ///
-    /// A derivation table that misstates a print resolution is worse than no
-    /// table: re-deriving the band from it produces a different number than the
-    /// one in force. `Exact` and `DeclinedG` carry no resolution and are not
-    /// part of the comparison (the table names them in prose).
-    #[test]
-    fn the_tolerance_notes_column_map_names_the_formats_the_layouts_declare() {
-        use std::collections::BTreeSet;
-        let doc = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("..")
-            .join("tests")
-            .join("TOLERANCE_NOTES.md");
-        let text = std::fs::read_to_string(&doc)
-            .unwrap_or_else(|e| panic!("{doc:?} carries the G1.10b derivation: {e}"));
-        let section = text
-            .split("## G1.10b run-file contents")
-            .nth(1)
-            .expect("the G1.10b section of TOLERANCE_NOTES.md is gone");
-
-        let hdr: Vec<String> = STORAGE_TRACE_HEADER
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .collect();
-        let layouts: [(ReportKind, Layout); 9] = [
-            (ReportKind::Currents, currents_layout()),
-            (ReportKind::Powers, powers_layout()),
-            (ReportKind::Voltages, voltages_layout()),
-            (ReportKind::Profile, profile_layout()),
-            (ReportKind::YDense, y_dense_layout()),
-            (ReportKind::YTriplet, y_triplet_layout()),
-            (ReportKind::Yprim, yprim_layout()),
-            (
-                ReportKind::Register,
-                register_layout(&register_header(), "fixture"),
-            ),
-            (
-                ReportKind::StorageTrace,
-                storage_trace_layout(&hdr, "fixture"),
-            ),
-        ];
-        for (k, l) in layouts {
-            let declared: BTreeSet<String> = l
-                .head
-                .iter()
-                .chain(l.group.iter())
-                .filter_map(|c| match c.f {
-                    PrintFmt::Fixed(d) => Some(format!("Fixed({d})")),
-                    PrintFmt::Sig(s) => Some(format!("Sig({s})")),
-                    PrintFmt::Exact | PrintFmt::DeclinedG => None,
-                })
-                .collect();
-            let prefix = format!("| `{}` |", k.label());
-            let row = section
-                .lines()
-                .find(|ln| ln.trim_start().starts_with(&prefix))
-                .unwrap_or_else(|| {
-                    panic!(
-                        "the TOLERANCE_NOTES column-map table has no row for `{}`",
-                        k.label()
-                    )
-                });
-            let mut named: BTreeSet<String> = BTreeSet::new();
-            for tag in ["Fixed(", "Sig("] {
-                let mut rest = row;
-                while let Some(at) = rest.find(tag) {
-                    let after = &rest[at + tag.len()..];
-                    let end = after.find(')').unwrap_or_else(|| {
-                        panic!("{}: an unterminated `{tag}` in the table row", k.label())
-                    });
-                    named.insert(format!("{tag}{})", &after[..end]));
-                    rest = &after[end..];
-                }
-            }
-            assert_eq!(
-                named,
-                declared,
-                "{}: the TOLERANCE_NOTES column map names {named:?} but the layout \
-                 declares {declared:?} — the derivation table must state the print \
-                 resolution that is actually in force",
-                k.label()
-            );
-        }
-    }
-
     // -- the fixtures ---------------------------------------------------------
 
     /// The Storage trace header as the edit-time writer emits it for the
     /// `Storage_price.dss` element (r4133 `PCElements/Storage.pas:1077-1083`),
-    /// captured live by micro-part F1 (`tmp/g110b/f_F1.md`).
+    /// captured live.
     /// The PVSystem register header as `WriteMultiplePVSystemMeterFiles`
     /// emits it (r4133 `Common/ExportResults.pas:2017`/`:2018` over
     /// `PCElements/PVsystem.pas:404-409`), measured live on
-    /// `Test/PVSystemTest.dss` (`tmp/g110b/f_F1.md`).
+    /// `Test/PVSystemTest.dss`.
     const REGISTER_HEADER: &str = "Year, LDCurve, Hour, PVSystem, \"kWh\", \"kvarh\", \"Max kW\", \"Max kVA\", \"Hours\", \"Price($)\"";
 
     fn register_header() -> Vec<String> {
@@ -1926,7 +1810,7 @@ mod tests {
 
     /// The measured C1 class: the oracle prints an exact `0 A` and its `0.00°`,
     /// the port a `1.02898e-11 A` cancellation residual whose argument is a real
-    /// `45.00°`. The magnitude is `max` of the two sides (two-sided, D40(1)), so
+    /// `45.00°`. The magnitude is `max` of the two sides (two-sided), so
     /// the angle is free — while the magnitude column itself stays compared.
     #[test]
     fn the_angle_band_takes_the_larger_of_the_two_magnitudes() {
@@ -2020,7 +1904,7 @@ Line.X, 1.02898E-11, 45.00
 
     /// `Export Y`'s imaginary cells are `+j <number>`: the marker is tokenized on
     /// both sides so r4133's three-digit exponent meets the port's two-digit one
-    /// numerically instead of as text (D40(4), measured class C5).
+    /// numerically instead of as text (class C5).
     #[test]
     fn the_j_marker_is_tokenized_before_the_parse() {
         assert_eq!(strip_j("+j 2.220446049E-016"), ("2.220446049E-016", true));
@@ -2045,10 +1929,10 @@ Line.X, 1.02898E-11, 45.00
     /// `y_abs = 1e-6`; a real stamp moving is not.
     /// **The composition of the two terms is pinned at the boundary itself**,
     /// not one decade away: a cell 0.1 % OUTSIDE `class_floor + ulp` reds and a
-    /// cell 0.1 % inside passes. Before the G1.10b audit settlement every value
-    /// fixture sat ≥ 10× outside the band (finding AT1-3), so a fudge at the
-    /// comparison site — `floor + 10·ulp`, `2·(floor + ulp)`, a stray additive
-    /// term — kept the whole file green even though both leaf functions are
+    /// cell 0.1 % inside passes. A value fixture far outside the band would let
+    /// a fudge at the comparison site — `floor + 10·ulp`, `2·(floor + ulp)`, a
+    /// stray additive term — keep the whole file green even though both leaf
+    /// functions are
     /// pinned exactly.
     ///
     /// The drive is a `Sig(6)` magnitude of the `currents` map on the `feeder`
@@ -2094,10 +1978,9 @@ Line.X, 1.02898E-11, 45.00
         assert!(m.contains("|I| (A) of the currents map"), "{m}");
     }
 
-    /// The angle arm's boundary, same reason (finding AT1-3): the admitted slack
+    /// The angle arm's boundary, same reason: the admitted slack
     /// is the paired magnitude's own band converted to degrees plus the angle
-    /// column's print ulp, and a move 0.1 % past it must red. The nearest angle
-    /// fixture before the settlement was 3× outside.
+    /// column's print ulp, and a move 0.1 % past it must red.
     #[test]
     fn an_angle_at_the_band_boundary_decides_the_right_way() {
         let tol = tol_for("feeder");
@@ -2126,8 +2009,8 @@ Line.X, 1.02898E-11, 45.00
         assert!(m.contains("Ang (deg) of the currents map"), "{m}");
     }
 
-    /// The numeric half of a `+j` cell is compared like any other: D40(4)
-    /// normalizes the MARKER away, never the payload (finding AT1-6 — the
+    /// The numeric half of a `+j` cell is compared like any other: the
+    /// tokenization normalizes the MARKER away, never the payload (the
     /// tokenization had negative drives only for the equal-value and
     /// marker-asymmetry cases).
     #[test]
@@ -2170,7 +2053,7 @@ Line.X, 1.02898E-11, 45.00
 
     /// The Storage trace's `%-.g` columns print two significant digits from FPC
     /// and ~15 from the Delphi-built r4133 DLL, so the two ORACLES disagree with
-    /// each other: the set is declined on both channels and counted (D40(3)),
+    /// each other: the set is declined on both channels and counted,
     /// while the `:8:1`/`:8:2` and integer/text columns stay compared.
     #[test]
     fn the_declined_g_columns_are_counted_not_skipped() {
@@ -2223,7 +2106,7 @@ Line.X, 1.02898E-11, 45.00
         assert!(m.contains("one |Iinj_i|"), "{m}");
     }
 
-    // -- the read-back tail (D43(1)) -----------------------------------------
+    // -- the read-back tail -------------------------------------------------
 
     /// One `WriteTraceRecord` line for the [`TRACE_HDR`] fixture: nine fixed
     /// cells, one phase triple, two `%-.g` state variables and the writer's
@@ -2240,11 +2123,10 @@ Line.X, 1.02898E-11, 45.00
     /// run: `WriteTraceRecord` is unconditional at the end of
     /// `GetTerminalCurrents` (r4133 `PCElements/Storage.pas:2874`, capi 0.14.5
     /// `:2356`), so the oracle transports' six post-solve element reads append
-    /// six records where the port's single G2.3 recompute appends two. The
+    /// six records where the port's single recompute appends two. The
     /// comparator therefore asserts `port_rows <= oracle_rows`, compares every
     /// cell of the common prefix, and REPORTS the gap for the scheduler's
-    /// fail-on-stale `TRACE_READBACK_RECORDS` epilogue (coordinator decision
-    /// **D43(1)**; live: oracle 102 rows vs port 98, 96 solve records shared).
+    /// fail-on-stale `TRACE_READBACK_RECORDS` epilogue.
     #[test]
     fn the_storage_trace_row_count_accounts_the_readers_footprint() {
         let solve = trace_row("Injection", "277.1");
@@ -2269,7 +2151,7 @@ Line.X, 1.02898E-11, 45.00
 
     /// The first tooth of the accounting: the port may be shorter than the
     /// oracle (the reader's footprint), never longer — a port that started
-    /// writing records the authority does not is a finding, not a gap.
+    /// writing records the OpenDSS engines do not is a finding, not a gap.
     #[test]
     fn a_port_trace_longer_than_the_oracles_is_a_finding() {
         let solve = trace_row("Injection", "277.1");
@@ -2308,9 +2190,8 @@ Line.X, 1.02898E-11, 45.00
     /// The third tooth: a port that stops writing a SOLVE record leaves every
     /// compared cell intact (the records are identical), so the only signal is
     /// the gap — which is exactly why it is reported and pinned fail-on-stale in
-    /// both directions instead of being absorbed (D43(1)(iii); option B, which
-    /// declines the contents, and option C, a data-derived boundary heuristic,
-    /// were refused for this reason).
+    /// both directions instead of being absorbed. Declining the contents, or a
+    /// data-derived boundary heuristic, would lose that signal.
     #[test]
     fn a_dropped_solve_record_moves_the_reported_tail() {
         let solve = trace_row("Injection", "277.1");
@@ -2467,13 +2348,12 @@ Line.X, 1.02898E-11, 45.00
     // -- table completeness ---------------------------------------------------
 
     /// Every column of every captured header resolves to a column map entry —
-    /// the widths are the ones measured on the forced G1.10b population
-    /// (`tmp/g110b/f_F1.md`): a report that grows a column the map does not
+    /// the widths are the ones measured on the forced population: a report that grows a column the map does not
     /// describe is a loud refusal, and here it is proved that today's widths are
     /// all covered.
     ///
     /// Scope, stated because the name is broader than the body: this is an
-    /// offline WIDTH fixture over the populations F1 measured, not a walk of
+    /// offline WIDTH fixture over the measured populations, not a walk of
     /// headers captured at run time. The run-time rail is
     /// [`compare_one`]'s panic on a field outside the map — which fires on the
     /// real files, on every drive, for any width this fixture does not know.

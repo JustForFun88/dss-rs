@@ -1,5 +1,5 @@
 //! Unit tests for the WindGen PC element (Create defaults, props round-trip,
-//! the aerodynamic power-flow path, the L2 zero-clamp, WTG3 dynamics
+//! the aerodynamic power-flow path, the zero-clamp, WTG3 dynamics
 //! determinism/finiteness, and the disabled-harmonics abort). Live oracle
 //! (capi015) coverage is in the `modes/windgen/` corpus family.
 
@@ -152,9 +152,8 @@ fn aerodynamic_power_snapshot() {
     assert!((g2.p_nominal_per_phase - 0.001 * 3000.0).abs() < 1e-9);
 }
 
-/// L2 (DIVERGENCES.md): WindGen `kW`/`kVA`/`MVA` parsed as `0` clamp to `1e-8`
-/// (EPRI `DblValueNZ`), unlike Generator's `MVA` which does NOT clamp. Fails if
-/// the `REPLACE_ZERO` flag is dropped.
+/// WindGen `kW`/`kVA`/`MVA` parsed as zero clamp to the `DblValueNZ` floor,
+/// unlike Generator's `MVA`. Fails if the `REPLACE_ZERO` flag is dropped.
 #[test]
 fn zero_kw_kva_mva_clamp_dblvaluenz() {
     let g = edit_windgen(&[("kv", "0.69"), ("kW", "0")]);
@@ -247,11 +246,9 @@ fn dynamics_solve_no_nan() {
 }
 
 /// A 1-phase WindGen entering dynamics aborts cleanly (loud error, no panic).
-/// The embedded WTG3 model is 3-phase-only — `Instrumentation`/`CalcDynamic`
-/// read V[1..3]/i[1..3], so a 2-conductor terminal over-reads = heap UB
-/// upstream (WindGen.pas:1868/1905 accept 1-phase then call `WindModelDyn.Init`
-/// on a 2-element `Vterminal`). Per CLAUDE.md that UB is NOT reproduced: the
-/// port aborts at `InitStateVars` instead of panicking on the OOB index.
+/// The embedded WTG3 model is 3-phase-only, so a 2-conductor terminal over-reads
+/// its arrays, undefined behaviour in OpenDSS. This engine aborts at
+/// `InitStateVars` instead of panicking on the out-of-bounds index.
 #[test]
 fn single_phase_dynamics_aborts_cleanly() {
     let mut dss = Dss::new();
@@ -419,7 +416,7 @@ fn aerodynamic_wind_speed_sweep() {
     }
 }
 
-/// RP3.10 — offline pin of the WTG3 dynamics state on BOTH `modes/windgen`
+/// Offline pin of the WTG3 dynamics state on BOTH `modes/windgen`
 /// dynamics decks — `windgen_dyn.dss` (20x1ms, healthy) and
 /// `windgen_dyn_fault.dss` (30x1ms, sustained 3-phase fault) — **naming both
 /// engines' numbers**.
@@ -500,7 +497,7 @@ fn dynamics_variables_match_the_qmode0_dispatch() {
         |v: &[f64], deck: &str, i: usize, name: &str, port: f64, oracle: f64, tol: f64| {
             assert!(
                 (v[i] - port).abs() < tol,
-                "{deck} {name}: Rust {} vs the RP3.10 constant-Q value {port} (tol {tol})",
+                "{deck} {name}: Rust {} vs this engine's constant-Q value {port} (tol {tol})",
                 v[i]
             );
             assert!(
@@ -612,7 +609,7 @@ fn dynamics_variables_match_the_qmode0_dispatch() {
     check(&v, "windgen_dyn_fault", 21, "s", -0.13875361782251128, 1e-6);
 }
 
-/// RP3.10 — `QMode=0` dispatches the base kvar, in BOTH lanes.
+/// `QMode=0` dispatches the base kvar, in BOTH lanes.
 ///
 /// `TWindGenObj.SetNominalGeneration`'s `case WindModelDyn.QMode`
 /// (`WindGen.pas:1276-1322`) implements arm 1 (PF) and arm 2 (volt-var) and has
@@ -739,7 +736,7 @@ fn qmode0_dispatches_the_base_kvar() {
     assert_eq!(q0, 1e3 * 986.0523155365896 / 3.0, "constant in wind: {msg}");
 }
 
-/// RP3.10 — the mode-0 dispatch carries `kvarBase`'s sign and scales with
+/// The mode-0 dispatch carries `kvarBase`'s sign and scales with
 /// `Factor` (`GenMultiplier`), exactly as arms 1/2 do.
 ///
 /// Sign, in the two branches `RecalcElementData` has. With `kVA=` **unset**
@@ -758,8 +755,7 @@ fn qmode0_dispatches_the_base_kvar() {
 /// `Q = +523.0678462465884` kvar — the machine **absorbs**, the documented
 /// meaning of `pf<0` — while upstream's `model=4`, which reads the stripped
 /// base through `varBase`, reports `Q = -523.0475290915948` (injecting). This
-/// engine's mode 0 follows arm 1. (`R4133_PROPS_PLAN.md` §RP3.10 audit
-/// settlement, finding RP310-CODE-1.)
+/// engine's mode 0 follows arm 1.
 /// `Factor`: `:1325` sits OUTSIDE the `case`, so every arm scales with it
 /// (probed: `Set genmult=0.5` halves arm 1's dispatch), while `varBase` — the
 /// models 4/5 injection, `:1361` — does not.
@@ -865,7 +861,7 @@ fn qmode0_dispatch_carries_the_sign_and_scales_with_genmult() {
     assert_eq!(var_base_full, 161440.7016126175);
 }
 
-/// RP3.10 — mode 0 dispatches zero only where the base itself is zero, and the
+/// Mode 0 dispatches zero only where the base itself is zero, and the
 /// paths that zero Q for every mode keep doing so.
 ///
 /// This is the guard against "fixing" the missing arm into a new hardwired

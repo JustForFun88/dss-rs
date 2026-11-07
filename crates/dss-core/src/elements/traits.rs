@@ -1,7 +1,7 @@
 //! The circuit-element behavior trait — Pascal `TDSSCktElement`'s virtual
 //! methods (`CalcYPrim`, `InjCurrents`, `GetCurrents`, `RecalcElementData`)
 //! plus the context structs that replace "reach through `ActiveCircuit`"
-//! global access (PORTING_PLAN.md §2.1).
+//! global access.
 
 use num_complex::Complex64;
 
@@ -23,9 +23,9 @@ use crate::support::dynamics::IterationFlag;
 /// pointer list (`CktElements`, `Sources`, `Lines`, `Loads`, ...) speak it:
 /// the lists became `Vec<ElemId>`.
 ///
-/// Before DE_PASCALIZE R3 this was an untyped `{ cls, idx }` tag struct;
-/// [`ElemId::class_ord`]/[`ElemId::index`] expose the same two numbers
-/// for the registry-side producers that still discover a class by position.
+/// [`ElemId::class_ord`]/[`ElemId::index`] expose the class ordinal and the
+/// slot index for the registry-side producers that still discover a class by
+/// position.
 pub use crate::obj::arena::ElemId;
 
 /// The class-specific half of [`ElemId`] — a bare arena position that carries
@@ -40,7 +40,7 @@ pub use crate::obj::arena::Idx;
 /// Element storage the solver walks — implemented by the executive's class
 /// registry. Replaces Pascal's `TDSSPointerList` of `TDSSCktElement`.
 ///
-/// `: Send` is the P7 thread-readiness rider (DE_PASCALIZE Part V / R1).
+/// `: Send` keeps the store ready to move across threads.
 pub trait ElemStore: Send {
     fn ckt_elem(&self, r: ElemId) -> &dyn CktElement;
     fn ckt_elem_mut(&mut self, r: ElemId) -> &mut dyn CktElement;
@@ -79,7 +79,7 @@ pub trait ElemStore: Send {
 
     /// Two distinct objects borrowed mutably at once — the Rust stand-in for
     /// Pascal's live cross-object pointers during `Sample`/`DoPendingAction`
-    /// (PHASE5_PLAN §2.1: the control plus its controlled element). Panics if
+    /// (the control plus its controlled element). Panics if
     /// `a == b`.
     fn pair_mut(
         &mut self,
@@ -126,8 +126,7 @@ pub trait ElemStore: Send {
     ) -> (&mut ClassArena, &mut ClassArena, &mut ClassArena);
 }
 
-/// Concrete (`&T` / `&mut T`) access on top of [`ElemStore`] — the DE_PASCALIZE
-/// R3 replacement for the removed `Any` downcast of `store.obj(r)` to `&T`.
+/// Concrete (`&T` / `&mut T`) access on top of [`ElemStore`].
 ///
 /// Blanket-implemented for every `ElemStore` (including `dyn ElemStore`), so the
 /// generic methods are available wherever the store is. Each one resolves the
@@ -617,18 +616,17 @@ impl SysCtx {
 /// context — each element fills its own element-owned `cd.inj_current` buffer and
 /// returns the y-changed flag, and the caller scatters `cd.inj_current` into
 /// `Solution.Currents` and ORs the flag sequentially. This is the
-/// `MULTITHREADING_PLAN.md` M3b seam: the per-element compute performs no shared
-/// `Currents` write, so the elements can later compute in parallel into their own
-/// buffers. (`errors`/`solution_abort` remain a shared `&mut` for now — the
-/// per-element collection of those is M3b's own step, DE_PASCALIZE R2 rider note.)
+/// parallel-compute seam: the per-element compute performs no shared `Currents`
+/// write, so the elements can later compute in parallel into their own buffers.
+/// (`errors`/`solution_abort` remain a shared `&mut`.)
 pub struct InjComputeCtx<'a> {
     /// `DoSimpleMsg` sink for a solve-time model fault surfaced from inside
     /// `compute_inj_currents` — a WASM user-model **trap**/protocol fault, or a
     /// `Model=6` Generator with no user model (`#567`/`#5671`,
     /// `generator.pas:1834/1943`). The inject loop drains this into the solution
-    /// `ErrorLog`, so the fault is a loud typed error, **never a silent fallback**
-    /// (WASM_USERMODELS plan §2.9-5): the terminal-sink compute method has no
-    /// `Result`, so this is the channel that carries the diagnostic out.
+    /// `ErrorLog`, so the fault is a loud typed error, **never a silent
+    /// fallback**. The terminal-sink compute method has no `Result`, so this is
+    /// the channel that carries the diagnostic out.
     pub errors: &'a mut crate::diag::ErrorLog,
     /// `Solution.SolutionAbort`. A hard model fault raised from
     /// `compute_inj_currents` (Pascal `DoErrorMsg` / `DSS.SolutionAbort := TRUE`) —
@@ -653,7 +651,7 @@ pub struct ReliabilityData {
     /// input of `CalcFltRate`, not its product
     /// (r4133 `PDElements/PDElement.pas:34`, capi `PDElements/PDElement.pas:30`).
     /// Read only by the `PDElements` walk
-    /// ([`crate::exec::view::PdElementView::fault_rate`]); the reliability sweep
+    /// (`exec::view::PdElementView::fault_rate`); the reliability sweep
     /// itself consumes [`Self::branch_flt_rate`].
     pub fault_rate: f64,
     /// `TPDElement.PctPerm`, the *stored* percent of faults that are permanent
@@ -662,9 +660,9 @@ pub struct ReliabilityData {
     pub pct_perm: f64,
 }
 
-/// Pascal `TDSSCktElement` virtual surface (Phase 3 subset).
+/// Pascal `TDSSCktElement` virtual surface.
 ///
-/// `: Send` is the P7 thread-readiness rider (DE_PASCALIZE Part V / R1).
+/// `: Send` keeps elements ready to move across threads.
 pub trait CktElement: Send {
     fn cd(&self) -> &CktElementData;
     fn cd_mut(&mut self) -> &mut CktElementData;
@@ -682,8 +680,8 @@ pub trait CktElement: Send {
     /// `CalcYPrim` (abstract): rebuild the primitive Y matrices.
     fn calc_yprim(&mut self, sys: &SysCtx);
 
-    /// `InjCurrents` minus the scatter — the `MULTITHREADING_PLAN.md` M3b seam
-    /// (sources and PC elements). Compute this element's injection into its own
+    /// `InjCurrents` minus the scatter — the parallel-compute seam (sources and
+    /// PC elements). Compute this element's injection into its own
     /// element-owned `cd.inj_current` buffer and return whether it invalidated its
     /// own YPrim (Pascal `set_YprimInvalid` raising `Solution.SystemYChanged`,
     /// `CktElement.pas` l.245). The **caller** then scatters `cd.inj_current` into

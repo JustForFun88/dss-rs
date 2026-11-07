@@ -66,7 +66,7 @@ fn fixed_interval_prices_and_stats() {
 /// Upstream prints the sample itself: the pinned oracle answers `-12.25` for
 /// this deck's `? PriceShape.pr.stddev` (r4133 computes it in the same
 /// one-point branch as the LoadShape), a negative standard deviation. Not
-/// reproduced (GOLDEN_REBASE G2.1a; `issue-11`). `mean` is -12.25, so a broken
+/// reproduced. `mean` is -12.25, so a broken
 /// accessor cannot fake the result by returning nothing.
 #[test]
 fn single_point_shape_stddev_property_is_zero() {
@@ -144,7 +144,7 @@ fn make_like_copies() {
 
 #[test]
 fn binary_file_props_queue_a_binary_file_load() {
-    // WPG.1: SngFile/DblFile are ported (deferred FileLoad, like CSVFile).
+    // SngFile/DblFile queue a deferred FileLoad, like CSVFile.
     for name in ["sngfile", "dblfile"] {
         let (_cls, mut obj, errs) = edited(&[("npts", "4"), ("interval", "1"), (name, "p.bin")]);
         assert!(errs.is_empty(), "{name}: {errs:?}");

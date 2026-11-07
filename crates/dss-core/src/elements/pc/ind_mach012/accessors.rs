@@ -178,7 +178,7 @@ impl CktElement for IndMach012 {
         }
         // Pascal `TIndMach012Obj.GetTerminalCurrents` (@ 0.15.0b4): `and (not
         // (Flg.ForceInjCurrents in Flags))` — skip the model recompute when the
-        // currents are forced from the DSS language (WP-U1.9).
+        // currents are forced from the DSS language.
         if !self.cd.iterminal_solved_for(sys.solution_count)
             && !self.ind_mach_switch_open
             && !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS)
@@ -218,9 +218,8 @@ impl IndMach012 {
     /// **Which `Iterminal` feeds it.** r4133's `Get_Power` calls the
     /// `SolutionCount`-cached `ComputeIterminal`; we take the **fresh** path,
     /// [`CktElement::refresh_iterminal`] — the one
-    /// `exec::view::snapshot_elements` uses for Powers/Losses/Currents after the
-    /// `GOLDEN_REBASE_PLAN.md` G2.3 settlement of the Newton stale-`Iterminal`
-    /// bug (CLAUDE.md §"Known upstream bugs") — so `pf` is the power factor of
+    /// `exec::view::snapshot_elements` uses for Powers/Losses/Currents — so `pf`
+    /// is the power factor of
     /// the power the port *reports*, under every algorithm. For this class the
     /// two coincide anyway: `TIndMach012Obj.GetTerminalCurrents` carries its own
     /// `SolutionCount` guard, so neither path recomputes the model while the
@@ -233,8 +232,8 @@ impl IndMach012 {
     /// fixed-slope slip-Newton by one step and rewrites the sequence currents
     /// (see `do_indmach_model`, and `Slip`'s own rendered property). r4133 keeps
     /// the advance — reading `pf` there moves the machine, the
-    /// `VSConverter.GetCurrents` family of hazard (CLAUDE.md §"Known upstream
-    /// bugs") — and we do not reproduce it: the recompute runs on a throwaway
+    /// `VSConverter.GetCurrents` family of hazard, an OpenDSS bug — and we do
+    /// not reproduce it: the recompute runs on a throwaway
     /// clone and only the resulting number is kept, so the rendered value is
     /// r4133's while the model, its other rendered properties (`Slip` above all)
     /// and the JSON export stay exactly where they were. Measured: without the

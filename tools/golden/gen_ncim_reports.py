@@ -1,14 +1,12 @@
-"""Generate the NCIM report goldens from the **capi015** oracle (UPGRADE_PLAN
-WP-U1.7 tail).
+"""Generate the NCIM report goldens from the **capi015** engine.
 
-*** FROZEN / UNREGENERABLE (NCIM RE-GATE WP, 2026-07-20). ***
+*** FROZEN / UNREGENERABLE. ***
 The capi015 probe venv (`tools/opendss/.venv`, dss-python 0.16.0b2 / dss_capi
-0.15.0b4) is RETIRED — it no longer exists on disk — so this script CANNOT be
-re-run and the goldens in `tests/golden/ncim/` are frozen. Do NOT touch those
-bytes. They pin solver INTERNALS (`Export Jacobian`, `Show PV2PQ_Conversions`)
-that are unaffected by the swing-source-report path, so they survive the
-oracle-of-record flip capi015→r4133 (NCIM is now LIVE-gated against r4133 via
-`epri-worker`; see
+0.15.0b4) does not exist on disk, so this script CANNOT be re-run and the
+goldens in `tests/golden/ncim/` are frozen. Do NOT touch those bytes. They pin
+solver INTERNALS (`Export Jacobian`, `Show PV2PQ_Conversions`) that are
+unaffected by the swing-source-report path. NCIM is LIVE-gated against r4133
+via `epri-worker` (see
 `exec/tests/ncim.rs::ncim_vsource_reported_currents_match_oracle`). This header is
 kept for provenance only.
 

@@ -310,8 +310,8 @@ impl SparseSet {
     /// (KLUSolve `GetRCond`).
     ///
     /// Cold path (only `GetRCond`, no per-step caller): the two `n`-vectors are
-    /// allocated per call rather than kept as scratch fields — P15 item 5's
-    /// "reuse-or-accept" resolved as *accept*, keeping the hot solve state small.
+    /// allocated per call rather than kept as scratch fields, which keeps the hot
+    /// solve state small.
     pub fn rcond(&mut self) -> Result<f64, SparseError> {
         self.factor()?;
         let b = vec![Complex64::new(1.0, 0.0); self.n];

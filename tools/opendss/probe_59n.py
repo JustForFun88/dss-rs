@@ -1,23 +1,21 @@
 """Reproducible 59NRelayDemo probe on the official EPRI r4133 engine, driven
 through the in-house Rust bridge (`epri-worker`, crates/dss-epri).
 
-Backs the WP-U2.6 `relay_voltage_dynamics_chaos_floor` classification
-(`tests/corpus/manifests/skipped_needs_investigation.json`, STATUS.md) with a
-CHECKED-IN, re-runnable oracle read instead of prose. The original probe drove
-the same DLL through the retired Oddie/dss-python bridge (UNIFIED_GATE Phase E);
-this successor issues the same command/read sequence over `epri-worker` and
-reproduces the same two claims on the r4133 engine itself — the only channel
-with r4133 voltage-relay semantics (the pinned dss-python oracle is 0.14.5,
-pre-r4133):
+Backs the `relay_voltage_dynamics_chaos_floor` classification
+(`tests/corpus/manifests/skipped_needs_investigation.json`) with a
+CHECKED-IN, re-runnable read of the OpenDSS engine instead of prose. It issues
+its command/read sequence over `epri-worker` and reproduces two claims on the
+r4133 engine itself — the only channel with r4133 voltage-relay semantics (the
+pinned dss-python is 0.14.5, pre-r4133):
 
   A. NO-TRIP across the broken-delta open point. The `type=voltage` relay
      monitors the 1-phase PT3 term-2 (Delta.3.2 broken-delta 3V0) and switches
      the 3-phase Line.line1. On r4133 the engine's own `Relay.State` reads
      `[closed, closed, closed, ]` and Line.line1 still carries full current — the
-     relay does NOT trip. This is byte-identical to the Rust port's
+     relay does NOT trip. This is byte-identical to this engine's
      `render_state_array()` and the `no_trip` outcome asserted by the unit test
-     `voltage_relay_open_point_sizes_state_by_controlled_nphases_59n`, so the
-     port's encoded outcome reflects the official r4133 engine, not a
+     `voltage_relay_open_point_sizes_state_by_controlled_nphases_59n`, so this
+     engine's encoded outcome agrees with the official r4133 engine, not a
      self-pinned value.
 
   B. Post-fix residual is a chaotic pole-slip, not a maskable floor. With the
@@ -25,8 +23,8 @@ pre-r4133):
      the sustained t=0.3 s Genbus fault: frequency leaves 60 Hz (~79 Hz by t=1.0)
      and wanders unboundedly (67–115 Hz over the next 15 s). A positive-Lyapunov
      trajectory has no fixed node-V tolerance that honestly bounds the Rust-vs-
-     oracle last-ulp (faer-vs-KLU) difference, so the deck stays parked
-     (CLAUDE.md: never mask a divergence with a tolerance). This probe reads the
+     OpenDSS last-ulp (faer-vs-KLU) difference, so the deck stays parked (a
+     tolerance never masks a divergence). This probe reads the
      live-f64 generator state (`AllVariableValues` via the bridge's `variables`
      read, not the f32 monitor channel).
 

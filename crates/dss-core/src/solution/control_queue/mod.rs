@@ -2,7 +2,7 @@
 //! of pending control actions that drives RegControl tap changes and CapControl
 //! step switching during the solution's control loop.
 //!
-//! **Container semantics are ported verbatim** (PHASE5_PLAN §WP5.4): the queue
+//! **Container semantics are ported verbatim**: the queue
 //! is an ordered `Vec` (Pascal `TList`) into which `push` inserts by action
 //! time, and the `do_*`/`pop` paths *linearly scan* for the earliest-time
 //! record. The visit order and tie-breaking are observable through the event
@@ -10,9 +10,9 @@
 //! interchangeable with a `BinaryHeap`.
 //!
 //! The Pascal queue stores a live `TControlElem` pointer per record; here it
-//! stores the control's stable [`ElemId`] (PHASE5_PLAN §2.1). Acting on a
+//! stores the control's stable [`ElemId`]. Acting on a
 //! record routes back through a [`ControlActioner`], which the solution
-//! implements (WP5.7) to build the split-borrow `CtrlCtx`, downcast the control
+//! implements to build the split-borrow `CtrlCtx`, downcast the control
 //! element, and invoke its `DoPendingAction`. Because `pop` returns owned
 //! (`Copy`) record data, the queue itself is free to be handed to the actioner
 //! as `&mut` — so an action may push or delete further records mid-sweep
@@ -61,8 +61,8 @@ pub(crate) struct PoppedAction {
 }
 
 /// The callback the control queue invokes to run a popped action — the
-/// solution's bridge to `TControlElem.DoPendingAction` (implemented in WP5.7
-/// over the split-borrow `CtrlCtx`). The queue is passed back in so the action
+/// solution's bridge to `TControlElem.DoPendingAction` (implemented over the
+/// split-borrow `CtrlCtx`). The queue is passed back in so the action
 /// can arm/disarm further records.
 pub trait ControlActioner {
     /// Pascal `pElem.DoPendingAction(Code, ProxyHdl)` for the control named by
@@ -167,7 +167,7 @@ impl ControlQueue {
     /// The handle the next [`Self::push`] will assign (`ctrl_handle + 1`).
     /// Seeds the provisional handle a WASM CapControl model's
     /// `control_queue_push` returns so it reproduces the engine's real queue
-    /// handle sequence (WASM_USERMODELS ABI doc §4 row 31 / §2.5).
+    /// handle sequence (`docs/wasm/USERMODEL_ABI.md` §4 row 31 / §2.5).
     pub fn next_handle(&self) -> i32 {
         self.ctrl_handle + 1
     }

@@ -10,7 +10,7 @@
 //! capturing `register_plot_callback`, and compares the captured payload to the
 //! golden **structurally, with numbers by tolerance** — never a raw float-string
 //! diff: fpjson prints `2.0000000000000000E+003`, byte-incomparable with any
-//! Rust serializer (PORTING_PLAN §4). Key order is not required (structural);
+//! Rust serializer. Key order is not required (structural);
 //! strings/bools/colors compare exact (the color HTML pins the `clXXX` palette).
 //!
 //! Regenerate only manually: `python tools/golden/gen_plot_callback.py`.

@@ -1,12 +1,11 @@
 //! CIM exporter state — the UUID plumbing of Pascal `Common/ExportCIMXML.pas`
-//! (`TCIMExporter`) and `General/NamedObject.pas` (PHASE8_PLAN WP8.6 step 6).
+//! (`TCIMExporter`) and `General/NamedObject.pas`.
 //!
-//! This seeds the module home PORTING_PLAN assigns to the CIM XML exports:
-//! WP8.6 lands the persistent hashed-UUID state (`UuidHash`/`UuidList`/
+//! It holds the persistent hashed-UUID state (`UuidHash`/`UuidList`/
 //! `UuidKeyList`) plus the four helpers `StartUuidList`/`GetHashedUuid`/
 //! `GetDevUuid`/`AddHashedUuid` (and `WriteHashedUUIDs`/`FreeUuidList`), which
-//! the `Uuids` command and `Export Uuids` drive. GAPS_PLAN WPG.18 (the CIM100
-//! XML exporters) builds on **this exact storage shape** — do not reshape it.
+//! the `Uuids` command and `Export Uuids` drive. The CIM100 XML exporters build
+//! on **this exact storage shape** — do not reshape it.
 //!
 //! The hashed list **persists across commands** on the DSS context: the
 //! `FreeUuidList` call after the CIM XML export is commented out upstream
@@ -86,10 +85,10 @@ pub fn get_or_create_uuid(slot: &mut Option<Uuid>) -> Uuid {
 }
 
 /// Pascal `UuidChoice` (`ExportCIMXML.pas`): which device-UUID key family a
-/// [`CimExporter::get_dev_uuid`] call belongs to. Transcribed in full (the key
-/// prefixes are part of the persistent-list contract WPG.18 builds on); only
-/// `Station`/`GeoRgn`/`SubGeoRgn` are constructed before WPG.18 lands.
-#[allow(dead_code)] // the CIM XML exporters (GAPS_PLAN WPG.18) construct the rest
+/// [`CimExporter::get_dev_uuid`] call belongs to. Transcribed in full: the key
+/// prefixes are part of the persistent-list contract the CIM100 exporters
+/// build on.
+#[allow(dead_code)] // transcribed in full: not every variant is constructed
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UuidChoice {
     Bank,
@@ -331,8 +330,8 @@ impl CimExporter {
     /// Declared upstream but **never called** anywhere in `ExportCIMXML.pas`
     /// (the one live call site, `WriteReferenceTerminals`, inlines
     /// `GetDevUuid(OpLimI, LimitName, 0)` directly with `seq = 0`, not this
-    /// function's `seq = 1`) — ported for completeness per GAPS_PLAN WPG.18
-    /// decision 4, never exercised by the export flow.
+    /// function's `seq = 1`) — ported for completeness, never exercised by the
+    /// export flow.
     pub fn get_op_lim_i_uuid(&mut self, norm: f64, emerg: f64) -> Uuid {
         self.get_dev_uuid(UuidChoice::OpLimI, &writer::op_lim_i_name(norm, emerg), 1)
     }

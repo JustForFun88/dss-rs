@@ -1,6 +1,6 @@
-//! Expected-value pins for the Stage F *single-site upstream quirk* rows whose
+//! Expected-value pins for the *single-site upstream quirk* rows whose
 //! observable lives at the command surface rather than inside one element's
-//! unit tests (`DE_PASCALIZE_PLAN.md` Part IV.2 + `PORTING_PLAN.md` §4.1 rule 4).
+//! unit tests.
 //!
 //! Tests for a *split* row assert against `crate::compat`'s lane constant, so
 //! they are meaningful in **both** builds: the parity lane pins the reproduced
@@ -23,8 +23,7 @@ use crate::exec::Dss;
 /// format against 0. r4133 has no such field: `MaxDeviceNameLength` is a unit
 /// variable only (`Version8/Source/Common/ShowResults.pas:66`) and the same loop
 /// (`:79-90`) leaves the honest width behind. A defect on one side and the
-/// authority's honest width on the other, so `GOLDEN_REBASE_PLAN.md` G2.6 tore
-/// the reproduction down and this pin lost its lane branches.
+/// authority's honest width on the other, so neither lane reproduces it.
 ///
 /// Three claims, all unconditional:
 ///
@@ -147,8 +146,8 @@ fn device_name_column_is_sized_from_its_content() {
     );
 }
 
-/// Expected-value pin for the F-FMT **table-rendering** row
-/// [`crate::compat::render_rows`] — §F-FMT step 2's table crate.
+/// Expected-value pin for the **table-rendering** quirk
+/// [`crate::compat::render_rows`].
 ///
 /// The observable is a real `Show` report, not the renderer in isolation: the
 /// same solved circuit is rendered by the lane's kernel and three claims are
@@ -168,13 +167,6 @@ fn device_name_column_is_sized_from_its_content() {
 ///    Format('%10.5f, ', …)` and compared as an **equality**, the same way claim
 ///    1 treats the aggregate line: a bound on the number's column would accept a
 ///    parity kernel that padded to any width past the field.
-///
-///    (Until `GOLDEN_REBASE_PLAN.md` G2.6 this claim was written as "the two
-///    rows' numbers start at the *same* column only when a table sized them" —
-///    which worked only because the parity lane's width was stuck at 0, i.e.
-///    because of the defect G2.6 removed. With an honest width `Pad` aligns the
-///    rows with each other too, so that comparison stopped discriminating and
-///    the claim is now made against each kernel's own sizing rule.)
 /// 3. **Neither kernel moves a field**: both renderings carry the identical
 ///    token stream — the property `report::table` guarantees structurally and
 ///    this pins at a report the executive actually produced.
@@ -280,8 +272,8 @@ fn show_table_layout_is_the_lane_kernel() {
     assert_eq!(fields(rows[0]), 4, "name, kW, % of power, kvar: {rows:?}");
 }
 
-/// Expected-value pin for the F-FMT table row at the **per-bus / per-element**
-/// reports F.4e converted (`Show Voltages`' node form here — the same seam
+/// Expected-value pin for the table quirk at the **per-bus / per-element**
+/// reports (`Show Voltages`' node form here — the same seam
 /// carries `Currents`/`Powers`/`BusFlow`/`Buses`/`Elements`/`Meters`/`Faults`/
 /// `Mismatch`).
 ///
@@ -482,7 +474,7 @@ fn sym_matrix_text_getter_renders_the_stored_matrix() {
         .expect("Capacitor.c1 renders as JSON");
     // Spelled through the seam (`compat::json_float`), because *this* assertion
     // is about the stored values reaching the JSON view at all — not about the
-    // F-FMT row that decides how they are printed.
+    // formatting quirk that decides how they are printed.
     let (diag, off) = (
         crate::compat::json_float(2.8),
         crate::compat::json_float(-0.6),
@@ -504,7 +496,7 @@ fn sym_matrix_text_getter_renders_the_stored_matrix() {
 /// `%R2` is stored, read back, and never used. That the same procedure's
 /// `else` arm inverts the pair honestly (`FPctR2 := 100.0 / (FZBase2 * G2)`)
 /// is what makes it a slip rather than a "winding 2 repeats winding 1"
-/// convention; `GOLDEN_REBASE_PLAN.md` G2.5 fixed it in both lanes.
+/// convention. Both lanes fix it.
 ///
 /// **The assertion is a transitive cover, not a captured number.** The ohms
 /// spec (`R1=`/`R2=`) takes that `else` arm, never had the slip, and is
@@ -571,7 +563,7 @@ fn gic_transformer_pct_r2_drives_winding_two() {
     }
 }
 
-/// Expected-value pin for the Stage F single-site quirk
+/// Expected-value pin for the single-site quirk
 /// [`crate::compat::profile_ll_pu_divisor`] — `Export Profile`'s line-to-line
 /// per-unit column.
 ///
@@ -712,33 +704,24 @@ fn carriers_of(dss: &crate::exec::Dss, flag: crate::obj::props::PropFlags) -> Ve
     out
 }
 
-/// Escape pin for the **0.15.x hide-flag waiver** — the one Stage F exit item
-/// that is not a compat marker (`UPGRADE_PLAN` §5 wants a grep for the flag's
-/// name to come back empty; disposition in `docs/upgrade/DIVERGENCES.md`
-/// §"Line/LineGeometry Conductors"; the F.3aa measurement lives on the flag
-/// itself, [`crate::obj::props::PropFlags::HIDE_015X`], and this file follows
-/// that doc's convention of not repeating the name in prose — see it for why).
+/// Escape pin for the **0.15.x hide flag** — the one precision-compat item that
+/// is not a compat marker. Its measurement lives on the flag itself,
+/// [`crate::obj::props::PropFlags::HIDE_015X`], and this file follows that doc's
+/// convention of not repeating the name in prose — see it for why.
 ///
 /// The escape is quantified — "13 byte goldens move, the corpus does not" — and
 /// a measurement is only worth as much as the population it was taken over. So
-/// this pins that population: the flag's carrier set. If a later WP adds a sixth
-/// carrier, or moves one, the recorded blast radius silently stops describing
-/// the tree; this test fails instead.
+/// this pins that population: the flag's carrier set. If a sixth carrier is
+/// added, or one moves, the recorded blast radius silently stops describing the
+/// tree. This test fails instead.
 ///
 /// It also pins the sibling [`crate::obj::props::PropFlags::HIDE_R4133`]'s
-/// carrier set. That flag was **carrier-free** from WP-U2.5 until
-/// R4133_PROPS_PLAN RP1.1, which is how `hidden_from_full_enum` came to be a
-/// synonym for the 0.15.x flag — the premise of the F.3aa measurement. RP1.1
-/// gave it three carriers again (the Generator/Sensor upstream stubs) and RP1.2
-/// a fourth (AutoTrans `XfmrCode`, a real port — the flag's criterion is
-/// "absent from both pinned tables", not "not implemented"), so the
-/// premise is now the weaker but sufficient one: the two flags' carrier sets are
-/// **class-disjoint** — F.3aa's blast radius was measured over Line and
-/// LineGeometry alone, and no r4133 carrier touches either — which the two lists
-/// below state jointly. The carrier-free era was also the empirical proof that
-/// `UPGRADE_PLAN` §5's criterion as worded is unreachable: a flag with zero
-/// carriers still leaves its definition, its predicate arm and the comments
-/// naming it for `rg` to find.
+/// carrier set: the three Generator/Sensor upstream stubs and AutoTrans
+/// `XfmrCode`, a real implementation — the flag's criterion is "absent from both
+/// pinned tables", not "not implemented". The two flags' carrier sets are
+/// **class-disjoint** — the 0.15.x flag's blast radius was measured over Line
+/// and LineGeometry alone, and no r4133 carrier touches either — which the two
+/// lists below state jointly.
 #[test]
 fn hide_015x_carrier_set_is_the_measured_escape() {
     let dss = dss_with_circuit();
@@ -753,7 +736,7 @@ fn hide_015x_carrier_set_is_the_measured_escape() {
             "Line.HeightUnit",
             "LineGeometry.Conductors",
         ],
-        "this carrier set is the population the Stage F escape was measured over \
+        "this carrier set is the population the hide-flag escape was measured over \
          (13 byte goldens: +4 Dump rows on Line, +1 on LineGeometry, the two \
          JSON micro views and the three schema walks). Changing it invalidates \
          that record — re-measure and update the flag's doc in \
@@ -769,9 +752,8 @@ fn hide_015x_carrier_set_is_the_measured_escape() {
             "Generator.Xneut",
             "Sensor.Action",
         ],
-        "the r4133 hide flag's carrier set moved. RP1.1 re-armed it with the \
-         three upstream stubs and RP1.2 added the real AutoTrans `XfmrCode` port \
-         (the flag says only 'absent from both pinned tables', not 'not \
+        "the r4133 hide flag's carrier set moved. It holds the three upstream \
+         stubs and the real AutoTrans `XfmrCode` (the flag says only 'absent from both pinned tables', not 'not \
          implemented'); each carrier is also a `port_hidden_property` row of \
          `tests/golden/json/schema_divergences.json`, so a carrier added or \
          dropped here without that row is a schema byte gate that silently stops \
@@ -781,7 +763,7 @@ fn hide_015x_carrier_set_is_the_measured_escape() {
          touching this list"
     );
 
-    // The disjointness the F.3aa measurement now rests on: no class carries both
+    // The disjointness the 0.15.x flag's measurement rests on: no class carries both
     // flags, so the Line/LineGeometry blast radius is still isolated.
     let class_of = |s: &String| s.split('.').next().unwrap_or("").to_string();
     let a: std::collections::BTreeSet<String> = hide_015x.iter().map(class_of).collect();
@@ -789,14 +771,13 @@ fn hide_015x_carrier_set_is_the_measured_escape() {
     assert!(
         a.is_disjoint(&b),
         "the two hide flags now share a class ({:?}) — `hidden_from_full_enum` no \
-         longer isolates the F.3aa population and that measurement must be redone",
+         longer isolates the measured population and that measurement must be redone",
         a.intersection(&b).collect::<Vec<_>>()
     );
 }
 
 /// The [`crate::obj::props::PropFlags::UPSTREAM_STUB`] carrier set, pinned the
-/// same way and for the same reason as the hide flags above (R4133_PROPS_PLAN
-/// RP1.1).
+/// same way and for the same reason as the hide flags above.
 ///
 /// The flag buys three guarantees at once — the row is *listed*, its value is
 /// stored and echoed, and the write is never a parse error — so a row that
@@ -853,8 +834,7 @@ fn upstream_stub_rows_are_the_measured_set() {
 }
 
 /// The [`crate::obj::props::PropDef::ref_miss_message`] carrier set — the
-/// sibling mechanism of the stub message above, pinned for the same reason
-/// (R4133_PROPS_PLAN RP1.2).
+/// sibling mechanism of the stub message above, pinned for the same reason.
 ///
 /// The field is *relaxing by nature*: the row it sits on stops answering an
 /// unresolved name with the unified `DSSObjectHelper` #401 (which also NILs the
@@ -916,11 +896,11 @@ fn ref_miss_message_rows_are_the_measured_set() {
 /// port emits dss_capi's key from the 0.14.5-era storage, and the real 0.15.x
 /// `Conductors` proxy array, hidden by the flag. Exactly one of the two is
 /// hidden, so exactly one key is emitted — and dropping the flag on its own
-/// makes the FULL view of a Line carry `"Conductors":[]` **twice** (measured in
-/// F.3aa: once after `Spacing`, once after `HeightUnit`).
+/// makes the FULL view of a Line carry `"Conductors":[]` **twice** (measured:
+/// once after `Spacing`, once after `HeightUnit`).
 ///
-/// That is why `UPGRADE_PLAN` §5 lists the masquerade drop *inside* the same
-/// exit item, and it is the half of the argument no golden states: the byte
+/// That is why the masquerade can only go together with the flag, and it is
+/// the half of the argument no golden states: the byte
 /// goldens would fail on the flip either way, but only this says *why the naive
 /// flip is wrong* rather than merely stale. Both halves are asserted here, in
 /// both lanes, because the row is reproduced in both.
@@ -946,8 +926,7 @@ fn line_json_conductors_key_is_owned_by_the_masquerade() {
         [("Wires", false), ("Conductors", true)],
         "Line must declare exactly two props rendering the JSON key \
          \"Conductors\" — the visible `Wires` masquerade and the hidden real \
-         `Conductors`. If either half moved, the other must move with it \
-         (UPGRADE_PLAN §5)"
+         `Conductors`. If either half moved, the other must move with it"
     );
 
     // (2) The observable that precondition buys: one key in the emitted bytes

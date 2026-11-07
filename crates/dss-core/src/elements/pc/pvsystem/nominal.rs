@@ -122,8 +122,7 @@ impl PVSystem {
 
     /// Pascal `ComputeInverterPower`: apply cut-in/cut-out, the efficiency
     /// curve, the watt/var priority and the kvar / `kVA` limits. Ported
-    /// loop-for-loop — the discrete clamp state is gated exactly (PHASE7_PLAN
-    /// §1 DER gate: "inverter control discrete state ... exact").
+    /// loop-for-loop — the discrete clamp state is compared exactly.
     fn compute_inverter_power(&mut self) {
         // Reset CurrentkvarLimit to kvarLimit.
         self.base.current_kvar_limit = self.f_kvar_limit;
@@ -319,7 +318,7 @@ impl PVSystem {
 
     /// Pascal `SetNominalDEROutput` (`SetNominalPVSystem`): pick the shape /
     /// temperature for the solve mode, then derive the per-phase P/Q and `YEQ`.
-    /// Dynamics/harmonics modes leave the element in its prior state (WP7.6/7.7).
+    /// Dynamics/harmonics modes leave the element in its prior state.
     pub fn set_nominal_der_output(&mut self, sys: &SysCtx) {
         self.base.shape_factor = CDOUBLEONE; // changed by the curve routine below
         self.t_shape_value = self.f_temperature;
@@ -595,7 +594,7 @@ impl PVSystem {
 
         self.var_base = 1000.0 * self.base.kvar_out / self.cd.nphases as f64;
 
-        // Thevenin equivalents (ohms) — used by the harmonic model (WP7.6).
+        // Thevenin equivalents (ohms) — used by the harmonic model.
         let present_kv = self.kv_pvsystem_base;
         self.r_thev = self.base.pct_r * 0.01 * present_kv.powi(2) / self.f_kva_rating * 1000.0;
         self.x_thev = self.base.pct_x * 0.01 * present_kv.powi(2) / self.f_kva_rating * 1000.0;

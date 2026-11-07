@@ -1,11 +1,11 @@
 #![forbid(unsafe_code)]
 //! `dss-metis` — a pure-safe-Rust, 1:1 *source* port of the METIS 5.2.1
 //! `METIS_PartGraphKway` partitioning path used by OpenDSS A-Diakoptics
-//! auto-tearing (`DIAKOPTICS_PSTCALC_PLAN.md` decision **D2**, WP-AD.2 Stage A).
+//! auto-tearing.
 //!
 //! The vendored C is the spec, never linked:
 //! - `.inputs/METIS` (KarypisLab/METIS `272d4a9`, release 5.2.1 + 39 bit-identical
-//!   post-release commits — plan D2 provenance);
+//!   post-release commits);
 //! - `.inputs/GKlib` (`3b7d61b`) for the GKlib primitives the path instantiates.
 //!
 //! # Type widths
@@ -22,7 +22,7 @@
 //! independent by construction. No `HashMap` iteration-order dependence exists on
 //! the numeric path.
 //!
-//! # Status (WP-AD.2 Stage A — complete)
+//! # Status
 //! The full `METIS_PartGraphKway` -> `MlevelKWayPartitioning` pipeline is ported
 //! and replays every committed `.part.N` golden **bit-exact** (k in {2,3,4,8}
 //! over all fixtures; `tests/golden_part.rs`):
@@ -43,7 +43,7 @@
 //! (`contig.c`/`minconn.c`), the volume objective, `BlockKWayPartitioning`
 //! (`dbglvl & 512`), `dropedges`, and every multi-constraint routine are **not
 //! reached** and not ported — documented at their call sites and in
-//! `part::mod`. See `STATUS.md` §WP-AD.2 and `tools/golden/gen_metis_reference.md`.
+//! `part::mod`. See `tools/golden/gen_metis_reference.md`.
 
 pub mod graph;
 mod part;

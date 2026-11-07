@@ -34,12 +34,11 @@ enum Record {
     Vector { size: usize, vector: Vec<f64> },
 }
 
-/// Stage F **deliberate divergences** (`DE_PASCALIZE_PLAN.md` IV.2, drift-model
-/// row 5): golden records whose oracle value is produced by a `compat` kernel
-/// the *default* lane flips. Each row replaces the oracle comparison **for that
-/// one record** with an independently-derived expectation; every other record
-/// — including every other record of the same case — stays oracle-compared in
-/// both lanes.
+/// **Deliberate divergences**: golden records whose oracle value is produced by
+/// a `compat` kernel the *default* lane flips. Each row replaces the oracle
+/// comparison **for that one record** with an independently-derived
+/// expectation; every other record — including every other record of the same
+/// case — stays oracle-compared in both lanes.
 ///
 /// `(case, record index, expected, abs tolerance, why)`.
 const DEFAULT_LANE_DIVERGENCES: &[(&str, usize, f64, f64, &str)] = &[(
@@ -47,7 +46,7 @@ const DEFAULT_LANE_DIVERGENCES: &[(&str, usize, f64, f64, &str)] = &[(
     9,
     0.5,
     f64::EPSILON * 0.5,
-    "(30 sin) — the `compat::PI` row (F.3d). The oracle's 0.5000000000000299 is \
+    "(30 sin) — the `compat::PI` row. The capi_v0145 golden value is \
      the truncated-pi degree conversion the parity lane keeps; the default lane \
      scales by f64::consts::PI, so its answer must be the correctly-rounded \
      sin 30 deg = 1/2. Pinned within one ulp of that exact value — an \
@@ -158,7 +157,7 @@ fn replay_parser_golden_from_oracle() {
             let (case, rec, ..) = DEFAULT_LANE_DIVERGENCES[n];
             assert!(
                 hit,
-                "stale Stage F divergence row: {case} record {rec} never \
+                "stale default-lane divergence row: {case} record {rec} never \
                  appeared in the golden"
             );
         }

@@ -1,5 +1,5 @@
-// r4133 twin of Version8/Distrib/Examples/InductionMachine/Master.DSS (WP-U2.1 re-evaluation).
-// The vendored original is UNSOLVABLE under r4133 by upstream design: the r4133 fuse
+// r4133 twin of Version8/Distrib/Examples/InductionMachine/Master.DSS.
+// The vendored original is UNSOLVABLE under r4133 by OpenDSS design: the r4133 fuse
 // overhaul (11.0.0.1 release notes "Protection Elements Enhancements") repurposed
 // Fuse.RatedCurrent to a purely informational nameplate value and made the new
 // CurveMultiplier (default 1.0) the TCC divisor (Controls/fuse.pas: GetTCCTime(Cmag/

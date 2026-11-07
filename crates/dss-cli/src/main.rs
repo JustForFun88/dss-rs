@@ -1,8 +1,8 @@
 #![forbid(unsafe_code)]
 //! CLI for the DSS engine: compile a `.dss` script and report the solution
-//! node voltages (the Phase 3 ★-slice driver; see PORTING_PLAN.md).
+//! node voltages.
 //!
-//! P5c — diagnostic presentation lives in the binary. The library carries
+//! Diagnostic presentation lives in the binary. The library carries
 //! structured [`DssDiagnostic`](dss_core::diag::DssDiagnostic) data (code, span,
 //! source); this binary renders it. `--diag=pretty` installs miette's graphical
 //! handler and renders each engine diagnostic with source underlines;

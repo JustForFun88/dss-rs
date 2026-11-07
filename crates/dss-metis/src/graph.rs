@@ -8,10 +8,10 @@
 //! Adjacency is stored **0-based** internally (`adjncy[k] = edge - 1`), exactly
 //! as `ReadGraph` does.
 //!
-//! This is the format the engine round-trips in Stage B via
-//! `Create_MeTIS_graph`; the OpenDSS writer's own indexing/line quirks are a
-//! Stage-B concern (they are compensated in `Create_MeTIS_Zones`) and are not
-//! reproduced here — this module implements the canonical METIS format that the
+//! This is the format the engine round-trips via `Create_MeTIS_graph`. The
+//! OpenDSS writer's own indexing/line quirks belong to the engine (they are
+//! compensated in `Create_MeTIS_Zones`) and are not reproduced here — this
+//! module implements the canonical METIS format that the
 //! stock C reader accepts, which is what the bit-exact golden gate compares
 //! against.
 

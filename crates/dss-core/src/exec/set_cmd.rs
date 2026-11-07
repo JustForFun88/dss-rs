@@ -87,7 +87,7 @@ fn set_line_normal_ratings(
 /// Pascal `Set InjCurrent=`/`Set ITerminal=` (ExecOptions.pas @ 0.15.0b4): parse
 /// a complex vector of `NPhases` values into the active PCE's `InjCurrent` (or
 /// `ITerminal`, also flagging `ITerminalUpdated`) and set `Flg.ForceInjCurrents`
-/// so the injection loop / `GetCurrents` use the user-supplied values. WP-U1.9.
+/// so the injection loop / `GetCurrents` use the user-supplied values.
 fn apply_force_currents(
     elem: &mut dyn CktElement,
     parser: &mut Parser,
@@ -116,7 +116,7 @@ fn apply_force_currents(
 /// complex matrix into the active PCE's primitive Y (column-major, matching
 /// `TcMatrix.GetValuesArrayPtr`), clear `YPrimInvalid`, and set `Flg.ForceYPrim`.
 /// Returns `false` on a size mismatch (Pascal error 3004) or an uninitialized
-/// YPrim. WP-U1.9.
+/// YPrim.
 fn apply_force_yprim(elem: &mut dyn CktElement, parser: &mut Parser, vars: &ParserVars) -> bool {
     let cd = elem.cd_mut();
     let norder = cd.yorder;
@@ -149,7 +149,6 @@ impl Dss {
         // here and applied right after the option loop (nothing else in a `Set`
         // command reads the active class/object mid-parse). `true` = class (activate
         // — Pascal `SetObjectClass`); `false` = object (select — `SetObject`).
-        // WP-U1.1 item 5.
         let mut pending_set_active: Vec<(bool, String)> = Vec::new();
         // Pascal `ADiakoptics and (ActiveActor = 1)` fans `GETCTRLMODE` to the
         // children after a `set controlmode=`/`set maxcontroliter=` (ExecOptions.pas
@@ -201,9 +200,9 @@ impl Dss {
                     0 => {
                         // A-Diakoptics options (`Num_SubCircuits`, `Coverage`,
                         // `LinkBranches`, `UseMyLinkBranches`, `ADiakoptics`) are
-                        // compiled out of the vendored/oracle build (§0.2) so they
+                        // compiled out of the vendored/oracle build so they
                         // are absent from the oracle-pinned `EXEC_OPTIONS`; handled
-                        // here as a recorded departure (WP-AD.2/AD.3).
+                        // here as a recorded departure.
                         if !crate::exec::tearing::try_set_ad_option(
                             ckt,
                             &param_name,
@@ -305,8 +304,8 @@ impl Dss {
                             // into a dynamics mode (Dynamic/MonteFault/FaultStudy) from a
                             // solved circuit — the same `not IsDynamicModel and
                             // ValueIsDynamic and IsSolved` condition `set_mode` re-checks
-                            // before committing. (MonteFault/FaultStudy *solves* are
-                            // WP7.9, but the state init is harmless + faithful for them.)
+                            // before committing. (The state init is harmless and
+                            // faithful for the MonteFault/FaultStudy solves too.)
                             if !was_dynamic
                                 && matches!(
                                     new_mode,
@@ -547,7 +546,7 @@ impl Dss {
                             ckt.reduction_zmag = v;
                         }
                     }
-                    // Pascal `ExecOptions.pas:696/698` (GAPS_PLAN WPG.11): the
+                    // Pascal `ExecOptions.pas:696/698`: the
                     // option is spelled `SeasonRating`, the global it sets is
                     // `SeasonalRating` (probe-proven: `Set SeasonalRating` is
                     // error #130, unknown parameter).
@@ -803,7 +802,7 @@ impl Dss {
                     }
                     // The GUI plot-marker style options (`ExecOptions.pas:615-682`):
                     // Circuit fields flowing into the plot payload's `Markers`
-                    // object (WPG.17 Plot audit settlement) — headless-inert.
+                    // object — headless-inert.
                     opt::MARK_SWITCHES => ckt.mark_switches = interpret_yes_no(&param),
                     opt::MARK_TRANSFORMERS => ckt.mark_transformers = interpret_yes_no(&param),
                     opt::MARK_CAPACITORS => ckt.mark_capacitors = interpret_yes_no(&param),
@@ -891,7 +890,7 @@ impl Dss {
                     opt::ALLOW_PROGRESS_BAR => {
                         *no_progress_bar_form_allowed = !interpret_yes_no(&param)
                     }
-                    // WP-U1.9 PCE force hooks (ExecOptions.pas @ 0.15.0b4). Their
+                    // PCE force hooks (ExecOptions.pas @ 0.15.0b4). Their
                     // error arms `Exit` in Pascal → `abort` breaks the option loop.
                     opt::INJ_CURRENT | opt::ITERMINAL => {
                         let is_terminal = pointer == opt::ITERMINAL;
@@ -983,7 +982,7 @@ impl Dss {
                         abort = true;
                     }
                     opt::PY_PATH => {
-                        // pyControl co-simulation server — NOT_PORTED (§0). Loud,
+                        // pyControl co-simulation server — NOT_PORTED. Loud,
                         // like capi015's "not supported in the AltDSS engine".
                         errors.push(
                             "Set PyPath= (pyControl co-simulation) is not supported in the \

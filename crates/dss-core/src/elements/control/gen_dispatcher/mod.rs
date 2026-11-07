@@ -15,10 +15,9 @@
 //! [`GenDispatchEnv`]; the control-loop implements it over the class registry
 //! (`solution/controls.rs`), and the unit tests against a mock.
 //!
-//! `TGenDispatcherObj.MakePosSequence` is ported as a NIL-deref-safe no-op — the
-//! upstream body dereferences the always-NIL `ControlledElement` (Access
-//! violation, `docs/wpg21_makeposseq_probes.md`), which CLAUDE.md forbids
-//! reproducing (see [`accessors`]).
+//! `MakePosSequence` is a NIL-deref-safe no-op. The OpenDSS body dereferences
+//! the always-NIL `ControlledElement` and crashes, which this engine does not
+//! reproduce (see [`accessors`]).
 //!
 //! **Deliberately not ported** (consistent with the rest of the controls):
 //! - the `Element` property's Pascal `Required` flag — not enforced anywhere in

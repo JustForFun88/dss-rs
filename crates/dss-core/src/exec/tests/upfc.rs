@@ -23,16 +23,16 @@
 //! the converged solution — currents, powers, and the latched `Sr0`/`Sr1` — match
 //! to f64. Tightening the tolerance to 1e-12 (this deck) collapses the gap: both
 //! engines then converge to the **identical fixpoint** (`Vbin = 236.41620285`, to
-//! 12 digits) in the **same 17 iterations** (probed) — the CLAUDE.md proof that
-//! the engines share the fixpoint, so the default-tol gap is a convergence-band
-//! snapshot artifact, not a port bug. The gate therefore pins the tight-tolerance
+//! 12 digits) in the **same 17 iterations** (probed). That proves the engines
+//! share the fixpoint, so the default-tol gap is a convergence-band snapshot
+//! artifact, not a bug of this engine. The gate therefore pins the tight-tolerance
 //! fixpoint, where every variable is deterministic to f64.
 //!
 //! The mode-3 monitor records nothing in a snapshot solve (monitors only sample on
 //! a time-series step; the oracle's `State` monitor returns `SampleCount=0` /
 //! empty channels here — probed), so the 14 state variables are pinned against the
 //! oracle's live f64 `ActiveCktElement.AllVariableValues` (`get_all_variables`) —
-//! the authoritative read the f32 monitor channel hides (CLAUDE.md). The `State`
+//! the authoritative read the f32 monitor channel hides. The `State`
 //! monitor is kept only to exercise the mode-3 admission path for a UPFC (its
 //! 14-name header is asserted).
 

@@ -1,4 +1,4 @@
-// WP-U2.4: `batchedit ... where` conditionals (EPRI r4133). The where-filter
+// `batchedit ... where` conditionals (EPRI r4133). The where-filter
 // edits ONLY the loads whose kw exceeds 150 (lb=200, lc=300 -> 1000), leaving
 // la=100 and ld=120 untouched; the live r4133 model compare confirms exactly
 // which loads changed (their kw drives the power flow). A second batchedit with

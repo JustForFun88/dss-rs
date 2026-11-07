@@ -1,4 +1,4 @@
-! WP-U1.4 (UPGRADE_PLAN §WP-U1.4, DSSClass.pas:1071) — LineType enum-width fix.
+! LineType enum match width.
 ! dss_capi 0.15.x widens the LineType enum match length 4 -> 5: the eight swt_*
 ! names share the 4-char prefix `swt_`, so a 5-char abbreviation like `swt_l`
 ! matched nothing and fell back to the default `oh` under the old width. With

@@ -2,8 +2,7 @@
 //! element that dispatches a *fleet* of Storage elements (charge/discharge) to
 //! hold a monitored element's power inside a target band.
 //!
-//! **Real behavior (PHASE7_PLAN WP7.4 step 2).** With the Storage element landed
-//! (WP7.4 step 1), the fleet now resolves and dispatches. This module ports the
+//! This module holds the
 //! full control: `MakeFleetList`, the `SetFleet*` helpers, `GetControlPower` /
 //! `GetControlCurrent`, the fleet kW/kWh aggregates, and `Sample`'s dispatch
 //! modes — `DoLoadFollowMode` (Peakshave / Follow / Support / I-Peakshave),
@@ -23,12 +22,12 @@
 //! `RecalcElementData` after the fleet build are deferred to that first build.
 //!
 //! The seasonal dynamic target (`Get_DynamicTarget`, `DSS.SeasonalRating` /
-//! `DSS.SeasonSignal` — `Set SeasonRating=`/`Set SeasonSignal=`, GAPS_PLAN
-//! WPG.11) is ported: [`StorageController::get_dynamic_target`] (`compute.rs`)
+//! `DSS.SeasonSignal` — `Set SeasonRating=`/`Set SeasonSignal=`) is ported:
+//! [`StorageController::get_dynamic_target`] (`compute.rs`)
 //! + the [`StorageDispatchEnv::season_rating`]/[`StorageDispatchEnv::
 //! season_rating_idx`] call-site guards.
 //!
-//! `MakePosSequence` is ported (WPG.21): the monitored-element phase/conductor/
+//! `MakePosSequence` is ported: the monitored-element phase/conductor/
 //! bus resync (see [`accessors`]).
 //!
 //! **Deliberately NOT_PORTED:**
@@ -46,10 +45,7 @@
 //! `*Actual` are the live `FleetkWh`/`FleetkW` (sums of `kWhStored` /
 //! `PresentkW`). They read no stored total and write nothing -- see
 //! [`FleetAggregates`] for the cache the read surfaces refresh and for the
-//! r4133 `Var Sum` write-back the port deliberately does not reproduce. Until
-//! RP3.8 they rendered `''`, which was the dss_capi 0.14.5
-//! `SilentReadOnly + ReadByFunction` surface convention, not upstream behavior
-//! ([`PropFlags::SILENT_READ_ONLY`]).
+//! r4133 `Var Sum` write-back this engine deliberately does not reproduce.
 //!
 //! Split into submodules (no behavioral change): the property table, the struct
 //! and its constructor live here; `MakeFleetList` / the dispatch modes /
@@ -236,7 +232,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // read fns GetkWhTotal/...) and, being function-only (no
         // PropertyOffset), suppresses their text render; r4133 renders them live
         // (`:991-994`), so they carry `RENDERS_LIVE_RESULT` too and the `?`/props
-        // surfaces answer the number (RP3.8). `SILENT_READ_ONLY` still governs
+        // surfaces answer the number. `SILENT_READ_ONLY` still governs
         // the other three surfaces unchanged: the JSON export omits them, a JSON
         // load ignores them, and the schema renders `type:number, readOnly:true`
         // with no default.
@@ -253,7 +249,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // real backing field, so 0.14.5 dumps it like any other ('?' -> the stored
         // kWNeeded) and exports it to JSON. Schema-only `READ_ONLY` marks it
         // `readOnly` + elides the default, without the function-only JSON
-        // omission `SILENT_READ_ONLY` carries. NOT one of RP3.8's five pairs.
+        // omission `SILENT_READ_ONLY` carries.
         PropDef::double("kWNeed").flags(PropFlags::READ_ONLY),
         PropDef::object_ref_class("LoadShape", "Yearly"),
         PropDef::object_ref_class("LoadShape", "Daily"),
@@ -404,9 +400,9 @@ pub struct StorageController {
 ///
 /// **The r4133 write-back is deliberately not reproduced.** `GetkWhTotal` and
 /// `GetkWTotal` take `Var Sum`, and the two property arms pass the object's own
-/// `TotalkWhCapacity`/`TotalkWCapacity` fields (`:81-82`), so *reading* those
+/// `TotalkWhCapacity`/`TotalkWCapacity` fields, so *reading* those
 /// two properties *writes* the object in r4133 — a read-that-mutates of the
-/// `VSConverter.GetCurrents` family (CLAUDE.md §"Known upstream bugs"). Nothing
+/// `VSConverter.GetCurrents` family of OpenDSS bugs. Nothing
 /// in `Version8/Source` ever reads the two fields (the whole-tree grep finds
 /// only the declarations, the two arms, and the two dead `RecalcElementData`
 /// calls at `:1107-1108`; dss_capi 0.14.5 went further and commented them out),
@@ -629,8 +625,8 @@ pub(crate) trait StorageDispatchEnv {
     fn dyna_h(&self) -> f64;
     /// `ActiveCircuit.Solution.DynaVars.dblHour`.
     fn dbl_hour(&self) -> f64;
-    /// `ActiveCircuit.Solution.ControlIteration` — D10 (`1b3123ce`) forces a new
-    /// power flow (`StorekWChanged`) on the first control iteration.
+    /// `ActiveCircuit.Solution.ControlIteration` — a fleet state change forces a
+    /// new power flow (`StorekWChanged`) on the first control iteration.
     fn control_iteration(&self) -> i32;
     /// `ActiveCircuit.Solution.Mode`.
     fn solve_mode(&self) -> SolveMode;

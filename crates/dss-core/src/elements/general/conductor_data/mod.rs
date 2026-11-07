@@ -544,9 +544,7 @@ impl ConductorData for TsDataObj {
 }
 
 /// A **snapshot-cloned** conductor catalog object, as a `LineGeometry`
-/// (`FWireData[i]`) and a `Line` (`LineWireData[i]`) own it — the typed
-/// (DE_PASCALIZE R3 Category C) replacement for the `Box<dyn DssObject>` those
-/// arrays used to hold.
+/// (`FWireData[i]`) and a `Line` (`LineWireData[i]`) own it.
 ///
 /// The three variants are exactly the classes the `wire=`/`cncable=`/`tscable=`,
 /// `wires=`/`cncables=`/`tscables=` and `conductors=` properties resolve against

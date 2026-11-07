@@ -112,7 +112,7 @@ impl Parser {
             let buf = std::mem::take(&mut self.cmd_buffer);
             let mut pos = self.position;
             self.token_buffer = self.get_token_at(&buf, &mut pos);
-            // P5b: `get_token_at` recorded this token's span in `tok_*`.
+            // `get_token_at` recorded this token's span in `tok_*`.
             self.param_span = self.tok_start..self.tok_end;
             self.value_span = self.param_span.clone();
             if self.last_delimiter == b'=' {

@@ -7,8 +7,8 @@
 ! through bytes [46,58) (Pascal InterpretDblArrayMMF, dss_capi 0.14.5
 ! LoadShape.pas:1374 == r4133 Utilities.pas:834), dropping sign and exponent, so
 ! THE ORACLE reads P as {1.51, 2.01, ...} where the file says {0.15, 0.20, ...}.
-! Since GOLDEN_REBASE G2.5 the port reads the file verbatim (upstream bugs are
-! never reproduced), so this deck diverges from the pinned capi_v0145 oracle
+! This engine reads the file verbatim (OpenDSS bugs are
+! never reproduced), so this deck diverges from the capi_v0145 channel
 ! across the solved model and is ledger-excluded as `mmf-accept-set-honoured-capi`
 ! (correct values pinned by load_shape::tests). Its UNRELATED reader coverage —
 ! sng/dbl/raw-directive MMF, the pqcsvfile= reader, the array round-trip and the

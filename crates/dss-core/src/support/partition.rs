@@ -1,12 +1,10 @@
-//! The MeTIS file round-trip glue over the `dss-metis` in-process partitioner
-//! (`DIAKOPTICS_PSTCALC_PLAN.md` decision **D2**, WP-AD.2 Stage B).
+//! The MeTIS file round-trip glue over the `dss-metis` in-process partitioner.
 //!
 //! Upstream (`Common/Circuit.pas` `Create_MeTIS_graph`/`Create_MeTIS_Zones`,
 //! `Common/MeTIS_Exec.pas`) writes a `.graph` text file and *spawns*
 //! `kmetis.exe`, which writes `<graph>.part.<N>` back to disk. This port keeps
 //! the Pascal-visible file artifacts (`.graph` + `.part.N`) but computes the
-//! partition **in-process** via [`dss_metis`] — no external binary (D2 is
-//! final).
+//! partition **in-process** via [`dss_metis`] — no external binary.
 //!
 //! NOTE(subst-metis): two deltas from upstream, both here:
 //!  1. *exec → in-process.* `kmetis.exe` (a METIS **4.0**-era binary) is
@@ -14,7 +12,7 @@
 //!     partitions can differ on the same graph, so auto-tear zone shapes may
 //!     differ from official OpenDSS runs — irrelevant to the AD gates (the
 //!     fixpoint is partition-independent; reference comparisons align
-//!     partitions via manual `LinkBranches`, plan D9c).
+//!     partitions via manual `LinkBranches`).
 //!  2. *no repair loop.* Upstream's `GetNumEdges` + `TFileSearchReplace`
 //!     "wrong edge count → patch the `.graph` header and retry" loop
 //!     (`Circuit.pas:1385–1403`) is dropped: our edge count is exact by
@@ -66,7 +64,7 @@ impl MetisGraph {
     /// 0's adjacency line is dropped** — the emitted file has `n_cols - 1`
     /// adjacency lines under an `n_cols`-vertex header. That is exactly why
     /// upstream needs the `GetNumEdges` header-patch retry loop, and why
-    /// `Create_MeTIS_Zones` compensates with the first-line swap (D5). We
+    /// `Create_MeTIS_Zones` compensates with the first-line swap. We
     /// reproduce the quirk in the text artifact (fixture-pinned) but do **not**
     /// partition it — [`run_partition`](Self::run_partition) uses the full
     /// canonical adjacency, so our partition is edge-exact regardless.

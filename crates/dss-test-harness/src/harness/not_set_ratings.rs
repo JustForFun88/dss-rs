@@ -1,7 +1,7 @@
 //! A rating that is not set, against an oracle that prints a number for it.
 //!
 //! The engine reads a current rating nobody gave as its own value and renders
-//! it `none` (user decision 2026-10-04), and so it reads a typed `0` or
+//! it `none`, and so it reads a typed `0` or
 //! negative number, which names no rating, and a derived zero. Both gating
 //! oracles store such a rating as a number and print it: `-1` where the class
 //! starts from a "not defined" marker (a Line on a spacing whose phase wire
@@ -25,6 +25,9 @@
 //! a row that excuses one cell more fails as surely as a row that excuses
 //! none, so a set rating that starts reading `none` in a gated deck cannot
 //! hide behind a row that is live anyway.
+//!
+//! Knob: `DSS_GATE_ONLY`, when set (a filtered partial run), skips the count
+//! lock. Unset by default, so the lock runs.
 
 use super::PropsChannel;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -126,10 +129,9 @@ pub fn reads_not_set(rust: &str, oracle: &str, sentinels: &[&str]) -> bool {
 }
 
 /// The cells a whole-population run of the corpus gate excuses, per row of
-/// [`LANE_NOT_SET_RATINGS`] (same order), as `(capi_v0145, r4133)`. Measured
-/// 2026-10-04 in both lanes, which agree, and the Capacitor rows and the
-/// `Line.Ratings` row again 2026-10-16. The property compare runs once per solve
-/// step, so a stepped deck counts its cells once per step.
+/// [`LANE_NOT_SET_RATINGS`] (same order), as `(capi_v0145, r4133)`, the same in
+/// both lanes. The property compare runs once per solve step, so a stepped deck
+/// counts its cells once per step.
 pub const NOT_SET_RATING_HITS: [(usize, usize); LANE_NOT_SET_RATINGS.len()] = [
     (30, 30),
     (30, 30),

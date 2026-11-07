@@ -1,4 +1,4 @@
-//! NCIM report goldens (UPGRADE_PLAN WP-U1.7 tail): pin `Export Jacobian` /
+//! NCIM report goldens: pin `Export Jacobian` /
 //! `Export deltaF` / `Export deltaZ` / `Show PV2PQ_Conversions` after a
 //! `Set Algorithm=NCIM` solve against the **capi015** oracle (dss_capi 0.15.0b4;
 //! the pinned 0.15.7 gate oracle has no NCIM). Goldens + decks:
@@ -13,9 +13,9 @@
 //!    *values* are noise and cannot be value-pinned. We assert the exact line
 //!    count (`2·NumNodes` + PV-phase rows), the six leading swing zeros, and that
 //!    every entry parses finite and sits at the converged magnitude;
-//!  * **PV2PQ** — byte-exact (CRLF→LF normalized) text, in **both** Stage F
+//!  * **PV2PQ** — byte-exact (CRLF→LF normalized) text, in **both**
 //!    lanes: the report is a banner plus generator names, with no number
-//!    rendered through the F-FMT seam, so F.4 cannot move its bytes (the
+//!    rendered through the print seam, so the lane cannot move its bytes (the
 //!    scoping rule is documented in `harness::lane`).
 
 use std::path::PathBuf;
@@ -160,7 +160,7 @@ fn run(stem: &str) {
         // 1e-6 so a systematic ~1e-8-scale offset (wrong-ordering/sign-away-from-
         // swing bugs stay at the ~1e-10 noise floor and are inherently invisible to
         // a magnitude gate on genuine cancellation noise — the values cannot be
-        // value-pinned per the CLAUDE.md cancellation-floor rule) is caught.
+        // value-pinned, since a cancellation floor is not a value) is caught.
         let mx = vals.iter().fold(0.0_f64, |m, &v| m.max(v.abs()));
         assert!(
             mx < 1e-8,

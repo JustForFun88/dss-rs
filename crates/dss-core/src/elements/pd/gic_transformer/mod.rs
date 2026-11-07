@@ -85,7 +85,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("MVA").flags(PropFlags::UNITS_MVA),
         PropDef::object_ref_class("XYcurve", "VarCurve"),
         // The `%R1`/`%R2` display spelling comes from Pascal's `pct` → `%`
-        // rename in PopulatePropertyNames (§3 finding).
+        // rename in PopulatePropertyNames.
         PropDef::double("%R1").flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::NO_DEFAULT),
         PropDef::double("%R2").flags(PropFlags::NO_DEFAULT),
         PropDef::double("K"),

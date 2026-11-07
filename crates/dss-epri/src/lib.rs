@@ -1,15 +1,14 @@
 //! # `dss-epri` — the test-only EPRI r4133 bridge (unsafe carve-out)
 //!
 //! This crate is the **single exception** to the workspace-wide
-//! `#![forbid(unsafe_code)]` rule (see `PORTING_PLAN.md` and `CLAUDE.md`). Every
+//! `#![forbid(unsafe_code)]` rule. Every
 //! *product* crate (`dss-core`, `dss-parser`, `dss-sparse`, `dss-cli`,
 //! `dss-metis`) stays `#![forbid(unsafe_code)]` — the shipped engine is pure safe
 //! Rust with no C bindings, ever. `dss-epri` is **not a product crate**: it is
 //! `publish = false`, built only for the test gate, and its sole job is to drive
 //! the official EPRI `OpenDSSDirect.dll` (revision r4133) as a *second live
-//! oracle* alongside the pinned dss-python engine
-//! (`UNIFIED_GATE_PLAN.md` §2, R1). Reading a foreign C DLL is inherently
-//! `unsafe`, so this crate carries, in place of `forbid`:
+//! oracle* alongside the pinned dss-python engine. Reading a foreign C DLL is
+//! inherently `unsafe`, so this crate carries, in place of `forbid`:
 //!
 //! - `#![deny(unsafe_op_in_unsafe_fn)]` — every `unsafe` operation is written
 //!   inside an explicit `unsafe {}` block even within `unsafe fn`s, so each one
@@ -20,8 +19,7 @@
 //!   and calls only `std::fs`, and the gate's own corpus guard
 //!   (`crates/dss-core/tests/corpus_gate/runner.rs`) reports from its
 //!   classification, so gating it would force a second copy of that rule to
-//!   exist for the other platforms — it is ungated instead (coordinator
-//!   decision D33(3)).
+//!   exist for the other platforms — it is ungated instead.
 //! - Module-level `// SAFETY` documentation on every FFI boundary (see
 //!   [`ffi`]) stating the invariant that makes the call sound.
 //!
@@ -30,10 +28,7 @@
 //! `PAnsiChar`/pointer+type+size out-params — no OLE Variants, no COM), so Rust
 //! reads it natively. This drops the entire dss-extensions stack (two beta
 //! wheels) and the ~1.5–2.5 s Python startup per call, and unifies the harness
-//! language. The bridge was fidelity-proven by bit-for-bit cross-validation
-//! against the outgoing Python/Oddie path over the full corpus universe
-//! (`tools/opendss/xcheck_bridge.py`) before that Python stack — the
-//! cross-check script included — was retired in UNIFIED_GATE Phase E.
+//! language.
 //!
 //! ## Layout
 //! - [`ffi`] — raw `extern "C"` signatures + `libloading` load of the DLL with
@@ -52,7 +47,7 @@
 //!   bridge's ad-hoc `Text.Command` + property reads; never used by the gate).
 //! - [`modes`] — mode-capability classification for the grouped DDLL API: the
 //!   unknown-mode sentinels of the four ABI shapes, and the do-not-call register
-//!   of modes whose r4133 implementation is memory-unsafe (WP-G1 rails, G1.0).
+//!   of modes whose r4133 implementation is memory-unsafe.
 //!
 //! The `epri-worker` binary (`src/bin/epri-worker.rs`) drives all of the above
 //! over the persistent line-JSON `ping`/`run`/`quit` protocol, byte-compatible

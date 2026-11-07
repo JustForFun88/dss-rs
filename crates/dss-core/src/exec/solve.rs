@@ -75,7 +75,7 @@ impl Dss {
         let sys = crate::solution::solution::sys_ctx(ckt);
         crate::solution::monitors::sample_all_monitors(ckt, &mut env, false);
         // Pascal `DoSampleCmd` l.1037: `EnergyMeterClass.SampleAll` (gets
-        // generators too — the generator register sweep is WP6.8).
+        // generators too).
         crate::solution::meters::take_sample_all(ckt, env.store, &sys);
     }
 
@@ -307,7 +307,7 @@ impl Dss {
     /// "EnergyMeter not found". The reduction *work itself* —
     /// `EnergyMeter.ReduceZone` dispatching `ReduceAlgs.pas`
     /// (`DoReduceDefault`/`DoReduceShortLines`/…) → `TLineObj.MergeWith`
-    /// (WP8.7, `exec/reduce.rs`).
+    /// (`exec/reduce.rs`).
     pub(super) fn do_reduce_cmd(&mut self) {
         // Pascal reads the next parm and uppercases it (`AnsiUpperCase`).
         self.parser.next_param(&self.vars);
@@ -425,7 +425,7 @@ impl Dss {
     /// Force a full `WHOLEMATRIX` rebuild of the system Y matrix (no vector
     /// realloc), mirroring the `BuildYMatrix` the solver runs when
     /// `SystemYChanged`. This is the benchmark entry point for the
-    /// MULTITHREADING_PLAN M1 `ybuild_8500` bench (DE_PASCALIZE P15): it isolates
+    /// `ybuild_8500` bench: it isolates
     /// the Y-assembly cost — YPrim recompute + stamping + dedup + factor-symbolic
     /// reuse — from the surrounding fixed-point loop. No-op without a circuit.
     pub fn rebuild_system_y(&mut self) {
@@ -518,9 +518,7 @@ impl Dss {
     /// ActiveCircuit do if BusNameRedefined then ReprocessBusDefs` — nothing
     /// else. `ReprocessBusDefs` rebuilds the meter zones itself in its tail
     /// (`Circuit.pas:2411` / capi `:2246`), which is what makes this verb safe
-    /// to issue after an EnergyMeter is defined; before GOLDEN_REBASE G1.6b/D9
-    /// the port hoisted that reset into `build_y_matrix`, so `MakeBusList`
-    /// consumed `bus_name_redefined` and every meter kept an empty zone.
+    /// to issue after an EnergyMeter is defined.
     pub(super) fn do_make_bus_list_cmd(&mut self) {
         let Dss {
             classes,

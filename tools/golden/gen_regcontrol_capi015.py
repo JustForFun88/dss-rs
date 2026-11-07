@@ -1,9 +1,9 @@
 """Regenerate the RegControl property golden against the **capi015** engine.
 
 RegControl's property surface changed at dss_capi 0.15.x r4086 (commit
-`8a898cba`, WP-U1.6 C5): the `RevThreshold` default flipped to −100 kW (signed
+`8a898cba`): the `RevThreshold` default is −100 kW (signed
 W field), a `FwdThreshold` (+100 kW) plus three idle-zone flags were added, and
-the legacy fallback moved into `EndEdit`. The default-oracle (0.14.5) props
+the legacy fallback sits in `EndEdit`. The default-oracle (0.14.5) props
 golden therefore no longer matches the port — this generator captures the
 `regcontrol_*` scenarios (defined in `gen_props.py`) from the 0.15.x-line
 oracle instead, exactly like the linespacing equivalent-spacing golden.

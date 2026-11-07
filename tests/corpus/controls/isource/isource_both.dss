@@ -1,6 +1,6 @@
 ! GAPS deck: Isource snapshot->daily transition — a snapshot Solve followed by
 ! a daily run in the SAME session. Catches cross-mode state leaks (the
-! WP7.5 FFlagVWOperates class): the snapshot must not perturb the daily
+! FFlagVWOperates class): the snapshot must not perturb the daily
 ! trajectory and vice versa. Same network as isource_daily.dss.
 Clear
 New Circuit.gaps_isrcb basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210

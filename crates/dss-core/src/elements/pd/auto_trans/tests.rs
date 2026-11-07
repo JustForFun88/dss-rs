@@ -1,6 +1,5 @@
-//! Stage A unit tests: construction defaults and `RecalcElementData`-derived
-//! values, checked against the pinned oracle (`? AutoTrans.a1.<prop>` probe,
-//! 2026-07-08). No solve — the auto YPrim/solve path is WPG.15 Stage B.
+//! Unit tests: construction defaults and `RecalcElementData`-derived values,
+//! checked against dss_capi (`? AutoTrans.a1.<prop>`). No solve.
 
 use super::*;
 use crate::elements::pd::winding::Connection;
@@ -61,7 +60,7 @@ fn term_ref_series_maps_h_and_x() {
     assert_eq!(t.term_ref.pair(0, 1, 2), [6, 9]);
 }
 
-// --- WPG.21 — TAutoTransObj.MakePosSequence (AutoTrans.pas:1724-1791) ---------
+// --- TAutoTransObj.MakePosSequence --------------------------------------------
 
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
 use crate::elements::traits::CktElement;

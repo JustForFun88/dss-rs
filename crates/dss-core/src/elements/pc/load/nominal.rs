@@ -14,7 +14,7 @@ use crate::util::{CDOUBLEONE, inv_sqrt3_x1000};
 use super::{Connection, Load, LoadModel, LoadSpec, LoadStatus, prop};
 
 impl Load {
-    /// Pascal `GrowthFactor` (`Load.pas:1014`, B3-r3723 / SVN r3723-era update):
+    /// Pascal `GrowthFactor` (SVN r3723 and later):
     /// year 0 → 1.0 (use base values), UNLESS a `GrowthShape` is assigned — then
     /// the factor tracks the *simulated hours* so a >8760 h Year=0 run advances
     /// through the curve. `calcYear := dblHour/8760`; if `calcYear < 1` the factor
@@ -198,9 +198,7 @@ impl Load {
                 // Pascal groups Monte2/Monte3/LOADDURATION1/LOADDURATION2 in one
                 // case arm: growth × the load's own daily-shape lookup (via
                 // `CalcDailyMult`, exactly like `DAILYMODE`) × LoadMultiplier
-                // unless Exempt. Monte2/Monte3 are not reachable yet (WPG.4 —
-                // the solve dispatcher still errors loudly on them), but LD1/LD2
-                // are (WPG.3), so this arm is live.
+                // unless Exempt. Monte2/Monte3 and LD1/LD2 all reach this arm.
                 SolveMode::Monte2 | SolveMode::Monte3 | SolveMode::LD1 | SolveMode::LD2 => {
                     let mut f =
                         self.growth_factor(sys.year, sys.default_growth_factor, sys.dbl_hour);
@@ -234,8 +232,7 @@ impl Load {
                 // SolveSnap) is identical, and the RNG stream is engine-global
                 // like FPC's RTL. Under `Set random=none` the draw is a no-op
                 // (`randomize` sets `RandomMult := 1.0`), so the whole arm reduces
-                // to growth × LoadMultiplier — the deterministic gated path
-                // (GAPS_PLAN.md §2.1).
+                // to growth × LoadMultiplier — the deterministic gated path.
                 SolveMode::Monte1 => {
                     let mut f = self.random_mult
                         * self.growth_factor(sys.year, sys.default_growth_factor, sys.dbl_hour);

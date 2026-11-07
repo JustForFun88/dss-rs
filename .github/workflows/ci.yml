@@ -13,9 +13,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Windows-only since UNIFIED_GATE Phase C/D: the mandatory corpus gate
-        # drives the EPRI r4133 OpenDSSDirect.dll via `epri-worker` (the
-        # #[cfg(windows)] dss-epri bridge crate), so the gate's test run
+        # Windows only: the mandatory corpus gate drives the EPRI r4133
+        # OpenDSSDirect.dll via `epri-worker` (the #[cfg(windows)] dss-epri
+        # bridge crate), so the gate's test run
         # cannot pass on Linux (epri-worker exits 1 on non-Windows by design).
         os: [windows-latest]
     runs-on: ${{ matrix.os }}
@@ -28,23 +28,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12.4"
-      # The test steps run the live oracle gate unconditionally (corpus_gate.rs
-      # no longer reads DSS_LIVE_ORACLE), so the pinned dss-python oracle must be
-      # present for them. Versions MUST match tools/golden/PIN.txt exactly.
-      - name: Install pinned oracle (tools/golden/PIN.txt)
+      # The test steps run the corpus gate unconditionally, so the pinned
+      # dss-python must be present for them. Versions MUST match
+      # tools/golden/PIN.txt exactly.
+      - name: Install pinned dss-python (tools/golden/PIN.txt)
         run: pip install "dss-python==0.15.7" "dss-python-backend==0.14.5"
       # The gate's test runner, pinned to the version `.config/nextest.toml`
-      # requires (RETRO_FIXES RF-I00-01). The `@nextest` shorthand of this
-      # action installs only the latest release, so the pin goes through `tool:`.
+      # requires. The `@nextest` shorthand of this action installs only the
+      # latest release, so the pin goes through `tool:`.
       - uses: taiki-e/install-action@v2
         with:
           tool: nextest@0.9.146
-      # The mandatory gate is seven commands over BOTH Stage F lanes (CLAUDE.md
-      # "## Gate", TESTING.md §"The mandatory gate"): nextest runs every test in
-      # its own process and no doctest, hence the two `--doc` steps. The parity
-      # lane is not a variant to spot
-      # check: it is the lane that carries the byte goldens and the exact
-      # iteration pins against the oracle, and it is the compensating control
+      # The mandatory gate is eight commands over BOTH lanes: nextest runs
+      # every test in its own process and no doctest, hence the two `--doc`
+      # steps. The parity lane is not a variant to spot check: it is the lane
+      # that carries the byte goldens and the exact iteration pins against the
+      # OpenDSS engines, and it is the compensating control
       # for every band the default lane is allowed. Running only the default
       # lane here would leave both of those unchecked on every PR.
       - name: Format
@@ -61,3 +60,7 @@ jobs:
         run: cargo test --workspace --doc
       - name: Doctests (parity lane)
         run: cargo test --workspace --doc --features dss-compat/opendss-parity
+      - name: Docs (intra-doc links)
+        run: cargo doc --workspace --no-deps --document-private-items
+        env:
+          RUSTDOCFLAGS: -D rustdoc::broken_intra_doc_links

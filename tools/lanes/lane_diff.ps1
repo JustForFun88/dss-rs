@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-  DE_PASCALIZE Stage F parity<->default differential gate (plan Part IV.2,
-  "Two validation lanes ... + the differential gate"; step F.5).
+  The parity<->default differential job: builds both lanes, dumps the corpus
+  checkpoints on each and diffs the two dumps.
 
 .DESCRIPTION
   The two lanes are two builds, so no `#[test]` can compare them: a test binary
@@ -10,10 +10,16 @@
   documented per-kernel bounds (see crates/dss-core/examples/lane_dump.rs for
   what is compared and against what).
 
-  Since the parity lane is bit-identical to the pinned oracle, `default ~=
-  parity` measured here IS the transitive proof `default ~= oracle` -- and it is
-  sharper than the oracle comparison, whose floors are the calibrated 1e-6-class
-  tiers.
+  The parity lane is compared with the OpenDSS engines at the calibrated
+  tiers, so `default ~= parity` measured here carries that standing over to the
+  default lane. Its bound is sharper than those 1e-6-class tiers.
+
+  Run it after a change to a compat kernel, dss-sparse or the solution module.
+  It is not part of the gate's test run: it costs two release builds and writes
+  a few hundred MB under `OutDir`.
+
+  Both cargo calls go through the build queue (tools/gate/gatelock.py, label
+  `lane_diff`). The dumps hold the build slot while they solve the corpus.
 
   Each lane builds into its own target directory so that re-running the job does
   not force a full rebuild of the other lane (a feature change otherwise
@@ -54,12 +60,14 @@ $parityDump = Join-Path $out "parity.dump"
 # in-flight edit to `ledger.json`, a manifest, `population.lock.json`. The
 # cleanup below must never touch them: it exists to undo what the *dumps* wrote,
 # and a blind `git restore` over everything dirty silently discards the working
-# tree the job was invoked to validate (it did, 2026-08-02, taking a ledger
-# entry and its lock line with it).
+# tree the job was invoked to validate.
 $preDirty = @{}
 foreach ($line in (& git status --porcelain -- tests/corpus)) {
     $preDirty[$line.Substring(3).Trim('"')] = $line.Substring(0, 2).Trim()
 }
+
+# Every cargo call goes through the build/test queue of the shared machine.
+$gatelock = Join-Path $root "tools/gate/gatelock.py"
 
 function Invoke-Lane {
     param(
@@ -80,7 +88,7 @@ function Invoke-Lane {
     Write-Host "== $Lane lane =============================================="
     Write-Host "cargo $($cargo -join ' ')"
     $sw = [Diagnostics.Stopwatch]::StartNew()
-    & cargo @cargo
+    & python $gatelock --label lane_diff -- cargo @cargo
     if ($LASTEXITCODE -ne 0) { throw "$Lane lane dump failed (exit $LASTEXITCODE)" }
     $sw.Stop()
     $size = [math]::Round((Get-Item $DumpPath).Length / 1MB, 1)
@@ -96,14 +104,14 @@ foreach ($p in @($defaultDump, $parityDump)) {
 }
 
 Write-Host "== diff ===================================================="
-& cargo run --release -q -p dss-core --example lane_dump `
+& python $gatelock --label lane_diff -- cargo run --release -q -p dss-core --example lane_dump `
     --target-dir (Join-Path $out "default-target") -- `
     diff $defaultDump $parityDump
 $verdict = $LASTEXITCODE
 
 # Corpus hygiene. The decks write their reports next to themselves, so a corpus
-# run leaves artifacts behind exactly as `cargo test` does, and `CLAUDE.md`
-# requires `git status --short tests/corpus` to be empty afterwards. Two shapes,
+# run leaves artifacts behind, and `git status --short tests/corpus` must be
+# empty afterwards. Two shapes,
 # both handled by exact path (never a wide `git clean`):
 #
 #   ?? untracked  -- a report or a whole `DI_yr_*` directory the deck created
@@ -116,8 +124,7 @@ $verdict = $LASTEXITCODE
 #
 # A recursive delete is used for the created directories, and only after
 # checking the entry is not a reparse point -- `.inputs`/`.venv` junctions live
-# elsewhere in a worktree, and following one deletes main's copy (CLAUDE.md,
-# "Git worktrees").
+# elsewhere in a worktree, and following one deletes main's copy.
 $dirty = & git status --porcelain -- tests/corpus
 if ($dirty) {
     Write-Host "== corpus artifacts left by the run ========================"

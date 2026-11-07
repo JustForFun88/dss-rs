@@ -1,5 +1,5 @@
-// Reduce coverage (PHASE8_PLAN WP8.7): the DANGLING (Ends) strategy
-// (DoReduceDangling, ReduceAlgs.pas:91): a line branch that IsDangling
+// Reduce coverage: the DANGLING (Ends) strategy
+// (DoReduceDangling): a line branch that IsDangling
 // (nothing downstream: no children, no shunts) and whose to-bus is not
 // on the KeepList is disabled. ld1 (dead-end to d1, no load) is thrown
 // away; ld2 (feeds a load at d2) survives.

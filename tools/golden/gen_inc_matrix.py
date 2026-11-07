@@ -1,5 +1,4 @@
-"""Generate the incidence-matrix report goldens from the pinned oracle (WP-AD.1,
-DIAKOPTICS_PSTCALC_PLAN §2).
+"""Generate the incidence-matrix report goldens from the pinned oracle.
 
 Pins the CSV files the oracle writes for the `CalcIncMatrix`/`CalcIncMatrix_O`/
 `CalcLaplacian` commands + exports 53–57 (`IncMatrix`/`IncMatrixRows`/

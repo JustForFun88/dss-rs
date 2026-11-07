@@ -301,11 +301,8 @@ impl CktElement for VSource {
     /// **NCIM swing arm** (r4133 `PCElements/VSource.pas` l.1194:
     /// `if ((Algorithm = NCIMSOLVE) and (NodeRef[1] = 1)) then
     /// CalcInjCurrAtBus(Curr, ActorID)`). NCIM holds the swing bus at the ideal
-    /// EMF, so the `Yprim·V - Iinj` branch below cancels to ~0 there — measured
-    /// on the corpus decks before RP3.13, `Export Currents`' `Vsource.SOURCE`
-    /// `|I1|` read `3.24074e-05 A` (`modes/ncim/ncim_pq` and `ncim_pv_pq`) and
-    /// `4.42577e-05 A` (`ncim_midi`) where live r4133 reports `90.0718`,
-    /// `64.2127` and `124.964 A`. The physical current is the Kirchhoff sum at
+    /// EMF, so the `Yprim·V - Iinj` branch below cancels to ~0 there. The
+    /// physical current is the Kirchhoff sum at
     /// the source bus, which needs every element there and so cannot be built
     /// from inside one element: the solver stamps it into `Iterminal` once at
     /// the converged `NodeV`
@@ -322,10 +319,9 @@ impl CktElement for VSource {
     /// re-runs `CalcInjCurrAtBus` on every read — and pays for it: with two
     /// sources on the slack node each one's sum calls the other's
     /// `GetCurrents` (`VSource.pas` l.1158 excludes only the element itself,
-    /// l.1149), so the pair recurses until the stack dies (measured
-    /// 2026-09-03, RP3.13: the r4133 DLL overflows its stack on
-    /// `export currents`). Here the solver stamps the one swing source; any
-    /// other slack-node source, and any read with no stamp behind it (a solve
+    /// l.1149), so the pair recurses until the stack dies (the r4133 DLL
+    /// overflows its stack on `export currents`). Here the solver stamps the
+    /// one swing source; any other slack-node source, and any read with no stamp behind it (a solve
     /// that aborted before the stamp, or `Set algorithm=NCIM` typed after a
     /// normal `Solve` with no re-solve), falls through to the ordinary branch
     /// and reports its own `YPrim·V - Iinj` terminal current.

@@ -1,8 +1,7 @@
 //! The torn sub-circuit file emission: `Save_SubCircuits`, `Format_SubCircuits`,
-//! `AppendIsources`, `Disable_All_DER` (`DIAKOPTICS_PSTCALC_PLAN.md` WP-AD.2
-//! Stage B, deliverable 2).
+//! `AppendIsources`, `Disable_All_DER`.
 //!
-//! Behavioral spec = **official r3723 Delphi** (plan D10):
+//! Behavioral spec = **official r3723 Delphi**:
 //! `.inputs/electricdss-code-r3723-trunk/Version8/Source/Common/Circuit.pas`
 //! (`Save_SubCircuits` 1150, `Format_SubCircuits` 959, `AppendIsources` 920,
 //! `Disable_All_DER` 1463).
@@ -15,8 +14,9 @@
 //! — see that file's header). `Format_SubCircuits`'s line filter is therefore
 //! matched **case-insensitively** and its "skip the header" cut is anchored on the
 //! `New Circuit` line rather than the official fixed index 2, so it targets our
-//! actual save output while preserving the algorithm's intent 1:1. Part II has no
-//! oracle; the contract is the round-trip compile/solve gate (plan D8).
+//! actual save output while preserving the algorithm's intent 1:1. A-Diakoptics
+//! has no OpenDSS comparison channel: the contract is the round-trip
+//! compile/solve gate.
 
 use super::*;
 
@@ -297,7 +297,7 @@ impl Dss {
     /// the saved Vsource-class file). These resolve to the *same* file — the
     /// boundary source overwriting the copied full source — only on a
     /// case-insensitive filesystem (Windows/NTFS, the official DSS + this project
-    /// platform, D10). On a case-sensitive FS the zone master's `Redirect
+    /// platform). On a case-sensitive FS the zone master's `Redirect
     /// Vsource.dss` would instead pick up the copied full 3-phase source. The
     /// case-insensitivity assumption is inherited verbatim from upstream and not
     /// "fixed" (changing the emitted case would diverge from official).

@@ -13,7 +13,7 @@ impl Capacitor {
 
     /// Pascal `TCapacitorObj.Totalkvar` (property, `Capacitor.pas:153` = `FTotalkvar`):
     /// the bank's total kvar rating. Read-only accessor for the CIM export
-    /// (`LinearShuntCompensator.bPerSection`, GAPS_PLAN WPG.18 Stage D).
+    /// (`LinearShuntCompensator.bPerSection`).
     pub fn total_kvar(&self) -> f64 {
         self.ftotalkvar
     }

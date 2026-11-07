@@ -341,16 +341,11 @@ impl DssObject for RegControl {
         match idx {
             TRANSFORMER => {
                 // MonitoredElement := ControlledElement (same for this
-                // controller). 0.14.5 additionally sets `PrpSequence[Idx] :=
-                // -10` ("make sure Transformer prop is first",
-                // `CAPI:Controls/RegControl.pas:412`); the mark stays omitted
-                // here — r4133 has no such stamp and gets the same ordering from
-                // `TRegcontrolObj.SaveWrite` (`R4133:Controls/RegControl.pas:
-                // 1399-1421`), which RP3.11 ported instead (see
-                // `reg_control/save.rs`, pinned by
-                // `regcontrol_save_write_puts_the_transformer_first`). Sequence
-                // marks are not Save-local: the same bitmap feeds the AltDSS
-                // JSON export and `prp_specified`.
+                // controller). No sequence mark puts `Transformer` first: the
+                // `Save` override (`reg_control/save.rs`, pinned by
+                // `regcontrol_save_write_puts_the_transformer_first`) writes it
+                // first instead. Sequence marks are not Save-local: the same
+                // bitmap feeds the AltDSS JSON export and `prp_specified`.
                 self.ccd.monitored_element = self.ccd.controlled_element;
             }
             WINDING => {
@@ -362,8 +357,7 @@ impl DssObject for RegControl {
                 self.remote_pt_ratio = self.pt_ratio;
             }
             DEBUGTRACE => {
-                // Pascal opens/closes the REG_<name>.csv trace file here; the
-                // tap-changing machinery that writes it is Phase 5, so the
+                // This engine writes no REG_<name>.csv trace file, so the
                 // flag is stored without the file.
             }
             MAXTAPCHANGE => {
@@ -382,14 +376,9 @@ impl DssObject for RegControl {
     /// band around 0 kW — `Fwd := Rev; Rev := -Rev` (**sign-preserving, NO abs**).
     /// Then the base `RecalcElementData`.
     ///
-    /// dss_capi 0.15.x `8a898cba` added an `abs` here (`Fwd := abs(Rev)`) — a
-    /// self-declared "fix" absent from EPRI. For a positive `Rev` it is a no-op,
-    /// but for a **negative** rev-only edit it inverts the band relative to BOTH
-    /// gating oracles (r4133 AND 0.14.5-legacy both abort `#485` on a reverse
-    /// ping-pong; capi015/port-with-abs converged) — the D14 signature. The port
-    /// follows r4133 (dropping the abs also restores 0.14.5-legacy equivalence);
-    /// the resulting negative-rev behavior is deterministic and reproduced 1:1
-    /// (0.15.x-adoption sweep, DIVERGENCES C5).
+    /// dss_capi 0.15.x adds an `abs` here (`Fwd := abs(Rev)`). For a positive
+    /// `Rev` it is a no-op, but for a **negative** rev-only edit it inverts the
+    /// band relative to r4133. This engine follows r4133, without the `abs`.
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         let obj = &self.ccd.cd.obj;
         if obj.prop_edited_since_boundary(prop::REVTHRESHOLD)

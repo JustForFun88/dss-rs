@@ -16,8 +16,8 @@ use dss_parser::{Parser, ParserVars};
 /// golden for the scalar `wire`/`cncable`/`tscable`, the `wires` array, and
 /// `spacing`; the array-resolution abort is covered by the exec test
 /// `line_geometry_undefined_wire_in_array_aborts`. (The plural `cncables=`/
-/// `tscables=` forms are not yet golden-pinned — see STATUS: the oracle's
-/// post-plural active-conductor value diverges and is under investigation.)
+/// `tscables=` forms are not golden-pinned: the OpenDSS post-plural
+/// active-conductor value diverges, an open item.)
 /// The edit must be accepted: any message it logs fails the test.
 fn scalar(cls: &ClassProps, obj: &mut dyn DssObject, name: &str, value: &str) {
     let errors = try_scalar(cls, obj, name, value);
@@ -252,7 +252,7 @@ fn spacing_copies_coordinates() {
 
 #[test]
 fn spacing_ratings_min_over_phase_conductors() {
-    // WP-U1.2 row D3 (LineGeometry.pas:1060-1064): the Line's `makeZFromSpacing`
+    // The Line's `makeZFromSpacing`
     // throwaway geometry derives NormAmps/EmergAmps as the MINIMUM over the PHASE
     // conductors (`j <= FNphases`), not conductor 1. Phase wires big/small/big +
     // a high-rated neutral: min over phases = small's 400/500; the neutral's 999
@@ -544,7 +544,7 @@ fn build_si_ts() -> TsDataObj {
     obj
 }
 
-/// The canonical WP7.1 3-phase overhead geometry: `build_si_wire` at
+/// The canonical 3-phase overhead geometry: `build_si_wire` at
 /// x = 0/1/2 m, h = 10 m — the `deri_full_3cond` / `C3_NF` reference geometry,
 /// driven entirely through the object editing path (nconds/cond/wire/x/h/units).
 fn build_overhead_3() -> LineGeometryObj {
@@ -609,8 +609,8 @@ fn matrices_overhead_match_oracle() {
 
 #[test]
 fn matrices_equivalent_spacing_match_capi015() {
-    // dss_capi 0.15.x equivalent-spacing model (WP-U1.4, LineSpacing.pas /
-    // LineConstants.pas). A LineSpacing with `detailed=no` supplies the four
+    // dss_capi 0.15.x equivalent-spacing model. A LineSpacing with
+    // `detailed=no` supplies the four
     // equivalent distances instead of per-conductor coordinates; the geometry
     // (nconds=4, nphases=3, reduce=y) Kron-reduces to a 3x3 phase matrix. The
     // reference is capi015 (0.15.0b4) reading `? line.l1.rmatrix/xmatrix` on the
@@ -730,7 +730,7 @@ fn matrices_overhead_simple_carson() {
     // distinct from the DERI matrix (a hardcoded earth model would fail this).
     let mut g = build_overhead_3();
     let z = g.z_matrix(60.0, 1.0, M_UNIT, SIMPLE_CARSON).expect("z");
-    // capi015 reference (De 658.5 → 658.8530451057239, WP-U1.2 B2/D1); matches
+    // capi015 reference (De 658.5 → 658.8530451057239); matches
     // the engine `simple_carson_full_3cond` capi015 reference.
     let z_ref = [
         (3.592176235097e-04, 9.081135553905e-04),
@@ -963,7 +963,7 @@ fn matrices_mixed_cn_ts_wire_match_capi015() {
 
 #[test]
 fn conductors_array_matches_mixed_capi015() {
-    // WP-U1.4 (wt-u14cond): the `Conductors=` array (prop 20). A real mixed list
+    // The `Conductors=` array (prop 20). A real mixed list
     // reaches the object via the resolved-ref entry point
     // `set_object_ref_array(CONDUCTORS)` + the `CONDUCTORS` side effect — the path
     // the (now r4133-parity, case-insensitive) text parser AND JSON import call.

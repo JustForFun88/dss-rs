@@ -40,7 +40,7 @@ struct Scenario {
     /// Every element's terminal currents/powers, in the oracle's element order.
     elements: Vec<ElementCap>,
     /// Each Storage element's integrated state of charge after the solve
-    /// (`kWhStored`/`%Stored`/`State`) — the WP7.4 SOC-trajectory pin.
+    /// (`kWhStored`/`%Stored`/`State`), which pins the state-of-charge trajectory.
     #[serde(default)]
     storage: Vec<StorageCap>,
     /// Per-step monitor channels (a `mode=1` power monitor on each controlled DER in
@@ -154,7 +154,7 @@ pub fn check_family(dir_name: &str, required: &[&str]) {
         }
 
         // The integrated state of charge of every Storage element after the
-        // solve (the WP7.4 SOC-trajectory pin): read each property back through
+        // solve (the state-of-charge trajectory pin): read each property back through
         // the `? ...` query, exactly like the oracle captured it.
         for sct in &sc.storage {
             for (prop, expected) in &sct.properties {

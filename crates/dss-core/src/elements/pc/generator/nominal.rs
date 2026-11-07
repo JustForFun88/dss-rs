@@ -215,7 +215,7 @@ impl Generator {
             // `Factor:=1` with no shape call. In dynamics the GENERALTIME/DYNAMICMODE
             // arm *can* call a shape mult, but its only result is `ShapeFactor`, which
             // is unread in those modes here (Pnom/Yeq below are not recomputed), so
-            // skipping is behaviorally identical until the WP7.7 dynamics solve lands.)
+            // skipping is behaviorally identical.)
             let factor = if self.is_fixed {
                 1.0
             } else {

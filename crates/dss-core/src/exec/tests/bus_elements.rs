@@ -1,5 +1,5 @@
 //! `Bus.AllPCEatBus` / `Bus.AllPDEatBus` — the port's own at-bus lists
-//! ([`Dss::all_bus_elements`], GOLDEN_REBASE G1.4d) and the two class
+//! ([`Dss::all_bus_elements`]) and the two class
 //! predicates they rest on ([`ElemKind::is_power_delivery`] /
 //! [`ElemKind::is_power_conversion`]).
 //!
@@ -7,8 +7,8 @@
 //! each element (r4133 `Version8/Source/Common/Circuit.pas:1493-1535`
 //! `getPDEatBus` / `:1540-1581` `getPCEatBus`, reached from
 //! `DDLL/DBus.pas:840-865` / `:867-897`; capi `Common/Circuit.pas:1712-1794` /
-//! `:1797-1870` from `CAPI/CAPI_Bus.pas:773-805`). The port answers **S4**
-//! (coordinator decision D26): any terminal for a PD-class element under
+//! `:1797-1870` from `CAPI/CAPI_Bus.pas:773-805`). This engine answers **S4**:
+//! any terminal for a PD-class element under
 //! r4133's own `bus1 <> bus2` shunt filter, terminal 1 for a PC-class element,
 //! disabled elements included. The live corpus gate compares that answer
 //! against both oracle channels case by case; what a live comparison cannot

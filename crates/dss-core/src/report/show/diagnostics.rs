@@ -377,7 +377,7 @@ pub(crate) fn show_kvbase_mismatch(classes: &[DssClass], ckt: &Circuit) -> Strin
 /// snapshot the queue is drained (`show controlqueue` after `solve` — the only
 /// text-interface path — always yields the header alone; the row body cannot be
 /// reached via the executive, oracle-probed), so this row path is exercised only
-/// by the [`tests`] unit test, against the Pascal `WriteQueue` format.
+/// by the `tests` unit test, against the Pascal `WriteQueue` format.
 pub(crate) fn show_control_queue(classes: &[DssClass], ckt: &Circuit) -> String {
     let mut s = String::from("Handle, Hour, Sec, ActionCode, ProxyDevRef, Device\n");
     for (handle, hour, sec, code, proxy, ctrl) in ckt.solution.control_queue.queue_rows() {
@@ -438,7 +438,7 @@ mod tests {
         );
     }
 
-    /// The F-FMT row `compat::CONTROL_QUEUE_SEC_DIGITS` at its observable: a
+    /// Pins `compat::CONTROL_QUEUE_SEC_DIGITS` at its observable: a
     /// `Sec` needing more than the parity stand-in's six significant digits is
     /// truncated there and printed in full in the default lane. Asserted as an
     /// equality against the lane, so both arms are checked in either build.

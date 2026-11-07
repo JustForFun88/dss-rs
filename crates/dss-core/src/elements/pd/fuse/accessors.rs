@@ -72,7 +72,7 @@ impl Fuse {
         self.fuse_curve_name = other.fuse_curve_name.clone();
         self.fuse_curve_obj = other.fuse_curve_obj.clone();
         self.rated_current = other.rated_current;
-        // r4133 (WP-U2.1): MakeLike copies the new divisor + interrupting rating.
+        // r4133: MakeLike copies the divisor + interrupting rating.
         self.curve_multiplier = other.curve_multiplier;
         self.interrupting_rating = other.interrupting_rating;
 

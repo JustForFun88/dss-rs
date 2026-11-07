@@ -1,4 +1,4 @@
-//! Exec-layer integration tests for the Storage element (WP7.4 step 1):
+//! Exec-layer integration tests for the Storage element:
 //! the power-flow solve path, the SOC integration over a daily run, and the
 //! deferred-behavior guards.
 
@@ -170,9 +170,8 @@ fn storage_gfm_faultstudy_converges() {
         dss.errors()
     );
     assert!(dss.circuit().expect("circuit").is_solved);
-    // Audit settlement: pin the oracle observable, not just convergence — the
-    // `it[0]=0` GFM seed makes `BaseV=0`, so the Storage injects ~0 kW
-    // (oracle-probed 1.2e-5 kW).
+    // Pin the observable, not just convergence — the `it[0]=0` GFM seed makes
+    // `BaseV=0`, so the Storage injects ~0 kW (probed on dss_capi: 1.2e-5 kW).
     let p_kw = storage_term1_kw(&mut dss);
     assert!(
         p_kw.abs() < 0.01,
@@ -213,8 +212,8 @@ fn storage_gfm_montefault_with_fault_converges() {
         dss.errors()
     );
     assert!(dss.circuit().expect("circuit").is_solved);
-    // Audit settlement: MonteFault auto-enables the fault and the GFM Storage
-    // delivers a specific, deterministic power — oracle-probed 748.7156 kW
+    // MonteFault auto-enables the fault and the GFM Storage delivers a
+    // specific, deterministic power — probed on dss_capi: 748.7156 kW
     // (terminal-1 P, `random=none`). A wrong-but-convergent injection fails.
     let p_kw = storage_term1_kw(&mut dss);
     assert!(
@@ -314,10 +313,9 @@ fn mode7_monitor_rejects_non_storage() {
     );
 }
 
-/// GFM op-point Isc1-invariance + injection-vs-YPrim consistency (DIVERGENCES.md
-/// §B5). The islanded `gfm_micro` deck (delta GFM storage → delta/wye step-up →
+/// GFM op-point Isc1-invariance + injection-vs-YPrim consistency. The islanded `gfm_micro` deck (delta GFM storage → delta/wye step-up →
 /// balanced load) after the r3865 `Isc1` change: the Storage's GFM Norton YPrim
-/// moves to the **capi015** value (`Y[0,0]≈561.47−2245.82j`, NOT the pre-B5
+/// moves to the **capi015** value (`Y[0,0]≈561.47−2245.82j`, NOT the
 /// 0.14.5 `613.68−2402.46j`), yet the delivered load power is unchanged —
 /// `Load.isl = 400 kW`, the value 0.14.5 AND capi015 both report (probed
 /// bit-identical 2026-07-12). A balanced/delta load excites only the
@@ -403,7 +401,7 @@ pub(super) fn trace_scratch(tag: &str) -> std::path::PathBuf {
     dir
 }
 
-/// GOLDEN_REBASE G1.10a F4a — Storage `DebugTrace`, the **edit-time** half
+/// Storage `DebugTrace`, the **edit-time** half
 /// (`elements/pc/storage/trace.rs`; r4133 `PCElements/Storage.pas:1073-1085`).
 ///
 /// The file is created by the `New`/`Edit` itself, before any solve, under the
@@ -412,7 +410,7 @@ pub(super) fn trace_scratch(tag: &str) -> std::path::PathBuf {
 /// member after the corpus run-file comparator's ASCII fold), and carries the
 /// Pascal header. Nothing holds it open: r4133 closes after every write
 /// (`:1085`, `:2429`) where capi keeps its `TBufferedFileStream` for the life of
-/// the object, which is what defeated the corpus guards' `os.remove` (G1.10a F4).
+/// the object, which is what defeated the corpus guards' `os.remove`.
 #[test]
 fn storage_debugtrace_opens_the_trace_file_at_edit_time() {
     let scratch = trace_scratch("edit");
@@ -442,7 +440,7 @@ fn storage_debugtrace_opens_the_trace_file_at_edit_time() {
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
-/// GOLDEN_REBASE G1.10a F4a — Storage `DebugTrace`, the **record** half
+/// Storage `DebugTrace`, the **record** half
 /// (r4133 `Storage.pas:2401-2429` `WriteTraceRecord`, written from `InjCurrents`
 /// `:2888` with the tag `Injection`), on the one corpus deck that enables it
 /// (`Version8/Distrib/Examples/StorageTechNote/Example_9_3_Price/Storage_price.dss`,
@@ -451,7 +449,7 @@ fn storage_debugtrace_opens_the_trace_file_at_edit_time() {
 /// **Both numbers.** The pinned oracle (dss-python 0.15.7 / dss_capi 0.14.5) writes
 /// 48 records for this deck's daily solve — 24 steps x 2 injection passes — and its
 /// first one is the literal asserted below; the port writes the same 48 records into
-/// `STOR_storage1.CSV`. Measured over the whole file (`tmp/g110a/f_F4a.md`): in the
+/// `STOR_storage1.CSV`. Measured over the whole file: in the
 /// **parity** lane the two files are byte-identical except the `kvarOut` column, a
 /// numerical zero (oracle `-2.8E-17`, port `6.6E-27` — 1e-17 of a 50 kW rating), which
 /// is why that one field is compared as a magnitude here; in the **default** lane two
@@ -480,7 +478,7 @@ fn storage_debugtrace_record_matches_the_oracle_line() {
     let mut dss = Dss::new();
     dss.command(&format!("compile \"{}\"", deck.display()));
 
-    // The whole created-file set of the run — the G1.10a run-file surface. capi
+    // The whole created-file set of the run — the run-file surface. capi
     // creates `STOR_storage1.csv`, r4133 `STOR_storage1.CSV` (both measured on a
     // clean scratch copy); the three sets are one member after the comparator's
     // ASCII fold.
@@ -683,7 +681,7 @@ fn the_total_current_record_skips_the_direct_shortcut_and_the_gfm_branch() {
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
-/// GOLDEN_REBASE G1.10a F4a — the third trace site: the dynamics record at the
+/// The third trace site: the dynamics record at the
 /// tail of `IntegrateStates` (r4133 `Storage.pas:3676-3683`,
 /// `Format('t=%-.5g ')` + `Format(' Flag=%d ')`), written once per integration
 /// call on the built-in (non-`DynaModel`) path.
@@ -741,8 +739,7 @@ fn storage_debugtrace_writes_the_dynamics_record() {
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
-/// GOLDEN_REBASE G1.10a audit settlement (finding AC-4) — the JSON model reader
-/// creates the trace file too.
+/// The JSON model reader creates the trace file too.
 ///
 /// Pascal opens it inside the property side effect itself (dss_capi
 /// `src/PCElements/Storage.pas:765` `TStorageObj.PropertySideEffects` → the

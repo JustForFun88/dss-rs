@@ -63,11 +63,11 @@ Val("") -> ERROR at code=1
 #   panic/trap vs EParserProblem crash class).
 # - Disposition: deliberately NOT changed — fixing an unreachable cosmetic
 #   delta would force a fixture re-pin with zero behavioral coverage
-#   (plan §2.9-4: fixtures never regenerate to make a step pass).
+#   (fixtures never regenerate to make a step pass).
 # - The fixture SOURCE is untouched too, and is effectively hash-frozen with
 #   the artifact: even a comment-only edit to parser.rs shifts the panic
 #   `core::panic::Location` line numbers embedded in the .wasm and changes
 #   the built hash (verified empirically during settlement: pristine source
 #   rebuild = the pinned 1849db0c...9b0ebd; a +10-line doc-comment edit =
 #   7da8ee46...8ade4). Source-level notes about the fixture therefore live
-#   here and in STATUS.md, not in the crate source.
+#   here, not in the crate source.

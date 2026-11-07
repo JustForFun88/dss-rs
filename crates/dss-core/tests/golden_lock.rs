@@ -1,19 +1,13 @@
 //! Provenance lock over the committed golden corpus — `tests/golden/**` plus the
-//! one registered out-of-tree witness ([`ROOTS`]), the scope
-//! `GOLDEN_REBASE_PLAN.md` §1.2 enumerates; golden-shaped trees deliberately
-//! left outside it are named, with their reason, in [`EXCLUDED_TREES`]. The
-//! golden-side twin of [`population_lock`](../population_lock.rs)
-//! (sub-step G0.1).
+//! one registered out-of-tree witness ([`ROOTS`]). Golden-shaped trees
+//! deliberately left outside it are named, with their reason, in [`EXCLUDED_TREES`]. The
+//! golden-side twin of [`population_lock`](../population_lock.rs).
 //!
 //! # Why
 //!
-//! The golden corpus is about to stop being a third-party artifact. WP-G3
-//! migrates most families to **self-snapshots** of our own engine and WP-G4
-//! regenerates them again when the FPC print-emulation kernels die. That means
-//! the project acquires, for the first time, the ability to *rewrite* a golden —
-//! and with it the failure mode the old "never regenerate" rule made impossible:
-//! a red gate quietly silenced by re-baselining the very bytes that were
-//! supposed to catch it.
+//! A self-snapshot of this engine can be rewritten by a regen, and with that
+//! comes a failure mode: a red gate quietly silenced by re-baselining the very
+//! bytes that were supposed to catch it.
 //!
 //! This lock makes every byte movement a loud, reviewed event. Each artifact
 //! carries a row recording:
@@ -21,21 +15,19 @@
 //! - `path` — repo-root-relative, forward slashes;
 //! - `sha256` — content digest (see [`digest_of`] for the EOL rule);
 //! - `anchor` — **where the truth in those bytes comes from**: `capi_v0145`
-//!   (the pinned dss-python oracle, `tools/golden/PIN.txt`), `r4133` (the
+//!   (the pinned dss-python, `tools/golden/PIN.txt`), `r4133` (the
 //!   official EPRI engine), `r3723` (the retired EPRI revision that produced
 //!   the A-Diakoptics witness), `capi015` (a dead 0.15.x probe environment that
 //!   no longer exists), `fpc_3.2.2` (an FPC RTL print capture), or `self` (our
 //!   own engine — a pure anti-regression snapshot);
-//! - `reason` — mandatory for every `anchor: "self"` row (G3.6 extends the
-//!   requirement to the rest);
+//! - `reason` — mandatory for every `anchor: "self"` row;
 //! - `produced_by` — which lane is allowed to *write* the artifact. `null` for
-//!   every oracle-anchored row (nothing in this repo produces those bytes). For
-//!   a `self` row the [`LANE_INVARIANT`] register decides it: `lane-invariant`
-//!   for a listed family, `parity` for every other one. Until WP-G4 the two
-//!   lanes render different report/JSON bytes, so §1.2 makes the **parity**
-//!   lane the producer of any family with a parity-only byte arm; a family joins
-//!   `LANE_INVARIANT` only after a cross-lane regen has *measured* it (never
-//!   assumed), which is WP-G4's closing job (G4.6). `harness::snapshot_*`
+//!   every externally anchored row (nothing in this repo produces those bytes).
+//!   For a `self` row the [`LANE_INVARIANT`] register decides it:
+//!   `lane-invariant` for a listed family, `parity` for every other one. The two
+//!   lanes render different report/JSON bytes, so the **parity** lane produces
+//!   any family with a parity-only byte arm. A family joins `LANE_INVARIANT`
+//!   only after a cross-lane regen has *measured* it (never assumed). `harness::snapshot_*`
 //!   refuses to write from the non-producing lane, so this field is what keeps
 //!   a parity-produced golden out of the default lane's reach.
 //!
@@ -54,10 +46,9 @@
 //!    in the working tree moves no digest — and moves no committed byte either,
 //!    because git's check-in filter normalizes it away. Recording the working
 //!    tree's EOL shape instead would make the lock fail on an LF checkout, which
-//!    is the exact failure the normalization exists to prevent. Consequence for
-//!    WP-G4: the `JSON_LINE_BREAK` teardown (G4.3) cannot use the lock diff as
-//!    its only review artifact — an EOL-only rendering change is invisible here
-//!    and must be reviewed against the renderer and its unit pins.
+//!    is the exact failure the normalization exists to prevent. Consequence: an
+//!    EOL-only rendering change (such as a change of `JSON_LINE_BREAK`) is
+//!    invisible here and must be reviewed against the renderer and its unit pins.
 //! 4. **Every anchor is a registered decision, both directions.** The provenance
 //!    registers below — [`DEANCHORED`], [`CAPI015_ARTIFACTS`], [`R4133_FAMILIES`],
 //!    [`FPC_ARTIFACT`], [`R3723_TREE`], with `capi_v0145` as the residue — are
@@ -87,6 +78,11 @@
 //!    picks one of them, an `oracle` block without an engine name reds, and
 //!    [`DECLARED_PROVENANCE_CENSUS`] pins the declaring population, so a reader
 //!    that stops seeing a declaration reds as well.
+//!
+//! # Knobs
+//!
+//! - `DSS_UPDATE_GOLDEN_LOCK`: set to any value, rewrites the lock from the
+//!   artifacts on disk instead of checking it. Unset by default.
 //!
 //! # Regenerate deliberately
 //!
@@ -126,7 +122,7 @@ const LOCK_PATH: &str = "tests/golden/golden.lock.json";
 const LOCK_REGEN_CMD: &str =
     "DSS_UPDATE_GOLDEN_LOCK=1 cargo test -p dss-core --test golden_lock -- --nocapture";
 
-/// Every tree the lock covers (§1.2 "Lock scope"): the golden corpus plus the
+/// Every tree the lock covers: the golden corpus plus the
 /// registered out-of-tree witness — the r3723 A-Diakoptics reference fixtures,
 /// which are golden artifacts in everything but their location.
 const ROOTS: &[&str] = &[
@@ -134,30 +130,28 @@ const ROOTS: &[&str] = &[
     "crates/dss-core/tests/data/adiakoptics/r3723_ref",
 ];
 
-/// Committed golden-shaped trees deliberately **outside** [`ROOTS`]. §1.2 fixes
-/// the lock's scope by enumeration, so anything golden-shaped that the
-/// enumeration leaves out is recorded here with its reason — a reviewed
-/// exclusion rather than an oversight, which G3.6 re-confirms when it extends
-/// the reason requirement to every row. Fail-on-stale: the path must still
+/// Committed golden-shaped trees deliberately **outside** [`ROOTS`]. The lock's
+/// scope is an enumeration, so anything golden-shaped that it leaves out is
+/// recorded here with its reason — a reviewed exclusion rather than an
+/// oversight. Fail-on-stale: the path must still
 /// exist and must still be outside [`ROOTS`].
 const EXCLUDED_TREES: &[(&str, &str)] = &[
     (
         "crates/dss-metis/tests/golden",
-        "the METIS partitioner fixtures (.graph inputs + .part.N outputs, regenerated manually per \
-         tools/golden/gen_metis_reference.md) are captured from the METIS 5.2.1 C original, not \
-         from any DSS oracle: they witness a vendored third-party algorithm, no WP of this plan \
-         regenerates them, and anchoring them would need a seventh anchor value \
-         GOLDEN_REBASE_PLAN.md \u{a7}1.2 does not define. Revisit in G3.6.",
+        "the METIS partitioner fixtures (.graph inputs + .part.N outputs, regenerated by hand) \
+         are captured from the METIS 5.2.1 C original, not from an OpenDSS engine: they witness \
+         a vendored third-party algorithm, no golden generator regenerates them, and anchoring \
+         them would need a seventh anchor value the lock does not define.",
     ),
     (
         "tests/corpus/props_r4133",
-        "the vendored G1.1 r4133 property census (docs/plans-archive/R4133_PROPS_PLAN.md RP0.1): \
+        "the vendored r4133 property census: \
          frozen *evidence*, not goldens — nothing in tools/golden regenerates them (their only \
-         re-measurement path is the RP0.2 DSS_PROPS_CENSUS knob), and none of this lock's anchors \
+         re-measurement path is the DSS_PROPS_CENSUS knob), and none of this lock's anchors \
          describes \"extract of a local-only census\". Their bytes are locked instead by \
-         crates/dss-core/tests/props_r4133_evidence_lock.rs (SHA-256 over the five verbatim \
-         copies, row counts and cross-file equalities for the derived files), so the tree is \
-         guarded without minting an anchor \u{a7}1.2 does not define.",
+         crates/dss-core/tests/props_r4133_evidence_lock.rs (SHA-256 over the verbatim copies, \
+         row counts and cross-file equalities for the derived files), so the tree is guarded \
+         without minting an anchor the lock does not define.",
     ),
 ];
 
@@ -167,11 +161,10 @@ enum Anchor {
     /// Our own engine: a pure anti-regression snapshot of report *form*.
     #[serde(rename = "self")]
     SelfSnapshot,
-    /// The pinned dss-python numeric oracle (`tools/golden/PIN.txt`, backend
-    /// dss_capi 0.14.5 = the vendored Pascal spec).
+    /// The pinned dss-python (`tools/golden/PIN.txt`, backend dss_capi 0.14.5).
     #[serde(rename = "capi_v0145")]
     CapiV0145,
-    /// The official EPRI OpenDSS r4133 engine (the behavioral authority).
+    /// The official EPRI OpenDSS r4133 engine.
     #[serde(rename = "r4133")]
     R4133,
     /// The retired EPRI r3723 revision (the A-Diakoptics witness harvest).
@@ -185,17 +178,16 @@ enum Anchor {
     Fpc322,
 }
 
-/// Which lane may *write* a `self` artifact (§1.2 "Which lane writes a
-/// self-golden"). `None` on every oracle-anchored row: nothing in this repo
-/// produces those bytes at all.
+/// Which lane may *write* a `self` artifact. `None` on every externally
+/// anchored row: nothing in this repo produces those bytes at all.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 enum ProducedBy {
     /// Rendered by the parity lane (the strictest byte contract while
     /// the print-emulation kernels live).
     #[serde(rename = "parity")]
     Parity,
-    /// Measured identical in both lanes by a cross-lane regen (WP-G4 outcome)
-    /// and listed in [`LANE_INVARIANT`].
+    /// Measured identical in both lanes by a cross-lane regen and listed in
+    /// [`LANE_INVARIANT`].
     #[serde(rename = "lane-invariant")]
     LaneInvariant,
 }
@@ -204,36 +196,35 @@ enum ProducedBy {
 /// family — a per-file list would just be a second copy of the lock. A pattern
 /// ending in `/` is a directory prefix; anything else is an exact path.
 ///
-/// The first two entries are **born-`self`**: they were never oracle-anchored,
-/// so nothing was de-anchored to create them. The two `props/` entries were
-/// de-anchored by the WP-U2 r4133 control rewrites, years before this lock
-/// existed — they are recorded here because their own provenance blocks say the
-/// committed values are the port's renders, and an anchor that contradicts the
-/// artifact is the one failure this lock exists to prevent. WP-G3 adds the
-/// migrated families here, one reviewed row at a time.
+/// The first two entries are **born-`self`**: they were never externally
+/// anchored, so nothing was de-anchored to create them. The two `props/`
+/// entries were de-anchored by the r4133 control rewrites, before this lock
+/// existed. They are recorded here because their own provenance blocks say the
+/// committed values are this engine's renders, and an anchor that contradicts
+/// the artifact is the one failure this lock exists to prevent. A family
+/// migrated to a self-snapshot gets its reviewed row here.
 const DEANCHORED: &[(&str, &str)] = &[
     (
         "tests/golden/adiakoptics/",
-        "born-self: the emitted Torn_Circuit tree is our own D2 partitioner + Format_SubCircuits \
-         output; no oracle emits a comparable tree (the external A-Diakoptics witness is the \
-         separate r3723 numeric fixture set). Regen today bypasses the rails via \
-         DSS_REGEN_AD_GOLDEN (adiakoptics.rs::torn_tree_matches_golden); G3.6 routes it through \
-         harness::snapshot_*.",
+        "born-self: the emitted Torn_Circuit tree is this engine's own partitioner and \
+         sub-circuit writer output; no OpenDSS engine emits a comparable tree (the external \
+         A-Diakoptics witness is the separate r3723 numeric fixture set). Its regen bypasses \
+         the harness::snapshot_* rails via DSS_REGEN_AD_GOLDEN \
+         (adiakoptics.rs::torn_tree_matches_golden).",
     ),
     (
         "tests/golden/json/schema_full_port.json",
-        "born-self: the port's own DSS_ExtractSchema document, spelled in the fpjson/CRLF \
+        "born-self: this engine's own DSS_ExtractSchema document, spelled in the fpjson/CRLF \
          rendering the parity lane produces. Its external half is json/schema_full_oracle.json \
-         (capi_v0145, written by tools/golden/gen_schema.py on the pinned oracle); the \
+         (capi_v0145, written by tools/golden/gen_schema.py on the pinned dss-python); the \
          divergence inventory json/schema_divergences.json between the two is hand-authored and \
-         engine-less (NON_ENGINE_RESIDUE). Regen today bypasses the rails via REGEN_SCHEMA_PORT \
-         (golden_schema.rs::full_document_matches_port_golden); G3.6 routes it through \
-         harness::snapshot_*.",
+         engine-less (NON_ENGINE_RESIDUE). Its regen bypasses the harness::snapshot_* rails via \
+         REGEN_SCHEMA_PORT (golden_schema.rs::full_document_matches_port_golden).",
     ),
     (
         "tests/golden/props/recloser.json",
-        "de-anchored by the WP-U2.2 r4133 Recloser rewrite (24 -> 46 props), long before this \
-         lock: no capi-line engine renders that surface, so the committed values are the PORT's \
+        "de-anchored by the r4133 Recloser rewrite (24 -> 46 props), before this \
+         lock: no capi-line engine renders that surface, so the committed values are THIS ENGINE's \
          own renders and props_roundtrip compares Rust output back to them (the file's own note \
          says so) — a self-consistency regression pin. SwitchedObj/RecloseIntervals/Enabled/\
          EventLog were cross-validated MANUALLY (non-CI) against oddie:r4133; a regen must repeat \
@@ -242,10 +233,10 @@ const DEANCHORED: &[(&str, &str)] = &[
     ),
     (
         "tests/golden/props/relay.json",
-        "de-anchored by the WP-U2.3 r4133 Relay per-phase rewrite (50 -> 71 props), long before \
-         this lock: no capi-line engine renders that surface, so the committed values are the \
-         PORT's own renders — the file's own note calls it a REGRESSION PIN (self-consistency), \
-         explicitly NOT an independent oracle gate. The load-bearing discrete state \
+        "de-anchored by the r4133 Relay per-phase rewrite (50 -> 71 props), before \
+         this lock: no capi-line engine renders that surface, so the committed values are \
+         THIS ENGINE's own renders — the file's own note calls it a REGRESSION PIN (self-consistency), \
+         explicitly NOT an independent OpenDSS gate. The load-bearing discrete state \
          (Normal/State) plus SwitchedObj/RecloseIntervals/Enabled were cross-validated MANUALLY \
          (non-CI) against oddie:r4133; a regen must repeat that cross-validation. Independent \
          r4133 coverage lives in the live controls-family relay decks.",
@@ -255,8 +246,8 @@ const DEANCHORED: &[(&str, &str)] = &[
 /// The `self` artifacts a cross-lane regen has *measured* identical in both
 /// lanes, as `(pattern, the measurement)`: their `produced_by` is
 /// `lane-invariant`, which `harness::snapshot_*` lets either lane write. Every
-/// other `self` row is produced by the parity lane. Empty until WP-G4 (G4.6)
-/// measures a family. Same pattern convention as [`DEANCHORED`]; an entry must
+/// other `self` row is produced by the parity lane. Empty while no family is
+/// measured. Same pattern convention as [`DEANCHORED`]; an entry must
 /// lie inside a `DEANCHORED` entry (only a `self` row names a lane) and cover a
 /// locked row, so `lane-invariant` is a reviewed register edit, never a lock
 /// hand-edit a regen would carry over.
@@ -265,23 +256,20 @@ const LANE_INVARIANT: &[(&str, &str)] = &[];
 /// The seventeen artifacts captured on the retired `capi015` stack. Eleven
 /// declare it in their own provenance block — spelled
 /// `"engine_spec": "capi015"` in the seven `props/` + `line_constants/` dumps
-/// and `"oracle": "capi015"` in the four `.meta.json` sidecars (measured; a
-/// derivation from `engine_spec` alone would drop those four); plan G0.1
-/// enumerated those eleven. The other six carry no provenance block at all:
-/// they are the payloads the SAME generator call writes next to a capi015
-/// sidecar — `ncim/{pq,pv_qlimit}_{Jacobian.csv,PV2PQ.txt}`
-/// (`tools/golden/gen_ncim_reports.py:90-124`, behind the `0.15.0b4` backend
-/// guard at `:86-87`; the pinned 0.14.5 engine has no NCIM) and
+/// and `"oracle": "capi015"` in the four `.meta.json` sidecars (a derivation
+/// from `engine_spec` alone would drop those four). The other six carry no
+/// provenance block at all: they are the payloads the SAME generator call
+/// writes next to a capi015 sidecar — `ncim/{pq,pv_qlimit}_{Jacobian.csv,PV2PQ.txt}`
+/// (`tools/golden/gen_ncim_reports.py`, behind its `0.15.0b4` backend guard;
+/// the pinned 0.14.5 engine has no NCIM) and
 /// `reports/export_{capacity,overloads}_seasonal.txt`
 /// (`tools/golden/gen_reports.py::gen_seasonal_overloads`, reachable only under
-/// `DSS_ORACLE_ENGINE=capi015`; 0.14.5 reports base, not seasonal, ratings). The
-/// G0.1 sweep read declared engine strings and so missed them; RF-D08-06
-/// registered them and added the sidecar↔payload rail
-/// ([`capi015_sidecar_violations`]) that keeps a payload from falling back to
-/// the `capi_v0145` residue again, and its settlement added the stamp rail
-/// ([`capi015_stamp_violations`]), which reads both spellings from disk so a
-/// stamped capture dropped from this list reds too — the count below is a
-/// cross-check, not the only guard. Their generator environment — a dss_capi
+/// `DSS_ORACLE_ENGINE=capi015`; 0.14.5 reports base, not seasonal, ratings). An
+/// engine-string sweep cannot see them. The sidecar↔payload rail
+/// ([`capi015_sidecar_violations`]) keeps a payload from falling back to the
+/// `capi_v0145` residue, and the stamp rail ([`capi015_stamp_violations`])
+/// reads both spellings from disk so a stamped capture dropped from this list
+/// fails too — the count below is a cross-check, not the only guard. Their generator environment — a dss_capi
 /// 0.15.0b4 / DSS-Python 0.16.0b2 beta stack — no longer exists, so they can
 /// never be regenerated and `snapshot_*` hard-refuses them.
 const CAPI015_ARTIFACTS: &[&str] = &[
@@ -305,11 +293,11 @@ const CAPI015_ARTIFACTS: &[&str] = &[
 ];
 
 const CAPI015_REASON: &str = "captured on the retired dss_capi 0.15.0b4 / DSS-Python 0.16.0b2 beta stack (the pinned \
-     0.14.5 oracle cannot render these 0.15.x-only surfaces); that environment no longer \
+     0.14.5 engine cannot render these 0.15.x-only surfaces); that environment no longer \
      exists, so the bytes are unreproducible and snapshot_* hard-refuses them.";
 
 /// A capi015 artifact whose committed bytes are no longer purely that capture:
-/// a later WP measured some cells on another engine and overlaid them. The
+/// some cells were measured on another engine and overlaid. The
 /// overlay does **not** move the anchor — the value authority for every unmoved
 /// cell is still the 0.15.0b4 capture, and the overlaying engine is explicitly
 /// *not* the authority for the rest — but it has to be stated HERE, because the
@@ -317,13 +305,12 @@ const CAPI015_REASON: &str = "captured on the retired dss_capi 0.15.0b4 / DSS-Py
 /// only "captured on … 0.15.0b4" tells them every byte is that capture's.
 /// [`R4133_FAMILIES`] states `props/fuse.json`'s derivation in exactly this way;
 /// this register does the same for an artifact that stays `capi015`. The text is
-/// appended to [`CAPI015_REASON`]. Added by the RP3.7 audit settlement
-/// (2026-09-02).
+/// appended to [`CAPI015_REASON`].
 const CAPI015_OVERLAYS: &[(&str, &str)] = &[(
     "tests/golden/props/swtcontrol.json",
-    "Since R4133_PROPS RP3.7 (2026-09-02) the bytes are PARTLY DERIVED: the ten Normal/State \
+    "The bytes are PARTLY DERIVED: the ten Normal/State \
      cells were overlaid with the official EPRI r4133 DLL's own bytes (the per-phase state \
-     arrays of SwtControl.pas:589-599/:600-610, a surface no capi-line engine renders), \
+     arrays, a surface no capi-line engine renders), \
      measured by replaying this artifact's five scenarios through the epri-worker bridge with \
      the props gate's own `clear` + `new circuit.propsprobe` preamble; the artifact's own \
      `oracle.engine` block carries the per-cell citations. The anchor stays capi015 because \
@@ -333,44 +320,41 @@ const CAPI015_OVERLAYS: &[(&str, &str)] = &[(
 )];
 
 /// Artifacts whose value authority is the official EPRI r4133 engine rather than
-/// the pinned capi oracle. An entry is a directory prefix (`.../`) or an exact
-/// path, same convention as [`DEANCHORED`]. They stay externally anchored through
-/// WP-G3 (§1.2: they are *not* frozen-`capi_v0145`; their disposition is recorded
-/// here and re-confirmed in G3.6).
+/// the pinned dss-python. An entry is a directory prefix (`.../`) or an exact
+/// path, same convention as [`DEANCHORED`]. They stay externally anchored.
 const R4133_FAMILIES: &[(&str, &str)] = &[
     (
         "tests/golden/flicker/",
         "the monitor mode-4 IEC 61000-4-15 Pst gate (the Pstcalc command results are a separate \
          family, pstcalc/). The COMMITTED bytes are the frozen capture from the official EPRI \
-         r3723 binary via the retired Oddie bridge, which the artifact's own oracle block records; \
-         the anchor is r4133 because that is the only surviving regeneration path \
+         r3723 binary via the retired Oddie bridge, which the artifact's own provenance block \
+         records; the anchor is r4133 because that is the only surviving regeneration path \
          (tools/golden/gen_flicker.py, epri-worker) and its payload reproduces the r3723 capture \
-         byte-identically (proven: docs/phase-records/epri-bridge.md \u{a7}\"Parity proof \
-         (committed goldens UNTOUCHED — scratch regen + byte-compare)\", the flicker/pst_demo.json \
-         row). The pinned 0.14.5 oracle cannot produce this family at all (its \
-         DoFlickerCalculations segfaults).",
+         byte-identically (a scratch regen byte-compared against the committed \
+         flicker/pst_demo.json). The pinned 0.14.5 engine cannot produce this family at all (its \
+         flicker calculation crashes).",
     ),
     (
         "tests/golden/props/fuse.json",
-        "the WP-U2.1 r4133 Fuse surface (RatedCurrent -> informational, new CurveMultiplier / \
+        "the r4133 Fuse surface (RatedCurrent -> informational, new CurveMultiplier / \
          InterruptingRating, default FuseCurve tlink -> none, props 10 -> 12), which NO capi-line \
-         engine has (tools/golden/gen_fuse_r4133.py:11) — the artifact declares engine_spec \
+         engine has (tools/golden/gen_fuse_r4133.py) — the artifact declares engine_spec \
          \"r4133\" itself. The bytes are DERIVED: the retired 0.14.5 dump supplies the rendering \
-         the port reproduces bit-for-bit, and every r4133 value delta overlaid on it was verified \
+         this engine reproduces bit-for-bit, and every r4133 value delta overlaid on it was verified \
          on the official EPRI r4133 engine (Oddie). The value authority, hence the anchor, is \
          r4133.",
     ),
     (
         "tests/golden/protection/",
         "fuse/SwtControl scenarios captured on r4133 (tools/golden/gen_protection.py \
-         EPRI_SCENARIOS): the WP-U2.1 fuse overhaul and the WP-U2.4 SwtControl Action fix exist \
-         only in r4133, so the pinned 0.14.5 oracle is not the authority here.",
+         EPRI_SCENARIOS): the fuse overhaul and the SwtControl Action fix exist only in r4133, \
+         so the pinned 0.14.5 engine is not the value authority here.",
     ),
     (
         "tests/golden/wasm_usermodels/",
         "user-model trajectories captured on r4133 via crates/dss-epri \
-         (gen_wasm_usermodels*.rs); the wasm host must reproduce the authority engine's \
-         DLL-model behavior, so these stay externally anchored (§1.2 frozen set).",
+         (gen_wasm_usermodels*.rs); the wasm host must reproduce r4133's DLL-model behavior, so \
+         these stay externally anchored and frozen.",
     ),
 ];
 
@@ -378,24 +362,20 @@ const R4133_FAMILIES: &[(&str, &str)] = &[
 const FPC_ARTIFACT: &str = "tests/golden/fmt_battery.csv";
 
 const FPC_REASON: &str = "a Free Pascal 3.2.2 RTL print capture (the %g/%f spelling battery behind the compat print \
-     kernels), not an engine capture. Retires with those kernels in WP-G4 (G4.6, measure-first).";
+     kernels), not an engine capture. It retires with those kernels.";
 
 /// The out-of-tree A-Diakoptics witness tree.
 const R3723_TREE: &str = "crates/dss-core/tests/data/adiakoptics/r3723_ref/";
 
 const R3723_REASON: &str = "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official \
      EPRI r3723 engine by tools/opendss/gen_ad_reference.py, which c060c0b2 retired together \
-     with that revision (recoverable from history); the tree is frozen (§1.2).";
+     with that revision (recoverable from history); the tree is frozen.";
 
 /// Residue rows whose bytes **no engine wrote** — script-generated input decks
 /// and hand-authored documents. They keep the `capi_v0145` anchor only because
-/// GOLDEN_REBASE_PLAN.md §1.2 defines a closed anchor set with no value for
-/// engine-less bytes and a real anchor for them is G3.6's call; the register
-/// writes the truthful reason into the row instead, so the lock stops reading
-/// "the pinned oracle produced this". Two alternatives were weighed and not
-/// taken (RF-D08-06): a new anchor value (`derived_input`, wired through
-/// [`seed_metadata`] and the G0.2 anchor guard) would open the closed set before
-/// G3.2a deletes the controls-off family; and `self` cannot be satisfied
+/// the anchor set is closed, with no value for engine-less bytes, so the
+/// register writes the truthful reason into the row instead and the lock does
+/// not read "the pinned dss-python produced this". `self` cannot be satisfied
 /// honestly, because `anchor == self` holds iff `produced_by` names a lane that
 /// may (re)write the bytes — no lane writes these, and a `self` row would make a
 /// hand-authored document writable by `snapshot_*`. An entry is a directory
@@ -406,34 +386,32 @@ const NON_ENGINE_RESIDUE: &[(&str, &str)] = &[
         "tests/golden/feeders_controlsoff/",
         "input deck written by tools/golden/gen_feeders_controlsoff.py from the vendored corpus \
          master (copied line by line, solve/buscoords dropped, redirects rewritten, Set \
-         controlmode=OFF + Solve appended); no oracle bytes — the oracle output is \
+         controlmode=OFF + Solve appended); no engine bytes — the engine output is \
          feeders_controlsoff.json. The capi_v0145 anchor is the residue, not a provenance claim: \
-         GOLDEN_REBASE_PLAN.md \u{a7}1.2 has no anchor value for a derived input, and G3.2a \
-         deletes the family.",
+         the anchor set has no value for a derived input.",
     ),
     (
         "tests/golden/json/schema_divergences.json",
-        "hand-authored inventory of the port's documented schema divergences from the pinned \
-         0.14.5 oracle (r4133 / 0.15.x adoptions, each with its upstream cause), applied by \
-         golden_schema.rs between the port's render and json/schema_full_oracle.json and edited \
+        "hand-authored inventory of this engine's documented schema divergences from the pinned \
+         0.14.5 engine (r4133 / 0.15.x adoptions, each with its OpenDSS cause), applied by \
+         golden_schema.rs between this engine's render and json/schema_full_oracle.json and edited \
          by hand whenever a divergence is adopted; no engine writes it (tools/golden/gen_schema.py \
-         writes only the oracle half). The capi_v0145 anchor is the residue, not a provenance \
+         writes only the capi_v0145 half). The capi_v0145 anchor is the residue, not a provenance \
          claim; it is not `self` because no lane (re)produces it, so snapshot_* must never \
          write it.",
     ),
 ];
 
 /// A `capi_v0145` artifact whose committed bytes are no longer purely the
-/// pinned oracle's capture: later WPs hand-landed blocks the 0.14.5 engine
+/// pinned dss-python capture: they carry hand-landed blocks the 0.14.5 engine
 /// cannot render. The twin of [`CAPI015_OVERLAYS`] for the residue anchor — the
 /// anchor does not move (the value authority for every untouched block is still
 /// the pinned capture), but a regenerator reading the lock must learn which
-/// bytes a pinned-oracle regen would revert. Same pattern convention and
-/// disjointness rule as [`NON_ENGINE_RESIDUE`]. The nine rows are the complete
-/// set of Dump goldens a pinned-oracle re-capture does not reproduce (the
-/// RF-D08-06 audit re-captured all 44 `gen_reports.py::gen_dump_decks` outputs:
-/// 35 identical, these 9 differ). A G3 step that de-anchors `reports/dump*`
-/// drops them in the same commit (the hygiene test reds on the overlap).
+/// bytes a regen on the pinned dss-python would revert. Same pattern convention
+/// and disjointness rule as [`NON_ENGINE_RESIDUE`]. The rows are the complete
+/// set of `gen_reports.py::gen_dump_decks` outputs a pinned re-capture does not
+/// reproduce. De-anchoring `reports/dump*` drops them in the same commit (the
+/// hygiene test fails on the overlap).
 const CAPI_V0145_OVERLAYS: &[(&str, &str)] = &[
     (
         "tests/golden/reports/dump3_bare.txt",
@@ -465,55 +443,53 @@ const CAPI_V0145_OVERLAYS: &[(&str, &str)] = &[
 ];
 
 /// `reports/dump3_commands.txt`: the property-help listing of every class.
-const DUMP3_COMMANDS_OVERLAY: &str = "PARTLY HAND-LANDED, not purely the pinned oracle's capture: the [Relay]/[Recloser]/[Fuse]/\
+const DUMP3_COMMANDS_OVERLAY: &str = "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: the [Relay]/[Recloser]/[Fuse]/\
      [SwtControl] blocks are the r4133 property surfaces (Relay 71, Recloser 46, Fuse 12, \
      SwtControl 9 props; help verbatim from the r4133 binary's own Dump commands via \
      tools/golden/r4133_help.py; 845fdd2f, 288afc35), and the 0.15.x property lines of \
      [CNData] (SemiconLayer), [LineSpacing] (Detailed/EqDistPhPh/EqDistPhN/AvgPhaseHeight/\
      AvgNeutralHeight), [Transformer]/[AutoTrans] (BHPoints/BHCurrent/BHFlux) and [RegControl] \
-     (Idle/IdleReverse/IdleForward/FwdThreshold) were hand-edited in to match the port's render \
-     (2a20b97c, d9ee3f1c, 702adcbd). The pinned oracle renders none of them, so all of them are \
+     (Idle/IdleReverse/IdleForward/FwdThreshold) were hand-edited in to match this engine's render \
+     (2a20b97c, d9ee3f1c, 702adcbd). The pinned engine renders none of them, so all of them are \
      pinned SELF-REFERENTIALLY against our own render by \
      golden_reports.rs::dump3_commands_matches_oracle. The anchor stays capi_v0145 because \
      every other block ([execcommands], [execoptions] and the remaining class sections) is \
-     still the tools/golden/gen_reports.py capture on the pinned oracle, as is the deck \
-     sidecar dump3_commands.meta.json (untouched since 34b15a12). A regen from the pinned \
-     oracle reverts every hand-landed block; it must re-land them.";
+     still the tools/golden/gen_reports.py capture on the pinned engine, as is the deck \
+     sidecar dump3_commands.meta.json (untouched since 34b15a12). A regen on the pinned \
+     engine reverts every hand-landed block; it must re-land them.";
 
 /// The five object dumps whose only hand-landed lines are 702adcbd's BH-curve
-/// props (WP-U1.6 C6): `dump_{autotrans,autotrans3}` (one AutoTrans each) and
+/// props: `dump_{autotrans,autotrans3}` (one AutoTrans each) and
 /// `dump_{transformer,transformer3,transformer_disabled}` (one Transformer each).
-const DUMP_BH_OVERLAY: &str = "PARTLY HAND-LANDED, not purely the pinned oracle's capture: 702adcbd (WP-U1.6 C6) \
+const DUMP_BH_OVERLAY: &str = "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: 702adcbd \
      hand-edited the 0.15.x default BH-curve lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` into \
-     every Transformer/AutoTrans object block to match the port's render. The pinned 0.14.5 \
+     every Transformer/AutoTrans object block to match this engine's render. The pinned 0.14.5 \
      engine has no BH property, so golden_reports.rs pins those three lines \
      SELF-REFERENTIALLY against our own render, while every other line is still the \
-     tools/golden/gen_reports.py capture on the pinned oracle. A regen from the pinned oracle \
+     tools/golden/gen_reports.py capture on the pinned engine. A regen on the pinned engine \
      drops them and must re-land them.";
 
-/// `dump_regcontrol`: 702adcbd's RegControl lines only (WP-U1.6 C5).
-const DUMP_REGCONTROL_OVERLAY: &str = "PARTLY HAND-LANDED, not purely the pinned oracle's capture: 702adcbd (WP-U1.6 C5) \
-     hand-edited the RegControl object block to match the port's render: `~ RevThreshold=-100` \
-     (the signed-threshold default, docs/upgrade/DIVERGENCES.md WP-U1.6 C5) where the pinned \
-     0.14.5 engine renders 100 (.inputs/dss_capi/src/Controls/RegControl.pas:525-526), plus the \
+/// `dump_regcontrol`: 702adcbd's RegControl lines only.
+const DUMP_REGCONTROL_OVERLAY: &str = "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: 702adcbd \
+     hand-edited the RegControl object block to match this engine's render: `~ RevThreshold=-100` \
+     (the signed-threshold default) where the pinned 0.14.5 engine renders 100, plus the \
      0.15.x lines `~ Idle=No`, `~ IdleReverse=No`, `~ IdleForward=No`, `~ FwdThreshold=100`, \
      props the pinned engine does not have. golden_reports.rs pins them SELF-REFERENTIALLY \
      against our own render, while every other line is still the tools/golden/gen_reports.py \
-     capture on the pinned oracle. A regen from the pinned oracle reverts them and must re-land \
+     capture on the pinned engine. A regen on the pinned engine reverts them and must re-land \
      them.";
 
 /// `dump3_bare` / `dump3_debug`: both kinds of 702adcbd lines (two Transformers
 /// and one RegControl in the `dump3.dss` fixture).
-const DUMP_BH_REGCONTROL_OVERLAY: &str = "PARTLY HAND-LANDED, not purely the pinned oracle's capture: 702adcbd (WP-U1.6 C5/C6) \
-     hand-edited two kinds of lines in to match the port's render: the 0.15.x default BH-curve \
+const DUMP_BH_REGCONTROL_OVERLAY: &str = "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: 702adcbd \
+     hand-edited two kinds of lines in to match this engine's render: the 0.15.x default BH-curve \
      lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` in every Transformer object block, and in \
-     the RegControl object block `~ RevThreshold=-100` (the signed-threshold default, \
-     docs/upgrade/DIVERGENCES.md WP-U1.6 C5) where the pinned 0.14.5 engine renders 100 \
-     (.inputs/dss_capi/src/Controls/RegControl.pas:525-526), plus the 0.15.x lines `~ Idle=No`, \
+     the RegControl object block `~ RevThreshold=-100` (the signed-threshold default) where the \
+     pinned 0.14.5 engine renders 100, plus the 0.15.x lines `~ Idle=No`, \
      `~ IdleReverse=No`, `~ IdleForward=No`, `~ FwdThreshold=100`. The pinned engine renders \
      none of those lines as landed, so golden_reports.rs pins them SELF-REFERENTIALLY against \
      our own render, while every other line is still the tools/golden/gen_reports.py capture on \
-     the pinned oracle. A regen from the pinned oracle reverts them and must re-land them.";
+     the pinned engine. A regen on the pinned engine reverts them and must re-land them.";
 
 /// One fingerprinted artifact.
 ///
@@ -528,10 +504,10 @@ struct Artifact {
     /// ([`digest_of`]).
     sha256: String,
     anchor: Anchor,
-    /// Mandatory for `anchor: "self"`; G3.6 extends the requirement to the rest.
+    /// Mandatory for `anchor: "self"`.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     reason: String,
-    /// `null` for oracle-anchored rows (see the module docs).
+    /// `null` for externally anchored rows (see the module docs).
     produced_by: Option<ProducedBy>,
 }
 
@@ -547,13 +523,13 @@ struct GoldenLock {
     artifacts: Vec<Artifact>,
 }
 
-const COMMENT: &str = "Provenance lock over the committed golden corpus (GOLDEN_REBASE_PLAN.md \
-\u{a7}1.2, G0.1): tests/golden/** plus the registered out-of-tree witness \
+const COMMENT: &str = "Provenance lock over the committed golden corpus: tests/golden/** plus the \
+registered out-of-tree witness \
 crates/dss-core/tests/data/adiakoptics/r3723_ref/. That enumeration is the scope; golden-shaped \
 trees left outside it (today: crates/dss-metis/tests/golden, the vendored METIS 5.2.1 fixtures, and \
 tests/corpus/props_r4133, the frozen r4133 property-census evidence locked by \
 props_r4133_evidence_lock.rs) are \
-named with their reason in golden_lock.rs::EXCLUDED_TREES and revisited in G3.6. Each row records \
+named with their reason in golden_lock.rs::EXCLUDED_TREES. Each row records \
 the artifact's content digest and where the truth in those bytes comes from (anchor), plus - for \
 self-anchored rows - a mandatory reason and the lane allowed to (re)produce them. \
 crates/dss-core/tests/golden_lock.rs asserts, fail-on-stale in both directions: every artifact has a \
@@ -568,15 +544,12 @@ over the COMMITTED content: \
 CRLF is normalized to LF for text artifacts (core.autocrlf=true here, so the working tree carries \
 CRLF while git stores LF), while reports/*.bin streams - `binary` in .gitattributes, cross-checked \
 against that file - are hashed raw; an EOL-only working-tree change therefore moves no digest \
-because it moves no committed byte (see the golden_lock.rs module docs, assertion 3, for what that \
-means for G4.3). Regenerate DELIBERATELY with \
+because it moves no committed byte (see the golden_lock.rs module docs, assertion 3). Regenerate \
+DELIBERATELY with \
 `DSS_UPDATE_GOLDEN_LOCK=1 cargo test -p dss-core --test golden_lock -- --nocapture` (the flag is \
 required: the regen run passes, and libtest discards a passing test's stderr); it moves digests only \
 - provenance is re-derived from the registers, and every re-anchored, re-laned, newly seeded or \
-dropped path and every moved digest is announced on stderr - and the diff is the review artifact. \
-The regeneration rules R1-R4 and the operational walkthrough are in TESTING.md: the section \
-\"Golden provenance lock (`golden_lock.rs`) and the self-golden write rails\" and, under \
-\"Procedures\", \"Regenerate a self-golden (R1–R4)\".";
+dropped path and every moved digest is announced on stderr - and the diff is the review artifact.";
 
 fn repo_root() -> PathBuf {
     [env!("CARGO_MANIFEST_DIR"), "..", ".."].iter().collect()
@@ -603,8 +576,7 @@ fn deanchored_entries(path: &str) -> Vec<&'static (&'static str, &'static str)> 
 
 /// The lane that may write the `self` artifact at `path`: `lane-invariant` when
 /// a `lane_invariant` entry (the live one is [`LANE_INVARIANT`]) covers it, else
-/// the parity lane, which holds the strictest byte contract until WP-G4 measures
-/// a family identical in both lanes.
+/// the parity lane, which holds the strictest byte contract.
 fn producing_lane(path: &str, lane_invariant: &[(&str, &str)]) -> ProducedBy {
     if lane_invariant
         .iter()
@@ -643,7 +615,7 @@ fn produced_by_violation(row: &Artifact, lane_invariant: &[(&str, &str)]) -> Opt
 /// **The** anchor classification: the provenance registers applied to a path.
 /// This is not a seeding heuristic — it is the invariant every locked row is
 /// checked against and the only thing a regen writes, so re-anchoring an
-/// artifact means editing a register above. The residue is the pinned oracle,
+/// artifact means editing a register above. The residue is the pinned dss-python,
 /// which is what all but the enumerated `tools/golden/gen_*.py` generators
 /// captured.
 fn seed_metadata(path: &str) -> (Anchor, String, Option<ProducedBy>) {
@@ -697,7 +669,7 @@ fn patterns_overlap(a: &str, b: &str) -> bool {
 /// `(deanchored pattern, capi015 path)` pairs — must be empty.
 /// [`seed_metadata`] consults `DEANCHORED` first, so an overlapping pattern
 /// would silently re-anchor an unreproducible capi015 capture to `self`, and
-/// with it make those bytes writable by the G0.2 `snapshot_*` rails, while the
+/// with it make those bytes writable by the `snapshot_*` rails, while the
 /// capi015 closed-set count and its stale sweep stayed green (the entry is
 /// still "hit" — by a row the register no longer decides). Parameterized so
 /// `deanchored_never_shadows_a_capi015_artifact` can drive it red.
@@ -730,7 +702,7 @@ fn is_sidecar_payload(sidecar: &str, path: &str) -> bool {
         })
 }
 
-/// The capi015 sidecar↔payload rail (RF-D08-06), over the artifact `paths`
+/// The capi015 sidecar↔payload rail, over the artifact `paths`
 /// currently on disk. A capi015 sidecar is a `.meta.json` either registered in
 /// `capi015` or stamping `"oracle": "capi015"` itself (`stamped`, read from the
 /// file by the caller). Every such sidecar must be registered, must still sit
@@ -782,7 +754,7 @@ fn capi015_sidecar_violations(paths: &[&str], stamped: &[&str], capi015: &[&str]
     out
 }
 
-/// The capi015 stamp rail (RF-D08-06 settlement), both directions, over the
+/// The capi015 stamp rail, both directions, over the
 /// artifacts whose own provenance block declares capi015 (`stamped`, read from
 /// disk by [`capi015_stamped_artifacts`]). Forward: a stamped capture that is
 /// not a `.meta.json` must be registered — the sidecar half of that direction
@@ -864,9 +836,7 @@ const DECLARED_PROVENANCE_EXCEPTIONS: &[(&str, Anchor, &str)] = &[(
     Anchor::R4133,
     "declares the official-EPRI r3723 Oddie capture its committed bytes are; anchored r4133 \
      by R4133_FAMILIES because the r4133 epri-worker regen reproduces every payload key \
-     byte-identically (docs/phase-records/epri-bridge.md \u{a7}\"Parity proof (committed goldens \
-     UNTOUCHED — scratch regen + byte-compare)\", the flicker/pst_demo.json row), and r4133 is \
-     the only surviving regeneration path.",
+     byte-identically, and r4133 is the only surviving regeneration path.",
 )];
 
 /// The declaring population of the locked JSON artifacts, as
@@ -933,7 +903,7 @@ fn provenance_declarations(doc: &serde_json::Value) -> Vec<Declaration> {
 
 /// Every anchor a declared engine string names, empty for an engine this test
 /// does not know. Every spelling on disk is covered (measured over the locked
-/// JSON artifacts): the 0.15.x beta stack, the pinned 0.14.5 oracle, the
+/// JSON artifacts): the 0.15.x beta stack, the pinned 0.14.5 engine, the
 /// retired r3723 and the r4133 engine.
 fn declared_anchors(value: &str) -> Vec<Anchor> {
     let v = value.to_ascii_lowercase();
@@ -1509,8 +1479,7 @@ enum Seeded {
     ReAnchored(Anchor, Anchor),
     /// The stored digest (carried here) differs from the bytes on disk and was
     /// rewritten. Announced under the check arm's `DIGEST MOVED` label, so a
-    /// regen that moved no golden byte is provable from its own output (the
-    /// RF-D08-06 audit found that claim unfalsifiable while regens were silent).
+    /// regen that moved no golden byte is provable from its own output.
     DigestMoved(String),
     /// The stored `produced_by` (first) disagreed with [`LANE_INVARIANT`] and
     /// was reset to it (second); the anchor did not move.
@@ -1904,7 +1873,7 @@ fn golden_lock_matches_the_committed_artifacts() {
     panic!(
         "the committed golden corpus no longer matches {LOCK_PATH} \
          ({} artifacts on disk, {} rows locked):\n{diff}\n\
-         A golden byte NEVER moves to make a red gate green (GOLDEN_REBASE_PLAN.md \u{a7}1.2 R2): \
+         A golden byte NEVER moves to make a red gate green: \
          fix the engine, pin the intended new value with an expected-value test, and only then \
          regenerate — the diff must move exactly the predicted artifacts. Regenerate \
          deliberately with:\n  {LOCK_REGEN_CMD}\n\
@@ -1945,12 +1914,8 @@ fn digest_pipeline_is_pinned() {
 
 /// Register hygiene, independent of the corpus: the patterns must be
 /// well-formed and mutually exclusive, and every constant family list must name
-/// distinct paths. A duplicated or overlapping entry would make the "exactly one
-/// reason per artifact" rule unenforceable — and, since
-/// [`golden_lock_matches_the_committed_artifacts`] now checks every row against
-/// [`seed_metadata`], would let the register *order* rather than the evidence
-/// decide an anchor. The corpus-facing direction (every entry covers a locked
-/// row) lives in that test's stale sweep.
+/// distinct paths. A duplicated or overlapping entry would let the register
+/// *order* rather than the evidence decide an anchor.
 #[test]
 fn provenance_registers_are_well_formed() {
     for (pattern, reason) in DEANCHORED {
@@ -2004,8 +1969,8 @@ fn provenance_registers_are_well_formed() {
         CAPI015_ARTIFACTS.len(),
         17,
         "the capi015 set is closed at seventeen — the eleven provenance-stamped artifacts \
-         GOLDEN_REBASE_PLAN.md G0.1 enumerated plus the six unstamped payloads their sidecars' \
-         generator calls wrote (registered by RF-D08-06) — and never grows: that beta \
+         plus the six unstamped payloads their sidecars' \
+         generator calls wrote — and never grows: that beta \
          environment is gone. A deletion is caught corpus-side by the STALE CAPI015_ARTIFACTS \
          sweep, a stamped capture dropped from the list (or a reader that finds no stamp) by \
          the capi015 stamp rail, and a payload/sidecar split by the capi015 sidecar↔payload \
@@ -2057,7 +2022,7 @@ fn provenance_registers_are_well_formed() {
             .iter()
             .any(|(d, _)| pattern_covers(d, FPC_ARTIFACT) || d.starts_with(R3723_TREE))
     );
-    // The DEANCHORED × CAPI015_ARTIFACTS pair (RF-D08-06): `seed_metadata`
+    // The DEANCHORED × CAPI015_ARTIFACTS pair: `seed_metadata`
     // consults DEANCHORED first, so without this arm one register edit could
     // re-anchor an unreproducible capi015 capture to a writable `self`.
     let shadowed = deanchored_capi015_overlaps(DEANCHORED, CAPI015_ARTIFACTS);
@@ -2069,7 +2034,7 @@ fn provenance_registers_are_well_formed() {
     assert!(R3723_TREE.ends_with('/'));
 
     // LANE_INVARIANT names `self` families only, once each: an entry outside
-    // DEANCHORED would give an oracle-anchored row a producing lane.
+    // DEANCHORED would give an externally anchored row a producing lane.
     for (i, (pattern, measurement)) in LANE_INVARIANT.iter().enumerate() {
         assert!(
             DEANCHORED.iter().any(|(d, _)| pattern_covers(d, pattern)),
@@ -2288,7 +2253,7 @@ fn capi015_sidecar_rail_reds_on_an_unregistered_payload() {
     let stamped = ["tests/golden/ncim/pq.meta.json"];
     assert!(capi015_sidecar_violations(&paths, &stamped, &full).is_empty());
 
-    // The G0.1 shape: only the sidecar registered — both payloads go red.
+    // Only the sidecar registered: both payloads go red.
     let v = capi015_sidecar_violations(&paths, &stamped, &full[..1]);
     assert_eq!(v.len(), 2, "{v:?}");
     assert!(v[0].contains("CAPI015 PAYLOAD OFF REGISTER: tests/golden/ncim/pq_Jacobian.csv"));
@@ -2318,10 +2283,8 @@ fn capi015_sidecar_rail_reds_on_an_unregistered_payload() {
 /// The capi015 stamp rail and its reader predicate, driven red: both on-disk
 /// spellings are recognized (fixtures shaped like the real stamps of
 /// `ncim/pq.meta.json` and `props/transformer_bh.json`) and the r4133 /
-/// pinned-oracle spellings are not. A stamped dump dropped from the register
-/// and a reader that finds nothing (the two holes the RF-D08-06 audit
-/// mutation-proved) each red with their named violation, while a registered
-/// sidecar's payloads need no stamp of their own.
+/// pinned-engine spellings are not. A stamped dump dropped from the register
+/// and a reader that finds nothing each fail with their named violation.
 #[test]
 fn capi015_stamp_rail_reds_on_a_dropped_or_unread_capture() {
     let parse = |s: &str| -> serde_json::Value { serde_json::from_str(s).expect("fixture") };
@@ -2412,7 +2375,7 @@ fn residue_reasons_and_capi015_payloads_classify_as_registered() {
         seed_metadata("tests/golden/feeders_controlsoff/ieee13_controlsoff.dss");
     assert_eq!((anchor, produced_by), (Anchor::CapiV0145, None));
     assert!(reason.starts_with("input deck written by tools/golden/gen_feeders_controlsoff.py"));
-    // The oracle output of that family stays the plain residue.
+    // The engine output of that family stays the plain residue.
     assert_eq!(
         seed_metadata("tests/golden/feeders_controlsoff.json"),
         (Anchor::CapiV0145, String::new(), None)
@@ -2425,14 +2388,14 @@ fn residue_reasons_and_capi015_payloads_classify_as_registered() {
     let (anchor, reason, produced_by) = seed_metadata("tests/golden/reports/dump3_commands.txt");
     assert_eq!((anchor, produced_by), (Anchor::CapiV0145, None));
     assert!(reason.starts_with("PARTLY HAND-LANDED"));
-    // Its deck sidecar is the untouched pinned-oracle capture.
+    // Its deck sidecar is the untouched pinned capture.
     assert_eq!(
         seed_metadata("tests/golden/reports/dump3_commands.meta.json"),
         (Anchor::CapiV0145, String::new(), None)
     );
-    // The eight other Dump goldens 702adcbd hand-landed lines into (the
-    // settlement's AC-1), each naming what a pinned-oracle regen would revert;
-    // an untouched Dump golden of the same generator keeps the plain residue.
+    // The eight other Dump goldens 702adcbd hand-landed lines into, each naming
+    // what a pinned regen would revert. An untouched Dump golden of the same
+    // generator keeps the plain residue.
     for (path, landed) in [
         ("tests/golden/reports/dump3_bare.txt", "BHPoints"),
         ("tests/golden/reports/dump3_debug.txt", "IdleReverse"),
@@ -2622,14 +2585,11 @@ fn the_regen_command_const_and_comment_carry_nocapture() {
     );
 }
 
-/// The `.gitattributes` reader refuses every declaration in the tree that could
-/// decide a locked path's bytes but that it would not read: a nested attribute
-/// file (inside a root, or probed in each directory above one), an unrooted
-/// pathspec that can reach a locked root, an attribute the classifier does not
-/// emulate on a locked path, and a macro or quoted pathspec, in any ASCII case.
-/// A pathspec that reaches a locked path only in another case reds, and so does
-/// a classification drift. The check the scan runs reds each of these in its
-/// order. The live shapes stay readable.
+/// The `.gitattributes` reader refuses every declaration that could decide a
+/// locked path's bytes but that it would not read (a nested attribute file, an
+/// unrooted pathspec reaching a locked root, an unemulated attribute, a macro or
+/// quoted pathspec, a case-variant pathspec, a classification drift), in any
+/// ASCII case. The live shapes stay readable.
 #[test]
 fn gitattributes_reader_refuses_what_it_cannot_see() {
     let read = |text: &str| gitattributes_binary_patterns(text, &[]);
@@ -2913,7 +2873,7 @@ fn declared_provenance_must_admit_the_locked_anchor() {
     // A value that names several engines names them all.
     assert_eq!(
         declared_anchors(
-            "EPRI OpenDSS r4133 via AltDSS Oddie; the pinned 0.14.5 oracle cannot render this \
+            "EPRI OpenDSS r4133 via AltDSS Oddie; the pinned 0.14.5 engine cannot render this \
              surface"
         ),
         [Anchor::CapiV0145, Anchor::R4133]
@@ -3032,9 +2992,9 @@ fn declared_provenance_must_admit_the_locked_anchor() {
     ));
 
     // A value naming several engines declares none of them: an r4133 capture
-    // whose prose also names the pinned oracle cannot pass as the residue, and
+    // whose prose also names the pinned engine cannot pass as the residue, and
     // only a single-engine `engine_spec` among its engines settles it.
-    let several = "EPRI OpenDSS r4133 via AltDSS Oddie; the pinned 0.14.5 oracle cannot \
+    let several = "EPRI OpenDSS r4133 via AltDSS Oddie; the pinned 0.14.5 engine cannot \
                    render this surface";
     let v = declared_provenance_violations(
         &[declaring(

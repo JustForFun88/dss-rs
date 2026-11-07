@@ -7,11 +7,9 @@
 //! flat `cmds` automation array (`InterpretDiffEq`) that a fast stack evaluator
 //! (`SolveEq`) walks each dynamics step over a per-element memory space.
 //!
-//! Scope (WP7.3 step 0): this lands the object + its expression interpreter and
-//! evaluator only. The dynamic-expression *integration* (a `DynEqPCE` driving
-//! `SolveEq` over `DynaVars.h`) is WP7.7; porting the object here lets PVSystem/
-//! Storage/Generator resolve `DynamicEq` as a real object reference rather than a
-//! `NOT_PORTED` string.
+//! This module holds the object, its expression interpreter and its evaluator.
+//! The dynamic-expression *integration* (a `DynEqPCE` host driving `SolveEq`
+//! over `DynaVars.h`) lives in `elements::pc::dyneq_pce`.
 //!
 //! Pascal `TDynamicExpProp`: `NVariables=1`, `VarNames=2`, `vr=3` (`var`),
 //! `VarIdx=4`, `Expression=5`, `Domain=6`; the base class appends `Like=7`.
@@ -294,11 +292,8 @@ impl DynamicExpObj {
     /// NOTE: dss_capi 0.15.x (upstream `2a8bdb78`, "DynamicExp: reuse RPN, fix
     /// index bug") adds an `Exit` right after the first output marker, turning
     /// `SolveEq` into a no-op that freezes the derivative at its `InitStateVars`
-    /// seed. That regression is in NEITHER gating oracle (pinned dss_capi 0.14.5
-    /// AND EPRI r4133 both still integrate), so the port must NOT adopt it. An
-    /// earlier "D14" WP ported the no-op against the non-gating `capi015`
-    /// reference and the port then matched neither oracle — reverted here (see
-    /// `docs/upgrade/DIVERGENCES.md` §D14).
+    /// seed. Neither OpenDSS engine has that regression (dss_capi 0.14.5 and
+    /// r4133 both still integrate), so this engine does not adopt it.
     ///
     /// `mem_space` must have at least [`Self::num_state_vars`] rows.
     pub fn solve_eq(&self, mem_space: &mut [[f64; DYN_SLOT_LENGTH]]) {

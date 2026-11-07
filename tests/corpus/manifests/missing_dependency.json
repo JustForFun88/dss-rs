@@ -24,7 +24,7 @@
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/Run_Master_ckt5-7proc-V2.dss",
    "tag": "missing_data_file=Master_ckt5.dss",
-   "note": "BLOCKED_PENDING actor mode / MULTITHREADING_PLAN M2 (CF-B item 8b, T-B D1). Hardcodes an unreachable absolute path (`C:\\Program Files\\OpenDSS\\...\\Master_ckt5.dss`; the target IS co-located as ckt5/Master_ckt5.dss) AND uses the actor family (`SolveAll`, line 33). Both engines fail on the path (#243); even with the path fixed it needs M2 (actor). No live compare possible."
+   "note": "Needs actor mode. Hardcodes an unreachable absolute path (`C:\\Program Files\\OpenDSS\\...\\Master_ckt5.dss`; the target IS co-located as ckt5/Master_ckt5.dss) AND uses the actor family (`SolveAll`, line 33). Both engines fail on the path (#243), and even with the path fixed it needs actor mode. No live compare possible."
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/IEEE13Nodeckt.dss",
@@ -39,7 +39,7 @@
   {
    "path": "Version8/Distrib/Examples/Parallel_Processing/PProcessing_scripting.dss",
    "tag": "missing_data_file=Master_ckt5.dss",
-   "note": "BLOCKED_PENDING actor mode / MULTITHREADING_PLAN M2 (CF-B item 8b, T-B D6). Wrong redirect path (`..\\..\\Distrib\\EPRITestCircuits\\ckt5\\Master_ckt5.dss`, double-Distrib) AND uses `Clone`/`set parallel`/`SolveAll` (actor-PM). Both engines fail on the path (#243); even fixed it needs M2. No live compare possible."
+   "note": "Needs actor mode. Wrong redirect path (`..\\..\\Distrib\\EPRITestCircuits\\ckt5\\Master_ckt5.dss`, double-Distrib) AND uses `Clone`/`set parallel`/`SolveAll` (actor-PM). Both engines fail on the path (#243), and even fixed it needs actor mode. No live compare possible."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/SolarRamp-Mack.DSS",

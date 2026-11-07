@@ -4,7 +4,7 @@
 //! through the terminal voltage*, `i_abs · max(1, |V_kv|)` with `|V_kv|=|P|/|I|` —
 //! is otherwise pinned only by documentation. These cases lock the scaling rule
 //! directly (no oracle), in both directions: it loosens **with** voltage, never
-//! unconditionally. See tests/TOLERANCE_NOTES.md.
+//! unconditionally.
 
 use dss_test_harness::harness;
 
@@ -21,7 +21,7 @@ fn cap(i_re: f64, p_kw: f64) -> ElementCap {
         p_kw: vec![p_kw],
         p_kvar: vec![0.0],
         loss_w: vec![],
-        // The G1.3a derived channels are a different comparator's input; this
+        // The derived channels are a different comparator's input; this
         // fixture drives `assert_power_close` only.
         ..ElementCap::default()
     }

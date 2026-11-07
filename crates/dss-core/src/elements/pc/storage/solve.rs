@@ -23,7 +23,7 @@ impl Storage {
     /// charging stamps `+YeqDischarge`, idling stamps 0, discharging stamps
     /// `−YeqDischarge`. The harmonic-model branch uses the `%R`/`%X` `Yeq`; a
     /// discharging **grid-forming** unit stamps the `CalcGFMYprim` short-circuit
-    /// admittance instead (WPG.13).
+    /// admittance instead.
     pub(super) fn calc_yprim_matrix(&mut self, ymatrix: &mut CMatrix, sys: &SysCtx) {
         self.cd.yprim_freq = sys.frequency;
         let freq_multiplier = self.cd.yprim_freq / self.cd.base_frequency;
@@ -256,7 +256,7 @@ impl Storage {
     /// Pascal `CalcStorageModelContribution`: dispatch the power-flow model.
     /// The dynamics (`DoDynamicMode`) path is reached only in a dynamics solve;
     /// harmonics (`DoHarmonicMode`) above the fundamental. The grid-forming
-    /// (`DoGFM_Mode`) contribution (WPG.13) injects the internal voltage-source
+    /// (`DoGFM_Mode`) contribution injects the internal voltage-source
     /// current through `YPrim` when `ControlMode=GFM`.
     pub(super) fn calc_storage_model_contribution(
         &mut self,
@@ -285,10 +285,9 @@ impl Storage {
             1 => self.do_constant_pq(sys, node_v),
             2 => self.do_constant_z(sys, node_v),
             3 => {
-                // Pascal `TStorageObj.DoUserModel` (Storage.pas:2103-2122):
-                // CalcYPrimContribution(InjCurrent) then, if UserModel.Exists,
-                // FCalc + negate into InjCurrent (done inside `user_model_fcalc`);
-                // else #567 (WASM_USERMODELS WM.4).
+                // `DoUserModel`: CalcYPrimContribution(InjCurrent) then, if
+                // UserModel.Exists, FCalc + negate into InjCurrent (done inside
+                // `user_model_fcalc`), else #567.
                 self.calc_yprim_contribution(node_v);
                 if !self.user_model_fcalc(sys, node_v, errors)
                     && self.base.user_model_name.trim().is_empty()

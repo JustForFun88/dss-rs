@@ -13,7 +13,7 @@
 //! Both registry lists are closed 3-value sets with no `DefaultValue`, so an
 //! unmatched token raises rather than writing: `from_ordinal(v).unwrap_or(field)`
 //! at the property seam keeps the previous value on a path the parser cannot
-//! reach (the wave's established setter shape).
+//! reach.
 
 /// Pascal `DSS.ScanTypeEnum` (`DSSClass.pas:1087`) — how a harmonic source
 /// rotates each phase after the first (`ScanType=`).

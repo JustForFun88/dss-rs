@@ -1,5 +1,5 @@
 program abi_probe_windgenvars;
-// R4133_PROPS_PLAN RP1.3 (WindGen UserModel/UserData over the WASM host) —
+// Probe P10 (WindGen UserModel/UserData over the WASM host) —
 // layout of the r4133 boundary record the WindGen user-model interface passes
 // to a DLL: PCElements/WindGenVars.pas (TWindGenVars), the record
 // TWindGenUserModel.FNew receives (WindGenUserModel.pas:34).

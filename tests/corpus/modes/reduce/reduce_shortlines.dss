@@ -1,5 +1,5 @@
-// Reduce coverage (PHASE8_PLAN WP8.7): the SHORTLINES strategy
-// (DoReduceShortLines, ReduceAlgs.pas:142) under `Set Zmag=` (ExecOptions
+// Reduce coverage: the SHORTLINES strategy
+// (DoReduceShortLines) under `Set Zmag=` (ExecOptions
 // option 113 -> ActiveCircuit.ReductionZmag). Pass 1 flags lines with
 // |Z1|*len <= Zmag (IsShortLine, :119); pass 2 merges each flagged line
 // with its in-line parent/child and RECONNECTS the eliminated bus's shunt

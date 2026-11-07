@@ -15,53 +15,33 @@
 //! (`compat::cdiv(a, b)`). Only the `dss-compat` crate declares the lane
 //! feature, so a `cfg` on it in this crate is an `unexpected_cfgs` warning.
 //!
-//! **Flip state (F.3 flips one kernel family per commit).** The `Row` column
-//! below records which lane each alias resolves to *today*; an unflipped row
-//! selects the parity impl in **both** lanes, so it is still bit-neutral and
-//! its gates are unchanged in the default build too.
+//! **Flip state.** The *Flipped?* column below records which lane each alias
+//! resolves to. An unflipped row selects the parity impl in **both** lanes, so
+//! it is bit-neutral and its gates are unchanged in the default build too.
 //!
-//! **Inventory** (Part IV.2's closed dual-kernel table — do not extend it here;
-//! a genuinely new compat item requires editing that table first):
+//! **Inventory** (a closed table — do not extend it):
 //!
 //! | Row | Where | Flipped? |
 //! |---|---|---|
 //! | complex division | [`cdiv`] — this file | *no split* — measured, see below |
 //! | dense inverse (`CMatrix::invert`, `etk_invert`) | [`invert`], [`etk_invert`] — this file | *no split* — measured, see below |
-//! | single-point stddev | *torn down* (GOLDEN_REBASE G2.1a) — `support::mathutil` returns `0.0` in both lanes | — |
-//! | RPN pi | `dss-parser` `compat::PI` | **yes** (F.3d) |
-//! | FPC round | `dss-parser` `compat::round_i32` | **yes** (F.3a) |
-//! | solver execution (`Par`, refinement) | `dss-sparse` `compat` | no — declaration only, M3c / WP-R1 own the flip |
-//! | Y triplet dedup | *no split* — one shared kernel serves both lanes (IV.1) | — |
+//! | single-point stddev | *torn down* — `support::mathutil` returns `0.0` in both lanes | — |
+//! | RPN pi | `dss-parser` `compat::PI` | **yes** |
+//! | FPC round | `dss-parser` `compat::round_i32` | **yes** |
+//! | solver execution (`Par`, refinement) | `dss-sparse` `compat` | no — declaration only, nothing reads the knobs |
+//! | Y triplet dedup | *no split* — one shared kernel serves both lanes | — |
 //! | sym components | *no split* — measured, see below | — |
-//! | Export SeqCurrents `Iresidual` | *torn down* (GOLDEN_REBASE G2.2a) — `report::export::seq_currents` sums the row's own terminal in both lanes | — |
-//! | multi-meter `Bus_Int_Duration` | *torn down* (GOLDEN_REBASE G2.2a) — `solution::meters::reliability` walks only its own zone in both lanes | — |
-//! | Monitor `BaseFrequency` 60.0 (CLAUDE.md bug 6) | *torn down* (GOLDEN_REBASE G2.2b) — `exec::command::create_object_no_edit` inherits `Fundamental` for every element, Monitor included, in both lanes | — |
-//! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5) | *torn down* — GOLDEN_REBASE G2.3 for the gate's reader (`exec::view::snapshot_elements`), `RETRO_FIXES_PLAN.md` RF-D00-01 for every other one: `solution::solution::power_flow::drop_stale_newton_iterminal_stamps` drops the stamps `do_newton_solution` formed at `NodeV_{n-1}`, so every cache-aware read (Export, Show, meters, monitors) recomputes at the converged `NodeV`, in both lanes | — |
-//! | report text rendering — number formats (`%g`, script fixed-point, JSON float + line break) | the *Report text rendering* section below | **yes** (F.4a) |
-//! | report text rendering — `Show` device-name column width | *torn down* (GOLDEN_REBASE G2.6) — [`crate::report::show::device_name_width`] sizes the column from its own content in both lanes; the reproduced `= 0` was a dss_capi-only **defect** (a shadowing `TDSSCircuit` field), not a rendering convention | — |
-//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b, the `Export SeqCurrents` non-positive rating G2.1c, the short-line merge's parent-shunt scan G2.1d, the StorageController idle guard G2.1e, the Storage `/m` export prefix G2.1f, the CIM wye `grounded` flag G2.1g, the Line height-unit re-read G2.1h, the Isource `Bus2` latch G2.2b, the two CIM attribute names and the Fault `Dump` `MinAmps` reprint G2.2c, the two Relay event-log labels G2.2d, and the unflushed monitor-channel pad G2.4 — that last one mostly *reclassified* rather than fixed: the `[0.0]` it reproduced comes from the oracle clients' stream decoder, not from an engine (the engines' own answer there, `SampleCount` fabricated zeros, is a separate upstream defect this port declines, unobservable through either client) |
+//! | Export SeqCurrents `Iresidual` | *torn down* — `report::export::seq_currents` sums the row's own terminal in both lanes | — |
+//! | multi-meter `Bus_Int_Duration` | *torn down* — `solution::meters::reliability` walks only its own zone in both lanes | — |
+//! | Monitor `BaseFrequency` 60.0 (an OpenDSS bug) | *torn down* — `exec::command::create_object_no_edit` inherits `Fundamental` for every element, Monitor included, in both lanes | — |
+//! | Newton stale `Iterminal` in Powers/Losses (an OpenDSS bug) | *torn down* — `solution::solution::power_flow::drop_stale_newton_iterminal_stamps` drops the stamps `do_newton_solution` formed at `NodeV_{n-1}`, so every cache-aware read (Export, Show, meters, monitors) recomputes at the converged `NodeV`, in both lanes | — |
+//! | report text rendering — number formats (`%g`, script fixed-point, JSON float + line break) | the *Report text rendering* section below | **yes** |
+//! | report text rendering — `Show` device-name column width | *torn down* — [`crate::report::show::device_name_width`] sizes the column from its own content in both lanes; the reproduced `= 0` was a dss_capi-only **defect** (a shadowing `TDSSCircuit` field), not a rendering convention | — |
+//! | single-site upstream quirks | the *Single-site upstream quirks* section below | **partly** |
 //!
-//! The Monitor `BaseFrequency` and Newton stale-`Iterminal` rows were not in
-//! IV.2's table and did not extend it: they *were* the two **reproduced**
-//! CLAUDE.md upstream bugs whose clean fix was deferred to this pass — Monitor
-//! **by name**, in that document's own bug bullet; Newton under
-//! `PORTING_PLAN.md` §4.1 rule 4's blanket deferral, quoted ten lines below,
-//! which is what sanctioned it. (Named here, not numbered: the table above loses
-//! a row per teardown, so an ordinal goes stale on its own. And CLAUDE.md's
-//! Newton bullet named no Stage F deferral until F.3j wrote one; the earlier
-//! claim that both were deferred "by name" overreached.) With them the
-//! named-bug set is closed, and since `RETRO_FIXES_PLAN.md` RF-D00-01 it is
-//! closed in the strong sense — **no** CLAUDE.md upstream bug is reproduced in
-//! either lane, on any reader. Of the six, two were never reproduced at all
-//! (VSConverter's self-aliased `MVMult`, harmonics `Powers`-after-`Currents`) —
-//! as is the out-of-range half of `Bus_Int_Duration`. The four that *were*
-//! reproduced are all gone: G2.2a tore down `Iresidual` and the in-range
-//! `Bus_Int_Duration` cross-zone overwrite, G2.2b tore down Monitor
-//! `BaseFrequency`, and G2.3 tore down the Newton stale `Iterminal` on the
-//! gate's snapshot reader only — every other cache-aware reader kept it until
-//! RF-D00-01 moved the repair into the solver.
+//! **No** upstream bug is reproduced in either lane, on any reader.
 //!
-//! The last row is likewise not a new *kernel*: the table above enumerates the
+//! The last row is not a new *kernel*: the table above enumerates the
 //! shared arithmetic kernels, the primitives called from hundreds of sites. A
 //! single-site precision quirk becomes a dual kernel selected by
 //! [`OPENDSS_PARITY`]: the default build gets the precise implementation, the
@@ -70,12 +50,10 @@
 //! *both* lanes), and is listed in the *Single-site upstream quirks* section
 //! below.
 //!
-//! **Dense inverse — why that row resolves to *no split* (F.3f → F.3i,
-//! measured 2026-07-26/27).** IV.2's table proposed a partial-pivot (or faer)
-//! inverse as the default kernel. The flip was attempted, gated, and then
-//! **decomposed to its root**; it is not the ULP-level change the drift model
-//! assumes, and no better kernel escapes the finding. Two independent
-//! disqualifiers, each measured:
+//! **Dense inverse — why that row resolves to *no split*.** A partial-pivot
+//! (or faer) inverse as the default kernel is not the ULP-level change the
+//! drift model assumes, and no better kernel escapes the finding. Two
+//! independent disqualifiers, each measured:
 //!
 //! 1. **Numerical — one ULP on an ideal switch is worth 14.5× the calibrated
 //!    floor, and the *more accurate* kernel is the one that busts it.** Under
@@ -95,8 +73,8 @@
 //!    (`1.45235132836994740`), which closes the chain: 1 ULP on a 1e9 S switch
 //!    admittance → 1.56e-11 V of split across the switch (≈1 ULP of the 92.95 kV
 //!    node) → `y·ΔV` = 1.5625e-2 A → `V·ΔI` = 1.4524 kW. The gain **is** the
-//!    family: an ideal switch turns one ULP of node voltage into 15 mA, and
-//!    `tests/TOLERANCE_NOTES.md` §near-ideal-source calibrated `i_abs = 0.1` by
+//!    family: an ideal switch turns one ULP of node voltage into 15 mA, and the
+//!    `large_near_ideal_source` tier's `i_abs = 0.1` is calibrated by
 //!    decomposition *from a bit-identical Y*. So any dense-inverse kernel that
 //!    differs from the parity one by even a single ULP on a `r=1e-6` switch
 //!    fails this case — being more accurate does not help, and a faer LU would
@@ -115,7 +93,7 @@
 //!    singularity like Pascal does". Flipping would silently change those
 //!    reports on a degenerate bus — not a ULP-level difference at all.
 //!
-//! It was also *not* a branch flip: **(F.3h) 495 872 `Zb` inversions across the
+//! It was also *not* a branch flip: **495 872 `Zb` inversions across the
 //! 520-case gate, zero `Err` from either kernel** (max disagreement 1.01e-15
 //! relative), so the Pascal error-117 substitution never fires and the lanes
 //! build the same circuits. That figure came from a one-off instrumented build
@@ -131,47 +109,40 @@
 //! `tests/compat_dense_inverse.rs` pins the consequence at the physical
 //! boundary (that deck's switch split stays exactly `0`).
 //!
-//! What the attempt left behind, and stays: [`invert_partial_pivot_impl`]
-//! normalizes its pivot row through [`cdiv`] instead of `num_complex`'s `/`
-//! (which, on a real-valued matrix, computes `x·c/c²` rather than `x/c` and
-//! drifted the complex kernel 1 ULP away from its real twin —
-//! `mathutil::tests::etk_invert_matches_cmatrix_invert_on_real_matrix` caught
-//! it).
+//! [`invert_partial_pivot_impl`] normalizes its pivot row through [`cdiv`]
+//! instead of `num_complex`'s `/`, which on a real-valued matrix computes
+//! `x·c/c²` rather than `x/c` and drifts the complex kernel 1 ULP away from its
+//! real twin (pinned by
+//! `mathutil::tests::etk_invert_matches_cmatrix_invert_on_real_matrix`).
 //!
-//! **Complex division — why that row needs no split (F.3e, plan deviation,
-//! settled by measurement).** IV.2's table proposed `num_complex`'s `/` as the
-//! default kernel, on the assumption that the parity kernel was a Pascal wart
+//! **Complex division — why that row needs no split.** `num_complex`'s `/` as
+//! the default kernel would assume that the parity kernel is a Pascal wart
 //! kept only for bit-parity. It is not: FPC `ucomplex`'s `/` is **Smith's
 //! algorithm**, the standard robust complex division (C99 `_Cdivd`, LAPACK
 //! `dladiv`) — legitimate numerics that happen to also be what upstream uses.
 //! Measured against the correctly-rounded quotient — an **exact-rational**
 //! reference over 20 000 operand pairs spanning 1e-6…1e6 in both Smith
-//! branches, re-runnable as `python tools/lanes/cdiv_sweep.py sweep`
-//! (re-measured 2026-08-01):
+//! branches, re-runnable as `python tools/lanes/cdiv_sweep.py sweep`:
 //!
 //! | kernel | mean rel. error | worst rel. error | outside `|den|` ∈ [1e-154, 1e154] |
 //! |---|---|---|---|
 //! | Smith (`cdiv_fpc_impl`) | **5.68e-17** | **3.68e-16** | still exact |
 //! | naive (`cdiv_std_impl`) | 7.73e-17 | 4.50e-16 | `0` or `NaN` — total loss |
 //!
-//! The 2026-07-27 figures (9.42e-17 / 3.82e-16 against 1.05e-16 / 4.26e-16)
-//! took their reference from the operands' *decimal spellings* rather than
-//! their binary values; same ordering, different magnitudes. Note also that the
-//! verdict is the **aggregate**: on ~25% of individual pairs Smith is the
+//! The verdict is the **aggregate**: on ~25% of individual pairs Smith is the
 //! worse of the two, so a per-pair claim would be false.
 //!
 //! So flipping this row would make the *product* lane strictly less accurate
 //! and strictly less robust, buying nothing: the parity lane already provides
-//! bit-parity, and IV.1 keeps "legitimate numerics with no crate equivalent"
+//! bit-parity, and this engine keeps "legitimate numerics with no crate equivalent"
 //! (complex Bessel, `dss-sparse` row equilibration) in **both** modes for
 //! exactly this reason. The row therefore resolves like "Y triplet dedup":
 //! **one shared kernel**. `cdiv_std_impl` stays compiled and its inferiority
 //! stays *asserted* (`tests::cdiv_shared_kernel_is_the_more_accurate_one`
 //! against a `Decimal`-derived reference table, and
 //! `tests::naive_division_collapses_where_smith_stays_exact`), so the verdict
-//! cannot rot into folklore. `support::line_constants` already recorded the
-//! same conclusion in-tree ("Smith's division … stays permanently") before this
-//! measurement independently confirmed it.
+//! cannot rot into folklore. `support::line_constants` reaches the same
+//! conclusion for its own divisions.
 //!
 //! **Sym components — why that row needs no alias.** The pinned oracle selects
 //! the *better-precision* matrices by default: `mathutil.pas:548` ends its
@@ -204,7 +175,7 @@ mod tests;
 pub use dss_compat::OPENDSS_PARITY;
 
 // ---------------------------------------------------------------------------
-// Complex division (IV.2 row 1)
+// Complex division
 // ---------------------------------------------------------------------------
 
 /// Complex division bit-faithful to FPC's `ucomplex` `/` operator (Smith's
@@ -251,7 +222,7 @@ pub fn cdiv_std_impl(num: Complex64, den: Complex64) -> Complex64 {
 pub use cdiv_fpc_impl as cdiv;
 
 // ---------------------------------------------------------------------------
-// Dense inverse (IV.2 row 2)
+// Dense inverse
 // ---------------------------------------------------------------------------
 
 /// In-place complex inversion, the exact algorithm of Pascal
@@ -270,7 +241,7 @@ pub use cdiv_fpc_impl as cdiv;
 /// inverts `FYc` "ignoring singularity like Pascal does". Restoring or zeroing
 /// the input on failure would silently change those reports on a degenerate
 /// bus, so it is permanent shared-kernel semantics in **both** lanes — and one
-/// of the two reasons IV.2 row 2 resolves to *no split*
+/// of the two reasons the dense-inverse row resolves to *no split*
 /// ([`invert_partial_pivot_impl`] restores instead; see the module header).
 pub fn invert_gj_no_exchange_impl(m: &mut CMatrix) -> Result<(), SingularMatrix> {
     let l = m.order();
@@ -305,8 +276,8 @@ pub fn invert_gj_no_exchange_impl(m: &mut CMatrix) -> Result<(), SingularMatrix>
                         // Pascal: A[i,j] - (A[i,k]*A[k,j]) / A[k,k], where `/`
                         // is FPC ucomplex Smith's division. The parity kernel
                         // calls the parity division *directly*, never through
-                        // the `cdiv` alias — F.3 flips that alias in the
-                        // default lane and this impl must not follow it.
+                        // the `cdiv` alias, so it never follows a change of
+                        // that alias.
                         m[(i, j)] = m[(i, j)] - cdiv_fpc_impl(m[(i, k)] * m[(k, j)], m[(k, k)]);
                     }
                 }
@@ -370,7 +341,7 @@ pub fn invert_partial_pivot_impl(m: &mut CMatrix) -> Result<(), SingularMatrix> 
         }
 
         // Normalize the pivot row. Divides through [`cdiv`] (Smith's), not
-        // `num_complex`'s `/`: F.3e measured Smith as the more accurate kernel,
+        // `num_complex`'s `/`: Smith is the more accurate kernel (module header),
         // and on a real-valued matrix (`im == 0`) it reduces *exactly* to the
         // real division, which is what keeps this kernel bit-consistent with
         // [`etk_invert_partial_pivot_impl`] (pinned by
@@ -402,7 +373,7 @@ pub fn invert_partial_pivot_impl(m: &mut CMatrix) -> Result<(), SingularMatrix> 
 }
 
 /// The complex dense-inverse kernel — **one shared implementation, no lane
-/// split** (F.3i; see the module header for the two measurements that settled
+/// split** (see the module header for the two measurements that settled
 /// it). Deliberately declared without a `cfg`: both lanes invert with the
 /// Pascal no-row-exchange Gauss-Jordan.
 pub use invert_gj_no_exchange_impl as invert;
@@ -518,26 +489,20 @@ pub fn etk_invert_partial_pivot_impl(a: &mut [f64], norder: usize) -> Result<(),
 }
 
 /// The real dense-inverse kernel — the counterpart of [`invert`], and **one
-/// shared implementation** for the same measured reasons (F.3i).
+/// shared implementation** for the same measured reasons.
 pub use etk_invert_gj_no_exchange_impl as etk_invert;
 
-// The **Newton stale `Iterminal`** row is gone (`GOLDEN_REBASE_PLAN.md` G2.3 on
-// the gate's reader, `RETRO_FIXES_PLAN.md` RF-D00-01 on every other one).
+// The **Newton stale `Iterminal`** row is gone.
 // `DoNewtonSolution`'s final `SumAllCurrents` stamps every element's
 // `Iterminal` from the *pre-final* voltage guess `NodeV_{n-1}` and marks it
-// solved for the current `SolutionCount` (r4133 `Common/Solution.pas:1199`,
-// the sum at `:1203`, the `NodeV -= dV` update at `:1221-1226`; capi 0.14.5
-// `src/Common/Solution.pas:944-948` / `:965-968`, same order), so upstream's
-// cache-aware `Get_Powers`/`Get_Losses` (r4133 `Common/CktElement.pas:632-640`
-// `ComputeIterminal`, called from `Get_Power` `:666` and `Get_Losses` `:707`;
-// capi `CktElement.pas:542-550`) return a one-Newton-step-stale current while
+// solved for the current `SolutionCount`, so the OpenDSS engines' cache-aware
+// `Get_Powers`/`Get_Losses` return a one-Newton-step-stale current while
 // `CktElement.Currents` recomputes fresh at `NodeV_n` — one read of one element
-// reporting `S != V·conj(I)`, the identity `Powers` is *defined* by. G2.3
-// recomputed only the gate's snapshot reader
-// (`exec::view::snapshot_elements`); every other cache-aware reader (Export
-// Powers/Losses/Summary, Show Powers/Currents, meters, monitors) kept the stale
-// read until RF-D00-01 moved the repair to its source: `do_newton_solution`
-// drops, on exit, every `Yprim·V` stamp its last `SumAllCurrents` formed
+// reporting `S != V·conj(I)`, the identity `Powers` is *defined* by. This
+// engine repairs it at the source, for every cache-aware reader (Export
+// Powers/Losses/Summary, Show Powers/Currents, meters, monitors and the gate's
+// snapshot reader): `do_newton_solution` drops, on exit, every `Yprim·V`
+// stamp its last `SumAllCurrents` formed
 // (`solution::solution::power_flow::drop_stale_newton_iterminal_stamps`), so
 // the next cache-aware read recomputes at the converged `NodeV`, while a PC
 // element holding its own model state (`ITerminalUpdated`) keeps it exactly as
@@ -559,7 +524,6 @@ pub use etk_invert_gj_no_exchange_impl as etk_invert;
 
 // ---------------------------------------------------------------------------
 // Single-site upstream quirks
-// (PORTING_PLAN §4.1 rule 4, as updated 2026-07-06 — see the module header)
 // ---------------------------------------------------------------------------
 //
 // Each row below is one reproduction site, not a shared kernel: a deterministic
@@ -570,19 +534,17 @@ pub use etk_invert_gj_no_exchange_impl as etk_invert;
 //
 // Membership rule, so this section cannot become a dumping ground: a site
 // qualifies only if (i) upstream's behavior is deterministic and defined (UB is
-// never reproduced in *either* lane, per CLAUDE.md), (ii) the clean fix is
+// never reproduced in *either* lane), (ii) the clean fix is
 // unambiguous — the Pascal itself, a sibling class, or the source's own comment
 // says what was meant — and (iii) the divergence is pinned by a test rather
 // than merely narrated.
 
-// The **Isource `Bus2` never latches** row was the first member of this
-// section and is gone: `GOLDEN_REBASE_PLAN.md` G2.2b tore it down, so
+// The **Isource `Bus2` never latches** row is gone:
 // `elements::pc::isource`'s `BUS2` side effect latches `bus2_defined` in both
-// lanes, like `TVsourceObj.PropertySideEffects` (`Vsource.pas:498`; r4133
-// `Version8/Source/PCElements/Vsource.pas:468`) always did.
+// lanes, like the VSource one.
 
-// The **GICTransformer `G2` off `%R1`** row is gone the same way
-// (`GOLDEN_REBASE_PLAN.md` G2.5): `elements/pd/gic_transformer/solve.rs`
+// The **GICTransformer `G2` off `%R1`** row is gone the same way:
+// `elements/pd/gic_transformer/solve.rs`
 // derives winding 2's conductance from `%R2` in both lanes, the reading its own
 // `else` arm is the inverse of. `type=Auto` puts the G1 and G2 blocks in series
 // on the H→X→neutral path, so the two gated decks (`gictransformer_gic.dss`,
@@ -593,8 +555,8 @@ pub use etk_invert_gj_no_exchange_impl as etk_invert;
 // `exec::tests::compat_quirks::gic_transformer_pct_r2_drives_winding_two`
 // against the `R1=`/`R2=` ohms path both oracles compute correctly.
 
-// The two **CIM attribute-name** rows are gone the same way
-// (`GOLDEN_REBASE_PLAN.md` G2.2c): the delta shunt arm writes
+// The two **CIM attribute-name** rows are gone the same way: the delta shunt
+// arm writes
 // `ShuntCompensator.grounded` — the name its own wye sibling uses and the only
 // class CIM100 declares `grounded` on — and the
 // symmetrical-components line writer closes its `bch`/`gch`/`b0ch` quartet with
@@ -602,9 +564,8 @@ pub use etk_invert_gj_no_exchange_impl as etk_invert;
 // spells. Both lanes now write them; `tests/golden_cim.rs` applies the two
 // renames to the oracle goldens unconditionally, so no golden byte moved.
 
-// The two **Relay event-log** rows left together
-// (`GOLDEN_REBASE_PLAN.md` G2.2d), both of them label-only — no computed value
-// moves in either lane:
+// The two **Relay event-log** rows left together, both of them label-only — no
+// computed value moves in either lane:
 //
 // * the per-`Sample` state trace. `TRelayObj.Sample` closes its `FPresentState`
 //   resync with a bare `AppendtoEventLog('Debug Sample: Relay.' + Name,
@@ -628,22 +589,19 @@ pub use etk_invert_gj_no_exchange_impl as etk_invert;
 // capture in **both** lanes, so the gated `oracle: "r4133"` protection decks
 // keep comparing every other line against the oracle and no golden byte moved.
 
-// The **Fault `Dump` reprints `MinAmps`** row left with the two CIM ones
-// (`GOLDEN_REBASE_PLAN.md` G2.2c): `TFaultObj.DumpProperties` starts its generic
-// tail at `NumPropsThisClass` = `Ord(High(TProp))` = 9 = `MinAmps` itself
-// (`Fault.pas:533`; r4133 `Version8/Source/PDElements/Fault.pas:594` with
-// `NumPropsthisclass = 9` `:107`), so the loop's first iteration re-emits the
-// property the custom `~ MinAmps=%.1f` line just wrote. Every other class with
+// The **Fault `Dump` reprints `MinAmps`** row left with the two CIM ones:
+// `TFaultObj.DumpProperties` starts its generic tail at `NumPropsThisClass` =
+// `Ord(High(TProp))` = 9 = `MinAmps` itself, so the loop's first iteration
+// re-emits the property the custom `~ MinAmps=%.1f` line just wrote. Every
+// other class with
 // that loop writes `NumPropsThisClass + 1` (`Transformer.pas:1276`,
 // `AutoTrans.pas:1307`, `XfmrCode.pas:663`), so both lanes now start the tail at
 // `NormAmps`; `golden_reports`' `fault_dump_expected` drops the second of each
 // pair from the oracle goldens unconditionally, so no golden byte moved.
 
-// `MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM` lived here until
-// `GOLDEN_REBASE_PLAN.md` G2.4 **reclassified** it — the only row this module
-// ever carried whose upstream was not Pascal. The `[0.0]` the parity lane used
-// to emit for a header-only monitor stream is fabricated by the **client layer
-// of both oracle channels**, never by an engine:
+// `MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM` is no compat row: its upstream is
+// not Pascal. The `[0.0]` of a header-only monitor stream is fabricated by the
+// **client layer of both oracle channels**, never by an engine:
 //
 // * dss-python's `IMonitors.Channel` (`dss/IMonitors.py:28-55`) does not call
 //   `Monitors_Get_Channel` at all: it pulls the raw `ByteStream` and
@@ -655,19 +613,16 @@ pub use etk_invert_gj_no_exchange_impl as etk_invert;
 //   captures are actually made of, it is the load-bearing evidence for that
 //   channel, not any Pascal accessor.
 //
-// **Corrected 2026-08-06 (audit).** The engines are not innocent here, they are
-// simply never reached through those two clients. `Monitors_Get_Channel` keeps
-// its empty `DefaultResult` (`CAPI_Monitors.pas:304`) only for `SampleCount <=
-// 0` (`:308`) or an invalid index (`:313-320`); with samples taken and nothing
-// flushed — `TakeSample` increments `SampleCount` (`Monitor.pas:1195`) while
-// only `Save` grows the stream (`:1122-1125`) — it returns `SampleCount` zeros
-// read out of a zero-filled `AllocMem` buffer whose reads all fail at EOF
-// (`:321-330`). r4133's native accessor pads `myDBLArray := [0]` only while
-// `SampleCount = 0` and otherwise walks the same unwritten region
-// (`Version8/Source/DDLL/DMonitors.pas:509-541`). So no official reader reports
-// an empty channel, but neither engine reports `[0.0]` either: the placeholder
-// is purely a client artifact, and the `SampleCount` zeros are an upstream
-// defect this port does not reproduce (2026-08-02 policy). Neither is
+// The engines are not innocent here: they are simply never reached through
+// those two clients. dss_capi's `Monitors_Get_Channel` keeps its empty default
+// result only for `SampleCount <= 0` or an invalid index. With samples taken
+// and nothing flushed (`TakeSample` increments `SampleCount` while only `Save`
+// grows the stream) it returns `SampleCount` zeros read out of a zero-filled
+// buffer whose reads all fail at EOF. r4133's native accessor pads `[0]` only
+// while `SampleCount = 0` and otherwise walks the same unwritten region. So no
+// official reader reports an empty channel, but neither engine reports `[0.0]`
+// either: the placeholder is purely a client artifact, and the `SampleCount`
+// zeros are an OpenDSS bug this engine does not reproduce. Neither is
 // observable through a gating client, which is why the row owes no ledger
 // entry.
 //
@@ -785,10 +740,10 @@ pub fn profile_ll_pu_divisor() -> f64 {
     }
 }
 
-// The **LoadShape MMF plain-text accept-set** row is gone too
-// (`GOLDEN_REBASE_PLAN.md` G2.5). Its witness was always as strong as this
-// section's rule asks for — `TLoadShapeObj` owns a *second* reader for the same
-// format, `ReadCSVFile`'s non-mapped branch (`LoadShape.pas:1044`), which parses
+// The **LoadShape MMF plain-text accept-set** row is gone too. Its witness was
+// always as strong as this section's rule asks for — `TLoadShapeObj` owns a
+// *second* reader for the same format, `ReadCSVFile`'s non-mapped branch
+// (`LoadShape.pas:1044`), which parses
 // each row with the aux parser and so honours the sign and the exponent the
 // mapped branch deletes (`:1374`) — and both readers now take the column
 // verbatim through that same parser.
@@ -799,33 +754,32 @@ pub fn profile_ll_pu_divisor() -> f64 {
 // deck `shape_mmf_io.dss`. See `elements/general/load_shape/compute.rs`.
 
 // ---------------------------------------------------------------------------
-// Report text rendering — the F-FMT seam (IV.2 row 11, step F.4)
+// Report text rendering — the number-format seam
 // ---------------------------------------------------------------------------
 //
-// `DE_PASCALIZE_PLAN.md` Part IV.2 §F-FMT step 1: *every* number-to-text call
-// goes through an alias declared here, so the lane makes one decision per
-// rendering rule instead of one per call site. The parity kernels are the FPC
-// RTL emulations moved as-is; the default kernels are native `format!` with
-// explicit precision.
+// *Every* number-to-text call goes through an alias declared here, so the lane
+// makes one decision per rendering rule instead of one per call site. The
+// parity kernels are the FPC RTL emulations moved as-is; the default kernels
+// are native `format!` with explicit precision.
 //
-// **What F-FMT is allowed to move, and what it is not.** The rows below change
-// how a number is *spelled* — never which number it is, never a column set,
-// never a row order. IV.1 keeps `Export`/CSV column sets and order, `Save`
-// re-compilability and monitor channel precision contractual, and the default
+// **What this seam is allowed to move, and what it is not.** The rows below
+// change how a number is *spelled* — never which number it is, never a column
+// set, never a row order. `Export`/CSV column sets and order, `Save`
+// re-compilability and monitor channel precision stay contractual, and the default
 // kernels below preserve digit counts and notation windows precisely so the
 // fixed-width tables keep their columns. What they drop is FPC's *two-stage
 // decimal re-rounding*, which is the one thing in this family that is an
 // inexactness rather than a layout policy.
 //
-// **Why the default lane's goldens still gate.** §F-FMT step 3: the byte-golden
+// **Why the default lane's goldens still gate.** The byte-golden
 // families are compared through the already-existing parsed-numeric tokenizer
 // (`crates/dss-test-harness/src/harness/lane.rs::compare_report`) against the *same committed
 // goldens*, at `rel = abs = 0`. So a re-spelled number passes only while it
 // parses to the identical `f64`; a changed value, a changed column count or a
-// changed row order fails in both lanes. F.4 opens no re-baseline event.
+// changed row order fails in both lanes.
 //
-// **`comma_text` — declared, and measured to need *no* split.** IV.2's table
-// bundles FPC `TStrings.CommaText` into the parity kernel. Read at the source
+// **`comma_text` — declared, and measured to need *no* split.** FPC
+// `TStrings.CommaText` looks like a parity-kernel candidate. Read at the source
 // (`crate::util::comma_text`), its rule is "quote an item containing any char
 // `<= ' '`, the delimiter, or the quote char; double an embedded quote" — which
 // is the RFC-4180 quoting rule restricted to this alphabet, not an FPC wart:
@@ -951,7 +905,7 @@ pub const JSON_LINE_BREAK_PARITY_IMPL: &str = "\r\n";
 pub const JSON_LINE_BREAK_DEFAULT_IMPL: &str = "\n";
 
 /// How a run of fixed-width `Show` rows becomes text — the **table-layout**
-/// kernel of F-FMT (§F-FMT step 2), the counterpart of the number formats above.
+/// kernel of the report-rendering seam, the counterpart of the number formats above.
 ///
 /// * parity — [`crate::report::table::render_rows_pad_impl`]: replays the Pascal
 ///   primitives (`Pad`, `PadDots`, `Format('%W…')`) cell by cell, so the bytes
@@ -959,9 +913,9 @@ pub const JSON_LINE_BREAK_DEFAULT_IMPL: &str = "\n";
 /// * default — [`crate::report::table::render_rows_table_impl`]: `comfy-table`
 ///   with the `NOTHING` preset, sizing every column from its own content.
 ///
-/// The crate was chosen by the plan's own criterion — a `forbid(unsafe_code)`-
-/// clean dependency tree. `comfy-table` 7.2's whole closure (itself,
-/// `unicode-width`, `unicode-segmentation`) forbids or denies `unsafe_code`,
+/// The crate was chosen for a `forbid(unsafe_code)`-clean dependency tree.
+/// `comfy-table` 7.2's whole closure (itself, `unicode-width`,
+/// `unicode-segmentation`) forbids or denies `unsafe_code`,
 /// while `tabled` 0.21's mandatory `papergrid` carries real `unsafe` blocks.
 ///
 /// What may move between the lanes is padding, and nothing else:

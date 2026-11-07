@@ -1,19 +1,19 @@
 //! The `dss_env` host-import module: the Pascal 32-slot `TDSSCallBacks`
-//! vtable (`Common/DSSCallBackRoutines.pas:19-67`) as wasm host functions,
+//! vtable as wasm host functions,
 //! one per slot, tiered per `docs/wasm/USERMODEL_ABI.md` §4.
 //!
 //! Every import exists at link time so modules validate. `get_active_element_ptr`
 //! is permanently unimplemented (a raw host pointer has no wasm meaning) and
-//! raises the loud attributed [`Fault::Unsupported`] when *called*. The WP-WM.6
+//! raises the loud attributed [`Fault::Unsupported`] when *called*. The
 //! deferred-command pair (`do_dss_command`/`get_result_str`) is implemented as
 //! an opt-in tier-C mechanism: enabled, `do_dss_command` queues the command for
 //! the host to run through the executive and `get_result_str` serves the last
 //! captured `GlobalResult`; disabled (the default, e.g. the dss-rs element call
 //! sites that cannot re-enter the executive) both raise the same loud
-//! `Fault::Unsupported` — never a silent no-op (plan §2.9-5).
+//! `Fault::Unsupported` — never a silent no-op.
 //!
-//! Marshalling template: the vendored typst plugin host
-//! (`.inputs/typst/crates/typst-library/src/foundations/plugin.rs:576-612`) —
+//! Marshalling template: the typst plugin host (`typst-library`
+//! `foundations/plugin.rs`) —
 //! host functions fetch the guest's exported `memory` from the `Caller`,
 //! read/write linear memory directly, and record a typed fault in the store
 //! data before trapping on OOB (typst's `memory_error` pattern).
@@ -263,14 +263,13 @@ pub(crate) fn register_all(linker: &mut Linker<CallData>) {
     )
     .expect("duplicate dss_env import");
 
-    // --- Slot 7, tier C: DoDSSCommand (Pascal `DoDSSCommandCallBack`,
-    // `:150-154`: `SolutionAbort := FALSE; DSSExecutive.ParseCommand(S)`).
-    // WP-WM.6 deferred-drain design: queue the command; the host runs it
+    // --- Slot 7, tier C: DoDSSCommand (Pascal `DoDSSCommandCallBack`).
+    // Deferred-drain design: queue the command. The host runs it
     // through the executive after this call returns and before the next call
     // on the same instance (ABI doc §4 + ordering note). Opt-in — a host that
     // cannot re-enter the executive (the dss-rs element call sites) leaves the
     // mechanism disabled and the import raises the loud `Fault::Unsupported`
-    // (never a silent no-op, plan §2.9-5). ---
+    // (never a silent no-op). ---
     l.func_wrap(
         "dss_env",
         "do_dss_command",
@@ -648,9 +647,8 @@ pub(crate) fn register_all(linker: &mut Linker<CallData>) {
     )
     .expect("duplicate dss_env import");
 
-    // --- Slot 32, tier C: GetResultStr (Pascal `GetResultStrCallBack`,
-    // `:449-452`: `StrLCopy(S, GlobalResult, Maxlen)`). WP-WM.6: serve the
-    // last `GlobalResult` the host captured after running a drained
+    // --- Slot 32, tier C: GetResultStr (Pascal `GetResultStrCallBack`).
+    // Serve the last `GlobalResult` the host captured after running a drained
     // `do_dss_command` (persisted across calls — the ordering note, ABI §4).
     // Opt-in / loud-by-default, paired with `do_dss_command`. ---
     l.func_wrap(

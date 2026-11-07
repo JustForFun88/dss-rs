@@ -1,4 +1,4 @@
-//! `GOLDEN_REBASE_PLAN.md` WP-G1 sub-step **G1.10c** — the CONTENTS of the
+//! The CONTENTS of the
 //! run-created demand-interval tree, compared live on every gating channel of
 //! the unified corpus gate.
 //!
@@ -6,23 +6,19 @@
 //!
 //! For one (case, channel, port-run): the text of every FILE member of the
 //! demand-interval tree the run created under the case directory
-//! (`<OutputDirectory><CaseName>/DI_yr_<year>/*.csv`, r4133
-//! `Version8/Source/Meters/EnergyMeter.pas:824` — `DI_Dir := CasePath + '\DI_yr_'
-//! + Year`; the port
-//! `crates/dss-core/src/solution/meters/demand_interval.rs:941-974`). Members
-//! are selected out of the very created-file classification G1.10a compares
+//! (`<OutputDirectory><CaseName>/DI_yr_<year>/*.csv`, written by
+//! `crates/dss-core/src/solution/meters/demand_interval.rs`). Members
+//! are selected out of the very created-file classification the run-file surface compares
 //! ([`dss_epri::guard::is_di_member`]) and arrive here as
 //! `normalized name → file text` on both sides ([`DiTree`]), so this surface can
 //! never disagree with that one about *what the run wrote* — only about what is
 //! inside it.
 //!
 //! Purely observational: no command is added to any run on any transport
-//! (`CloseDI` is never injected — the R part measured that every producer
-//! flushes the last CLOSED cycle to disk by itself: the DI writers are in-memory
-//! handlers on all three producers, r4133 `Meters/EnergyMeter.pas:2921-2932`
-//! (`CloseDemandIntervalFile`), the port `demand_interval.rs:515-570`).
+//! (`CloseDI` is never injected: every producer flushes the last CLOSED cycle
+//! to disk by itself).
 //!
-//! Provenance: new coverage, not catch-up. The upstream harness reads the same
+//! The fastdss test harness reads the same
 //! CSVs out of its two output archives but can never fail on one — a name
 //! missing on the other side is skipped (fastdss `tests/compare_outputs.py`
 //! `:416-421`) and a cell mismatch is PRINTED with the `raise` commented out
@@ -33,13 +29,12 @@
 //! `golden_reports.rs::di_policy` (rel `5e-8`, abs `0`) is the floor of ONE
 //! 24-step daily IEEE13 fixture, and it stays exactly that: this module does not
 //! call it, move it or re-tune it. The live population is 720…8 760-step yearly
-//! runs on 1 255…2 998-bus feeders, where the two ORACLES disagree with EACH
-//! OTHER on 23 065 cells of each ckt7 register file (46 130 per case) and 1 440
-//! of each 123Bus register file (2 884) above that band — a policy
-//! no engine can satisfy is not a floor (coordinator decision **D42(1)**).
+//! runs on feeders of thousands of buses, where the two OpenDSS engines
+//! disagree with EACH OTHER above that band on thousands of cells of each
+//! register file — a policy no engine can satisfy is not a floor.
 //!
 //! Nor does the surface ride [`super::compare_export`], for the same reason in
-//! the other direction (named here after the G1.10c audit, finding AC-7): that
+//! the other direction: that
 //! comparator carries ONE `(rel, abs, header_lines)` policy for a whole file,
 //! and the rule below needs a per-COLUMN class vector. [`compare_di_file`] is
 //! therefore its own CSV walker over the same shared primitives
@@ -55,8 +50,9 @@
 //! carries a calibrated floor for each of those, per scenario kind
 //! ([`super::tol_for`]). Each column is therefore classified by the physical
 //! quantity its writer produces ([`DiClass`]) and compared at that class's
-//! existing tier. **No `Tolerances` value moves and no new constant is defined**
-//! — the derivation is recorded in `tests/TOLERANCE_NOTES.md` §G1.10c.
+//! existing tier. **No `Tolerances` value moves and no new constant is defined**:
+//! a DI cell is the same quantity the gate already compares elsewhere, so it
+//! inherits that quantity's floor.
 //!
 //! The classification is **positional**, never a regex over free text:
 //!
@@ -119,7 +115,7 @@ use super::{Tolerances, assert_value_matches_tol, report_lines, split_fields};
 
 /// One producer's demand-interval tree: `normalized member name → file text`.
 ///
-/// The key is exactly G1.10a's created-file member name (`/`-joined,
+/// The key is exactly the run-file surface's created-file member name (`/`-joined,
 /// ASCII-case-folded, case-dir-relative —
 /// [`dss_epri::guard::normalize_created_name`]), so the two surfaces name the
 /// same artifact the same way.
@@ -131,7 +127,7 @@ pub type DiTree = BTreeMap<String, String>;
 
 /// The physical quantity a DI column carries — and therefore which of the
 /// gate's existing calibrated tiers ([`super::tol_for`]) its cells are compared
-/// at. Coordinator decision **D42(1)**.
+/// at.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DiClass {
     /// The row index (`Hour` / `Time` / `Year`) or the row's meter name
@@ -202,7 +198,7 @@ const VBASE_START: usize = NUM_EM_REGISTERS - 5 * NUM_EM_VBASE;
 ///
 /// `Max …` / `Zone Max …` are demand registers (kW / kVA) and carry the power
 /// class; everything else here is an accumulated energy.
-/// [`the_fixed_register_table_is_the_ports_own_register_names`] drives this
+/// `the_fixed_register_table_is_the_ports_own_register_names` drives this
 /// table against a live engine's own `RegisterNames`, so a renamed or reordered
 /// register reds here instead of silently re-classing a column.
 const FIXED_REGISTERS: [(&str, DiClass); 32] = [
@@ -499,8 +495,8 @@ fn column_specs(kind: DiFileKind, header: &[String], ctx: &str) -> Vec<ColumnSpe
 /// The SHAPE and the class vector one demand-interval member's own header
 /// earns — the two derivations [`compare_di_file`] makes before it reads a
 /// single cell, exposed so the live exhaustiveness pin
-/// (`di_pins::the_di_class_table_covers_every_column_of_every_live_di_file`,
-/// GOLDEN_REBASE G1.10c F4r) can state the claim over the port's own five DI
+/// (`di_pins::the_di_class_table_covers_every_column_of_every_live_di_file`)
+/// can state the claim over the port's own five DI
 /// trees instead of over this table quoting itself.
 ///
 /// The shape is `(file stem, columns classified, the header carries the column
@@ -572,7 +568,7 @@ static FILES: AtomicUsize = AtomicUsize::new(0);
 static CELLS: AtomicUsize = AtomicUsize::new(0);
 /// The same three counts, keyed by CASE LABEL — the accounting the scheduler's
 /// fail-on-stale census is read off (`scheduler::assert_di_census_is_the_pinned_
-/// population`, G1.10c F3).
+/// population`).
 ///
 /// The three counters above are process-wide and count every caller in the
 /// process, so a census read off them would hold whatever else the process ran.
@@ -592,7 +588,7 @@ type DiAccountKey = (String, String);
 type DiAccountRow = (usize, usize, usize);
 
 /// The four numbers the scheduler pins fail-on-stale in BOTH directions
-/// (coordinator decision D42; `GOLDEN_REBASE_PLAN.md` §1.1(f) non-vacuity): a
+/// (non-vacuity): a
 /// census of `0` comparisons or `0` cells means the surface compared nothing,
 /// not that nothing diverged.
 pub struct DiCensus {
@@ -687,7 +683,7 @@ pub fn compare_di(
          extra   (the port wrote it, the oracle did not): {:?}\n  \
          oracle ({}): {oracle_names:?}\n  port   ({}): {port_names:?}\n  \
          The members are the run-created `DI_yr_<year>` tree's files, selected by \
-         the same classification G1.10a compares as a set \
+         the same classification the run-file surface compares as a set \
          (`dss_epri::guard::is_di_member`), so a difference here is a missing or \
          extra WRITER, never a capture artifact.",
         oracle_names.difference(&port_names).collect::<Vec<_>>(),
@@ -723,7 +719,7 @@ pub fn compare_di(
 /// One member of the tree: header line 1 compared character for character after
 /// the shared CRLF/LF fold below (`report_lines` trims each line's trailing
 /// whitespace and drops blank lines — the only difference the word "verbatim"
-/// does not cover, named after the G1.10c audit, finding AC1-4), row and field
+/// does not cover), row and field
 /// counts exact, cells by their column's class. Returns the number of cells
 /// compared (an excluded
 /// column's cells are not counted), which the caller folds into the per-case
@@ -1131,7 +1127,7 @@ mod tests {
         let msg = panic_message(move || compare(&ve_tree(VE_ROW), &port));
         assert!(msg.contains("name differs"), "{msg}");
         // …while the ASCII case of a real name does not matter (the two oracles
-        // spell element names differently — G1.10a's fold).
+        // spell element names differently — the run-file surface's fold).
         let oracle = ve_tree(&VE_ROW.replace(", 610, 610", ", Bus_X, 610"));
         let port = ve_tree(&VE_ROW.replace(", 610, 610", ", BUS_x, 610"));
         compare(&oracle, &port);
@@ -1186,8 +1182,7 @@ mod tests {
     }
 
     /// A register file of a THIRD width fails the case — the other arm of "an
-    /// unclassified column fails", which only the fixed-shape reports drove
-    /// until the G1.10c audit settlement (finding AT1-3). Softening this refusal
+    /// unclassified column fails", next to the fixed-shape reports. Softening this refusal
     /// into "classify the first 68 columns and ignore the rest" would leave
     /// every other drive in this module green.
     #[test]
@@ -1356,7 +1351,7 @@ mod tests {
     /// the ASCII case of the Pascal header literals cited above — a second
     /// transcription of the same three lines, so it catches a table that DRIFTS
     /// (a column inserted, moved or re-cased) but not a mistranscription made
-    /// consistently in both places (G1.10c audit, finding AC1-2). What checks
+    /// consistently in both places. What checks
     /// the tables against a header nobody in this file typed is the live gate:
     /// [`column_specs`] asserts every fixed report's own header, column by
     /// column, on all five cases × two channels, and
@@ -1399,7 +1394,7 @@ mod tests {
 
     /// The register half of the same statement, driven against a LIVE engine:
     /// the positional table is the port's own `RegisterNames`, not a copy that
-    /// can drift (coordinator decision D42(1)).
+    /// can drift.
     #[test]
     fn the_fixed_register_table_is_the_ports_own_register_names() {
         let mut dss = Dss::new();

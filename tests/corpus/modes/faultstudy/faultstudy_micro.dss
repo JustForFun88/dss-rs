@@ -1,5 +1,5 @@
-! faultstudy_micro.dss — the GOLDEN_REBASE G1.5 short-circuit witness at the TIGHTEST tier.
-! Added 2026-09-05 (lane `lane-b`, §1.1(f) "at least one gated case per channel"): the whole
+! faultstudy_micro.dss — the bus short-circuit witness at the TIGHTEST tier.
+! This deck gives each channel a gated case at that tier: the whole
 ! `Bus.Zsc1`/`Zsc0`/`ZscMatrix`/`YscMatrix`/`Isc`/`Voc` surface only exists after a fault
 ! study, and the corpus's other four fault-study decks (IEEE123Master-SC, ieee34Mod2_SC_Case_II,
 ! ieee37_SC_Currents, NEVTestCase/Run_NEV) are all `kind: feeder`. This deck carries the same
@@ -9,8 +9,8 @@
 !
 ! Two properties earn its size — neither is reachable on the vendored decks:
 !  * `line.l2 bus1=b1.1.2.3 bus2=b2.2.1.3` gives `b2` the INSERTION node order [2,1,3], which is
-!    not its ascending `Bus.Nodes` order [1,2,3]. The whole G1.5 surface is indexed by the
-!    internal (insertion) index — r4133 `DDLL/DBus.pas:431-459` and capi `CAPI/CAPI_Alt.pas:2305-2334`
+!    not its ascending `Bus.Nodes` order [1,2,3]. The whole surface is indexed by the
+!    internal (insertion) index on both OpenDSS engines, which
 !    walk `Zsc.GetElement(i,j)` over `1..NumNodesThisBus`, and `Isc`/`Voc` walk `BusCurrent[i]`/
 !    `VBus[i]` (`DBus.pas:374-397`/`:351-372`) — while `compare_bus`'s arrays are ascending
 !    (convention 1). A comparator that sorted this surface by node number would pass on every

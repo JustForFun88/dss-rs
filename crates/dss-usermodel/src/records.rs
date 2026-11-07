@@ -14,7 +14,7 @@
 //! to the historical 0.14.5/r3723 layout, ABI Appendix A). `DynamicsRec` (52 B)
 //! and the callback vtable (256 B) were byte-identical r3723→r4133 to begin with.
 //!
-//! [`WindGenVars`] (ABI doc §2.6, added by `R4133_PROPS_PLAN.md` RP1.3) follows
+//! [`WindGenVars`] (ABI doc §2.6) follows
 //! the same rule one step further: the native `TWindGenVars` is 356 bytes with a
 //! managed `PLoss: string` reference at 244, and the wasm image drops that
 //! reference and closes the hole — 348 bytes whose leading 244 are, by
@@ -524,8 +524,8 @@ impl WindGenVars {
 /// layout**: r4133 `Voverride` is **Boolean (1 B)** vs 0.14.5 `LongBool (4 B)`,
 /// and r4133 `EControlAction` is **1 B** (no `{$Z4}`) vs 0.14.5's int32 — so the
 /// whole tail from `Voverride` on is packed tighter than the 0.14.5 record. The
-/// r4133 layout is chosen because the WM.5 gate oracle is the r4133 bridge
-/// (WM.3 re-freeze precedent).
+/// r4133 layout is chosen because the CapControl user-model golden is
+/// captured from r4133.
 ///
 /// Only the fields a CapControl model interacts with are mapped (the `Sample`
 /// context + the bank state); the remaining bytes of the 184-byte image are the
@@ -539,7 +539,7 @@ impl WindGenVars {
 /// `PFOFF_Value`/`CTRatio`/`PTRatio` (offsets 8…80), `Vmax` (95), `Vmin` (103) —
 /// are populated at edit/`RecalcElementData`, NOT in the `Sample` branch a wasm
 /// model runs, and the reference `capuserctl` fixture reads its thresholds from
-/// `UserData` instead, so they are omitted here (mirrors WM.4's
+/// `UserData` instead, so they are omitted here (mirrors the
 /// `TStorageVars`/`TPVSystemVars` "interacted-fields only" codecs). **Successor
 /// trap:** if `get_public_data` is ever wired to serve a real control model whose
 /// decision logic reads these set-points, the zeros are a live bug — extend

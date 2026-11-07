@@ -24,29 +24,29 @@
 //! (`golden_schema.rs::global_enum_defs_bytes_match_oracle`). It is spliced into
 //! the full runtime document by [`assemble_full_document`] (below).
 //!
-//! ## Also ported (see [`classes`], OG-1.5c): the per-class walk
+//! ## Also ported (see [`classes`]): the per-class walk
 //! `prepareClassJsonSchema` (`:325-1134`) — [`class_schema`] builds one class's
 //! `$defs/<Class>` object (properties + `SpecSets`→`oneOf` + `required` +
 //! class-**local** enum `$defs`) from the port's `ClassProps` and a live
-//! all-default sample object, exposed as [`Dss::schema_class_def`](crate::exec::
-//! Dss::schema_class_def). It carries the metadata the port previously lacked:
-//! the `Units_*` [`PropFlags`](crate::obj::props::PropFlags) family, per-class
+//! all-default sample object, exposed as
+//! [`Dss::schema_class_def`](crate::exec::Dss::schema_class_def). It carries the
+//! `Units_*` [`PropFlags`](crate::obj::props::PropFlags) family, per-class
 //! [`spec_sets`], class-local enum rendering, `$dssPropertyOrder` (from the
 //! ported `AltPropertyOrder`), and help via
 //! [`crate::report::help_catalog`]. Each ported class def is byte-gated vs the
 //! oracle (`golden_schema.rs::ported_class_defs_bytes_match_oracle`) after the
 //! documented r4133 divergences (`tests/golden/json/schema_divergences.json`).
 //! The port progresses class-batch by class-batch (the byte-gated set is
-//! `gen_schema.py::SCHEMA_CLASSES`); `ORPHANED_GAPS.md` §1.5 tracks the frontier.
+//! `gen_schema.py::SCHEMA_CLASSES`).
 //!
-//! ## Full-document assembly (OG-1.5c integration): [`assemble_full_document`]
+//! ## Full-document assembly: [`assemble_full_document`]
 //! splices the schema envelope with the ten static `$defs`, the 21 global enum
 //! `$defs`, and — in [`DSS_CLASS_LIST_ORDER`] (Pascal `DSS.DSSClassList`) — each
 //! class's `$defs/<Class>` (from the class walk) plus its
 //! `<Class>List`/`<Class>Container` triple and its `circuitProperties` ref
-//! (`CAPI_Schema.pas:1479-1513`). [`Dss::extract_schema_json`](crate::exec::Dss::
-//! extract_schema_json) now emits this **full** document (the `# Incomplete`
-//! caveat is gone). The whole 49-class 0.14.5 set is byte-gated vs the oracle
+//! (`CAPI_Schema.pas:1479-1513`).
+//! [`Dss::extract_schema_json`](crate::exec::Dss::extract_schema_json) emits this
+//! **full** document. The whole 49-class 0.14.5 set is byte-gated vs the oracle
 //! (after the documented r4133 divergences); the 50th class WindGen and the
 //! four r4133-restructured classes (Relay/Recloser/SwtControl/LineGeometry) are
 //! port-authored (no 0.14.5 oracle to compare) — see `golden_schema.rs` and
@@ -348,8 +348,9 @@ pub fn circuit_properties_head() -> Vec<(String, Json)> {
 /// `$defs` order, with the port's 50th class **WindGen** inserted after
 /// `Generator` (Pascal `DSSClassDefs.pas:187` registers WindGen right after
 /// Generator, before GenDispatcher). The names are the canonical `cls.Name`
-/// (== each class's [`ClassProps::class_name`](crate::obj::props::ClassProps::
-/// class_name)); the caller resolves each to its live class.
+/// (== each class's
+/// [`ClassProps::class_name`](crate::obj::props::ClassProps::class_name)); the
+/// caller resolves each to its live class.
 pub const DSS_CLASS_LIST_ORDER: &[&str] = &[
     "LineCode",
     "LoadShape",

@@ -74,11 +74,8 @@ fn edit_generator(edits: &[(&str, &str)]) -> Generator {
     g
 }
 
-/// UPGRADE_PLAN ledger L2 (WP-U1.1): a Generator `kW`/`kVA` parsed as 0 clamps
-/// to `1e-8` (EPRI r4133 `DblValueNZ`) — but `MVA` (prop 27) does NOT (r4133
-/// `generator.pas:664` uses plain `DblValue*1000`). Pins both the adopted clamp
-/// and the deliberate MVA asymmetry, so removing `REPLACE_ZERO` from kW/kVA — or
-/// re-adding it to MVA (the crashed-draft regression) — fails here.
+/// A Generator `kW`/`kVA` parsed as zero clamps to the `DblValueNZ` floor, but
+/// `MVA` does not. Removing `REPLACE_ZERO` from kW/kVA, or adding it to MVA, fails here.
 #[test]
 fn zero_kw_kva_clamp_dblvaluenz() {
     let g = edit_generator(&[("kW", "0"), ("kVA", "0")]);
@@ -272,7 +269,7 @@ fn take_sample_accumulates_energy() {
     assert!((g.registers[REG_HOURS] - 1.0).abs() < 1e-9);
 }
 
-// --- MakePosSequence (WPG.21) --------------------------------------------
+// --- MakePosSequence -----------------------------------------------------
 
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
 use crate::elements::traits::CktElement;
@@ -350,11 +347,9 @@ fn makeposseq_generator_mva_guard_reads_its_own_slot() {
     assert_eq!(plan.actions, expect);
 }
 
-/// `maxkvar=`/`minkvar=` set (**upstream** slots 19/20 — the CORRECT indices;
-/// every raw slot number in this file is r4133 `CmdMapIndex` space, the space
-/// old-OpenDSS keys `PropertyValue`/`PrpSequence` by, not a port ordinal — the
-/// port's `MAXKVAR`/`MINKVAR` are 21/22 since RP1.1 inserted `Rneut`/`Xneut`):
-/// `had_kvars` fires, emitting minkvar then maxkvar ÷ phases (120→40, -60→-20).
+/// `maxkvar=`/`minkvar=` set: `had_kvars` fires, emitting minkvar then maxkvar
+/// divided by the phase count. Raw slot numbers in this file are r4133
+/// `CmdMapIndex` slots, not ordinals of this engine.
 #[test]
 fn makeposseq_generator_kvars_divided() {
     let mut g = gen_3ph();
@@ -415,11 +410,9 @@ fn edit_gen_prop(g: &mut Generator, name: &str, value: &str) -> crate::diag::Err
     msgs
 }
 
-/// `UserModel=<name>` (WASM_USERMODELS WM.3): the property set stores the name
-/// for the dump and QUEUES a deferred load (§2.4) — the property hook cannot
-/// reach the filesystem, so it does NOT warn at set time. Resolving the queued
-/// load for a native-DLL name (no `.wasm` file → `wasm = None`) is the path that
-/// warns "Not Loaded" (Pascal 570) and falls back to the built-in model.
+/// `UserModel=<name>` stores the name and queues a deferred load without a
+/// warning, since the property hook cannot reach the filesystem. Resolving the
+/// load for a native-DLL name warns "Not Loaded" and falls back to the built-in model.
 #[test]
 fn user_model_stores_and_warns_not_loaded() {
     let mut g = gen_3ph();

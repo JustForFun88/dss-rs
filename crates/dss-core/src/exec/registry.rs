@@ -3,21 +3,17 @@
 //! (`ClassStore`), and the mid-edit foreign-class view (`ForeignClasses`).
 //! Split out of `exec/mod.rs`.
 //!
-//! DE_PASCALIZE R1 (ownership flip): the class's *objects* now live in a typed
-//! per-class arena ([`ClassArena`], `DssClass::arena`) — the boxed-trait
-//! `Vec<Box<dyn DssObject>>` is gone. `DssClass` still owns them (as one typed
-//! `Vec<T>` per class, indexed by object position), which keeps every
-//! `classes: &[DssClass]` view and the `ClassStore`/`ForeignClasses` split
-//! unchanged; the objects are reached through `class.arena` instead of
-//! `class.objects`.
+//! The class's *objects* live in a typed per-class arena ([`ClassArena`],
+//! `DssClass::arena`). `DssClass` owns them (as one typed `Vec<T>` per class,
+//! indexed by object position), and every `classes: &[DssClass]` view and the
+//! `ClassStore`/`ForeignClasses` split reach them through `class.arena`.
 
 use super::*;
 use crate::obj::arena::{ClassArena, ResolvedObj};
 
 /// One registered class plus its live objects — the Rust stand-in for a
 /// `TDSSClass` with its `ElementNameList`. Objects live in [`Self::arena`], a
-/// typed per-class `Vec<T>` behind the [`ClassArena`] enum (R1 ownership flip;
-/// `PORTING_PLAN §2.1`), replacing the pre-R1 `Vec<Box<dyn DssObject>>`.
+/// typed per-class `Vec<T>` behind the [`ClassArena`] enum.
 pub(crate) struct DssClass {
     pub(crate) props: ClassProps,
     /// This class's live objects — one typed `Vec<T>` (Pascal `ElementList`).
@@ -237,7 +233,7 @@ impl ElemStore for ClassStore<'_> {
 
 /// A read view of every class *except* the one being edited (the active class
 /// is the excluded middle element), the [`ForeignClassesView`] the property
-/// engine uses to resolve `ObjectRef` values mid-edit (PHASE4_PLAN §3.1).
+/// engine uses to resolve `ObjectRef` values mid-edit.
 /// Objects are reached through each `DssClass`'s [`ClassArena`].
 pub(crate) struct ForeignClasses<'a> {
     /// `classes[..ci]` — global class index == slice index.

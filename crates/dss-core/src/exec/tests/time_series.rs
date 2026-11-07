@@ -1,7 +1,6 @@
 use crate::exec::*;
 
-/// WP5.8 step 6: time-option round trips, all values transcribed from the
-/// pinned oracle.
+/// Time-option round trips, all values transcribed from the pinned dss_capi.
 #[test]
 fn time_options_round_trip_matches_oracle() {
     let query = |dss: &mut Dss, what: &str| -> String {
@@ -70,7 +69,7 @@ fn loadshapeclass_set_get_round_trip_matches_oracle() {
     }
 }
 
-/// WP5.8: a daily-mode solve steps the clock through `number` steps.
+/// A daily-mode solve steps the clock through `number` steps.
 #[test]
 fn daily_mode_advances_the_clock_and_solves() {
     let mut dss = Dss::new();
@@ -91,7 +90,7 @@ fn daily_mode_advances_the_clock_and_solves() {
     assert_eq!(ckt.solution.dbl_hour, 2.0);
     assert_eq!(ckt.solution.t, 0.0);
     // The built-in default daily shape drove DefaultHourMult (the value
-    // itself is the WP5.2 oracle-pinned GetMultAtHour).
+    // itself is `get_mult_at_hour`).
     let expected = ckt
         .default_daily_shape_obj
         .clone()
@@ -100,7 +99,7 @@ fn daily_mode_advances_the_clock_and_solves() {
     assert_eq!(ckt.default_hour_mult, expected);
 }
 
-/// WP5.8 step 5: `BusCoords` reads `bus, x, y` rows, skipping unknown
+/// `BusCoords` reads `bus, x, y` rows, skipping unknown
 /// buses silently; coordinates survive on existing buses.
 #[test]
 fn bus_coords_sets_coordinates_on_existing_buses() {

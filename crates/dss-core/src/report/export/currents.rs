@@ -64,8 +64,8 @@ pub(crate) fn export_currents(
         // state, which `GetCurrents` returns as it stands (r4133
         // `PCElements/PCElement.pas:255-258`), or currents taken at the solved
         // voltages; the Newton loop's pre-update stamps are dropped by the solver
-        // (`solution::solution::power_flow::drop_stale_newton_iterminal_stamps`,
-        // RF-D00-01). Pinned under Newton by
+        // (`solution::solution::power_flow::drop_stale_newton_iterminal_stamps`).
+        // Pinned under Newton by
         // `exec::tests::newton::newton_export_currents_match_the_normal_algorithm`.
         let cd = elem.cd();
         let (nterms, nconds) = (cd.nterms, cd.nconds);

@@ -96,7 +96,7 @@ pub(super) struct MonitorModeView {
     pub posseq_only: bool,
 }
 
-// The bit masks, pinned here (and nowhere else) per DE_PASCALIZE P2.
+// The bit masks, pinned here and nowhere else.
 const MODEMASK: i32 = 15;
 const SEQUENCEMASK: i32 = 16;
 const MAGNITUDEMASK: i32 = 32;

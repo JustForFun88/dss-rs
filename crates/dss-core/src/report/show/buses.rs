@@ -10,14 +10,14 @@ use crate::util::sqrt3;
 /// Build the `Show Buses` text (Pascal `ShowBuses`). Read-only over the circuit's
 /// bus list.
 ///
-/// F-FMT step 2: the bus lines are [`Row`]s, so the lane renders the columns
+/// The bus lines are [`Row`]s, so the lane renders the columns
 /// ([`crate::compat::render_rows`]). The coordinate parentheses are cells of
 /// their own — a `)` written flush against a coordinate that happens to fill its
 /// 13-char field is the one shape in which the two kernels' tokens could differ,
 /// and a cell keeps it a token in both. The two header lines stay free text:
 /// Pascal spans them across the data columns (`Coord` sits over the `(`/`x`/`y`/
 /// `)` group, `Number of` over one column), so no cell-per-column decomposition
-/// of them exists; only a v2 re-layout (plan §F-FMT step 4) could move them.
+/// of them exists; only a re-layout of the report could move them.
 pub(crate) fn show_buses(ckt: &Circuit) -> String {
     // Pascal `SetMaxBusNameLength; Inc(MaxBusNameLength, 2)`.
     let mbnl = super::max_bus_name_length(ckt) + 2;

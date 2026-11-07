@@ -11,6 +11,6 @@ families, not the vendored corpus).
 - **`gen_shape_fixtures.py`** — the binary/CSV LoadShape/TShape/PriceShape/
   GrowthShape fixtures for `tests/corpus/modes/inputformat/shape_binfiles/`.
 
-Regenerate deliberately (the decks are committed and oracle-validated); see
-`GAPS_PLAN.md` §2.1 for the validation ritual and `TESTING.md` → *Add a corpus
-deck*.
+Regenerate deliberately (the decks are committed and validated on the OpenDSS
+engines). A new deck is validated as `tools/corpus/README.md` describes under
+*Add a corpus case*.

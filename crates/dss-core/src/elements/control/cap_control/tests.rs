@@ -100,7 +100,7 @@ fn pf_mode_translates_on_off_settings() {
     assert_eq!(cc.off_value, -0.99);
 }
 
-// --- Sample / DoPendingAction (WP5.6) ---
+// --- Sample / DoPendingAction ---
 
 use crate::elements::ckt::CktElementData;
 use crate::solution::{ControlMode, ControlQueue, EventLog, LoadSolutionModel, SolveMode};
@@ -390,14 +390,11 @@ fn do_pending_open_multistep_steps_down() {
     assert!(sc.y_changed);
 }
 
-// --- USERCONTROL wiring (WM.5): Sample-context packing + DoPendingAction ---
+// --- USERCONTROL wiring: Sample-context packing + DoPendingAction ---
 
-/// WM5-C4/wm5-1: the host-side `@ControlVars` `Sample`-context packing (which
-/// sensed quantity/unit lands in which `CapControlVars` slot) is served to the
-/// guest via `get_public_data`, which is un-gatable over wasm (ABI §2.5) — so the
-/// end-to-end gate never asserts it. Pin the field assignment directly:
-/// `SampleP` in kW+jkvar (×0.001), `SampleV`/`SampleCurr` PT/CT-scaled, and
-/// `LastStepInService = NumSteps − AvailableSteps` (Pascal `CapControl.pas:1057-1069`).
+/// The `Sample`-context packing (which sensed quantity and unit lands in which
+/// `CapControlVars` slot) reaches the guest only through `get_public_data`, which
+/// no engine comparison sees (`docs/wasm/USERMODEL_ABI.md` §2.5), so it is pinned here.
 #[test]
 fn user_control_builds_sample_context_in_pascal_units() {
     let mut cc = CapControl::new("cc");
@@ -439,12 +436,8 @@ fn user_control_builds_sample_context_in_pascal_units() {
     assert!(!cv.should_switch);
 }
 
-/// WM5-C1 / wm5-2: the USERCONTROL `DoPendingAction` path sets `PendingChange :=
-/// code` (the guest scheduled `code` via `control_queue_push`; no `@ControlVars`
-/// write-back over wasm) and the shared switch block acts on it — the `proxy`
-/// argument is accepted and forwarded to the guest but does not itself drive the
-/// built-in switch (`CapControl.pas:725-733`, ABI §2.5). With no loaded model the
-/// guest step is skipped and no trap is raised (no abort).
+/// The USERCONTROL `DoPendingAction` path sets `PendingChange` to the `code` the
+/// guest scheduled, not the `proxy` argument, and the shared switch block acts on it.
 #[test]
 fn user_control_do_pending_applies_code_not_preset_pending() {
     let mut cc = CapControl::new("cc");
@@ -466,7 +459,7 @@ fn user_control_do_pending_applies_code_not_preset_pending() {
     assert!(sc.y_changed);
 }
 
-/// WM.5 USERCONTROL multi-step: a `code = CTRL_CLOSE` on a partly-closed bank
+/// USERCONTROL multi-step: a `code = CTRL_CLOSE` on a partly-closed bank
 /// steps up one (the shared switch block, reached via the USERCONTROL `code`).
 #[test]
 fn user_control_do_pending_multistep_steps_up() {
@@ -777,7 +770,7 @@ fn cap_control_type_pins_enum_ordinals() {
         (CapControlType::Time, 3),
         (CapControlType::Pf, 4),
         (CapControlType::Follow, 5),
-        // USERCONTROL (6) is set internally when a `UserModel=` loads (WM.5); it
+        // USERCONTROL (6) is set internally when a `UserModel=` loads; it
         // is NOT in the `Type=` enum table (`CapControl.pas:245-249` comments it
         // out), so `ordinal_to_string(6)` renders empty — but the ordinal must
         // round-trip so a stored control-type survives.
@@ -803,10 +796,8 @@ fn set_i32_type_keeps_value_on_unregistered_ordinal() {
     assert_eq!(cc.get_i32(prop::TYPE), 2);
 }
 
-/// WM.5 element flip: a `UserModel=` naming a **native DLL** (not a `.wasm`)
-/// warns "Not Loaded" (570) and falls back to the built-in control — the model
-/// stays absent, `ControlType` is NOT forced to USERCONTROL, and the deck still
-/// solves (the §2.4 activation rule, `CapUserControl.pas` / `CapControl.pas:429-440`).
+/// A `UserModel=` naming a native DLL (not a `.wasm`) warns "Not Loaded", and the
+/// property still reads back the name as written.
 #[test]
 fn user_model_native_dll_name_warns_and_falls_back() {
     use crate::exec::Dss;
@@ -831,39 +822,15 @@ solve";
         "native-DLL UserModel must warn 570 Not Loaded; got {:?}",
         dss.error_texts()
     );
-    // The `?` dump round-trips the stored strings (WM.5 get_string).
+    // The `?` dump round-trips the stored strings (`get_string`).
     dss.command("? capcontrol.cc.UserModel");
     assert_eq!(dss.result().trim(), "notreal.dll");
 }
 
 // EXPECTED-VALUE-PIN(CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL): `Like=` carries
 // the control signal over, in both lanes — name, reference and behaviour.
-/// `MakeLike` copies the `ControlSignal` reference, so a clone of a
-/// `type=Follow` CapControl follows the same shape the source does.
-///
-/// Upstream drops it: `TCapControlObj.MakeLike`
-/// (`.inputs/dss_capi/src/Controls/CapControl.pas:445-489`) lists every other
-/// reference — controlled and monitored element, the user model, both
-/// snapshots — and never `ctrlSignalShape` (`:169`), so its clone has nothing
-/// to follow and aborts the solve on its first sample with message 10362.
-/// r4133 shares the omission in `TCapControl.MakeLike` (field `myShapeObj`) and
-/// copies the `PropertyValue` array on top, which hides the loss from a
-/// property read. Its clone raises no 10362: the FOLLOW arm of
-/// `TCapControlObj.Sample` has no nil test and dereferences the missing shape.
-/// `TSolutionObj.SampleControlDevices` catches that access violation as
-/// message 484 and aborts the solve, so `Solve` fails with message 482
-/// ("Error Encountered in Solve: Solution aborted.") and the clone's bank
-/// never switches. The no-shape corpus deck
-/// `capcontrol/capcontrol_follow_noshape.dss` is gated `capi_v0145` only
-/// because its expected abort text is the 10362 message, which r4133 does not
-/// print. Both gating oracles carry the omission, and neither lane reproduces
-/// it (GOLDEN_REBASE G2.1b; `issue-15`).
-///
-/// Expected values, not tolerances, and three of them, because the fix has
-/// three separable halves: the *name* (what `? CapControl.dst.ControlSignal`
-/// reports), the *reference* (what the FOLLOW arm dereferences), and the
-/// *consequence* — copying only the name would leave the clone aborting just
-/// the same.
+/// `MakeLike` copies the `ControlSignal` name and reference, so a clone of a
+/// `type=Follow` CapControl samples the same shape and arms its switch.
 #[test]
 fn make_like_copies_the_control_signal() {
     let mut src = CapControl::new("src");
@@ -898,24 +865,8 @@ fn make_like_copies_the_control_signal() {
 // EXPECTED-VALUE-PIN(CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL): the same row at
 // the deck surface — `Like=` through the command layer, the property read a user
 // sees, and a solve that does not abort.
-/// The same row where a user meets it: `New CapControl.b Like=a` on a
-/// `type=Follow` controller.
-///
-/// The unit pin above calls `make_like` directly; this one drives the exec
-/// applier, so it also covers the property observable
-/// (`? CapControl.b.ControlSignal`, `accessors.rs` `CONTROLSIGNAL`) and the
-/// abort path the clone used to take — the pinned oracle's clone raises message
-/// 10362 ("Type is set to \"Follow\", but not \"ControlSignal\" was provided.
-/// Aborting solution.") on the first sample, which is the error text this deck
-/// must *not* produce (GOLDEN_REBASE G2.1b; `issue-15`).
-///
-/// The positive observable is a switch the clone alone can make. The signal is
-/// `0`, the clone `b` controls only `c2` and `d` has no control at all, so a
-/// live clone opens `c2` (`[ 0]`) while `d` stays closed (`[ 1]`). Both gating
-/// oracles give exactly these states when `b` is written longhand. Written
-/// `like=`, the pinned oracle raises 10362 and r4133 fails the solve with
-/// message 482, and both leave `c2` closed (`[ 1]`, the value this pin
-/// rejects).
+/// `New CapControl.b Like=a` on a `type=Follow` controller keeps the signal at the
+/// deck surface: the property read reports it and the clone alone switches its bank.
 #[test]
 fn like_on_a_follow_capcontrol_keeps_following() {
     use crate::exec::Dss;

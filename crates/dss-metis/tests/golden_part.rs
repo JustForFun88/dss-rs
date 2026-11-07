@@ -1,11 +1,11 @@
-//! Bit-exact replay of the `part_graph_kway` port against the committed C
-//! reference `.part.N` goldens (WP-AD.2 Stage A gate).
+//! Bit-exact replay of `part_graph_kway` against the committed C reference
+//! `.part.N` goldens.
 //!
-//! For every committed fixture and every `k in {2,3,4,8}`, the port reads the
+//! For every committed fixture and every `k in {2,3,4,8}`, the test reads the
 //! `.graph`, calls [`dss_metis::part_graph_kway`], and asserts the returned
 //! partition vector is **bit-identical** to the golden `<fixture>.graph.part.k`
 //! generated offline by the C original (see `tools/golden/gen_metis_reference.md`).
-//! No tolerance, no relabeling: the port must reproduce METIS 5.2.1's exact
+//! No tolerance, no relabeling: this crate must reproduce METIS 5.2.1's exact
 //! labels, which pins the coarsening/RNG/refinement pipeline end to end.
 
 use dss_metis::graph::Graph;

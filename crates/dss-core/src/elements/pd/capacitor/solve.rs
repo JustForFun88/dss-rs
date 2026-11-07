@@ -332,8 +332,7 @@ impl Capacitor {
                 // ×1.000001 diagonal perturbation the Delta 1|2 branch already
                 // used, added to the Cmatrix branch so a singular C matrix still
                 // inverts. Only reached when the Cmatrix capacitor has a series
-                // filter reactance (`has_zl`). UPGRADE_PLAN WP-U1.2 row B1; ledger
-                // DIVERGENCES.md §B1.
+                // filter reactance (`has_zl`).
                 for i in 1..=nphases {
                     let d = ywork.get(i - 1, i - 1) * 1.000001;
                     ywork.set(i - 1, i - 1, d);

@@ -2,7 +2,7 @@
 //! Port of Pascal `General/LineCode.pas` (`TLineCodeObj`). A `DSS_OBJECT`
 //! class (no terminals, no YPrim): it only holds per-unit-length `Z`/`Yc`
 //! matrices and the sym-component scalars that produce them, which `TLineObj`
-//! copies in `FetchLineCode` (Phase 4 WP4.2).
+//! copies in `FetchLineCode`.
 //!
 //! Unlike `TLineObj`, a LineCode does **no** units conversion on its own
 //! getters — values are stored in the code's declared `Units`, and the
@@ -286,7 +286,7 @@ impl LineCodeObj {
         obj
     }
 
-    // Read accessors consumed by `TLineObj.FetchLineCode` (Phase 4 WP4.2).
+    // Read accessors consumed by `TLineObj.FetchLineCode`.
     pub fn base_frequency(&self) -> f64 {
         self.base_frequency
     }

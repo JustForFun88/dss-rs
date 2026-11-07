@@ -136,9 +136,9 @@ pub struct ElementSnapshot {
     /// Pascal r4133 `DDLL/DCktElement.pas:827` (mode `11`, the
     /// `k := (i-1)*Nconds` offset at `:842`), capi
     /// `CAPI/CAPI_CktElement.pas:541`; fastdss `dss/ICktElement.py:67`.
-    /// Both API paths carry the offset — the missing-offset defect of
-    /// CLAUDE.md upstream bug 1 is confined to the `Export SeqCurrents`
-    /// report path and is not on this surface (pinned by
+    /// Both API paths carry the offset. The missing-offset OpenDSS bug is
+    /// confined to the `Export SeqCurrents` report path and is not on this
+    /// surface (pinned by
     /// `exec::tests::derived_polar::residuals_sum_the_rows_own_terminal`).
     pub residuals: Vec<Polar>,
     /// `CktElement.NumTerminals` — `NTerms`. Pascal r4133
@@ -275,8 +275,7 @@ pub struct ElementSnapshot {
     /// **Not** the `Export SeqCurrents` report path
     /// (`report/export/seq_currents.rs`), which branches on `nphases >= 3`,
     /// carries the report's own rating/`Iresidual` logic and has no sentinel
-    /// arm at all — a frozen golden that must not be re-plumbed
-    /// (`GOLDEN_REBASE_PLAN.md` WP-G1: no golden byte moves).
+    /// arm at all — a frozen golden that must not be re-plumbed.
     pub seq_currents: Vec<f64>,
     /// `CktElement.SeqVoltages`: `Cabs` of the symmetrical components of the
     /// node voltages this element's `NodeRef` points at, same `(0, +, -)`
@@ -435,11 +434,10 @@ pub struct BusScView {
 /// [`Dss::line_losses`], [`Dss::substation_losses`] and [`Dss::total_power`].
 ///
 /// The live corpus gate reconstructs each oracle aggregate over these names out
-/// of the oracle's **own** per-element capture (`GOLDEN_REBASE_PLAN.md` G1.9,
-/// arm P1), and the expected-value pins in `exec::tests::aggregates` assert them
-/// directly — so a wrongly included or omitted summand surfaces as a
-/// *membership* error (one whole element's loss) instead of hiding inside a
-/// blurred sum.
+/// of the oracle's **own** per-element capture, and the expected-value pins in
+/// `exec::tests::aggregates` assert them directly — so a wrongly included or
+/// omitted summand surfaces as a *membership* error (one whole element's loss)
+/// instead of hiding inside a blurred sum.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AggregateTerms {
     /// `Circuit.Losses` (`CAPI_Circuit.pas:171-186` → r4133
@@ -461,7 +459,7 @@ pub struct AggregateTerms {
 }
 
 // ---------------------------------------------------------------------------
-// GOLDEN_REBASE G1.7 — the topology interface (`ITopology`)
+// The topology interface (`ITopology`)
 // ---------------------------------------------------------------------------
 
 /// The circuit's connected-branch topology: the six **order-free** `ITopology`
@@ -481,10 +479,9 @@ pub struct AggregateTerms {
 /// read and freed only in `Destroy` and `DoResetMeterZones` (r4133
 /// `Common/Circuit.pas:2932-2950`, `:703`, `:2308`; capi
 /// `CAPI_Topology.pas:47-63` `ActiveTree` over the same `GetTopology`), so an
-/// `Open`/`Close` between two reads is invisible to it. The port caches nothing —
-/// [`Dss::topology_view`] rebuilds the tree on every call and therefore answers
-/// from the present conductor state (CLAUDE.md: an upstream defect is never
-/// reproduced; pinned by
+/// `Open`/`Close` between two reads is invisible to it. This engine caches
+/// nothing. [`Dss::topology_view`] rebuilds the tree on every call and therefore
+/// answers from the present conductor state (pinned by
 /// `exec::tests::topology::an_open_conductor_isolates_the_downstream_branch`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TopologyView {
@@ -526,20 +523,18 @@ pub struct TopologyView {
     ///
     /// It exists because the two engines reduce the same sequence by two
     /// *different* rules and the live corpus gate asserts that difference
-    /// positively instead of skipping the field (GOLDEN_REBASE coordinator
-    /// decision D16): upstream scans its flat `[a0, b0, a1, b1, ...]` buffer in
-    /// **overlapping windows** (`i := i + 1`, r4133 `DTopology.pas:286-296`, capi
-    /// `CAPI_Topology.pas:180-190`) and so also drops a genuinely new candidate
-    /// that happens to equal a *straddling* window `(b_j, a_{j+1})`, contradicting
-    /// its own comment "see if we already found this pair"
-    /// (`DTopology.pas:286`) — an upstream defect the port does not reproduce
-    /// (CLAUDE.md). Re-applying that window scan to this sequence reproduces
-    /// either oracle's `AllLoopedPairs` exactly
+    /// positively instead of skipping the field. The OpenDSS engines scan their
+    /// flat `[a0, b0, a1, b1, ...]` buffer in **overlapping windows** and so also
+    /// drop a genuinely new candidate that happens to equal a *straddling*
+    /// window `(b_j, a_{j+1})`, contradicting their own comment "see if we
+    /// already found this pair". That is an OpenDSS bug this engine does not
+    /// reproduce. Re-applying that window scan to this sequence reproduces
+    /// either engine's `AllLoopedPairs` exactly
     /// (`exec::tests::topology::the_oracle_pair_list_is_the_window_scan_of_the_candidates`).
     pub looped_pair_candidates: Vec<(String, String)>,
 }
 
-/// GOLDEN_REBASE G1.8 — the four **flat** branch-to-node incidence quantities the
+/// The four **flat** branch-to-node incidence quantities the
 /// live corpus gate compares after one `CalcIncMatrix` + `CalcLaplacian` pair:
 /// `Solution.IncMatrix`, `Solution.Laplacian`, `Solution.IncMatrixRows` and
 /// `Solution.IncMatrixCols` (r4133 `Version8/Source/DDLL/DSolution.pas`
@@ -561,7 +556,7 @@ pub struct TopologyView {
 /// surface only one channel can answer is not a gate. The hierarchical
 /// `CalcIncMatrix_O` build is out for a second reason as well: it runs
 /// `GetTopology` (r4133 `Common/Solution.pas:3173`), which builds and memoizes
-/// the very `Branch_List` the G1.7 topology census is defined on. Both keep their
+/// the very `Branch_List` the [`TopologyView`] census is defined on. Both keep their
 /// byte-exact `tests/golden/inc_matrix/` `org_*` coverage.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct IncMatrixView {
@@ -591,10 +586,9 @@ pub struct IncMatrixView {
     /// `:1014-1017`). Computed by `exec::view::inc_matrix_cols`.
     pub cols: Vec<String>,
     /// **Not one of the four compared quantities** — the matrix row index the
-    /// ORACLES' cursor assigns to the port's row `i`, i.e. the map the live gate
-    /// applies to [`Self::inc_matrix`]'s row component before comparing it
-    /// (GOLDEN_REBASE G1.8 settlement S-INC, the
-    /// [`TopologyView::looped_pair_candidates`] precedent of decision D16).
+    /// OpenDSS engines' cursor assigns to this engine's row `i`, i.e. the map the
+    /// live gate applies to [`Self::inc_matrix`]'s row component before comparing
+    /// it (the same shape as [`TopologyView::looped_pair_candidates`]).
     ///
     /// Both oracles advance the incidence row cursor for **every** reactor:
     /// `inc(ActiveIncCell[0])` sits at r4133 `Common/Solution.pas:3039`, outside
@@ -602,9 +596,9 @@ pub struct IncMatrixView {
     /// emitted (dss_capi 0.14.5 `Common/Solution.pas:1501` is identical), while
     /// the walk's three siblings advance only on an emitted row (`:2885`,
     /// `:2938`, `:2986`). A series reactor that follows a shunt one therefore
-    /// carries a row index that does not index `Inc_Mat_Rows`. The port does not
-    /// reproduce that (CLAUDE.md; `solution::inc_matrix::add_series_reactors`) —
-    /// its rows are dense — and the gate re-derives upstream's index positively
+    /// carries a row index that does not index `Inc_Mat_Rows`. This engine does
+    /// not reproduce that OpenDSS bug (`solution::inc_matrix::add_series_reactors`):
+    /// its rows are dense. The gate re-derives the OpenDSS index positively
     /// instead of excluding the field: rows contributed by Lines, Transformers
     /// and series Capacitors map to themselves, while the k-th emitted reactor
     /// row maps to `base + j`, where `j` is that reactor's 0-based position in
@@ -635,9 +629,9 @@ pub struct IncMatrixView {
 /// the `Export IncMatrixCols` CSV writer does, faithfully to `ExportResults.pas` —
 /// would answer an empty list where the getter answers every bus name.
 ///
-/// Names come back lowercased: the port normalizes `BusList` entries
-/// (`support::hashlist::HashList`, CLAUDE.md's case-insensitive identifier
-/// convention) while upstream keeps the spelling it first saw, so the gate
+/// Names come back lowercased: this engine normalizes `BusList` entries
+/// (`support::hashlist::HashList`, DSS identifiers are case-insensitive)
+/// while the OpenDSS engines keep the spelling they first saw, so the gate
 /// compares this list case-insensitively.
 pub(crate) fn inc_matrix_cols(ckt: &Circuit) -> Vec<String> {
     let st = &ckt.solution.inc_matrix;
@@ -835,7 +829,7 @@ pub struct PdElementView {
 /// `YNodeOrder` permutation nor the bus × internal-node-index order of
 /// [`Dss::all_bus_vmag_pu`]; the three conventions must never be mixed.
 ///
-/// **The four quantities the two oracles do *not* share (GOLDEN_REBASE G1.4c).**
+/// **The four quantities the two OpenDSS engines do *not* share.**
 /// Both engines publish `SeqVoltages`, `CplxSeqVoltages`, `VLL` and `puVLL`, but
 /// on any bus that is not exactly `1, 2, 3` they answer by three different rules,
 /// two of which are defective. The port answers for itself; the corpus gate
@@ -878,9 +872,8 @@ pub struct PdElementView {
 /// `IEEETestCases/13Bus/IEEE13Nodeckt.dss`, whose bus specs carry only node
 /// numbers 1-3, so no bus there can have >= 3 nodes with a phase missing and the
 /// substituting branch is never reached — fixing it would move zero golden
-/// bytes. It stays only because what an *export* should print instead is a
-/// report-semantics decision outside WP-G1's scope (which moves no golden byte
-/// at all); it is tracked, with that measurement, as `ORPHANED_GAPS.md` §1.19.
+/// bytes. It stays only because what an *export* should print instead is an
+/// open report-semantics decision.
 /// Only this API surface carries the port's own semantics, and the two are
 /// pinned separately.
 ///
@@ -925,8 +918,7 @@ pub struct BusVoltageView {
     ///
     /// It is the ingredient a consumer needs to replay an upstream pairing or
     /// ground substitution over the port's own state without re-deriving the
-    /// bus's node refs (the GOLDEN_REBASE D16 precedent: the oracle's walk is
-    /// asserted, not reproduced).
+    /// bus's node refs (the OpenDSS walk is asserted, not reproduced).
     pub node_v: Vec<num_complex::Complex64>,
     /// `Bus.SeqVoltages`: `|V012|` — `Cabs` of the symmetrical components of the
     /// phase voltages — or `None` when the bus does not carry all three phase
@@ -956,11 +948,10 @@ pub struct BusVoltageView {
 /// power-delivery / power-conversion class and testing each element against
 /// the bus. The two oracles use **different tests** and each one's test is a
 /// defect against its own stated intent, so the port answers the physically
-/// correct question and publishes the raw facts beside it (GOLDEN_REBASE D26;
-/// the D15/D16/D21 shape — the oracle's walk is *asserted* over port state,
-/// never reproduced).
+/// correct question and publishes the raw facts beside it (the OpenDSS walk is
+/// *asserted* over this engine's state, never reproduced).
 ///
-/// The port's rule (**S4**, D26):
+/// This engine's rule (**S4**):
 ///
 /// * [`Self::pde`] — a power-delivery-class element ([`ElemKind::is_power_delivery`])
 ///   with **any** terminal whose bus name is this bus, and whose `bus1 <> bus2`
@@ -997,7 +988,7 @@ pub struct BusElementsView {
     /// **Not** the port's answer: the raw attachment facts of every PD/PC-class
     /// element that touches this bus by name or by node reference, in creation
     /// order. A consumer replays an upstream walk over these instead of
-    /// re-deriving the bus's node refs (the GOLDEN_REBASE D16 precedent).
+    /// re-deriving the bus's node refs.
     pub attachments: Vec<BusAttachment>,
 }
 
@@ -1041,8 +1032,8 @@ pub struct BusAttachment {
 /// The `BaseFactor` both engines divide the per-unit bus quantities by:
 /// `1000 · kVBase`, or `1.0` when the bus has no base
 /// (`CAPI_Alt.pas:2262-2265` == `DBus.pas:413-414` == `CAPI_Circuit.pas:538-541`
-/// == `DCircuit.pas:493`). The `1.0` arm is live, not dead: 11 480 of the
-/// corpus's 209 211 buses have `kVBase <= 0` (measured for GOLDEN_REBASE G1.4a).
+/// == `DCircuit.pas:493`). The `1.0` arm is live, not dead: corpus buses with
+/// `kVBase <= 0` reach it.
 fn bus_base_factor(bus: &crate::circuit::bus::Bus) -> f64 {
     if bus.kv_base > 0.0 {
         1000.0 * bus.kv_base
@@ -1271,7 +1262,7 @@ fn hit_slot(hits: &mut ElemBusHits, bus: usize) -> usize {
 /// walk (`cim/ieee1547.rs::elements_at_bus`): it uses the port's own
 /// `pd_elements`/`pc_elements` membership and r4133's terminal-1/2 name test.
 /// The two are documented at each other and are **not** merged — see that
-/// function's doc for why (WP-G1 moves no golden byte).
+/// function's doc for why.
 fn build_bus_elements(ckt: &Circuit, classes: &[DssClass]) -> Vec<BusElementsView> {
     use crate::report::format::strip_extension;
 
@@ -1356,7 +1347,7 @@ fn build_bus_elements(ckt: &Circuit, classes: &[DssClass]) -> Vec<BusElementsVie
         .into_iter()
         .zip(ckt.buses.iter())
         .map(|(attachments, bus)| {
-            // S4 (GOLDEN_REBASE D26) — see [`BusElementsView`].
+            // S4: see [`BusElementsView`].
             let pde = attachments
                 .iter()
                 .filter(|a| a.is_pd && a.series && !a.by_name.is_empty())
@@ -1392,7 +1383,7 @@ fn build_bus_elements(ckt: &Circuit, classes: &[DssClass]) -> Vec<BusElementsVie
 /// corpus, not a caught one. The convention is therefore held by this
 /// citation, by [`BusScView`]'s ordering block and by the offline pin
 /// `bus_sc_tests::flatten_row_major_walks_i_outer_on_an_asymmetric_matrix`
-/// (G1.5 audit settlement AC-4) — never by an oracle value comparison.
+/// — never by a comparison with OpenDSS values.
 fn flatten_row_major(m: &crate::support::cmatrix::CMatrix) -> Vec<num_complex::Complex64> {
     let n = m.order();
     let mut out = Vec::with_capacity(n * n);
@@ -1468,9 +1459,8 @@ impl Dss {
         // arise. This is a deliberate divergence from the pinned oracle, whose
         // `CktElement.Powers` returns V_h*conj(I_fundamental) when read AFTER
         // `CktElement.Currents` for a Generator/PVSystem/Storage in harmonics mode
-        // (an order-dependent, stale-Iterminal engine bug we do NOT reproduce;
-        // full analysis + IEEE-1459 proof live in the git-ignored
-        // investigations/oracle-powers-currents-harmonic/).
+        // (an order-dependent, stale-Iterminal OpenDSS bug this engine does not
+        // reproduce).
         // `EnergyMeter` (`ElementSnapshot::energy_meter`) reports the *bare*
         // meter name, so every `meter_obj` back-pointer has to be resolved
         // against the EnergyMeter arena. That resolution happens once, here,
@@ -1503,11 +1493,10 @@ impl Dss {
         // [`SymComp::precise`](crate::support::mathutil::SymComp::precise),
         // which is what `Shared/mathutil.pas:548` `SelectAs2pVersion(False)`
         // leaves both oracles on by default — capi bit-for-bit. r4133's own
-        // globals are built by inverting the truncated-`sin 60` matrix
-        // (`Shared/mathutil.pas:302-303` + `:562-564`), a different matrix that
-        // `SymComp::official` models exactly; the resulting gap on the `r4133`
-        // gating channel is a measured *floor*, not a second kernel, and is
-        // carried by the comparator (`tests/TOLERANCE_NOTES.md` §G1.3b).
+        // globals are built by inverting the truncated-`sin 60` matrix, a
+        // different matrix that `SymComp::official` models exactly. The
+        // resulting gap on the `r4133` gating channel is a measured *floor*, not
+        // a second kernel, and the comparator carries it.
         let sym_comp = crate::support::mathutil::SymComp::default();
         let mut out = Vec::with_capacity(ckt.ckt_elements.len());
         for &r in &ckt.ckt_elements {
@@ -1546,14 +1535,14 @@ impl Dss {
             // present `NodeV`, while a PC element holding its model state
             // (`ITerminalUpdated`) returns that one stored current either way.
             //
-            // Newton included — upstream breaks it there (CLAUDE.md upstream bug
-            // 5: `DoNewtonSolution` leaves every stamp valid on a current formed
-            // at the pre-final guess `NodeV_{n-1}`, so its Powers/Losses read
-            // reports `S != V·conj(I)`), and the port repairs that at the source:
+            // Newton included. The OpenDSS Newton solution leaves every stamp
+            // valid on a current formed at the pre-final guess `NodeV_{n-1}`, so
+            // its Powers/Losses read reports `S != V·conj(I)` (an OpenDSS bug).
+            // This engine repairs that at the source:
             // `do_newton_solution` drops those stamps on exit
-            // (`solution::solution::power_flow::drop_stale_newton_iterminal_stamps`,
-            // `RETRO_FIXES_PLAN.md` RF-D00-01), so no reader of the engine needs a
-            // Newton special case and none is made here.
+            // (`solution::solution::power_flow::drop_stale_newton_iterminal_stamps`),
+            // so no reader of the engine needs a Newton special case and none
+            // is made here.
             //
             // GATE NOTE: every oracle channel keeps the stale read, so the two gated
             // `newton.dss` / `newton_feeder.dss` decks' powers/losses stay dropped
@@ -1561,7 +1550,6 @@ impl Dss {
             // (`crates/dss-test-harness/src/harness/lane.rs::LANE_SKIP_ELEM_POWERS`),
             // and Newton dispatch plus the repaired values are carried by
             // `exec::tests::newton`'s tripwire and expected-value pins.
-            // See investigations/issue-05-newton-stale-iterminal.md.
             //
             // The read below is a `refresh_iterminal` rather than the cache-aware
             // `compute_iterminal` it models: the same current, but it runs
@@ -1614,9 +1602,8 @@ impl Dss {
             // Powers and Losses just used: the `refresh_iterminal` above stamped
             // it for this `SolutionCount`. Read here, before the Currents
             // refresh below, so this element's three cache-aware quantities are
-            // one and the same current — the port-side twin of the capture-order
-            // rule the two oracle transports obey (§1.1(a): group A before
-            // group B).
+            // one and the same current — this engine's twin of the capture-order
+            // rule the two OpenDSS transports obey (group A before group B).
             let phase_losses = elem.phase_losses(&sys, &node_v);
             // Currents: the element's own `GetCurrents` (the oracle's
             // scratch-buffer `CktElement.Currents`), overwriting the `Iterminal`
@@ -1651,7 +1638,7 @@ impl Dss {
             // conductors, `k := (i-1)*Nconds` (r4133 `DCktElement.pas:842`,
             // capi `CAPI_CktElement.pas:562`) — accumulated in conductor order
             // so the floating-point summation matches `Caccum`'s. The offset
-            // that `Export SeqCurrents` drops (CLAUDE.md upstream bug 1) is
+            // that `Export SeqCurrents` drops (an OpenDSS bug) is
             // present on both API paths and is honoured here.
             //
             // Read through a per-terminal chunk, never a flat offset: the
@@ -1838,8 +1825,7 @@ impl Dss {
                             // `-1` both engines write here, so it is
                             // indistinguishable from a real 1 A / 1 V. The
                             // disambiguator is `seq_arm` itself — a consumer
-                            // reads the arm, never the value (G1.3b audit
-                            // settlement, 2026-09-05; pinned by
+                            // reads the arm, never the value (pinned by
                             // `seq_currents_and_seq_voltages_are_one_on_the_na_arm`).
                             seq_currents.extend([1.0; 3]);
                             seq_voltages.extend([1.0; 3]);
@@ -1859,7 +1845,7 @@ impl Dss {
             // (`report/export/node_order.rs:35-38`, Pascal `WriteNodeList`),
             // read here from the element's own `NodeRef` rather than by calling
             // that renderer — the export path is a frozen golden and must not be
-            // touched (`GOLDEN_REBASE_PLAN.md` WP-G1: no golden byte moves).
+            // touched.
             // `yorder == nterms · nconds` by construction (`elements/ckt.rs:326`),
             // which is the length both oracles allocate
             // (r4133 `DCktElement.pas:1043`, capi `CAPI_CktElement.pas:908`).
@@ -1953,27 +1939,21 @@ impl Dss {
                 total_powers,
             });
         }
-        // NCIM needs **no** reporting override here any more (RP3.13). Two used
-        // to live at this point, both for the same reason: after an NCIM solve
-        // two elements report a current the general `YPrim·V - Iinj` recompute
-        // cannot produce — the swing `Vsource`, whose bus NCIM holds at the ideal
+        // NCIM needs **no** reporting override here. After an NCIM solve two
+        // elements report a current the general `YPrim·V - Iinj` recompute
+        // cannot produce: the swing `Vsource`, whose bus NCIM holds at the ideal
         // EMF so that recompute cancels to ~0 and whose true terminal current is
-        // the Kirchhoff sum at the bus (Pascal `TVsourceObj.GetCurrents` takes
-        // the `CalcInjCurrAtBus` branch when `Algorithm = NCIMSOLVE` and
-        // `NodeRef[1] = 1`, r4133 `VSource.pas` l.1194), and a PV/converted
-        // generator, whose `YPrim` (`Yeq`) is stale once NCIM has dispatched its
-        // reactive power (`UpdateGenQ`, `Common/Solution.pas` l.2108/l.2305).
-        // Overriding them here made this reader and the elements' own
-        // `GetCurrents` — the CLI, `Export Powers`/`Currents`, `Show`, monitors,
-        // meters — disagree, and only the one the corpus gate reads was right.
-        // Both are now single live states: the generator's NCIM arm in
-        // `TGeneratorObj.GetCurrents` (`generator/accessors.rs`, r4133
-        // `PCElements/generator.pas` l.1406) and, for the swing source, a stamp
-        // the solver leaves in `Iterminal` at the converged `NodeV`
+        // the Kirchhoff sum at the bus, and a PV/converted generator, whose
+        // `YPrim` (`Yeq`) is stale once NCIM has dispatched its reactive power.
+        // Both are single live states: the generator's NCIM arm in
+        // `TGeneratorObj.GetCurrents` (`generator/accessors.rs`) and, for the
+        // swing source, a stamp the solver leaves in `Iterminal` at the
+        // converged `NodeV`
         // (`solution::solution::ncim::ncim_stamp_swing_source_currents`) that
         // `TVsourceObj.GetCurrents`' NCIM arm echoes. So the `refresh_iterminal`
-        // in the loop above already returns exactly what these overrides used to
-        // compute — pinned lossless by
+        // in the loop above already returns these currents, and this reader
+        // agrees with the elements' own `GetCurrents` (the CLI,
+        // `Export Powers`/`Currents`, `Show`, monitors, meters) — pinned by
         // `exec::tests::ncim::ncim_gate_reader_and_ordinary_reader_agree` and
         // `exec::tests::ncim::ncim_vsource_export_currents_match_oracle`.
         out
@@ -2031,10 +2011,10 @@ impl Dss {
         None
     }
 
-    /// WP8.5b corpus property parity: every property of the named element,
+    /// Corpus property parity: every property of the named element,
     /// rendered EXACTLY as the `?` executive query does (the choke-point
     /// `refresh_vterminal_if_marked` then [`ClassProps::get_value`] — the
-    /// byte-proven WP8.5 Dump surface), as `(name, value)` pairs in
+    /// byte-proven Dump surface), as `(name, value)` pairs in
     /// property-index order (`1..=num_properties`). `full_name` is a `Class.name`
     /// (case-insensitive), resolved like [`Dss::do_query_cmd`] (no executive
     /// round-trip). `None` if no such element exists. The oracle side reads
@@ -2169,8 +2149,8 @@ impl Dss {
     /// jsonSchema=True)` (`CAPI_Schema.pas:1252-1521`). Emits the full
     /// JSON-Schema (draft 2020-12) document: the envelope, the ten reusable
     /// global `$defs`, the 21 global enum `$defs`, and — in
-    /// [`schema::DSS_CLASS_LIST_ORDER`](crate::report::export::json::schema::
-    /// DSS_CLASS_LIST_ORDER) — every class's `$defs/<Class>` (via the per-class
+    /// [`schema::DSS_CLASS_LIST_ORDER`](crate::report::export::json::schema::DSS_CLASS_LIST_ORDER)
+    /// — every class's `$defs/<Class>` (via the per-class
     /// walk [`Dss::schema_class_def`]) with its `<Class>List`/`<Class>Container`
     /// triple and its `circuitProperties` container ref.
     ///
@@ -2192,8 +2172,8 @@ impl Dss {
     ///
     /// Separate from the rendering step because the *document* is what is
     /// contractual (envelope, `$defs` order, per-class blocks, ordinals) while
-    /// how its numbers and line breaks are spelled is the F-FMT seam's lane
-    /// choice (`compat::json_float`, `compat::JSON_LINE_BREAK`). A consumer that
+    /// how its numbers and line breaks are spelled is a lane choice
+    /// (`compat::json_float`, `compat::JSON_LINE_BREAK`). A consumer that
     /// needs a specific spelling — `golden_schema.rs`'s byte gate needs the
     /// oracle's — renders this tree with
     /// [`write_pretty_with`](crate::report::export::json::write_pretty_with).
@@ -2424,7 +2404,7 @@ impl Dss {
     /// the empty vector every other `Dss::all_*` accessor returns; nothing
     /// gated can see the difference (the gate always has a circuit, and
     /// `capture_guard::require_capture` fails a 0-bus capture), so it is a
-    /// deliberate API convention, recorded in the G1.4b audit settlement.
+    /// deliberate API convention.
     pub fn all_bus_distances(&self) -> Vec<f64> {
         match self.circuit.as_ref() {
             Some(ckt) => ckt.buses.iter().map(|b| b.dist_from_meter).collect(),
@@ -2961,8 +2941,8 @@ impl Dss {
     }
 
     /// `DSS.ActiveCircuit.Solution.EventLog`: the accumulated event-log lines
-    /// (empty when no circuit exists). The control loop (WP5.7) and the
-    /// controls' `AppendToEventLog` (WP5.5/5.6) populate it.
+    /// (empty when no circuit exists). The control loop and the controls'
+    /// `AppendToEventLog` populate it.
     pub fn event_log(&self) -> &[String] {
         match &self.circuit {
             Some(ckt) => ckt.solution.event_log.entries(),
@@ -3080,7 +3060,7 @@ impl Dss {
     }
 
     // -----------------------------------------------------------------------
-    // GOLDEN_REBASE G1.7 — the topology interface (`ITopology`)
+    // The topology interface (`ITopology`)
     // -----------------------------------------------------------------------
 
     /// The six order-free `ITopology` quantities of [`TopologyView`], computed
@@ -3147,7 +3127,7 @@ impl Dss {
                 // (`solution/topology.rs:178-190`), so `None` is unreachable —
                 // and a missing partner must not invent a pair either way. The
                 // claim is enforced where it is made rather than left as a silent
-                // skip (G1.7 audit settlement): every test build, the corpus gate
+                // skip: every test build, the corpus gate
                 // included, runs this assert on every looped node.
                 debug_assert!(
                     loop_elem.is_some(),
@@ -3167,13 +3147,13 @@ impl Dss {
         // `DTopology.pas:286-296`, capi `CAPI_Topology.pas:180-190`), i.e. over
         // *overlapping* windows `(buf[i-1], buf[i])` — so a candidate that happens
         // to coincide with a straddling window `(b_j, a_{j+1})` is dropped although
-        // that pair was never found. The port implements the stated intent ("see if
-        // we already found this pair", `DTopology.pas:286`): a candidate is dropped
-        // only when an already-stored PAIR matches it in either orientation
-        // (CLAUDE.md — an upstream defect is never reproduced in any lane). The
-        // difference is not hidden: the raw candidate sequence stays available as
+        // that pair was never found. This engine implements the stated intent
+        // ("see if we already found this pair"): a candidate is dropped only when
+        // an already-stored PAIR matches it in either orientation. That OpenDSS
+        // bug is not reproduced in any lane. The difference is not hidden: the
+        // raw candidate sequence stays available as
         // `TopologyView::looped_pair_candidates`, and the live gate re-applies the
-        // window scan to it and requires the oracle list back (decision D16).
+        // window scan to it and requires the OpenDSS list back.
         let mut looped_pairs: Vec<(String, String)> = Vec::new();
         for pair in &looped_pair_candidates {
             let seen = looped_pairs
@@ -3218,7 +3198,7 @@ impl Dss {
     }
 
     // -----------------------------------------------------------------------
-    // GOLDEN_REBASE G1.8 — the flat incidence-matrix interface
+    // The flat incidence-matrix interface
     // -----------------------------------------------------------------------
 
     /// Build the **flat** branch-to-node incidence matrix and its Laplacian, then
@@ -3237,7 +3217,7 @@ impl Dss {
     /// `ActiveDSSClass.First` (r4133 `Common/Solution.pas:3007-3010`). That is
     /// why the live corpus gate reads this surface **strictly last** in a
     /// checkpoint: after every per-element and property read, and after the
-    /// topology read whose memoized-`Branch_List` census (G1.7) is defined on a
+    /// topology read whose memoized-`Branch_List` census is defined on a
     /// tree nothing else has touched.
     ///
     /// Empty ([`IncMatrixView::default`]) when no circuit exists, and the two
@@ -3283,7 +3263,7 @@ impl Dss {
 }
 
 // ---------------------------------------------------------------------------
-// GOLDEN_REBASE G1.6(i): the `Meters` reliability surface.
+// The `Meters` reliability surface.
 //
 // The half of the dss-python `IMeters` facade the live gate has never read —
 // the indices `CalcReliabilityIndices` writes, the per-section block behind
@@ -3845,9 +3825,8 @@ mod bus_voltage_tests {
     }
 }
 
-/// `Bus.Distance` / `Circuit.AllBusDistances` / `Circuit.AllNodeDistances`
-/// (GOLDEN_REBASE_PLAN.md WP-G1 G1.4b) — the zone-build accumulator all three
-/// surfaces publish verbatim.
+/// `Bus.Distance` / `Circuit.AllBusDistances` / `Circuit.AllNodeDistances` —
+/// the zone-build accumulator all three surfaces publish verbatim.
 #[cfg(test)]
 mod bus_distance_tests {
     use super::*;
@@ -3991,8 +3970,7 @@ mod bus_seq_vll_tests {
     use super::*;
     use num_complex::Complex64;
 
-    /// One deck carrying every node-set class the corpus's exception buses have
-    /// (measured for GOLDEN_REBASE G1.4c over 209 211 corpus buses):
+    /// One deck carrying every node-set class the corpus's exception buses have:
     ///
     /// * `b4` = `[1, 2, 3, 4]` — 107 corpus buses (`Test/indmachtest` `sourcebus`,
     ///   `IEEETestCases/NEVTestCase` `13kvbus`, …): all three phases **plus** a
@@ -4306,7 +4284,7 @@ mod bus_sc_tests {
     /// away: on this deck `Voc[0]` is `6933.784990446535 + 971.5021007848138j`
     /// after `solve; solve mode=faultstudy` but `6934.538221643409 +
     /// 971.9391266606829j` when a bare `solve` is appended (measured on both
-    /// channels — `tmp/g15/f1/voc_micro{,_r4133}.json`). `Zsc`/`Ysc` are
+    /// channels). `Zsc`/`Ysc` are
     /// identical either way, being functions of `Y` alone.
     ///
     /// **Measured worsts on this deck** (port vs capi / port vs r4133, as the
@@ -4328,24 +4306,10 @@ mod bus_sc_tests {
         );
     }
 
-    /// **The row-major convention, driven** (GOLDEN_REBASE G1.5 audit
-    /// settlement, AC-4). Spec §4's non-vacuity demo 1 — transpose the flatten
-    /// and watch the live gate red — was measured VACUOUS and dropped: `Zsc`
-    /// and `Ysc` are symmetric to ≤ 4.66e-10 on every bus of every corpus deck
-    /// that runs a study, six orders inside the band, so no oracle comparison
-    /// anywhere can tell `m.get(i, j)` from `m.get(j, i)`. That left
-    /// [`flatten_row_major`]'s convention — the one both oracles publish
-    /// (`For i … For j … Zsc.GetElement(i, j)`, r4133 `DDLL/DBus.pas:445-450`
-    /// == capi `CAPI/CAPI_Alt.pas:2318-2330`) — carried by a citation alone.
-    ///
-    /// This pins it where symmetry cannot hide it: a deliberately ASYMMETRIC
-    /// matrix whose `(i, j)` entry is `10·i + j`, so the row-major flatten is
-    /// `[00, 01, 02, 10, …]` while the transposed walk would be
-    /// `[00, 10, 20, 01, …]` — different in all six off-diagonal slots. The
-    /// same literals also separate it from `CMatrix`'s COLUMN-major backing
-    /// store (`support/cmatrix/mod.rs:45-47`), which is the transpose here, so
-    /// the day someone "optimizes" the loop into a `values().to_vec()` this
-    /// test reds instead of the surface silently publishing `Zscᵀ`.
+    /// Pins the row-major flatten both OpenDSS engines publish on a deliberately
+    /// asymmetric matrix, where a symmetric `Zsc`/`Ysc` cannot hide a transposed
+    /// walk. The same matrix separates it from `CMatrix`'s column-major backing
+    /// store, so flattening the backing store fails here.
     #[test]
     fn flatten_row_major_walks_i_outer_on_an_asymmetric_matrix() {
         let mut m = crate::support::cmatrix::CMatrix::new(3);
@@ -4374,7 +4338,7 @@ mod bus_sc_tests {
         );
     }
 
-    /// The GOLDEN_REBASE G1.5 micro deck, byte-for-byte the circuit that
+    /// The fault-study micro deck, byte-for-byte the circuit that
     /// `tests/corpus/modes/faultstudy/faultstudy_micro.dss` carries into the
     /// corpus gate. Two properties make it worth its size:
     ///
@@ -4703,13 +4667,6 @@ mod bus_sc_tests {
     /// while `Zsc`/`Ysc` stay `None` — which is exactly why the harness
     /// compares the discrete "study ran" bit and the `Voc` values as two
     /// independent facts instead of gating one on the other.
-    ///
-    /// Oracle witness for the same shape, both channels
-    /// (`tmp/g15/voc_exposure.json`): `modes/harmonics/harmonict` reports no
-    /// `Zsc` on any of its 3 buses with `max |Voc| = 64.49615498313288` V (its
-    /// three harmonics siblings 59.10 / 97.55 / 90.13 V), against
-    /// `max |Voc| = 0` on all ten `modes/reduce/*` decks, which never set the
-    /// flag. On this deck the port's own maximum is 12.329071484855646 V.
     #[test]
     fn voc_is_refreshed_by_preserve_node_voltages_not_only_by_the_fault_study() {
         let mut dss = sc_micro();

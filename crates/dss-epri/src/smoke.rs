@@ -1,5 +1,4 @@
-//! Oracle-free self-smoke for the r4133 bridge (`UNIFIED_GATE_PLAN.md` §2.4-1,
-//! replacing `tools/opendss/smoke.py`): DLL loads, version matches
+//! Oracle-free self-smoke for the r4133 bridge: DLL loads, version matches
 //! `revisions.json`, IEEE13 compiles + solves + converges, the CSC export is
 //! solution-neutral (`YNodeVarray` bit-identical before/after
 //! `InitAndGetYparams`/`GetCompressedYMatrix`), and the injection vector has the
@@ -8,7 +7,12 @@
 //! no oracle installed.
 //!
 //! The DLL compiles a fresh scratch copy of the vendored IEEE13 deck
-//! ([`Ieee13Copy`], RETRO_FIXES RF-I00-01), never `tests/corpus/` itself.
+//! ([`Ieee13Copy`]), never `tests/corpus/` itself.
+//!
+//! Knobs: `DSS_EPRI_DLL` overrides the r4133 DLL path (default
+//! `tools/opendss/bin/r4133/OpenDSSDirect.dll` under the workspace root).
+//! `DSS_EPRI_EXPECT` overrides the expected version substring (default the
+//! `r4133.expect_version` of `tools/opendss/revisions.json`).
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -53,8 +57,8 @@ pub fn expect_version() -> Result<String, String> {
 const IEEE13_REL: &str =
     "tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss";
 
-/// A fresh scratch copy of the vendored IEEE13 deck for one r4133 run
-/// (RETRO_FIXES RF-I00-01): the DLL compiles the COPY, never `tests/corpus/`.
+/// A fresh scratch copy of the vendored IEEE13 deck for one r4133 run: the
+/// DLL compiles the COPY, never `tests/corpus/`.
 ///
 /// The closure is the `13Bus` folder plus the files directly in
 /// `IEEETestCases/` (the folder's own `IEEELineCodes.DSS` redirects
@@ -164,7 +168,7 @@ impl Ieee13Copy {
                 "the `r4133` producer's scratch copy {} of {IEEE13_REL} survived {} \
                  removal attempts {:?} apart. {still_there}. A handle the engine \
                  still holds blocks the removal — fix the producer, never widen the \
-                 budget (RETRO_FIXES RF-I00-01).",
+                 budget.",
                 self.run_dir.display(),
                 crate::guard::COPY_REMOVE_ATTEMPTS + 1,
                 crate::guard::COPY_REMOVE_PAUSE,
@@ -188,7 +192,7 @@ impl Drop for Ieee13Copy {
 
 /// `Err` when `deck` lies inside the vendored corpus (`tests/corpus/`, compared
 /// lexically and case-insensitively): the r4133 DLL compiles a scratch copy
-/// ([`Ieee13Copy`]), never the vendored tree (RETRO_FIXES RF-I00-01), and the
+/// ([`Ieee13Copy`]), never the vendored tree, and the
 /// two call sites check the path they actually compile, so a revert to the
 /// vendored deck is refused before the DLL sees it.
 pub fn refuse_vendored(deck: &str) -> Result<(), String> {
@@ -210,7 +214,7 @@ pub fn refuse_vendored(deck: &str) -> Result<(), String> {
     if fold(Path::new(deck)).starts_with(&corpus) {
         return Err(format!(
             "{deck} lies inside the vendored corpus: the r4133 DLL compiles a scratch \
-             copy (`smoke::Ieee13Copy`), never `tests/corpus/` (RETRO_FIXES RF-I00-01)"
+             copy (`smoke::Ieee13Copy`), never `tests/corpus/`"
         ));
     }
     Ok(())
@@ -268,7 +272,7 @@ pub fn run_smoke() -> Result<SmokeReport, String> {
     }
     lines.push(format!("version OK: {ver}"));
 
-    // 2. IEEE13 compile + solve converges — on its own scratch copy (RF-I00-01).
+    // 2. IEEE13 compile + solve converges — on its own scratch copy.
     let copy = Ieee13Copy::new()?;
     refuse_vendored(copy.deck())?;
     engine.clear().map_err(|e| e.to_string())?;
@@ -314,15 +318,14 @@ pub fn run_smoke() -> Result<SmokeReport, String> {
         inj.len()
     ));
 
-    // 5. all-properties enumeration is readable + deterministic (§2.2):
+    // 5. all-properties enumeration is readable + deterministic:
     // `DSSElementV` (AllPropertyNames) + `? name.prop` value reads. Re-reading the
     // first element's first property directly must equal the dumped value. This
     // proves the enumeration is non-empty and the getter is deterministic (same
     // code path both times) — it is NOT a value-correctness check against an
-    // independent baseline. What checks the values is the corpus gate: since
-    // R4133_PROPS RP4.1 (2026-09-03) this capture is a gating channel, compared
-    // cell-by-cell against the port on every live non-`large` r4133-gating case.
-    // (Written when it was capability-only report tooling — fix-round audit F1.)
+    // independent baseline. What checks the values is the corpus gate: this
+    // capture is a gating channel, compared cell-by-cell against this engine on
+    // every live non-`large` r4133-gating case.
     let dump = crate::capture::all_properties_dump(&engine).map_err(|e| e.to_string())?;
     if dump.is_empty() {
         return Err("all_properties dump is empty (no elements enumerated)".to_string());

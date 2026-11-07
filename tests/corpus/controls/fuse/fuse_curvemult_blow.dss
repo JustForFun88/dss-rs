@@ -1,4 +1,4 @@
-// Fuse, r4133 CurveMultiplier divisor (WP-U2.1, delta C3/D1): an SLG fault on
+// Fuse, r4133 CurveMultiplier divisor: an SLG fault on
 // phase 2 melts ONLY that phase's link through an EXPLICIT `fusecurve=tlink`
 // scaled by `curvemultiplier=40` (the new TCC divisor — `GetTCCTime(Cmag/40)`,
 // NOT the now-informational `RatedCurrent`). Feature-sensitive to the divisor:

@@ -1,4 +1,4 @@
-! WP-U1.8 — WindGen DAILY mode: the load shape supplies the WIND SPEED (m/s), not
+! WindGen DAILY mode: the load shape supplies the WIND SPEED (m/s), not
 ! a per-unit multiplier (CalcDailyMult). At hour 1 the shape reads 10 m/s, so the
 ! aerodynamic curve delivers ~1263 kW (uncapped below kWBase=3000). This exercises
 ! the daily-mode dispatch + shape-as-wind-speed path (distinct from the snapshot

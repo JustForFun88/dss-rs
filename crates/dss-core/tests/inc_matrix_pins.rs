@@ -1,32 +1,28 @@
-//! **GOLDEN_REBASE G1.8 — the expected-value pins behind the flat incidence
-//! surface** (`Solution.IncMatrix` / `Laplacian` / `IncMatrixRows` /
-//! `IncMatrixCols`), lane `lane-s`, coordinator decisions D3 / D4 / D7.
+//! **The expected-value pins behind the flat incidence surface**
+//! (`Solution.IncMatrix` / `Laplacian` / `IncMatrixRows` / `IncMatrixCols`).
 //!
 //! The surface adds **zero** `tests/corpus/ledger.json` rows. Its one
-//! port-vs-oracle divergence — both oracles advance the incidence row cursor for
-//! every reactor, the port emits dense rows — is settled as settlement
-//! **S-INC**: a *positive assertion* of upstream's cursor rule inside the live
-//! comparator (`crates/dss-test-harness/src/harness/inc_matrix.rs`), the shape D15 and
-//! D16 gave G1.7. CLAUDE.md's discipline applies unchanged — every divergence
-//! from an oracle channel is pinned by an expected-value test naming BOTH
-//! numbers — and the pins here are those tests.
+//! divergence from the OpenDSS engines — both advance the incidence row cursor
+//! for every reactor, this engine emits dense rows — is handled by the
+//! **row-cursor rule**: a *positive assertion* of the OpenDSS cursor rule inside
+//! the live comparator (`crates/dss-test-harness/src/harness/inc_matrix.rs`), as
+//! for the topology surface. Every divergence from an OpenDSS channel is still
+//! pinned by an expected-value test naming both numbers, and the pins here are
+//! those tests.
 //!
 //! They live in their own binary rather than in the engine's `#[cfg(test)]` tree
 //! because each one drives the **gate-side** code: `compare_inc_matrix` and
-//! `assert_transport_shape` against captures built from the *measured* oracle
+//! `assert_transport_shape` against captures built from the *measured* OpenDSS
 //! replies. The engine-side twins (`Dss::inc_matrix_view`, the row map, the
 //! `IncMat_Ordered` branch, the reproduced Q2/Q3 defects) are pinned in
 //! `dss_core::exec::tests::inc_matrix`.
 //!
-//! **Every oracle array below was measured on this tree, on both channels**, by
-//! `tmp/g18/probe_f7.py` / `probe_f7b.py` / `probe_f7c.py`: the pinned
-//! dss-python 0.15.7 over dss_capi 0.14.5 (`tools/golden/PIN.txt`) and the
-//! vendored EPRI r4133 DLL through `crates/dss-epri`. After the transports'
-//! normalizations — **N1**, drop the cell capi over-allocates
-//! (`CAPI_Solution.pas:910` / `:873`); **N2**, decode r4133's one-cell `[0]` nil
-//! sentinel (`DSolution.pas:544` / `:642`); **N3**, decode the empty-name
-//! sentinel, `''` on capi (`CAPI_Solution.pas:961`) vs `'None'` on r4133
-//! (`DSolution.pas:605`) — the two channels were **byte-identical on every array
+//! **Every OpenDSS array below was measured on both channels**: the pinned
+//! dss-python (`tools/golden/PIN.txt`) and the vendored EPRI r4133 DLL through
+//! `crates/dss-epri`. After the transports' normalizations — **N1**, drop the
+//! cell capi over-allocates; **N2**, decode r4133's one-cell `[0]` nil
+//! sentinel; **N3**, decode the empty-name sentinel, `''` on capi vs `'None'`
+//! on r4133 — the two channels were **byte-identical on every array
 //! in this file**, so each pin carries one literal and names a channel only
 //! where they genuinely differ (the raw lengths).
 
@@ -42,13 +38,13 @@ use harness::inc_matrix::{IncMatrixCap, assert_transport_shape, compare_inc_matr
 // fixtures
 // ---------------------------------------------------------------------------
 
-/// Compile a vendored corpus deck (never `.inputs/`, CLAUDE.md) exactly as the
+/// Compile a vendored corpus deck (never `.inputs/`) exactly as the
 /// corpus gate does (`corpus_gate/runner.rs::run_rust_capture`: `clear`, then
 /// `compile`, then a `solve` per checkpoint).
 ///
 /// Only decks with no `Show`/`Export`/`Plot`/`Save` verb are compiled here, so
 /// nothing writes into the vendored corpus. That is why
-/// `Test/CableParameters.dss` — G1.8's declared empty-`IncMat` manifest row — is
+/// `Test/CableParameters.dss` — the declared empty-`IncMat` manifest row — is
 /// *cited* rather than compiled by
 /// [`an_empty_incidence_matrix_reads_back_as_no_rows`]: its `:50` runs
 /// `show lineconstants`.
@@ -125,8 +121,8 @@ fn cap(inc: &[i32], lap: &[i32], rows: &[&str], cols: &[&str]) -> IncMatrixCap {
     }
 }
 
-/// The port's `IncMatrix` as the getters flatten it — **without** settlement
-/// S-INC's row remap, i.e. the dense answer the engine actually holds.
+/// This engine's `IncMatrix` as the getters flatten it — **without** the
+/// row-cursor remap, i.e. the dense answer the engine actually holds.
 fn dense_flat(dss: &mut Dss) -> Vec<i32> {
     dss.inc_matrix_view()
         .inc_matrix
@@ -172,7 +168,7 @@ const MICRO_ROWS: [&str; 3] = ["Line.l1", "Line.l3", "Reactor.r1"];
 const MICRO_COLS: [&str; 4] = ["sourcebus", "a", "b", "c"];
 
 /// `asymmetric:reactor/reactor_asym.dss`, step 0 — one of the four corpus decks
-/// behind `harness::inc_matrix::INC_UPSTREAM_ROW_DECLINES` and one of G1.8's six
+/// behind `harness::inc_matrix::INC_UPSTREAM_ROW_DECLINES` and one of the six
 /// `INC_MATRIX_DECLARED_IN_MANIFEST` rows. `Reactor.rsh` (shunt) is skipped
 /// between two emitted rows, so `Reactor.rp` lands at row **6** while
 /// `rows.len()` is **6**. Row 5 is the Q2 phantom branch — `Reactor.rdel`, a
@@ -238,10 +234,10 @@ const IEEE13_COLS_FLAT: [&str; 16] = [
 ];
 /// The same sixteen buses after `CalcIncMatrix_O`, in the hierarchical
 /// `Inc_Mat_Cols` order — a genuinely different list, which is why the getter's
-/// `IncMat_Ordered` branch cannot be skipped. **The G1.8 capture never issues
-/// `CalcIncMatrix_O`** (it calls `GetTopology`, r4133
-/// `Common/Solution.pas:3173`, which would memoize the `Branch_List` G1.7's
-/// census is defined on); this list exists only to give the branch teeth.
+/// `IncMat_Ordered` branch cannot be skipped. **The gate's capture never issues
+/// `CalcIncMatrix_O`** (it calls `GetTopology`, which would memoize the
+/// `Branch_List` the topology census is defined on); this list exists only to
+/// give the branch teeth.
 /// Measured identically on both channels.
 const IEEE13_COLS_ORDERED: [&str; 16] = [
     "sourcebus",
@@ -285,31 +281,14 @@ const IEEE13: &str = "electricdss-tst/Version8/Distrib/IEEETestCases/13Bus/IEEE1
 const REACTOR_ASYM: &str = "asymmetric/reactor/reactor_asym.dss";
 
 // ---------------------------------------------------------------------------
-// settlement S-INC — the row cursor
+// the row-cursor rule
 // ---------------------------------------------------------------------------
 
-/// **S-INC, both numbers: the port puts the series reactor at matrix row 2, both
-/// oracles put it at row 3, and `Inc_Mat_Rows` has 3 entries.**
-///
-/// `AddSeriesReac2IncMatrix` advances the incidence row cursor for **every**
-/// reactor — `inc(ActiveIncCell[0])` sits at r4133
-/// `Version8/Source/Common/Solution.pas:3039`, *outside* the `if BusdotIdx = 0`
-/// emit guard at `:3013-3015`; dss_capi 0.14.5 `Common/Solution.pas:1501` is
-/// identical — while the walk's three siblings advance only on an emitted row
-/// (`:2885` Lines, `:2938` Transformers, `:2986` series Capacitors). A series
-/// reactor that follows a shunt one therefore carries a row index that does not
-/// index `Inc_Mat_Rows`, contradicting the surface's own contract
-/// (`Inc_Mat_Rows` = the PD-element name per incidence row, exported as
-/// `B2N Incidence Matrix Row Names (PDElements)`). D4's chain — stated intent
-/// plus three siblings against one outlier — makes it an upstream defect, so the
-/// port emits dense rows (`solution::inc_matrix::add_series_reactors`) and the
-/// gate re-derives upstream's numbering positively instead of excluding the
-/// field.
-///
-/// The drive below is the whole settlement in one place: the measured oracle
-/// array passes through the real `compare_inc_matrix`, and the port's own dense
-/// array — fed to the same comparator as if an oracle had sent it — reds at the
-/// exact integer that moved.
+/// Both OpenDSS engines advance the incidence row cursor for every reactor, so a
+/// series reactor after a shunt one gets a row index that does not index
+/// `Inc_Mat_Rows` (an OpenDSS bug), while this engine emits dense rows. The
+/// measured OpenDSS array passes the real comparator, and this engine's dense
+/// array fed to it as an OpenDSS reply fails at the exact integer that moved.
 #[test]
 fn the_incidence_row_cursor_skips_a_shunt_reactor() {
     let mut dss = micro_deck(true);
@@ -330,7 +309,7 @@ fn the_incidence_row_cursor_skips_a_shunt_reactor() {
     assert_eq!(
         view.upstream_row_index,
         [0, 1, 3],
-        "the map settlement S-INC re-derives"
+        "the map the row-cursor rule re-derives"
     );
 
     // The remap is load-bearing: without it the two arrays are NOT equal.
@@ -369,7 +348,7 @@ fn the_incidence_row_cursor_skips_a_shunt_reactor() {
     assert!(msg.contains("Rust 3 vs oracle 2"), "{msg}");
 }
 
-/// The same settlement on the corpus deck that carries it into the live gate:
+/// The same row-cursor rule on the corpus deck that carries it into the live gate:
 /// `asymmetric:reactor/reactor_asym.dss`, one of the four decks of
 /// `harness::inc_matrix::INC_UPSTREAM_ROW_DECLINES = (4, 5)`.
 ///
@@ -466,7 +445,7 @@ fn the_laplacian_is_blind_to_the_row_cursor() {
 /// `:1008-1018`), which `Calc_Inc_Matrix` clears and only `Calc_Inc_Matrix_Org`
 /// sets. The `Export IncMatrixCols` CSV writer deliberately does NOT take that
 /// branch — which is why the getter cannot stand in for the writer, and why
-/// G3.2c keeps the twenty `org_*` goldens.
+/// the twenty `org_*` goldens stay.
 ///
 /// Both numbers, measured on IEEE13 on both channels: after the flat build the
 /// sixteen names are `sourcebus, 650, rg60, 633, 634, 671, …`; after
@@ -556,9 +535,8 @@ fn inc_matrix_cols_are_the_bus_list_when_unordered() {
 /// `Laplacian` raw **139**, last **0** → **138**. r4133 has no such cell
 /// (`DDLL/DSolution.pas:545` sizes exactly `NZero * 3`).
 ///
-/// A non-zero trailing cell, or a length that is not `3·NZero (+1)`, is G1.8's
-/// **kill criterion**: measured 0 / 1733 live capi steps and 0 / 1756 live r4133
-/// steps (`tmp/g18/capi_inc.json`, `tmp/g18/r4133_inc.json`).
+/// A non-zero trailing cell, or a length that is not `3·NZero (+1)`, is the
+/// **kill criterion** of the N1 normalization, and no live gate step hits it.
 ///
 /// The pin exists so a later "cleanup" cannot quietly drop N1. The raw payload
 /// does not survive the transport, so the gate restates the rule as a fixpoint
@@ -593,8 +571,7 @@ fn capi_incmatrix_carries_one_trailing_zero() {
 }
 
 /// **The two channels' RAW integer arrays differ by exactly one cell, and after
-/// N1/N2 they are byte-identical.** Measured on four decks, both channels
-/// (`tmp/g18/f7_capi.json`, `tmp/g18/f7_r4133.json`):
+/// N1/N2 they are byte-identical.** Measured on four decks, both channels:
 ///
 /// | deck | `IncMatrix` capi → r4133 | `Laplacian` capi → r4133 |
 /// |---|---|---|
@@ -647,7 +624,7 @@ fn capi_and_r4133_incmatrix_lengths_differ_by_one() {
 /// `Inc_Mat_Rows` is nil (capi `CAPI_Solution.pas:961` via
 /// `CAPI_Utils.pas:234-243`); r4133 writes the word `None` instead
 /// (`DDLL/DSolution.pas:605`). Measured on a bare source-and-load circuit and,
-/// byte for byte identically, on `Test/CableParameters.dss` — G1.8's declared
+/// byte for byte identically, on `Test/CableParameters.dss` — the declared
 /// empty-`IncMat` manifest row, cited rather than compiled here because its
 /// `:50` runs `show lineconstants` and would write into the vendored corpus:
 ///
@@ -727,7 +704,7 @@ fn an_empty_incidence_matrix_reads_back_as_no_rows() {
 /// Both numbers, measured: the port pushes exactly one diagnostic, code **8877**,
 /// text `Indidence matrix is not present. Please run either "CalcIncMatrix" or
 /// "CalcIncMatrix_O" first.`; the pinned dss-python raises `DSSException` with
-/// that identical string prefixed `(#8877)` (`tmp/g18/probe_f7b.py`).
+/// that identical string prefixed `(#8877)`.
 ///
 /// The gate-side half: `Dss::inc_matrix_view` counts diagnostics **relative** to
 /// the engine's existing log, so a pre-existing 8877 is not charged to the pair

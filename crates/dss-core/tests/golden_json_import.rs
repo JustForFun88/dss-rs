@@ -1,9 +1,9 @@
-//! AltDSS JSON-import round-trip byte goldens (WP OG-1.4). Each fixture under
-//! `tests/golden/json_import/<deck>.json` carries the oracle's whole-circuit
-//! export `input_json` (J0) and the oracle's re-export after a `Circuit_FromJSON`
+//! AltDSS JSON-import round-trip byte goldens. Each fixture under
+//! `tests/golden/json_import/<deck>.json` carries the pinned dss-python's whole-circuit
+//! export `input_json` (J0) and its re-export after a `Circuit_FromJSON`
 //! round trip `expected_json` (J1). This driver feeds the identical J0 bytes to
 //! [`Dss::circuit_from_json`], re-exports the rebuilt circuit, and asserts
-//! **byte-equality** with J1 -- the strongest, oracle-backed gate for the import
+//! **byte-equality** with J1 -- the strongest externally anchored gate for the import
 //! path (the export half is gated separately by `golden_json.rs`).
 //!
 //! The re-export order is `AltPropertyOrder`, so J0 != J1 in general; the oracle
@@ -72,8 +72,8 @@ fn run_deck(stem: &str) {
     let j1 = dss
         .circuit_to_json(opts())
         .unwrap_or_else(|| panic!("{}: no circuit after import", g.name));
-    // Stage F.4: the JSON writer's float spelling and line break are lane rows
-    // (`compat::json_float`, `compat::JSON_LINE_BREAK`), so the *oracle* side is
+    // The JSON writer's float spelling and line break are lane rows
+    // (`compat::json_float`, `compat::JSON_LINE_BREAK`), so the captured side is
     // compared token-for-token in the default lane and byte-for-byte in the
     // parity one — structure, key order and every string exactly, numbers by
     // bit pattern. See `harness::lane::compare_json`.

@@ -1,4 +1,4 @@
-! UPGRADE_PLAN WP-U1.7 (NCIM solver) — midi radial feeder, NCIM re-solve.
+! NCIM solver — midi radial feeder, NCIM re-solve.
 ! A 27-node IEEE123-class radial 12.47 kV feeder: a 6-segment backbone with two
 ! laterals, mixed constant-power (model 1) and constant-impedance (model 2)
 ! loads, and a model-3 voltage-regulating generator at b5 that hits its +400

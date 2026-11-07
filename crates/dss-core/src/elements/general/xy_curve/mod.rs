@@ -6,7 +6,7 @@
 //!
 //! The file-input props (`CSVFile`/`SngFile`/`DblFile`, `XYcurve.pas:337-342`)
 //! load the curve from a CSV / little-endian-`f32` / little-endian-`f64` file
-//! via the deferred `FileLoad` path (WPG.17). The `Points` *setter* triggers
+//! via the deferred `FileLoad` path. The `Points` *setter* triggers
 //! an access violation in the pinned oracle (a dss_capi `DoubleDArrayProperty`
 //! bug), so the goldens drive the arrays through `XArray`/`YArray` and validate
 //! the `Points` *getter* by reading it back; the setter is ported faithfully and
@@ -73,8 +73,8 @@ pub struct XyCurveObj {
     sngfile: String,
     dblfile: String,
     /// Deferred file reads (`CSVFile`/`SngFile`/`DblFile`) queued for the
-    /// executive — the property hook can't reach the filesystem (WPG.17,
-    /// mirrors `spectrum`/`load_shape`).
+    /// executive — the property hook can't reach the filesystem (mirrors
+    /// `spectrum`/`load_shape`).
     pending_file_loads: Vec<FileLoad>,
 }
 
@@ -307,7 +307,7 @@ impl XyCurveObj {
     /// the pre-read guard requires ≥2 bytes to remain, so a final ≤1-byte line
     /// with no trailing newline (or a trailing blank line) is not read — the
     /// same subtlety `spectrum::read_csv_file` reproduces. Malformed-token
-    /// divergence (audit-settled 2026-07-09): Pascal `MakeDouble`
+    /// divergence: Pascal `MakeDouble`
     /// (`ParserDel.pas:718-747`) returns `0.0` only for an *empty* token; a
     /// non-empty non-numeric token **raises**, and `DoCSVFile`'s handler prints
     /// error 58614 and exits WITHOUT `NumPoints := i` (partially-filled
@@ -365,8 +365,8 @@ impl XyCurveObj {
     /// reader (`compute.rs:645`) rather than Pascal's literal `pos+1 < size`:
     /// for a malformed trailing 2..7-byte fragment Pascal `Inc(i)` fires before
     /// the partial `F.Read` fails, shrinking `NumPoints` to include a point
-    /// whose value is uninitialized realloc'd heap — upstream UB, NOT
-    /// reproduced (CLAUDE.md known-bugs policy). For all well-formed files the
+    /// whose value is uninitialized realloc'd heap — UB in OpenDSS, not
+    /// reproduced. For all well-formed files the
     /// two gates are identical. `RoundA=False`, so X is never rounded (unlike
     /// GrowthShape, `XYcurve.pas:340`).
     fn read_sng_file(&mut self, content: &[u8]) {

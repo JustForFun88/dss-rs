@@ -3,23 +3,23 @@
   "port_authored_classes": [
     {
       "class": "LineGeometry",
-      "cause": "The port's LineGeometry follows the newer dss_capi (0.15.x): the classic `Wires` prop becomes Redundant+SuppressJSON and a new `Conductors` object-ref-array (index 20) is the JSON member, plus the props straddle 0.14.5 via HIDE_015X. Its schema diverges structurally from the pinned 0.14.5 oracle (different property model), so it is pinned to the port's own bytes rather than byte-gated. See STATUS §OG-1.5c batch B1."
+      "cause": "The port's LineGeometry follows the newer dss_capi (0.15.x): the classic `Wires` prop becomes Redundant+SuppressJSON and a new `Conductors` object-ref-array (index 20) is the JSON member, plus the props straddle 0.14.5 via HIDE_015X. Its schema diverges structurally from the pinned 0.14.5 oracle (different property model), so it is pinned to the port's own bytes rather than byte-gated."
     },
     {
       "class": "Relay",
-      "cause": "The port ports OpenDSS r4133-trunk Relay (75 props: PhCurve/OC_GndCurve/PhPickup renamed from the 0.14.5 PhaseCurve/GroundCurve/PhaseTrip, plus DOC_*/SinglePhTrip/Lock/RatedCurrent/InterruptingRating/per-phase Normal/State arrays), diverging structurally from the pinned 0.14.5 oracle (53 props, classic names). Pinned to the port's bytes. See STATUS §OG-1.5c batch B4."
+      "cause": "The port ports OpenDSS r4133-trunk Relay (75 props: PhCurve/OC_GndCurve/PhPickup renamed from the 0.14.5 PhaseCurve/GroundCurve/PhaseTrip, plus DOC_*/SinglePhTrip/Lock/RatedCurrent/InterruptingRating/per-phase Normal/State arrays), diverging structurally from the pinned 0.14.5 oracle (53 props, classic names). Pinned to the port's bytes."
     },
     {
       "class": "Recloser",
-      "cause": "The port ports OpenDSS r4133-trunk Recloser (46 props: PhaseFast/PhaseDelayed/GroundFast/GroundDelayed/... renamed to PhFastCurve/PhSlowCurve/GndFastCurve/GndSlowCurve/... with classic names kept as deprecated aliases, plus MechanicalDelay/SinglePhTrip/Lock/Reset/RatedCurrent/InterruptingRating), diverging structurally from the pinned 0.14.5 oracle (24 props, classic names). Pinned to the port's bytes. See STATUS §OG-1.5c batch B5."
+      "cause": "The port ports OpenDSS r4133-trunk Recloser (46 props: PhaseFast/PhaseDelayed/GroundFast/GroundDelayed/... renamed to PhFastCurve/PhSlowCurve/GndFastCurve/GndSlowCurve/... with classic names kept as deprecated aliases, plus MechanicalDelay/SinglePhTrip/Lock/Reset/RatedCurrent/InterruptingRating), diverging structurally from the pinned 0.14.5 oracle (24 props, classic names). Pinned to the port's bytes."
     },
     {
       "class": "SwtControl",
-      "cause": "The port adopted the 0.15.x/r4133 SwtControl model (D12/WP-U1.6: Normal->NormalState, State->PresentState per-phase arrays instead of the shared 0.14.5 CurrentAction; the State GetState 'no controlled element -> CTRL_NONE' getter semantics), plus the r4133 RatedCurrent prop and the 0.15.x help catalog (deprecated Delay, per-phase Normal/State help). Since R4133_PROPS RP3.7 the per-phase model is real: Normal/State are MappedStringEnumArray properties rendered one token per controlled-element phase (r4133 SwtControl.pas:589-599 / :600-610), so the port's schema spells them `type: array` + `items: $ref` where the 0.14.5 oracle spells a scalar `$ref` with a default - the same array shape the port already emits for Relay's Normal/State. No `default` key is emitted for either: the emitter elides one for any property flagged NO_DEFAULT (State) or DYNAMIC_DEFAULT (Normal), which is decided before the sample object is read (classes.rs no_default), and the sample SwtControl would give an empty array anyway - it has no controlled element, hence array_size 0. Relay's Normal is elided by the same DYNAMIC_DEFAULT flag; its State carried a 3-element default until the RP3.7 audit settlement (2026-09-02) ported r4133's `ControlledElement <> Nil` getter guard (Relay.pas:1407/:1418) and made the sample's array empty too. The whole class is therefore pinned to the port's bytes. See STATUS §OG-1.5c batch B5 and §R4133_PROPS WP-RP3 (RP3.7)."
+      "cause": "This engine follows the 0.15.x/r4133 SwtControl model (Normal->NormalState, State->PresentState per-phase arrays instead of the shared 0.14.5 CurrentAction, and the State GetState 'no controlled element -> CTRL_NONE' getter semantics), plus the r4133 RatedCurrent prop and the 0.15.x help catalog (deprecated Delay, per-phase Normal/State help). The per-phase model is real: Normal/State are MappedStringEnumArray properties rendered one token per controlled-element phase, so this schema spells them `type: array` + `items: $ref` where dss_capi 0.14.5 spells a scalar `$ref` with a default, the same array shape this engine emits for Relay's Normal/State. No `default` key is emitted for either: the emitter elides one for any property flagged NO_DEFAULT (State) or DYNAMIC_DEFAULT (Normal), which is decided before the sample object is read (classes.rs no_default), and the sample SwtControl would give an empty array anyway (it has no controlled element, hence array_size 0). Relay's Normal is elided by the same DYNAMIC_DEFAULT flag, and its State getter carries r4133's `ControlledElement <> Nil` guard, so the sample's array is empty too. The whole class is therefore pinned to this engine's bytes."
     },
     {
       "class": "WindGen",
-      "cause": "WindGen is the port's 50th class (r4133-adopted; DSSClassDefs.pas registers it after Generator), absent from the pinned 0.14.5 oracle (49 classes) entirely. Its schema is port-authored (no 0.14.5 oracle to compare) and pinned to the port's own bytes; the metadata answers to the r4133 trunk (Version8/Source/PCElements/WindGen.pas, NumPropsThisClass=44 at :255 + 4 inherited = 48 rows since R4133_PROPS_PLAN RP1.3 added UserModel/UserData at 18/19), not to the un-vendored dss_capi 0.15.x 'cleaned' rewrite (windgen/mod.rs)."
+      "cause": "WindGen is this engine's 50th class (from r4133, registered after Generator), absent from dss_capi 0.14.5 (49 classes) entirely. Its schema is authored here (no 0.14.5 schema to compare) and pinned to this engine's own bytes. The metadata answers to the r4133 trunk (NumPropsThisClass=44 + 4 inherited = 48 rows, UserModel/UserData at 18/19), not to the un-vendored dss_capi 0.15.x 'cleaned' rewrite (windgen/mod.rs)."
     }
   ],
   "divergences": [
@@ -29,7 +29,7 @@
       "line": "      \"deprecated\" : true,",
       "count": 3,
       "props": ["FaultRate", "PctPerm", "Repair"],
-      "cause": "dss_capi 0.15.x / OpenDSS r4133 flags LineCode FaultRate/PctPerm/Repair as Deprecated+Unused (a LineCode never propagated them to its Lines; unused in the engine since 2014). The port follows the newer engine (UPGRADE WP-U1.4, prop_flags.rs::DEPRECATED), so its schema emits `deprecated: true`; the pinned dss-python 0.15.7 backend (dss_capi 0.14.5) predates the flag and omits it."
+      "cause": "dss_capi 0.15.x / OpenDSS r4133 flags LineCode FaultRate/PctPerm/Repair as Deprecated+Unused (a LineCode never propagated them to its Lines, unused in the engine since 2014). This engine follows the newer engines (prop_flags.rs::DEPRECATED), so its schema emits `deprecated: true`. The pinned dss-python 0.15.7 backend (dss_capi 0.14.5) predates the flag and omits it."
     },
     {
       "class": "CNData",
@@ -39,7 +39,7 @@
       "order": 6,
       "count": 1,
       "props": ["SemiconLayer"],
-      "cause": "dss_capi 0.15.x / OpenDSS r4133 adds CNData.SemiconLayer (CNData.pas, `SemiconLayer = 5`): existence of a semicon layer between insulation and the concentric-neutral strands, affecting shunt self-admittances. The port adopted it (conductor_data/cn_data.rs, UPGRADE_PLAN.md WP-U1.4); the pinned dss_capi 0.14.5 backend (CNData `TProp` ends at RStrand=4) has no such property, so it is inserted at ordinal 5, shifting every following $dssPropertyIndex/$dssPropertyOrder down by one vs the oracle."
+      "cause": "dss_capi 0.15.x / OpenDSS r4133 adds CNData.SemiconLayer (CNData.pas, `SemiconLayer = 5`): existence of a semicon layer between insulation and the concentric-neutral strands, affecting shunt self-admittances. The port adopted it (conductor_data/cn_data.rs); the pinned dss_capi 0.14.5 backend (CNData `TProp` ends at RStrand=4) has no such property, so it is inserted at ordinal 5, shifting every following $dssPropertyIndex/$dssPropertyOrder down by one vs the oracle."
     },
     {
       "class": "LineSpacing",
@@ -49,7 +49,7 @@
       "order": 2,
       "count": 1,
       "props": ["NConds"],
-      "cause": "Coordinator ruling 2026-10-17, under the user's delegation: a LineSpacing takes no property before its first nconds=, so its JSON record writes NConds and the import applies it first. The pinned 0.14.5 oracle suppresses LineSpacing.NConds from its JSON (no block, no $dssPropertyOrder) and its import sizes every array to the default 3 wires, so a four-wire spacing comes back with three. The port renders the NConds block at $dssPropertyIndex 1 / $dssPropertyOrder 2, which moves the order of every later LineSpacing property up by one. Pinned by exec::tests::line_geometry_rules::a_short_spacing_list_keeps_its_gaps (the NConds key and its import) and ::a_spacing_property_before_nconds_is_refused."
+      "cause": "A LineSpacing takes no property before its first nconds=, so its JSON record writes NConds and the import applies it first. dss_capi 0.14.5 suppresses LineSpacing.NConds from its JSON (no block, no $dssPropertyOrder) and its import sizes every array to the default 3 wires, so a four-wire spacing comes back with three. This engine renders the NConds block at $dssPropertyIndex 1 / $dssPropertyOrder 2, which moves the order of every later LineSpacing property up by one. Pinned by exec::tests::line_geometry_rules::a_short_spacing_list_keeps_its_gaps (the NConds key and its import) and ::a_spacing_property_before_nconds_is_refused."
     },
     {
       "class": "LineSpacing",
@@ -59,7 +59,7 @@
       "order": 7,
       "count": 1,
       "props": ["Detailed"],
-      "cause": "dss_capi 0.15.x / OpenDSS r4133 adds the LineSpacing equivalent-spacing model (LineSpacing.pas): Detailed selects per-conductor coordinates (x/h arrays) vs the four equivalent-distance fields. The port adopted it (line_spacing/mod.rs, UPGRADE_PLAN.md WP-U1.4); pinned dss_capi 0.14.5 (LineSpacing `TProp` ends at units=5) lacks it."
+      "cause": "dss_capi 0.15.x / OpenDSS r4133 adds the LineSpacing equivalent-spacing model (LineSpacing.pas): Detailed selects per-conductor coordinates (x/h arrays) vs the four equivalent-distance fields. The port adopted it (line_spacing/mod.rs); pinned dss_capi 0.14.5 (LineSpacing `TProp` ends at units=5) lacks it."
     },
     {
       "class": "LineSpacing",
@@ -69,7 +69,7 @@
       "order": 8,
       "count": 1,
       "props": ["EqDistPhPh"],
-      "cause": "dss_capi 0.15.x / OpenDSS r4133 LineSpacing equivalent-spacing model (LineSpacing.pas): geometric-mean distance between phase conductors. Port-adopted (line_spacing/mod.rs, UPGRADE WP-U1.4); absent from pinned dss_capi 0.14.5."
+      "cause": "dss_capi 0.15.x / OpenDSS r4133 LineSpacing equivalent-spacing model: geometric-mean distance between phase conductors. Implemented in line_spacing/mod.rs, absent from dss_capi 0.14.5."
     },
     {
       "class": "LineSpacing",
@@ -79,7 +79,7 @@
       "order": 9,
       "count": 1,
       "props": ["EqDistPhN"],
-      "cause": "dss_capi 0.15.x / OpenDSS r4133 LineSpacing equivalent-spacing model (LineSpacing.pas): geometric-mean distance between phase and neutral conductors. Port-adopted (line_spacing/mod.rs, UPGRADE WP-U1.4); absent from pinned dss_capi 0.14.5."
+      "cause": "dss_capi 0.15.x / OpenDSS r4133 LineSpacing equivalent-spacing model: geometric-mean distance between phase and neutral conductors. Implemented in line_spacing/mod.rs, absent from dss_capi 0.14.5."
     },
     {
       "class": "LineSpacing",
@@ -89,7 +89,7 @@
       "order": 10,
       "count": 1,
       "props": ["AvgPhaseHeight"],
-      "cause": "dss_capi 0.15.x / OpenDSS r4133 LineSpacing equivalent-spacing model (LineSpacing.pas): average height of phase conductors. Port-adopted (line_spacing/mod.rs, UPGRADE WP-U1.4); absent from pinned dss_capi 0.14.5."
+      "cause": "dss_capi 0.15.x / OpenDSS r4133 LineSpacing equivalent-spacing model: average height of phase conductors. Implemented in line_spacing/mod.rs, absent from dss_capi 0.14.5."
     },
     {
       "class": "LineSpacing",
@@ -99,7 +99,7 @@
       "order": 11,
       "count": 1,
       "props": ["AvgNeutralHeight"],
-      "cause": "dss_capi 0.15.x / OpenDSS r4133 LineSpacing equivalent-spacing model (LineSpacing.pas): average height of neutral conductors. Port-adopted (line_spacing/mod.rs, UPGRADE WP-U1.4); absent from pinned dss_capi 0.14.5."
+      "cause": "dss_capi 0.15.x / OpenDSS r4133 LineSpacing equivalent-spacing model: average height of neutral conductors. Implemented in line_spacing/mod.rs, absent from dss_capi 0.14.5."
     },
     {
       "class": "XfmrCode",
@@ -117,7 +117,7 @@
       "order": 27,
       "count": 0,
       "props": ["EpsRMedium"],
-      "cause": "dss_capi 0.15.x (Line.pas r3902/r3913) adds EpsRMedium — the LineConstants medium relative permittivity. The port carries it as a HIDE_015X forward-compat prop (line/mod.rs, WP-U1.4): the schema/JSON dump hide it (build.rs, byte-exact vs the 0.14.5 goldens), but it occupies $dssPropertyIndex 31 / $dssPropertyOrder 27, shifting the following NormAmps..Enabled props down by one vs the oracle (whose Line TProp ends the general data before it)."
+      "cause": "dss_capi 0.15.x (r3902/r3913) adds EpsRMedium, the LineConstants medium relative permittivity. This engine carries it as a HIDE_015X prop (line/mod.rs): the schema/JSON dump hide it (build.rs, byte-exact vs the 0.14.5 goldens), but it occupies $dssPropertyIndex 31 / $dssPropertyOrder 27, shifting the following NormAmps..Enabled props down by one vs dss_capi 0.14.5 (whose Line TProp ends the general data before it)."
     },
     {
       "class": "Line",
@@ -192,7 +192,7 @@
       "order": 32,
       "count": 0,
       "props": ["XfmrCode"],
-      "cause": "OpenDSS r4133 (R4133_PROPS_PLAN RP1.2) registers AutoTrans XfmrCode as its 39th own property, between bank and XRConst (Version8/Source/PDElements/AutoTrans.pas:329, help :414), and answers it with the auto's own TAutoTransObj.FetchXfmrCode (:520 -> :2339-2396) -- the Transformer's routine plus a forced SERIES/WYE connection on the first two windings, the XHL/XHT/XLT -> puXHX/puXHT/puXXT rename and RdcSpecified on every winding. dss_capi 0.14.5 deleted the row outright (.inputs/dss_capi/src/PDElements/AutoTrans.pas:76,125 '//XfmrCode=39, // removed, unused') and capi015 never restored it, so its table is 52 names long against the port's 53. The port implements the property for real (elements/pd/auto_trans) but flags the row HIDE_R4133: it renders no schema block while occupying $dssPropertyIndex 39 / $dssPropertyOrder 32 (HIDE_R4133 keeps a row in AltPropertyOrder, like the Line 0.15.x rows; on AutoTrans the order rank runs seven below the index because Windings and the six redundant plural array forms are dropped from AltPropertyOrder while Like is hoisted to rank 1 -- Bank is 38/31, XRConst 40/33). Both fields are this property's OWN ordinal ranks, the convention the four Line rows use: the renumbering shifts a following prop by the count of removed ranks STRICTLY BELOW it, so a rank that is off by one is absorbed whenever the slot below is occupied and the byte gate cannot see the error. Measured by regeneration: the prop that stood at index 39 / order 32 (XRConst) moved to 40 / 33."
+      "cause": "OpenDSS r4133 registers AutoTrans XfmrCode as its 39th own property, between bank and XRConst, and answers it with the auto's own TAutoTransObj.FetchXfmrCode: the Transformer's routine plus a forced SERIES/WYE connection on the first two windings, the XHL/XHT/XLT -> puXHX/puXHT/puXXT rename and RdcSpecified on every winding. dss_capi 0.14.5 and 0.15.x have no such row, so their table is 52 names long against this engine's 53. This engine implements the property (elements/pd/auto_trans) but flags the row HIDE_R4133: it renders no schema block while occupying $dssPropertyIndex 39 / $dssPropertyOrder 32 (HIDE_R4133 keeps a row in AltPropertyOrder, like the Line 0.15.x rows; on AutoTrans the order rank runs seven below the index because Windings and the six redundant plural array forms are dropped from AltPropertyOrder while Like is hoisted to rank 1 -- Bank is 38/31, XRConst 40/33). Both fields are this property's OWN ordinal ranks, the convention the four Line rows use: the renumbering shifts a following prop by the count of removed ranks STRICTLY BELOW it, so a rank that is off by one is absorbed whenever the slot below is occupied and the byte gate cannot see the error. Measured by regeneration: the prop at index 39 / order 32 without the row (XRConst) sits at 40 / 33 with it."
     },
     {
       "class": "AutoTrans",
@@ -294,7 +294,7 @@
       "order": 17,
       "count": 0,
       "props": ["Rneut"],
-      "cause": "OpenDSS r4133 (R4133_PROPS_PLAN RP1.1) still registers Generator Rneut/Xneut immediately after conn (Version8/Source/PCElements/generator.pas:441-442, help 'Removed due to causing confusion - Add neutral impedance externally'), so its table is 50 names long; dss_capi 0.14.5 deleted them outright. The port carries them as UPSTREAM_STUB + HIDE_R4133 rows (elements/pc/generator/mod.rs): the write stores the string and logs 5611/5612, nothing else. They render no schema block but occupy $dssPropertyIndex 16-17 and $dssPropertyOrder 17-18 (HIDE_R4133 keeps them in AltPropertyOrder, like the Line 0.15.x rows; on Generator the order rank runs one above the index because Like is hoisted to order 1 - Conn is 15/16, Status 18/19), shifting Status..Enabled down by two vs the 0.14.5 oracle. Both fields are this property's OWN ordinal ranks, the convention the four Line rows use (EpsRMedium 31/27): the renumbering shifts a following prop by the count of removed ranks STRICTLY BELOW it, so a rank that is off by one is absorbed whenever the slot below is occupied and the byte gate cannot see the error."
+      "cause": "OpenDSS r4133 still registers Generator Rneut/Xneut immediately after conn (help 'Removed due to causing confusion - Add neutral impedance externally'), so its table is 50 names long, while dss_capi 0.14.5 has no such rows. This engine carries them as UPSTREAM_STUB + HIDE_R4133 rows (elements/pc/generator/mod.rs): the write stores the string and logs 5611/5612, nothing else. They render no schema block but occupy $dssPropertyIndex 16-17 and $dssPropertyOrder 17-18 (HIDE_R4133 keeps them in AltPropertyOrder, like the Line 0.15.x rows; on Generator the order rank runs one above the index because Like is hoisted to order 1 - Conn is 15/16, Status 18/19), shifting Status..Enabled down by two vs dss_capi 0.14.5. Both fields are this property's OWN ordinal ranks, the convention the four Line rows use (EpsRMedium 31/27): the renumbering shifts a following prop by the count of removed ranks STRICTLY BELOW it, so a rank that is off by one is absorbed whenever the slot below is occupied and the byte gate cannot see the error."
     },
     {
       "class": "Generator",
@@ -314,7 +314,7 @@
       "order": 13,
       "count": 0,
       "props": ["Action"],
-      "cause": "OpenDSS r4133 (R4133_PROPS_PLAN RP1.1) still registers Sensor Action as its 13th and last own property (Version8/Source/Meters/Sensor.pas:183, help opening 'NOT IMPLEMENTED.'), so its table is 16 names long; dss_capi 0.14.5 commented it out (.inputs/dss_capi/src/Meters/Sensor.pas:39,55 'action = 13 // unused'). The port carries it as an UPSTREAM_STUB + HIDE_R4133 row (elements/meter/sensor/mod.rs): the write stores the string silently (Set_Action is an empty body, Sensor.pas:850-854). It renders no schema block but occupies $dssPropertyIndex 13 / $dssPropertyOrder 13 (on Sensor the two hoists cancel - Like to order 1, the BooleanAction Clear to the end - so a prop's order rank equals its index: Weight is 12/12, BaseFreq 14/14), shifting BaseFreq/Enabled down by one vs the 0.14.5 oracle."
+      "cause": "OpenDSS r4133 still registers Sensor Action as its 13th and last own property (help opening 'NOT IMPLEMENTED.'), so its table is 16 names long, while dss_capi 0.14.5 comments it out ('action = 13 // unused'). This engine carries it as an UPSTREAM_STUB + HIDE_R4133 row (elements/meter/sensor/mod.rs): the write stores the string silently (Set_Action has an empty body in r4133). It renders no schema block but occupies $dssPropertyIndex 13 / $dssPropertyOrder 13 (on Sensor the two hoists cancel - Like to order 1, the BooleanAction Clear to the end - so a prop's order rank equals its index: Weight is 12/12, BaseFreq 14/14), shifting BaseFreq/Enabled down by one vs dss_capi 0.14.5."
     },
     {
       "class": "Fuse",
@@ -323,7 +323,7 @@
       "to": "      \"default\" : \"tlink\",\r\n      \"description\" : \"Name of the TCC Curve object that determines the fuse blowing.  Must have been previously defined as a TCC_Curve object. Default is \\\"Tlink\\\". Multiplying the current values in the curve by the \\\"RatedCurrent\\\" value gives the actual current.\",",
       "count": 1,
       "props": ["FuseCurve"],
-      "cause": "OpenDSS r4133 (WP-U2.1, Version8 Controls/fuse.pas) repurposed the Fuse TCC model: FuseCurve defaults to \"none\" (was \"Tlink\") and its help names \"CurveMultiplier\" as the divisor instead of \"RatedCurrent\". The port ported r4133 (elements/pd/fuse); the pinned dss_capi 0.14.5 oracle keeps the classic default/help."
+      "cause": "OpenDSS r4133 Fuse TCC model: FuseCurve defaults to \"none\" (dss_capi 0.14.5: \"Tlink\") and its help names \"CurveMultiplier\" as the divisor instead of \"RatedCurrent\". This engine follows r4133 (elements/pd/fuse), dss_capi 0.14.5 keeps the classic default/help."
     },
     {
       "class": "Fuse",
@@ -332,7 +332,7 @@
       "to": "      \"default\" : 1.0000000000000000E+000,\r\n      \"description\" : \"Multiplier or actual phase amps for the phase TCC curve.  Defaults to 1.0.\",",
       "count": 1,
       "props": ["RatedCurrent"],
-      "cause": "OpenDSS r4133 (WP-U2.1, Version8 Controls/fuse.pas:393) repurposed Fuse.RatedCurrent from the TCC divisor (default 1.0, 'Multiplier or actual phase amps') to a purely informational continuous rating (default 0.0, 'Fuse continuous rated current in Amps'); the new CurveMultiplier prop took over the divisor role. The port ported r4133; the pinned dss_capi 0.14.5 oracle keeps the old RatedCurrent semantics."
+      "cause": "OpenDSS r4133 makes Fuse.RatedCurrent a purely informational continuous rating (default 0.0, 'Fuse continuous rated current in Amps') where dss_capi 0.14.5 has the TCC divisor (default 1.0, 'Multiplier or actual phase amps'), and the CurveMultiplier prop takes the divisor role. This engine follows r4133, dss_capi 0.14.5 keeps the old RatedCurrent semantics."
     },
     {
       "class": "Fuse",
@@ -342,7 +342,7 @@
       "order": 11,
       "count": 1,
       "props": ["CurveMultiplier"],
-      "cause": "OpenDSS r4133 (WP-U2.1, Version8 Controls/fuse.pas:191 CurveMultiplier) added the Fuse TCC-curve current multiplier (GetTCCTime(Cmag/CurveMultiplier)), default 1.0, taking over the divisor role RatedCurrent had in 0.14.5. The port adopted it (elements/pd/fuse/mod.rs); the pinned dss_capi 0.14.5 oracle (Fuse TProp ends at State=10) lacks it, inserted at ordinal 11, shifting the following BaseFreq/Enabled/Like $dssPropertyIndex/$dssPropertyOrder down."
+      "cause": "OpenDSS r4133 has the Fuse TCC-curve current multiplier CurveMultiplier (GetTCCTime(Cmag/CurveMultiplier)), default 1.0, in the divisor role RatedCurrent has in 0.14.5. This engine implements it (elements/pd/fuse/mod.rs). dss_capi 0.14.5 (Fuse TProp ends at State=10) lacks it, so it sits at ordinal 11, shifting the following BaseFreq/Enabled/Like $dssPropertyIndex/$dssPropertyOrder down."
     },
     {
       "class": "Fuse",
@@ -352,7 +352,7 @@
       "order": 12,
       "count": 1,
       "props": ["InterruptingRating"],
-      "cause": "OpenDSS r4133 (WP-U2.1, Version8 Controls/fuse.pas:192 InterruptingRating) added the informational Fuse rated interrupting current (default 0.0, not used internally). The port adopted it (elements/pd/fuse/mod.rs); absent from the pinned dss_capi 0.14.5 oracle, inserted at ordinal 12."
+      "cause": "OpenDSS r4133 has the informational Fuse rated interrupting current InterruptingRating (default 0.0, not used internally). This engine implements it (elements/pd/fuse/mod.rs). It is absent from dss_capi 0.14.5 and sits at ordinal 12."
     },
     {
       "class": "DynamicExp",
@@ -415,7 +415,7 @@
       "to": "      \"description\" : \"One of (ohms per ...) {none|mi|km|kft|m|me|ft|in|cm}.  Default is none; assumes units agree with length units given in Line object\",",
       "count": 1,
       "props": ["Units"],
-      "cause": "User ruling 2026-10-04: a length unit is one exact documented word, mm included, no prefixes. The port's LineCode.Units reads only the words none, mi, kft, km, m, me, ft, in, cm and mm, each written whole, and its help lists them. The pinned 0.14.5 oracle prints the wheel's list, which omits mm. Pinned by linecode_units_help_lists_the_accepted_words."
+      "cause": "A length unit is one exact word of the OpenDSS documentation, mm included, no prefixes. This engine's LineCode.Units reads only the words none, mi, kft, km, m, me, ft, in, cm and mm, each written whole, and its help lists them. dss_capi 0.14.5 prints the wheel's list, which omits mm. Pinned by linecode_units_help_lists_the_accepted_words."
     },
     {
       "class": "LineSpacing",
@@ -424,7 +424,7 @@
       "to": "      \"description\" : \"Units for x and h: {mi|kft|km|m|Ft|in|cm } Initial default is \\\"ft\\\", but defaults to last unit defined\",",
       "count": 1,
       "props": ["Units"],
-      "cause": "User ruling 2026-10-04: a length unit is one exact documented word, mm included, no prefixes. The port's LineSpacing.Units reads only the words mi, kft, km, m, ft, in, cm and mm, each written whole, and its help lists them. The pinned 0.14.5 oracle prints the wheel's list, which omits mm. Pinned by linespacing_units_help_lists_the_accepted_words."
+      "cause": "A length unit is one exact word of the OpenDSS documentation, mm included, no prefixes. This engine's LineSpacing.Units reads only the words mi, kft, km, m, ft, in, cm and mm, each written whole, and its help lists them. dss_capi 0.14.5 prints the wheel's list, which omits mm. Pinned by linespacing_units_help_lists_the_accepted_words."
     },
     {
       "class": "LineSpacing",
@@ -433,7 +433,7 @@
       "to": "      \"default\" : [\r\n        0.0000000000000000E+000,\r\n        0.0000000000000000E+000,\r\n        0.0000000000000000E+000\r\n      ],\r\n      \"$dssLength\" : \"NConds\",",
       "count": 2,
       "props": ["X", "H"],
-      "cause": "Coordinator ruling 2026-10-17, under the user's delegation: a LineSpacing coordinate list holds the values given, in order, and a conductor it does not reach has no position. A new spacing has none given, so the port's X and H render no default. The pinned 0.14.5 oracle sizes both lists to the default three conductors and renders a default of three zeros. Pinned by a_short_spacing_list_keeps_its_gaps."
+      "cause": "A LineSpacing coordinate list holds the values given, in order, and a conductor it does not reach has no position. A new spacing has none given, so this engine's X and H render no default. dss_capi 0.14.5 sizes both lists to the default three conductors and renders a default of three zeros. Pinned by a_short_spacing_list_keeps_its_gaps."
     },
     {
       "class": "Line",
@@ -442,7 +442,7 @@
       "to": "      \"description\" : \"Length Units = {none | mi|kft|km|m|Ft|in|cm } Default is None - assumes length units match impedance units.\",",
       "count": 1,
       "props": ["Units"],
-      "cause": "User ruling 2026-10-04: a length unit is one exact documented word, mm included, no prefixes. The port's Line.Units reads only the words none, mi, kft, km, m, ft, in, cm and mm, each written whole, and its help lists them. The pinned 0.14.5 oracle prints the wheel's list, which omits mm. Pinned by line_units_help_lists_the_accepted_words."
+      "cause": "A length unit is one exact word of the OpenDSS documentation, mm included, no prefixes. This engine's Line.Units reads only the words none, mi, kft, km, m, ft, in, cm and mm, each written whole, and its help lists them. dss_capi 0.14.5 prints the wheel's list, which omits mm. Pinned by line_units_help_lists_the_accepted_words."
     }
   ]
 }

@@ -2,25 +2,24 @@
 //! `IndexBuses`) and the coordinator solve stitch (`Solve_Diakoptics` +
 //! `Dss::ad_solve`).
 //!
-//! Under plan D3 the coordinator is the main [`Dss`] (Pascal `ActiveCircuit[1]`)
+//! The coordinator is the main [`Dss`] (Pascal `ActiveCircuit[1]`)
 //! and the zones are `ad_children: Vec<Dss>` (Pascal `ActiveCircuit[2..]`). The
 //! Pascal PM actors are barrier-synchronised, so "sending `SOLVE_AD1`/`SOLVE_AD2`"
 //! is a synchronous method-call loop; every `ActiveCircuit[1].…` a child
 //! dereferences becomes an explicit argument (the parent `NodeV` buffer written
 //! at the child's contiguous offset, and the read-only `Contours`/`Ic` views).
 //!
-//! **Child boundary reference (r3723 Oddie probe, resume executor 2026-07-12).**
+//! **Child boundary reference.**
 //! `Start_Diakoptics` disables each zone's artificial `source`/`vph_2`/`vph_3`
 //! VSources and its feeder-head link PDE, so a reference-free zone (actors > 2)
-//! drives its boundary purely through the `Ic` current injections. The probe
-//! answered the blocking question — for a **well-referenced** zone (wye /
-//! grounded loads) the loads' `Yeq` shunts (stamped into Y as the fixed-point
+//! drives its boundary purely through the `Ic` current injections. For a
+//! **well-referenced** zone (wye / grounded loads) the loads' `Yeq` shunts (stamped into Y as the fixed-point
 //! accelerator) anchor every node to ground: even with all sources disabled the
 //! reference-free zone is near-singular but not singular, and faer factors it (no
-//! KLU tiny-pivot regularization is involved). The port therefore uses the
+//! KLU tiny-pivot regularization is involved). This engine therefore uses the
 //! ordinary faer factorization with **no guard**: a genuinely singular child Y
 //! surfaces as the normal solve-error path (`SolutionAbort`), never silently
-//! regularized (§5). `Start_Diakoptics` runs only for actors > 2
+//! regularized. `Start_Diakoptics` runs only for actors > 2
 //! (Solution.pas:3232); actor 2 (zone 1) keeps its real VSource reference.
 //!
 //! NOTE(upstream-quirk): the "loads' `Yeq` anchors every node to ground" premise
@@ -65,8 +64,7 @@
 //! (report-only) official-AD replay is the tracked WP-AD.5 task, NOT a silent
 //! wontfix. These decks stay off the sweep gate because there is no correct AD
 //! answer to gate against on either engine (singular/near-singular torn zone), not
-//! because a fix is out of scope. Full transcripts: STATUS §1 (WP-AD.4 ad-bugs
-//! settle record).
+//! because a fix is out of scope.
 //!
 //! The probe also settled how the child voltage is maintained: official FREEZES
 //! each child's own `NodeV` at its state-2 standalone solve for the whole AD run
@@ -109,10 +107,10 @@ impl Dss {
     /// the loop variable `j` after the completed `for` (FPC loop-var-after-loop),
     /// i.e. `High(AllNNames)+1` (Diakoptics.pas:151–153). Unreachable by
     /// construction (a child's bus 1 always exists in the parent); we set that
-    /// same past-the-end index rather than reproduce the UB read (plan D5).
+    /// same past-the-end index rather than reproduce the UB read.
     ///
     /// `VIndex`'s only Pascal consumer is `Notify_Main` → `V_0`, which is dead
-    /// scaffolding (plan D5, like `Node_dV`/`Ic_Local`) — so `VIndex` is inert
+    /// scaffolding (like `Node_dV`/`Ic_Local`) — so `VIndex` is inert
     /// here; it is assigned for structural fidelity. The live per-child offset is
     /// `LocalBusIdx[0]` from `IndexBuses`.
     pub(crate) fn send_idx_2_actors(&mut self) {
@@ -331,7 +329,7 @@ impl Dss {
 
     /// One child A-Diakoptics stage (`SolveAD`, Solution.pas:1263), run in the
     /// child's own `(ckt, env)` context; `parent_node_v`/`parent_ic` are the
-    /// coordinator's explicit views (plan D3).
+    /// coordinator's explicit views.
     fn child_solve_ad(
         &mut self,
         initialize: bool,
@@ -374,7 +372,7 @@ impl Dss {
     /// `SOLVE_AD2` (each child adds `−Ic` at its injection buses and re-solves).
     ///
     /// `adiak_pcinj` is the Pascal global `ADiak_PCInj` (DSSGlobals.pas:307) made
-    /// explicit under D3: `True` from `DoNormalSolution`, `False` from
+    /// explicit: `True` from `DoNormalSolution`, `False` from
     /// `SolveDirect`/`SolveYDirect` — it governs whether the children fold in
     /// their PC (load/generator) injections.
     fn solve_diakoptics(&mut self, adiak_pcinj: bool) -> SolveResult {
@@ -529,9 +527,8 @@ impl Dss {
     /// Solve_Diakoptics()` per fixed-point iteration, convergence over the
     /// interconnected `NodeV`). Controls are checked via the AD branch
     /// ([`Self::ad_check_controls`]): the coordinator fans `DO_CTRL_ACTIONS` out
-    /// to the children and ANDs their `ControlActionsDone` (ported in WP-AD.4).
-    /// The WP-AD.3/D7 fixtures solve controls-off, where that fan-out is the
-    /// trivial `CONTROLSOFF` no-op.
+    /// to the children and ANDs their `ControlActionsDone`. On a controls-off
+    /// solve that fan-out is the trivial `CONTROLSOFF` no-op.
     fn ad_solve_snap(&mut self) -> SolveResult {
         {
             let coord = self.circuit.as_mut().ok_or("no coordinator")?;
@@ -757,7 +754,7 @@ impl Dss {
     /// message dispatch): `ControlActionsDone := FALSE; Sample_DoControlActions;`
     /// then the enqueued `CHECK_FAULT` (`Check_Fault_Status`) and `CHECKYBUS` (a
     /// `BuildYMatrix(WHOLEMATRIX, FALSE)` when a control action changed the zone
-    /// `Y`). Run in the child's own `(ckt, env)` context (plan D3 — a synchronous
+    /// `Y`). Run in the child's own `(ckt, env)` context (a synchronous
     /// coordinator method call over `ad_children`, not a thread message).
     fn child_do_ctrl_actions(&mut self) -> SolveResult {
         let Dss {
@@ -824,10 +821,10 @@ impl Dss {
     /// `time_series.rs`, re-entering [`Self::ad_solve_snap`] per step, then
     /// samples monitors/meters. The children read their loads from their own
     /// fixed tear-time linearisation (the shape multiplier they see is the one
-    /// baked in at tear time); the D7 fixtures use flat shapes, so each step is a
-    /// snapshot. (Non-flat time-varying-shape AD across zones is out of the
-    /// WP-AD.3 scope — the coordinator-step model is the faithful translation of
-    /// the Pascal, where the actors likewise never receive a per-step clock.)
+    /// baked in at tear time); the AD fixtures use flat shapes, so each step is a
+    /// snapshot. (The children do not follow a non-flat time-varying shape: the
+    /// coordinator-step model is the faithful translation of the Pascal, where
+    /// the actors likewise never receive a per-step clock.)
     fn ad_solve_time_series(&mut self, mode: SolveMode) -> SolveResult {
         let (number_of_times, is_peak) = {
             let c = self.circuit.as_ref().ok_or("no coordinator")?;

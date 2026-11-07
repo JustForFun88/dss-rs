@@ -1,8 +1,7 @@
 # build_capuserctl_native.ps1 — build the capuserctl NATIVE TWIN DLL on demand
-# (WASM_USERMODELS_PLAN §2.6 plan B, WP-WM.5). The twin is built ONLY to
-# empirically confirm the WM.5 round-2 finding — that a native TCapUserControl DLL
-# CANNOT drive the r4133 control queue (it has no owner pointer). It is NOT the
-# gate oracle (the r4133 built-in VOLTAGE control is — see
+# The twin is built ONLY to confirm empirically that a native TCapUserControl
+# DLL CANNOT drive the r4133 control queue (it has no owner pointer). It is NOT
+# the reference of the gate (the r4133 built-in VOLTAGE control is — see
 # tools/golden/wasm_decks/wasm_capcontrol_oracle.dss). NOT committed as a binary.
 #
 # Usage:
@@ -35,4 +34,4 @@ Copy-Item (Join-Path $Crate "target\release\capuserctl.dll") $Artifact -Force
 Write-Host "native twin: $Artifact"
 Write-Host "sha256:      $((Get-FileHash -Algorithm SHA256 $Artifact).Hash.ToLower())"
 Write-Host ""
-Write-Host "Set WASM_TWIN_DLL to this path and run the WM.5 golden generator with DSS_GEN_WM5=1."
+Write-Host "Set WASM_TWIN_DLL to this path and run the ignored test gen_wasm_usermodels_wm5 with DSS_GEN_WM5=1."

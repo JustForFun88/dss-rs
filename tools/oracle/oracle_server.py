@@ -1,4 +1,4 @@
-"""Live oracle server for the corpus comparison gate (CORPUS_TEST_PLAN.md §3).
+"""Live oracle server for the corpus comparison gate.
 
 A persistent process the Rust harness (`corpus_gate.rs`) drives at test time:
 read one JSON request per line on stdin, run it through the pinned dss-python
@@ -24,8 +24,11 @@ engine output cannot corrupt the stream. One failing case returns
 `{"ok":false,...}` rather than killing the server; a hard crash is handled by the
 Rust side restarting the process and recording the case as a failure.
 
-Startup hard-asserts the pin in tools/golden/PIN.txt (dss-python 0.15.7); a wrong
-oracle version exits non-zero, never a silent pass.
+Startup hard-asserts the pin in tools/golden/PIN.txt (dss-python 0.15.7). A wrong
+dss-python version exits non-zero, never a silent pass.
+
+Environment: `DSS_ORACLE_ENGINE` selects the engine. Only `capi` (the default)
+is accepted, any other value exits non-zero.
 
 This server drives the pinned dss-python oracle only (the `capi_v0145` channel of
 the unified corpus gate). The official EPRI `OpenDSSDirect.dll` (r4133) channel is
@@ -70,9 +73,8 @@ def _tolerant_read(fn, tolerate_user_model: bool):
     correct Yprim-only values). Any other errno re-raises — a real failure is
     never masked.
 
-    `capture_all_elements` calls this one definition too (its inline copy was
-    deduped into this helper at the D7 lane merge, 2026-09-05); the absorbed
-    errno set and the single retry are therefore identical on both paths.
+    `capture_all_elements` calls this one definition too, so the absorbed errno
+    set and the single retry are identical on both paths.
     """
     import dss as _dss
 
@@ -86,7 +88,7 @@ def _tolerant_read(fn, tolerate_user_model: bool):
 
 
 def capture_aggregates(ckt, tolerate_user_model: bool = False) -> dict:
-    """The five `Circuit` aggregates of GOLDEN_REBASE_PLAN.md G1.9, with their
+    """The five `Circuit` aggregates, with their
     units spelled in the key names because the engine does NOT scale them
     uniformly:
 
@@ -99,10 +101,10 @@ def capture_aggregates(ckt, tolerate_user_model: bool = False) -> dict:
 
     Every one of them reads each walked element's losses or power, which
     recomputes that element's cached terminal current when it is stale — a
-    **group-A** read in the §1.1(a)/D3 partition, so the call site puts it
+    **group-A** read in the capture-order partition, so the call site puts it
     ahead of every group-B read. See `run_case`.
 
-    `tolerate_user_model` mirrors `capture_all_elements`: since this is now the
+    `tolerate_user_model` mirrors `capture_all_elements`: this is the
     first post-solve read that recomputes the cached terminal currents, a
     `warn_and_continue`
     deck fires its single priming #567 here.
@@ -126,20 +128,20 @@ def capture_aggregates(ckt, tolerate_user_model: bool = False) -> dict:
 
 
 def capture_solution_scalars(sol) -> dict:
-    """The ten `Solution` scalars of G1.9 — `Mode`, `Hour`, `Year`,
+    """The ten `Solution` scalars — `Mode`, `Hour`, `Year`,
     `ControlIterations`, `Totaliterations`, `MostIterationsDone`,
     `ControlActionsDone`, `SystemYChanged`, `Seconds` and `LoadMult`.
 
     All ten are **order-free** (group C): plain field reads that touch no
     cursor and no terminal-current cache, so their position in the capture is
     free.
-    They are read here anyway, beside the aggregates, so the whole G1.9 surface
+    They are read here anyway, beside the aggregates, so the whole surface
     is one block.
 
     `Iterations` and `dblHour` are deliberately absent — the checkpoint already
     carries and compares them. `Totaliterations` IS carried: r4133 returns the
     same value as `Iterations` for it, and that equality is pinned in-engine
-    rather than compared twice (TESTING.md).
+    rather than compared twice.
 
     `ControlActionsDone` and `SystemYChanged` are emitted as JSON **booleans**;
     the r4133 transport normalizes its `0|1` ints to the same shape
@@ -191,18 +193,17 @@ def capture_all_elements(
     """Every circuit element's terminal currents (A), powers (kW/kvar), and
     losses (W/var — `CktElement.Losses`, the engine's own losses read);
     under `derived` also `Enabled`, the three polar channels
-    `CurrentsMagAng` / `VoltagesMagAng` / `Residuals` (GOLDEN_REBASE G1.3a) and
+    `CurrentsMagAng` / `VoltagesMagAng` / `Residuals` and
     the three sequence channels `SeqPowers` / `SeqCurrents` / `SeqVoltages`
-    (GOLDEN_REBASE G1.3b) and the complex-sequence + per-terminal-total trio
-    `TotalPowers` / `CplxSeqCurrents` / `CplxSeqVoltages` (GOLDEN_REBASE G1.3c);
-    under `element_extras` also `Enabled` and the discrete index/name scalars
-    `NumTerminals` / `NumConductors` / `NumPhases` / `EnergyMeter` / `NodeOrder`
-    (GOLDEN_REBASE G1.3d(i)).
+    and the complex-sequence + per-terminal-total trio
+    `TotalPowers` / `CplxSeqCurrents` / `CplxSeqVoltages`.
+    Under `element_extras` also `Enabled` and the discrete index/name scalars
+    `NumTerminals` / `NumConductors` / `NumPhases` / `EnergyMeter` / `NodeOrder`.
 
-    The plan mandates comparing *all* element currents/powers/losses (not just
-    the selected set), so the live gate captures the whole element list here.
+    The gate compares *all* element currents/powers/losses (not just the
+    selected set), so the live gate captures the whole element list here.
 
-    Capture order is contractual (GOLDEN_REBASE_PLAN.md §1.1(a), D3) and is
+    Capture order is contractual and is
     asserted from the `capture-order: NAME (A|B|C)` markers below by
     `crates/dss-core/tests/capture_order.rs` — a marker sits on the read line
     itself, or on the comment line immediately above it when the read does not
@@ -222,12 +223,12 @@ def capture_all_elements(
     Every A read must precede every B read: on a PC element a B read fills the
     caller's buffer yet still marks the element's cached terminal current as
     fresh for this solution, leaving the cache itself stale, so a cache-aware
-    read that follows one can answer from that stale cache (CLAUDE.md upstream
-    bug 4, harmonics `Powers`-after-`Currents`).
+    read that follows one can answer from that stale cache (an OpenDSS bug,
+    seen as harmonics `Powers`-after-`Currents`).
     `Losses` is therefore read BEFORE `gc.capture_element` rather than after
     it — a reordering of two group-A reads, so no captured value moves
     (proven byte-for-byte on IEEE13, two harmonics decks and the two
-    user-model decks; G1.3a record).
+    user-model decks).
 
     `derived` (request key `"derived"`, manifest flag `compare_derived`): the
     three polar channels are read for `Enabled` elements ONLY. r4133's
@@ -238,7 +239,7 @@ def capture_all_elements(
     shapes identical, so no sentinel normalization is owed. `enabled` itself is
     captured for every element and compared exactly.
 
-    The same `derived` flag also carries the three GOLDEN_REBASE G1.3b sequence
+    The same `derived` flag also carries the three sequence
     channels — `SeqPowers` (`CktElementV(9)` on r4133, `Alt_CE_Get_SeqPowers`
     on capi), `SeqCurrents` (`CktElementV(8)`) and `SeqVoltages`
     (`CktElementV(7)`) — read for `Enabled` elements ONLY. Here that rule is
@@ -258,7 +259,7 @@ def capture_all_elements(
     fixed 3-phase kVA conversion, unconditional, and NOT the `PositiveSequence`
     x3 that `Powers` applies at the API boundary.
 
-    The same `derived` flag carries the three GOLDEN_REBASE G1.3c channels,
+    The same `derived` flag carries the three complex-sequence/total channels,
     also `Enabled`-only. `TotalPowers` (`Alt_CE_Get_TotalPowers` on capi,
     `CktElementV(20)` on r4133) is the per-terminal sum of the conductor
     powers with the **total** scaled by `0.001` once, so it is kW/kvar,
@@ -282,13 +283,13 @@ def capture_all_elements(
     comparator's business, as with `SeqVoltages`/`SeqPowers` already.
 
     `element_extras` (request key `"element_extras"`, manifest flag
-    `compare_element_extras`): the discrete index/name scalars (G1.3d(i)), the
-    five control-derived scalars and `PhaseLosses` (G1.3d(ii)). Nine of those
+    `compare_element_extras`): the discrete index/name scalars, the
+    five control-derived scalars and `PhaseLosses`. Nine of those
     ten are read for EVERY element; only `NodeOrder` is conditional (below).
 
-    The four G1.3d(i) scalars are pure field reads on both channels.
+    The four index/name scalars are pure field reads on both channels.
 
-    The five G1.3d(ii) control-derived scalars — `NumControls`,
+    The five control-derived scalars — `NumControls`,
     `OCPDevIndex`, `OCPDevType`, `HasVoltControl` and `HasSwitchControl` —
     all answer from the element's list of controls and never touch the cached
     terminal current, so they are order-free (group C). The two `Has*` reads do move
@@ -317,21 +318,21 @@ def capture_all_elements(
     the skip cannot hide a payload. `enabled` is emitted under this flag too —
     the predicate must be visible to the comparator, never assumed.
 
-    `tolerate_user_model` (CF-C Port 2): a Generator model=6 whose user-written
+    `tolerate_user_model`: a Generator model=6 whose user-written
     model is not loaded raises warning #567 the FIRST time its terminal
     currents are recomputed after a solve; the recompute still produces the
     correct (Yprim-only) currents and clears the error, so a second read returns
     them cleanly (verified: read 1 raises #567 + zeroes Error.Number, read 2 OK).
     We absorb that single priming raise (retry once) exactly as the official
-    Direct DLL warns-and-continues; any other errno re-raises. Under the D3
+    Direct DLL warns-and-continues. Any other errno re-raises. Under the capture
     order that priming raise lands on the first cache-aware read of the element
     rather than on `Powers`: `PhaseLosses` when `element_extras` is on, `Losses`
     otherwise. `_read` wraps each read individually, so either absorber is
     correct — it is the same recompute, and it clears the warning either way.
     """
     def _read(fn):
-        # One definition of the priming retry, shared with `capture_aggregates`
-        # (the dedup its doc promised at the D7 lane merge, 2026-09-05).
+        # One definition of the priming retry, shared with
+        # `capture_aggregates`.
         return _tolerant_read(fn, tolerate_user_model)
 
     out = []
@@ -403,8 +404,8 @@ def capture_eventlog(d, ckt) -> list:
 
 def capture_probes(d, probes: list) -> list:
     """Element-specific state via the generic property surface: for each
-    `{element, props: [...]}` spec, the `? element.prop` executive query
-    (CONTROL_COVERAGE_PLAN.md) — the same value string the Rust `?` query
+    `{element, props: [...]}` spec, the `? element.prop` executive query —
+    the same value string the Rust `?` query
     renders, and the same read path that backs `Properties(p).Val` for a
     circuit element. Routed through the query (not
     `ActiveCktElement.Properties(p).Val`) because `SetActiveElement` only finds
@@ -423,18 +424,18 @@ def capture_probes(d, probes: list) -> list:
 
 
 def capture_all_properties(d, ckt) -> list:
-    """WP8.5b: EVERY circuit element's EVERY property value, as an ordered
+    """EVERY circuit element's EVERY property value, as an ordered
     `[[prop, str(Val)]]` list over the class's `AllPropertyNames` (property-index
     order is the contract compared against the Rust `?`-surface).
 
     Read exactly like `capture_probes`: the `? element.prop` executive query
     (not `ActiveCktElement.Properties(p).Val`), which uses the same property
-    read path AND — the WPG.1 harness bug — activates the object for BOTH
+    read path AND activates the object for BOTH
     general DSS objects and circuit elements, whereas `SetActiveElement`
     silently no-ops for a terminal-less DSS object. `AllElementNames` is only
     circuit elements, but `? name.Like` (a read that activates the object without
     needing to know a property name yet; the exact trick `gen_props.py` uses)
-    keeps the enumeration on the identical WPG.1-safe path so the property-name
+    keeps the enumeration on the identical activating path so the property-name
     list read matches the value reads. Runs AFTER `capture_all_elements`, so the
     established element read order is preserved."""
     out = []
@@ -454,7 +455,7 @@ def capture_all_properties(d, ckt) -> list:
 
 def capture_variables(ckt, names: list) -> list:
     """PC-element state variables (`AllVariableNames`/`AllVariableValues`) —
-    the live f64 state read (CLAUDE.md: the f32 monitor channel hides it)."""
+    the live f64 state read (the f32 monitor channel hides last-digit gaps)."""
     out = []
     for name in names:
         ckt.SetActiveElement(name)
@@ -548,8 +549,7 @@ def capture_all_meters(ckt) -> list:
 
 
 def capture_reliability(ckt, aborted: bool, message: str) -> dict:
-    """The `Meters` reliability surface, read AFTER the executive `RelCalc`
-    (`GOLDEN_REBASE_PLAN.md` §1.1, sub-step G1.6(i)).
+    """The `Meters` reliability surface, read AFTER the executive `RelCalc`.
 
     The executive `RelCalc` command is the only thing that ever fills these
     fields, and **no live corpus deck runs it** — so without driving it the whole
@@ -587,7 +587,7 @@ def capture_reliability(ckt, aborted: bool, message: str) -> dict:
        mid-walk `Totals` read makes the very next `Meters.Next` return 0, so the
        clean walk `['em', 'em2']` silently truncates to `['em']`.
 
-    This surface is group **C** of the §1.1(a) capture-order partition: none of
+    This surface is group **C** of the capture-order partition: none of
     its reads computes terminal currents into a scratch buffer — `CalcCurrent`
     returns the magnitudes of the meter's STORED calculated currents and
     `AllocFactors` a copy of its stored per-phase allocation factors — so it
@@ -680,9 +680,9 @@ def capture_reliability(ckt, aborted: bool, message: str) -> dict:
 
     # --- rule 3: LAST, after the walk. `Totals` destroys the meter cursor.
     totals = [float(x) for x in m.Totals]
-    # G1.6(ii): the per-bus half of the same post-`RelCalc` surface, nested
+    # The per-bus half of the same post-`RelCalc` surface, nested
     # under this payload's own "buses" key (NOT the checkpoint's top-level
-    # `buses`, which is G1.4a's voltage capture). Read through its own function
+    # `buses`, which is the voltage capture). Read through its own function
     # (see there) so rule 3 stays literally true -- the meter handle is never
     # touched again -- and after `totals` so the payload reads
     # meters-then-buses; the bus reads themselves are order-free (group C) and
@@ -698,8 +698,7 @@ def capture_reliability(ckt, aborted: bool, message: str) -> dict:
 
 
 def capture_bus_reliability(ckt) -> list:
-    """Every bus's eight reliability columns, read AFTER the executive `RelCalc`
-    (`GOLDEN_REBASE_PLAN.md` §1.1, sub-step G1.6(ii)).
+    """Every bus's eight reliability columns, read AFTER the executive `RelCalc`.
 
     The parity target is `origin/fastdss` `dss/IBus.py:19-53` `_columns`, which
     the fastdss harness archives for every bus through the iterable
@@ -717,8 +716,7 @@ def capture_bus_reliability(ckt) -> list:
     `BUSF(6..11)` and `BUSI(4..5)`). The port mirrors them in the reliability
     accumulators of `dss_core::circuit::bus::Bus`.
 
-    Capture-order class: **group C, order-free** (`GOLDEN_REBASE_PLAN.md`
-    §1.1(a), coordinator decision D3). No arm touches a terminal current,
+    Capture-order class: **group C, order-free**. No arm touches a terminal current,
     none writes engine state, and the only cursor that moves is
     `ActiveBusIndex` — which [`capture_all_buses`], the one later reader of it,
     re-selects per bus anyway. This is a SEPARATE function from
@@ -768,7 +766,7 @@ def capture_bus_reliability(ckt) -> list:
 def capture_pd_elements(ckt) -> list:
     """Every ENABLED PD element's `PDElements` interface record — the thirteen
     `IPDElements._columns` fields of the fastdss parity target plus the parent's
-    full name (`GOLDEN_REBASE_PLAN.md` §1.1 row 10, sub-step G1.6b).
+    full name.
 
     Membership and order are the circuit's PD element list, walked by
     `PDElements_Get_First`/`_Get_Next`, which skip disabled elements and make
@@ -827,7 +825,7 @@ def capture_pd_elements(ckt) -> list:
     return out
 
 
-#: The six G1.5 short-circuit arms, in the order [`capture_all_buses`] reads
+#: The six short-circuit arms, in the order [`capture_all_buses`] reads
 #: them — the same order the r4133 transport uses
 #: (`crates/dss-epri/src/capture.rs::capture_all_buses`). Always present in the
 #: wire shape, empty when the request did not ask for them.
@@ -841,7 +839,7 @@ _SC_KEYS = ("zsc1", "zsc0", "zsc", "ysc", "isc", "voc")
 #: values.
 _CAPI_SC_SENTINEL_LEN = 1
 
-#: What the two G1.4c line-to-line arms publish when the bus has at most ONE
+#: What the two line-to-line arms publish when the bus has at most ONE
 #: node: the two-double `[-99999.0, 0.0]` "for 1-phase buses, do not attempt to
 #: compute" sentinel, identical on r4133. Both gating channels agree on this
 #: one, and the comparator recognizes it from the bus's NODE SET, not from the
@@ -860,8 +858,8 @@ def capture_all_buses(ckt, want_sc: bool) -> list:
     """Every bus's node set, kV base, the three per-node voltage surfaces and —
     when `want_sc` — the six short-circuit arms.
 
-    GOLDEN_REBASE_PLAN.md WP-G1 G1.4a (the `compare_bus` surface) + G1.5 (the
-    `compare_zsc` surface, appended to this same walk). Walked in
+    The `compare_bus` surface, plus the `compare_zsc` surface appended to this
+    same walk. Walked in
     `ckt.AllBusNames` order — the engine's own `BusList` order, which
     `SetActiveBus`'s returned 0-based index re-asserts per bus (a failed lookup
     leaves the previous bus active, which would otherwise silently attribute one
@@ -879,12 +877,12 @@ def capture_all_buses(ckt, want_sc: bool) -> list:
       as `BaseFactor = 1000·kVBase` when positive, else `1.0` — the branch
       11 480 of the corpus's 209 211 buses take.
     * `distance` — `Bus.Distance`, the bus's distance from its meter in km,
-      published verbatim on both channels (`BUSF` 5 on r4133). G1.4b. A
+      published verbatim on both channels (`BUSF` 5 on r4133). A
       zone-build output, not a solve output: building the meter zones writes
       it, and a circuit with no EnergyMeter — or a bus no meter's zone
       reaches — reports the untouched `0.0`. There is no "no meter" sentinel
-      on either channel, so the all-zero vector is a real assertion about the
-      port.
+      on either channel, so the all-zero vector is a real assertion about
+      this engine.
     * `pu_voltages` — each node's solved voltage over `BaseFactor`,
       `2·NumNodes` interleaved (re, im), in that same ascending-node-number
       order, identical on both channels.
@@ -896,12 +894,12 @@ def capture_all_buses(ckt, want_sc: bool) -> list:
     All four value surfaces are the identical algorithm on both gating
     channels.
 
-    G1.4c appends FOUR more arms to this same walk — read after the voltage
+    FOUR more arms follow in this same walk — read after the voltage
     surfaces and before the (conditional) short-circuit arms. Unlike everything
     above them these four diverge between the channels *structurally*, by
-    construction, which is why the comparator judges them against the port's own
-    node set (a positive assertion of each engine's own walk) instead of
-    value-for-value (coordinator decision D21):
+    construction, which is why the comparator judges them against this engine's
+    own node set (a positive assertion of each engine's own walk) instead of
+    value-for-value:
 
     * `seq_voltages` — `Bus.SeqVoltages`, `|V012|`, ALWAYS 3 doubles. THIS
       transport clamps a node count above 3 to 3 and so answers a real V012 on
@@ -909,7 +907,7 @@ def capture_all_buses(ckt, want_sc: bool) -> list:
       `-1.0` x3 "n/A" sentinel whenever the bus does not have exactly 3 nodes.
       Both arms substitute GROUND for a missing phase (its voltage reads as
       0 V), so a `[1, 2, 10]` bus is answered here from a fabricated 0 V
-      phase C while the port declines (S-SEQ).
+      phase C while this engine declines (S-SEQ).
     * `cplx_seq_voltages` — `Bus.CplxSeqVoltages`, the same V012 as re/im pairs,
       ALWAYS 6 doubles (`Alt_Bus_Get_ComplexSeqVoltages`): same clamp and the
       same `-1.0` x6 "n/A" sentinel, which r4133 spells as three `-1 - 1j`
@@ -921,8 +919,8 @@ def capture_all_buses(ckt, want_sc: bool) -> list:
       -> the default result, `_CAPI_VLL_DEFAULT_LEN`; otherwise 2 doubles (2
       phases) or 6 (3). Both engines probe the next node number BEFORE wrapping
       past 3 back to 1, so a 4-node bus's third pair is `V3 - V4`, not
-      `V3 - V1` (live: `Test/indmachtest/Master.DSS` `sourcebus`) — the shared
-      upstream pairing defect of D21, which r4133's own L-L voltage report
+      `V3 - V1` (live: `Test/indmachtest/Master.DSS` `sourcebus`) — a pairing
+      bug both OpenDSS engines share, which r4133's own L-L voltage report
       contradicts.
       This transport cannot hang: its partner scan is bounded to three tries
       and the preceding unbounded scan is entered only with `n >= 2` distinct
@@ -935,7 +933,7 @@ def capture_all_buses(ckt, want_sc: bool) -> list:
       `kVBase > 0`, else `1.0`, identical on both channels — a different
       divisor from `pu_voltages`' above.
 
-    G1.5's six short-circuit arms are appended to THIS walk (never a second
+    The six short-circuit arms are appended to THIS walk (never a second
     `SetActiveBus` pass), in the fixed order `zsc1, zsc0, zsc, ysc, isc, voc`,
     and only when `want_sc`; the keys are always emitted, empty when it is off,
     so the wire shape does not depend on the request:
@@ -969,7 +967,7 @@ def capture_all_buses(ckt, want_sc: bool) -> list:
     (the node the 1-phase shunt is on), which ascending order would have put at
     index 0.
 
-    G1.4d appends the LAST two arms of this same walk — read after the
+    The LAST two arms of this same walk are read after the
     short-circuit block on both transports:
 
     * `all_pce_at_bus` / `all_pde_at_bus` — `Bus.AllPCEatBus` /
@@ -990,8 +988,7 @@ def capture_all_buses(ckt, want_sc: bool) -> list:
       exactly the fact the comparator asserts per channel, so this transport
       does not touch the reply.
 
-    Capture-order class: **group C, order-free** (GOLDEN_REBASE_PLAN.md §1.1(a),
-    coordinator decision D3). Every read goes straight to the solved node
+    Capture-order class: **group C, order-free**. Every read goes straight to the solved node
     voltages and touches neither a cached terminal current nor
     `ActiveCktElement`; only `ActiveBusIndex` moves. That holds for the two
     at-bus arms too on THIS channel: its walk over each element class uses an
@@ -1022,7 +1019,7 @@ def capture_all_buses(ckt, want_sc: bool) -> list:
         cap = {
             "name": str(b.Name),
             "kv_base": float(b.kVBase),
-            # G1.4b, read here — with the bus's other scalar attribute, ahead of
+            # Read here — with the bus's other scalar attribute, ahead of
             # the value arrays — so both transports share one per-bus read order
             # (`crates/dss-epri/src/capture.rs::capture_all_buses`). Group C:
             # `Alt_Bus_Get_Distance` returns a stored field and touches nothing.
@@ -1092,7 +1089,7 @@ def capture_all_buses(ckt, want_sc: bool) -> list:
                         f"expected one of {want} for nodes {nodes} (see "
                         "capture_all_buses' docstring for each arm's oracle shape)"
                     )
-        # G1.4d — the two at-bus lists, read LAST in the per-bus walk on BOTH
+        # The two at-bus lists, read LAST in the per-bus walk on BOTH
         # transports (`crates/dss-epri/src/capture.rs::capture_all_buses` reads
         # them in the same slot, in the same order). Shipped RAW: the trailing
         # `''` and the `['None']` substitution are the pinned dss-python
@@ -1120,7 +1117,7 @@ def capture_all_bus_vmag_pu(ckt) -> list:
 def capture_all_bus_distances(ckt) -> list:
     """`Circuit.AllBusDistances` — each bus's distance from its meter (km), BusList order.
 
-    GOLDEN_REBASE_PLAN.md WP-G1 G1.4b. One distance per bus, in bus-list order
+    One distance per bus, in bus-list order
     on both channels (`CircuitV` 12 on r4133), i.e. the same sequence
     [`capture_all_buses`] walks. Length = `NumBuses`. Order-free (group C).
     """
@@ -1130,7 +1127,7 @@ def capture_all_bus_distances(ckt) -> list:
 def capture_all_node_distances(ckt) -> list:
     """`Circuit.AllNodeDistances` — the owning bus's distance from its meter, per node.
 
-    GOLDEN_REBASE_PLAN.md WP-G1 G1.4b. Walked bus x the bus's INTERNAL node
+    Walked bus x the bus's INTERNAL node
     index on both channels (`CircuitV` 13 on r4133) — the `AllNodeNames`
     permutation: the same order as [`capture_all_bus_vmag_pu`], NOT the
     ascending-node-number order of the per-bus arrays. Length = `NumNodes`.
@@ -1143,7 +1140,7 @@ def _topo_names(v) -> list:
     """Normalize one `ITopology` string array to its comparable shape.
 
     Exactly two transport-side normalizations, both measured over the whole
-    corpus (GOLDEN_REBASE_PLAN.md §G1.7):
+    corpus:
 
     * the **empty sentinel** — an empty array comes back as the single entry
       `NONE`: the default result on the capi channel, and the same word on
@@ -1176,7 +1173,7 @@ def _topo_names(v) -> list:
 
 
 def capture_topology(ckt) -> dict:
-    """The six order-free `ITopology` quantities of GOLDEN_REBASE G1.7.
+    """The six order-free `ITopology` quantities.
 
     Surface: `dss/ITopology.py:41/50/59/157/166/175` on `origin/fastdss`.
     Engine side, the same on both channels: `NumLoops` walks the topology
@@ -1211,7 +1208,7 @@ def capture_topology(ckt) -> dict:
 
 
 def _inc_ints(v, what: str) -> list:
-    """Normalize one capi incidence / Laplacian integer array (G1.8 rule N1).
+    """Normalize one capi incidence / Laplacian integer array.
 
     `Solution_Get_IncMatrix` / `Solution_Get_Laplacian` allocate `NZero * 3 + 1`
     integers and fill only the first `NZero * 3`, so the wire always carries
@@ -1229,7 +1226,7 @@ def _inc_ints(v, what: str) -> list:
     reason this rule is written as "drop exactly one trailing zero" rather than
     "drop the last cell".
 
-    The shape is this sub-step's KILL CRITERION (GOLDEN_REBASE_PLAN.md §G1.8), so
+    The shape is a KILL CRITERION, so
     anything else RAISES: a length that is not `3 * k + 1`, or a trailing cell
     that is not 0. Measured over the whole live capi population, both arrays:
     1733 / 1733 steps `len % 3 == 1` with the trailing cell 0.
@@ -1249,7 +1246,7 @@ def _inc_ints(v, what: str) -> list:
 
 
 def _inc_names(v, sentinel_ok: bool, what: str) -> list:
-    """Normalize one capi incidence row / column name array (G1.8 rule N3).
+    """Normalize one capi incidence row / column name array.
 
     capi answers an absent list with its default result — a ONE-element array
     holding the empty string, not an empty array (the missing row list, and
@@ -1287,7 +1284,7 @@ def _inc_names(v, sentinel_ok: bool, what: str) -> list:
 
 
 def capture_inc_matrix(d, ckt) -> dict:
-    """The flat incidence-matrix / Laplacian surface of GOLDEN_REBASE G1.8.
+    """The flat incidence-matrix / Laplacian surface.
 
     Issues the executive pair `CalcIncMatrix` (ordinal 108) then `CalcLaplacian`
     (111) and reads the four flat quantities back in the order below:
@@ -1296,8 +1293,8 @@ def capture_inc_matrix(d, ckt) -> dict:
     on `origin/fastdss`; `:618` / `:653` / `:644` / `:635` in the pinned 0.15.7).
 
     NEVER the ordered builder `CalcIncMatrix_O` (109) and never
-    `Solution.BusLevels`: the first builds the very topology tree G1.7's
-    census is defined on, and the second walks one element past its own array
+    `Solution.BusLevels`: the first builds the very topology tree the
+    topology capture is defined on, and the second walks one element past its own array
     on r4133 (it sits on the bridge's `DO_NOT_CALL` register). Both omissions
     are asserted by `crates/dss-core/tests/capture_order.rs`, not only by this
     comment.
@@ -1369,7 +1366,7 @@ from corpus_guard import copy_di_tree as _copy_di_tree  # noqa: E402
 # reports non-convergence, retry the whole case in-process (loudly) before
 # returning. A case that legitimately fails to converge still fails after
 # `_RUN_ATTEMPTS` identical attempts — nothing is masked, only the engine's
-# fresh-process misfire is absorbed. (WP8.2 Issue-2 root cause; STATUS.md §1f.)
+# fresh-process misfire is absorbed.
 _RUN_ATTEMPTS = 3
 
 # Compile-time error numbers the OFFICIAL OpenDSS engine treats as
@@ -1401,7 +1398,7 @@ _TOLERATED_COMPILE_ERRNOS = {250}
 # Redirect chain); EarlyAbort is toggled per request in main() and restored.
 _USER_MODEL_ERRNOS = {567, 570, 1570}
 
-# G1.6(i). A SEPARATE, deliberately narrow scope: the ONE error number the
+# A SEPARATE, deliberately narrow scope: the ONE error number the
 # executive `RelCalc` raises as its own by-design abort, tolerated ONLY around
 # that command and never at compile or solve (hence not folded into
 # `_TOLERATED_COMPILE_ERRNOS` above).
@@ -1419,7 +1416,7 @@ _RELCALC_TOLERATED_ERRNOS = {52902}
 
 
 def capture_di(guard, di_dir: str, case_path: str) -> dict | None:
-    """GOLDEN_REBASE G1.10c — copy the run-created demand-interval tree into the
+    """Copy the run-created demand-interval tree into the
     gate's sidecar directory and report `normalized member name -> path relative
     to di_dir`.
 
@@ -1444,16 +1441,15 @@ def capture_di(guard, di_dir: str, case_path: str) -> dict | None:
         )
     # The sidecar must lie OUTSIDE the case directory: a copy written inside it
     # would be classified as this run's own output by the very guard whose
-    # classification selected the originals — it would enter G1.10a's created
+    # classification selected the originals — it would enter the created
     # file SET and be swept before the gate could read it.
     case_dir = os.path.dirname(os.path.abspath(case_path))
-    # ONE rail for both sidecars (coordinator decision D42(5), deduped at the
-    # G1.10c landing): `corpus_guard.path_is_inside` is the shared fold test and
+    # ONE rail for both sidecars: `corpus_guard.path_is_inside` is the shared
+    # fold test and
     # `_refuse_sidecar_under_case_dir` applies it in BOTH directions. Its message
     # states which relation fired and prints the resolved paths, so this caller
     # names the DI surface and hands the rail's own text through rather than
-    # asserting one direction (merge settlement of the lane-e G1.10c landing,
-    # finding MC-1). Twin: `crates/dss-epri/src/capture.rs::capture_di`.
+    # asserting one direction. Twin: `crates/dss-epri/src/capture.rs::capture_di`.
     try:
         _refuse_sidecar_under_case_dir(case_dir, os.path.abspath(di_dir))
     except RuntimeError as why:
@@ -1503,29 +1499,29 @@ def run_case(d, req: dict) -> dict:
     variables = req.get("variables") or []
     want_eventlog = bool(req.get("eventlog", False))
     want_ctrlqueue = bool(req.get("ctrlqueue", False))
-    # WP8.5b corpus property parity: the full per-element property dump. Opt-in
+    # Corpus property parity: the full per-element property dump. Opt-in
     # (heavy: elements x props x steps queries) — the Rust property gate and the
     # env-gated `corpus_live_properties` pilot force it.
     want_all_props = bool(req.get("all_properties", False))
-    # GOLDEN_REBASE G1.3a (manifest flag `compare_derived`): the per-element
+    # Manifest flag `compare_derived`: the per-element
     # polar channels `CurrentsMagAng` / `VoltagesMagAng` / `Residuals` plus
     # `Enabled`. Opt-in because the three extra reads roughly double the
     # per-element payload; the same request key reaches the r4133 worker
     # unchanged (`corpus_gate::engines::build_run_request`).
     want_derived = bool(req.get("derived", False))
-    # G1.4a bus surface (`compare_bus`): the per-bus voltage arrays plus the
+    # Bus surface (`compare_bus`): the per-bus voltage arrays plus the
     # circuit-level `AllBusVmagPu`. Opt-in — cheap (41 ms for the 4 876-bus
     # 8500-Node deck) but it doubles a large deck's JSON payload.
     want_buses = bool(req.get("buses", False))
-    # GOLDEN_REBASE G1.3d(i) (manifest flag `compare_element_extras`): the
+    # Manifest flag `compare_element_extras`: the
     # per-element discrete index/name scalars `NumTerminals`/`NumConductors`/
     # `NumPhases`/`EnergyMeter`/`NodeOrder` plus `Enabled`. Same one-key-for-the
     # -whole-surface shape as `derived`, honored by both transports.
     want_element_extras = bool(req.get("element_extras", False))
-    # GOLDEN_REBASE G1.7 (`compare_topology`): the six order-free `ITopology`
+    # `compare_topology`: the six order-free `ITopology`
     # reads, captured strictly LAST in the step (see `capture_topology`).
     want_topology = bool(req.get("topology", False))
-    # G1.5 bus short-circuit surface (`compare_zsc`): the six `Zsc1`/`Zsc0`/
+    # Bus short-circuit surface (`compare_zsc`): the six `Zsc1`/`Zsc0`/
     # `ZscMatrix`/`YscMatrix`/`Isc`/`Voc` arms, appended to the SAME per-bus walk
     # `buses` drives — so `zsc` without `buses` would silently ship nothing.
     # The gate expresses the implication in the request builder
@@ -1536,18 +1532,18 @@ def run_case(d, req: dict) -> dict:
         raise RuntimeError(
             "request asks for the bus short-circuit surface (zsc) without the "
             "bus surface it is appended to — the six SC arms share the one "
-            "per-bus walk (GOLDEN_REBASE_PLAN.md WP-G1 G1.5 §2.a)"
+            "per-bus walk"
         )
-    # GOLDEN_REBASE G1.8 (`compare_inc_matrix`): the flat `CalcIncMatrix` +
+    # `compare_inc_matrix`: the flat `CalcIncMatrix` +
     # `CalcLaplacian` pair and its four reads, captured after `topology`, i.e.
     # strictly last of all (see `capture_inc_matrix`).
     want_inc_matrix = bool(req.get("inc_matrix", False))
     # WPG.5 (AutoAdd): the command result (`Text.Result`) after each solve (the
     # winner + figure) and the `<CircuitName_>AutoAddLog.csv` the search writes. `Text.Result` is
     # captured IMMEDIATELY after `solve`, before any `?`-query capture overwrites
-    # it. The AutoAdd solve segfaults dss-python AT PROCESS EXIT (GAPS_PLAN.md
-    # 2.2); this one-shot server has already flushed its JSON reply by then, so
-    # the crash never loses the capture.
+    # it. The AutoAdd solve segfaults dss-python AT PROCESS EXIT. This one-shot
+    # server has already flushed its JSON reply by then, so the crash never
+    # loses the capture.
     want_global_result = bool(req.get("global_result", False))
     want_autoadd_log = bool(req.get("autoadd_log", False))
     # Monitors/meters are compared only for cases that deliberately define them in
@@ -1555,20 +1551,20 @@ def run_case(d, req: dict) -> dict:
     # incidental monitors would surface ill-defined snapshot-sampling edge cases
     # (e.g. a monitor defined after the master's only Solve) unrelated to the gate.
     check_mm = bool(req.get("check_meters_monitors", False))
-    # G1.6b: the per-PD-element `PDElements` interface walk. Opt-in (the Rust
+    # The per-PD-element `PDElements` interface walk. Opt-in (the Rust
     # scheduler forces it on every live non-`large` case); when off the checkpoint
     # carries `None`, not `[]`, so the gate can tell "not requested" apart from
     # "requested, and this circuit simply has no PD element" (96 of the 372 walked
     # live cases have none) — `harness::capture_guard::require_capture_opt`.
     want_pde = bool(req.get("pd_elements", False))
-    # G1.6(i): the `Meters` reliability surface (manifest flag
+    # The `Meters` reliability surface (manifest flag
     # `compare_reliability`). The ONLY request flag that DRIVES an executive
     # command — `RelCalc`, once, after the last solve — because no live corpus
     # deck runs it and the whole surface would otherwise compare `0 == 0`. Off
     # -> every checkpoint carries `None`; on -> only the LAST one carries the
     # payload (`harness::capture_guard::require_capture_opt`).
     want_rel = bool(req.get("reliability", False))
-    # G1.10a: the run-produced FILE SET under the case's DataPath (`Compile`
+    # The run-produced FILE SET under the case's DataPath (`Compile`
     # sets both the output and the data directory to the case dir). Not a
     # model read at all: it is the run's filesystem effect, classified by the
     # SAME `_CorpusGuard` pass that sweeps the corpus clean
@@ -1580,12 +1576,12 @@ def run_case(d, req: dict) -> dict:
     # `harness::capture_guard::require_capture_opt` can tell "not requested"
     # apart from "requested, and this deck creates nothing" (most decks do not).
     want_run_files = bool(req.get("run_files", False))
-    # G1.10b: the CONTENTS half. The gate's selection of created-file names
+    # The CONTENTS half. The gate's selection of created-file names
     # whose BYTES this transport hands back, as patterns over a normalized
     # member (`corpus_guard.selects_contents`); the list is declared ONCE on
     # the gate side (`crates/dss-epri/src/guard.rs::RUN_FILE_CONTENTS_PATTERNS`)
     # and travels in the request, so neither transport re-derives it. The bytes
-    # go through the gate-owned sidecar directory of decision D40(6) (never the
+    # go through the gate-owned sidecar directory (never the
     # case dir, never `tests/corpus/`) because the selection reaches ~19 MB per
     # channel per drive and would otherwise cross the worker pipes inline. Empty
     # -> the reply omits the key entirely (`None`), which is what lets the gate's
@@ -1593,12 +1589,12 @@ def run_case(d, req: dict) -> dict:
     # of the selected reports").
     contents_patterns = list(req.get("run_file_contents", []) or [])
     contents_dir = req.get("run_file_contents_dir") or ""
-    # G1.10c: the CONTENTS of the run-created demand-interval tree
+    # The CONTENTS of the run-created demand-interval tree
     # (`<OutputDirectory><CaseName>/DI_yr_<year>/*`).
     # Same contract as `run_files`: not a model read but the run's filesystem
     # effect, selected by the SAME `_CorpusGuard` classification, read inside the
     # guard scope — after `autoadd_log` and strictly BEFORE `created()`, which
-    # stays the last read of the run (D33(3)) and, on this channel, before the
+    # stays the last read of the run and, on this channel, before the
     # teardown `clear` below, which FLUSHES the in-flight demand-interval cycle
     # over the file on every deck whose run leaves the DI streams open (measured
     # on 3 of the 5 DI cases). Off -> the response carries `None`, not `{}`, so
@@ -1620,7 +1616,7 @@ def run_case(d, req: dict) -> dict:
             node_order = None
             checkpoints = []
             d.Text.Command = "clear"
-            # D13: `clear` does NOT reset the default base frequency on this
+            # `clear` does NOT reset the default base frequency on this
             # channel either. dss_capi keeps it per engine context, set to
             # 60.0 once at creation. `clear` never touches it, and only
             # `Set DefaultBaseFrequency` (with or without a circuit) and the
@@ -1666,7 +1662,7 @@ def run_case(d, req: dict) -> dict:
                 # WPG.5: read the command result right after the solve, before any
                 # `?`-query capture below overwrites `Text.Result`.
                 global_result = str(d.Text.Result) if want_global_result else ""
-                # G1.6(i): drive the executive `RelCalc` ONCE, on the LAST step
+                # Drive the executive `RelCalc` ONCE, on the LAST step
                 # only, HERE — after `Text.Result` has been read (`RelCalc`
                 # overwrites it with its own reply) and before every capture of
                 # this checkpoint, so the reliability payload and the fields it
@@ -1684,10 +1680,9 @@ def run_case(d, req: dict) -> dict:
                     # error -- `DSS_CAPI_EARLY_ABORT` only decides whether a
                     # running redirect aborts. So a case that opted
                     # into `warn_and_continue` (EarlyAbort False) still lands
-                    # here; nothing can take the 52902 silently. (G1.6(i) audit
-                    # settlement, finding AT-9: measured claim, not an
-                    # assumption -- the whole `_USER_MODEL_ERRNOS` block above
-                    # exists for the same reason.)
+                    # here. Nothing can take the 52902 silently. (A measured
+                    # claim, not an assumption -- the whole `_USER_MODEL_ERRNOS`
+                    # block above exists for the same reason.)
                     try:
                         d.Text.Command = "RelCalc"
                     except _dss.DSSException as e:
@@ -1701,8 +1696,7 @@ def run_case(d, req: dict) -> dict:
                         log(
                             f"oracle: tolerated RelCalc abort #{errno} on {case_path}"
                         )
-                # G1.9 (GOLDEN_REBASE_PLAN.md, §1.1(a) + decision D3) — the
-                # circuit aggregates and the solution scalars, read HERE and
+                # The circuit aggregates and the solution scalars, read HERE and
                 # nowhere later, for two independent reasons:
                 #  * group A before group B. Every aggregate reads the losses or
                 #    power of the elements it walks, recomputing each stale
@@ -1719,7 +1713,7 @@ def run_case(d, req: dict) -> dict:
                 #    Reading before any First/Next walk removes the interaction
                 #    by construction.
                 # `global_result` above still comes first: it reads `Text.Result`,
-                # which any later `?` query would overwrite, and G1.6(i)'s
+                # which any later `?` query would overwrite, and the
                 # once-per-case `RelCalc` sits between the two — a
                 # state-changing command, so it precedes every read of this
                 # checkpoint (both transports place it identically).
@@ -1769,7 +1763,7 @@ def run_case(d, req: dict) -> dict:
                         "capacitors": disc["capacitors"],
                         "monitors": capture_all_monitors(ckt) if check_mm else [],
                         "meters": capture_all_meters(ckt) if check_mm else [],
-                        # G1.6(i): immediately AFTER the meters — the two meter
+                        # Immediately AFTER the meters — the two meter
                         # walks stay adjacent — and BEFORE `pd_elements`, whose
                         # `ParentPDElement` hijack must remain the checkpoint's
                         # last active-element mutation. `Meters.Totals` (the
@@ -1784,7 +1778,7 @@ def run_case(d, req: dict) -> dict:
                             if want_rel and step == n_steps - 1
                             else None
                         ),
-                        # G1.6b: AFTER the meters, BEFORE the probes. The walk
+                        # AFTER the meters, BEFORE the probes. The walk
                         # mutates the active element (`ParentPDElement`), and
                         # every reader below re-selects its own element
                         # (`? el.prop` / `SetActiveElement`), so this is the one
@@ -1795,7 +1789,7 @@ def run_case(d, req: dict) -> dict:
                         "variables": capture_variables(ckt, variables),
                         "eventlog": (capture_eventlog(d, ckt) if want_eventlog else []),
                         "ctrlqueue": capture_ctrlqueue(ckt) if want_ctrlqueue else [],
-                        # G1.4a + G1.5: order-free (group C) bus reads — they move
+                        # Order-free (group C) bus reads — they move
                         # only `ActiveBusIndex`, so their slot is free; kept here,
                         # ahead of the property sweep, so the `?` queries below stay
                         # the last reads of the step.
@@ -1805,7 +1799,7 @@ def run_case(d, req: dict) -> dict:
                         "all_bus_vmag_pu": (
                             capture_all_bus_vmag_pu(ckt) if want_buses else []
                         ),
-                        # G1.4b: the two circuit-level distance arrays, read in
+                        # The two circuit-level distance arrays, read in
                         # the same order-free slot and behind the same
                         # `compare_bus` flag as the per-bus `distance` above —
                         # one surface, three views of the distance from the meter.
@@ -1815,15 +1809,15 @@ def run_case(d, req: dict) -> dict:
                         "all_node_distances": (
                             capture_all_node_distances(ckt) if want_buses else []
                         ),
-                        # WP8.5b: read after every established capture above, so
+                        # Read after every established capture above, so
                         # the property sweep's `?` queries never perturb any
-                        # other read's active-element state. Only G1.7's
+                        # other read's active-element state. Only the
                         # topology read (below) comes later, for the same
                         # reason applied to itself.
                         "all_properties": (
                             capture_all_properties(d, ckt) if want_all_props else []
                         ),
-                        # G1.7: read STRICTLY LAST, after `all_properties` —
+                        # Read STRICTLY LAST, after `all_properties` —
                         # the first `Topology` read builds the tree and rewrites
                         # the checked / isolated / bus-checked flags on every
                         # element. `None` (not
@@ -1831,7 +1825,7 @@ def run_case(d, req: dict) -> dict:
                         # side's `Option<TopologyCap>` tells "not captured" from
                         # "captured empty".
                         "topology": (capture_topology(ckt) if want_topology else None),
-                        # G1.8: read after `topology`, i.e. STRICTLY LAST of
+                        # Read after `topology`, i.e. STRICTLY LAST of
                         # the whole step — the pair rewrites solution state
                         # and (on r4133) moves `ActiveCktElement`, and it must
                         # not precede the topology read that memoizes the
@@ -1843,7 +1837,7 @@ def run_case(d, req: dict) -> dict:
                             capture_inc_matrix(d, ckt) if want_inc_matrix else None
                         ),
                         "global_result": global_result,
-                        # G1.9 — read at the top of the step (see the block
+                        # Read at the top of the step (see the block
                         # above); listed last only because the dict is
                         # serialization order, not read order.
                         "aggregates": aggregates,
@@ -1856,7 +1850,7 @@ def run_case(d, req: dict) -> dict:
             log(
                 f"oracle retry: {case_path} attempt {attempt}/{_RUN_ATTEMPTS} "
                 f"non-converged step(s) {bad} (pinned-engine fresh-process "
-                f"misfire, see run_case doc / STATUS.md §1f); "
+                f"misfire, see run_case doc); "
                 + ("recompiling in-process" if attempt < _RUN_ATTEMPTS else "returning as-is")
             )
 
@@ -1873,13 +1867,13 @@ def run_case(d, req: dict) -> dict:
                 with open(log_path, "r", encoding="utf-8", errors="replace") as fh:
                     autoadd_log = fh.read()
 
-        # G1.10c: the demand-interval tree's CONTENTS, read after the
+        # The demand-interval tree's CONTENTS, read after the
         # `autoadd_log` file read and strictly BEFORE the classification below —
-        # which stays the LAST read of the run (D33(3)) — and before the
+        # which stays the LAST read of the run — and before the
         # teardown `clear`, which flushes the in-flight DI cycle over the file.
         di = capture_di(guard, di_dir, case_path) if want_di else None
 
-        # G1.10a: STRICTLY LAST inside the guard scope — every file the run
+        # STRICTLY LAST inside the guard scope — every file the run
         # wrote (including the AutoAddLog just read) is still on disk, and the
         # `__exit__` below removes exactly what this call classifies.
         # `created()` returns None when it cannot report honestly (incomplete
@@ -1887,28 +1881,28 @@ def run_case(d, req: dict) -> dict:
         # into a failed case rather than "nothing was created".
         run_files = guard.created() if want_run_files else None
 
-        # D32(2)(a): release the circuit BEFORE the guard sweeps. dss_capi opens
+        # Release the circuit BEFORE the guard sweeps. dss_capi opens
         # a Storage `debugtrace` file at edit time and NEVER closes the stream
         # for the life of the object (only a re-edit or the object's
         # destruction closes it), so with the circuit still alive the guard's
         # `os.remove` raises, the file survives, and the NEXT producer of the
         # same case snapshots it as pre-existing and reports an empty created
-        # set — the artifact G1.10a F4 measured. One `clear` destroys every
+        # set (measured). One `clear` destroys every
         # element, which closes those handles.
         # It is a TEARDOWN, not a read: it comes after `created()`, so the
         # reported surface is still the run
         # `clear -> Set DefaultBaseFrequency=60 -> compile -> post -> n x solve`
         # (plus the last step's `RelCalc` on a reliability case) on both
-        # transports, where the r4133 bridge's `clear` also re-asserts the D39
-        # report switches, which no compared value reads; and the r4133 bridge
+        # transports, where the r4133 bridge's `clear` also re-asserts the
+        # report switches, which no compared value reads. The r4133 bridge
         # (whose engine closes its trace file after every record) needs no
         # counterpart.
         #
-        # D33(1): the teardown is GUARDED. The pinned dss_capi 0.14.5 raises on
+        # The teardown is GUARDED. The pinned dss_capi 0.14.5 raises on
         # this second `clear` on the two AutoAdd decks (`modes:autoadd/autoadd.dss`
         # and `autoadd_cap.dss`: `DSSException (#303) ... clear ... Access
         # violation` - the same backend whose AutoAdd solve already segfaults at
-        # process exit, `GAPS_PLAN.md` 2.2). The compared surface is captured
+        # process exit). The compared surface is captured
         # ABOVE this point, so the fault cannot corrupt it: the exception is
         # recorded as `teardown_error` (reported in the reply and surfaced by
         # `corpus_gate::runner::compare_with_result` without failing the case),
@@ -1923,18 +1917,18 @@ def run_case(d, req: dict) -> dict:
             teardown_error = f"{type(e).__name__}: {e}"
             log(f"teardown clear raised for {case_path}: {teardown_error}")
 
-        # G1.10b / decision D40(6): the CONTENTS of the files the gate selected,
+        # The CONTENTS of the files the gate selected,
         # copied out of the case directory into the gate-owned sidecar while the
         # guard still holds them. It consumes the set classified above - never a
         # second classification, never a second listing rule.
         #
-        # It runs AFTER the D32(2)(a) teardown on THIS channel, and that slot is
-        # MEASURED, not cosmetic (G1.10b F1): dss_capi 0.14.5 holds a Storage
+        # It runs AFTER the teardown on THIS channel, and that slot is
+        # MEASURED, not cosmetic: dss_capi 0.14.5 holds a Storage
         # `debugtrace` stream open for the life of the object (closed only by a
         # re-edit or the object's destruction) with a share mode that denies
         # READ, so before the teardown `STOR_<name>.csv` cannot be opened at
         # all (`PermissionError: [Errno 13]`) - the same handle whose `os.remove`
-        # D32(2)(a) had to move the teardown for. After the `clear` it reads whole
+        # needs the teardown first. After the `clear` it reads whole
         # (28 777 bytes on `Storage_price.dss`). The ordinary export reports are
         # unaffected either way: the `Export Voltages` report and its siblings
         # close their file as they return, and `fbs_EXP_VOLTAGES.csv` is byte-identical before and
@@ -1948,7 +1942,7 @@ def run_case(d, req: dict) -> dict:
             guard.dir, run_files, contents_patterns, contents_dir
         )
 
-    # D32(2): whatever the guard could not remove. Read AFTER the `with` block
+    # Whatever the guard could not remove. Read AFTER the `with` block
     # (`__exit__` fills it) and reported unconditionally — the hygiene contract
     # does not depend on the run-file request flag. The gate's runner fails the
     # case on a non-empty list
@@ -1977,8 +1971,7 @@ def make_engine():
     only engine this server drives — the `capi_v0145` channel of the unified gate.
 
     `DSS_ORACLE_ENGINE` is honored only as an explicit `"capi"` (the default); any
-    other value exits non-zero (the retired `capi015`/`oddie` EPRI arms were removed
-    with the Python EPRI stack — the r4133 channel now runs through the in-house
+    other value exits non-zero (the r4133 channel runs through the in-house
     `crates/dss-epri` Rust bridge). Never a silent pass to the wrong engine."""
     engine = os.environ.get("DSS_ORACLE_ENGINE", "capi")
     if engine != "capi":
@@ -2011,7 +2004,7 @@ def main() -> None:
     except Exception:  # older dss-python without the attribute
         pass
     log(f"oracle_server ready: {oracle}")
-    # RETRO_FIXES RF-I00-01: every case is compiled in the gate's own scratch
+    # Every case is compiled in the gate's own scratch
     # COPY, and `Compile` leaves this process's working directory inside it
     # (on dss_capi and on r4133 alike).
     # Windows refuses to remove a directory that is a process's working
@@ -2069,8 +2062,8 @@ def main() -> None:
             log("case failed:\n" + traceback.format_exc())
             reply({"ok": False, "error": f"{type(e).__name__}: {e}"})
         else:
-            # D33(1): this case's teardown `clear` raised inside the pinned
-            # oracle (see `run_case`). The reply is already written and flushed,
+            # This case's teardown `clear` raised inside the pinned
+            # dss_capi (see `run_case`). The reply is already written and flushed,
             # so the case keeps the surface it captured before the teardown -
             # but a raised access violation may have left this process in an
             # undefined state, and a PERSISTENT worker must not serve another

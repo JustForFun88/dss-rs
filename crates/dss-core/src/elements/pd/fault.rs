@@ -22,11 +22,11 @@
 //! `Is_ON=true`) simply stamps its conductance.
 //!
 //! `Randomize` + the `RandomMult` jitter only act in `MONTEFAULT` solve mode
-//! (`solve_monte_fault`, WPG.4): `PickAFault` enables one fault and
+//! (`solve_monte_fault`): `PickAFault` enables one fault and
 //! `Fault.Randomize` re-draws its resistance from the engine RNG. `CalcYPrim`
 //! forces `RandomMult = 1.0` for every non-MonteFault mode, so the field is
 //! inert outside MF; under `Set random=none` `Randomize`'s `else` branch also
-//! sets it `1.0` (the deterministic gated path, GAPS_PLAN.md §2.1).
+//! sets it `1.0` (the deterministic gated path).
 
 mod dump;
 #[cfg(test)]
@@ -151,7 +151,7 @@ pub struct Fault {
     bus2_defined: bool,
     /// Enable time (s); a fault with `ONtime > 0` starts `Is_ON = false`.
     on_time: f64,
-    /// MonteFault resistance jitter; always `1.0` until WP7.9 wires MonteFault.
+    /// MonteFault resistance jitter (`randomize`); `1.0` outside MonteFault.
     random_mult: f64,
     is_shunt: bool,
     // PD-element common (Fault's own defaults — all reliability fields zeroed,
@@ -363,8 +363,8 @@ impl CktElement for Fault {
         let yorder = self.cd.yorder;
         let nphases = self.cd.nphases;
 
-        // RandomMult is 1.0 outside MonteFault (whose solve loop is WP7.9); guard
-        // a zero to a tiny value as Pascal does.
+        // RandomMult is 1.0 outside MonteFault. Guard a zero to a tiny value as
+        // Pascal does.
         let mut random_mult = if sys.mode == SolveMode::MonteFault {
             self.random_mult
         } else {

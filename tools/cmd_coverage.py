@@ -1,5 +1,4 @@
-"""DSS command/option coverage over the vendored corpus (PORTING_PLAN Phase 8;
-PHASE8_PLAN WP8.6 step 1).
+"""DSS command/option coverage over the vendored corpus.
 
 Enumerates every executive command (and every `Set`/`Solve` option) used across
 the vendored corpus `tests/corpus/electricdss-tst`, cross-references the set the

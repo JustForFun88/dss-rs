@@ -94,8 +94,7 @@ pub(crate) fn export_seq_currents(
             // row describes terminal `j` — oracle-proven on IEEE13
             // `Line.671680`, whose true terminal-2 residual is 9.8e-12 A against
             // the 2.83e-5 A of terminal 1 that gets printed. Both gating oracles
-            // carry it and neither lane reproduces it
-            // (`GOLDEN_REBASE_PLAN.md` G2.2a; `issue-01`).
+            // carry it and neither lane reproduces it (`issue-01`).
             let base = (j - 1) * ncond;
             let mut iresidual = Complex64::ZERO;
             for i in 0..ncond {

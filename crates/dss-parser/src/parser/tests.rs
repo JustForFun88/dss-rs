@@ -208,7 +208,7 @@ fn make_integer_rounds_ties_to_even() {
     assert_eq!(p.make_integer(&vars).unwrap(), 0);
 }
 
-/// The **deliberate divergence** of the Stage F round row
+/// The **deliberate divergence** of the round row
 /// ([`crate::compat::round_i32`]), at the one boundary a deck can observe it: an
 /// integer property whose value is out of range.
 ///
@@ -217,9 +217,8 @@ fn make_integer_rounds_ties_to_even() {
 /// assignment truncates it to **0**, so `inf` and `1e10` become `0` and
 /// `1410065408`. The default lane converts to the nearest representable
 /// integer instead (`i32::MAX`), because silently turning "too big" into "zero"
-/// (or into an unrelated wrapped value) is exactly the class of upstream
-/// artifact Stage F exists to drop. Expected values, not tolerances: both are
-/// pinned literally.
+/// (or into an unrelated wrapped value) is an FPC artifact the default lane drops.
+/// Expected values, not tolerances: both are pinned literally.
 #[test]
 fn make_integer_out_of_range_is_the_lane_kernel() {
     let parity = crate::compat::OPENDSS_PARITY;
@@ -290,7 +289,7 @@ fn rpn_operations_and_functions() {
     assert!((p.make_double(&vars).unwrap() - 0.5).abs() < 1e-12);
 }
 
-/// The **deck-language boundary** pin of the Stage F pi row (F.3d): an RPN
+/// The **deck-language boundary** pin of the pi row: an RPN
 /// degree-trig expression evaluates through `compat::PI`, so its last digits
 /// are the lane's. Expected values, no tolerance — the parity lane must keep
 /// reproducing the Pascal literal's `0.5000000000000299` forever, and the
@@ -466,8 +465,8 @@ fn sym_matrix_with_stride_and_scale() {
 
 #[test]
 fn is_quoted_reflects_the_last_token_quote_state() {
-    // WP-U1.1 item 3 "WasQuoted plumbing": the exposed accessor mirrors the
-    // parser's internal quote tracking (a quoted composite vs a bare token).
+    // The exposed accessor mirrors the parser's internal quote tracking (a
+    // quoted composite vs a bare token).
     let (mut p, vars) = parser_with("a=(1 2 3) b=bare");
     p.next_param(&vars);
     let _ = p.token();
@@ -479,8 +478,8 @@ fn is_quoted_reflects_the_last_token_quote_state() {
 
 #[test]
 fn sym_matrix_returns_order_found_for_incomplete_input() {
-    // WP-U1.1 item 2: a 3x3 sym matrix given only 2 rows returns OrderFound=2
-    // (< 3) so the caller can reject it (EPRI r4133); the FPC line returned 3.
+    // A 3x3 sym matrix given only 2 rows returns OrderFound=2 (< 3) so the
+    // caller can reject it, as r4133 does.
     let (mut p, vars) = parser_with("z=[1 | 2 3]");
     p.next_param(&vars);
     let mut out = [0.0; 9];
@@ -586,7 +585,7 @@ fn unterminated_quote_runs_to_end_of_line() {
     assert_eq!(p.token(), "1 2");
 }
 
-// ---- P5b token spans -------------------------------------------------------
+// ---- token spans -----------------------------------------------------------
 
 /// The byte range `token_span`/`param_name_span` report must index the exact
 /// substring of `cmd_string` (which carries the appended trailing space).

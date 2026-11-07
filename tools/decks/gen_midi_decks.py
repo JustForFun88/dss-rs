@@ -435,7 +435,7 @@ def pending_midi_deck(
     solves: list[str],
 ) -> str:
     """A SELF-DRIVING midi deck for a pending (unported-feature) case
-    (unported-element coverage on the shared scaffold; GAPS_PLAN.md 1b).
+    (unported-element coverage on the shared scaffold).
     Unlike the harness-driven family decks, pending decks issue their own
     Solve commands. `vbases` lists the voltage bases (the scaffold FOOTER is
     not used so decks with extra voltage levels, e.g. the 69 kV AutoTrans
@@ -881,7 +881,7 @@ CONTROLS_DECKS = {
 }
 
 
-# --- Gaps staging family (unported elements on the scaffold; GAPS_PLAN 1b) --
+# --- Gaps staging family (unported elements on the scaffold) ----------------
 
 PV8_SHAPE = (
     "new loadshape.pv8 npts=8 interval=1 "
@@ -963,9 +963,8 @@ REDUCE_EXTRA = [
 
 REDUCE_SOLVES = ["Solve", "set reduceoption=default", "reduce", "Solve"]
 
-# Destination family per pending midi deck (GAPS_PLAN.md section 3.1 rule:
-# static snapshot -> asymmetric, time-series/control -> controls, executive
-# verbs -> modes).
+# Destination family per pending midi deck: static snapshot -> asymmetric,
+# time-series/control -> controls, executive verbs -> modes.
 PENDING_MIDI_FAMILY = {
     "midi_isource_asym": "asymmetric",
     "midi_isource": "controls",

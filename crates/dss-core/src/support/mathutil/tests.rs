@@ -51,16 +51,11 @@ fn sym_comp_round_trip_official() {
     }
 }
 
-/// Stage F (Part IV.2) lists "sym components" as a dual kernel with the
-/// `official` matrices on the parity side — but the *pinned oracle does not use
-/// them*: `mathutil.pas:548` ends its initialization with
-/// `SelectAs2pVersion(False)` (= "ours" = [`SymComp::precise`]), and the
-/// `official` pair is reachable only through upstream's
-/// `DSSCompatFlag.BadPrecision` env flag (`CAPI_DSS.pas:315`), which no gating
-/// oracle sets. So this row needs **no lane split** — parity == default ==
-/// `precise` — and `compat.rs` carries no alias for it. Both variants stay
-/// compiled, and this test pins the gap between them so the claim stays
-/// measured rather than asserted.
+/// The pinned dss_capi selects [`SymComp::precise`] by default, so the sym
+/// components row needs **no lane split** (parity == default == `precise`) and
+/// `compat.rs` carries no alias for it. Both variants stay compiled, and this
+/// test pins the gap between them so the claim stays measured rather than
+/// asserted.
 #[test]
 fn sym_comp_official_vs_precise_gap_is_the_truncated_sin60_constant() {
     let precise = SymComp::precise();
@@ -177,12 +172,9 @@ fn mean_and_std_dev_basics() {
 /// A one-element sample has **no spread**, at all four entry points, in both
 /// lanes.
 ///
-/// Upstream's single-point branch assigns the mean and then repeats the same
-/// right-hand side into `StdDev` — `StdDev := Data^[1];`, r4133
-/// `Version8/Source/Shared/mathutil.pas:405` and `:429`, identical in the
-/// pinned dss_capi 0.14.5 (`:323`, `:349`, `:370`, `:398`) — so a `{3.5}`
-/// sample is reported as 100 % spread. Both gating oracles carry it and
-/// neither lane reproduces it (GOLDEN_REBASE G2.1a; `issue-11`).
+/// OpenDSS's single-point branch repeats the sample into `StdDev`, so a
+/// non-zero single sample is reported as 100 % spread. Both OpenDSS engines
+/// carry this bug and neither lane reproduces it (`issue-11`).
 ///
 /// Expected values, not tolerances: **both** out-params are pinned literally —
 /// the mean is the sample, the std-dev is `0.0` — so an entry point that

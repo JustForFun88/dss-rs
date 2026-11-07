@@ -1,10 +1,9 @@
 //! `LoadShape` — per-unit multiplier curve indexed by hour.
 //! Port of Pascal `General/LoadShape.pas` (`TLoadShapeObj`). A `DSS_OBJECT`
 //! class (no terminals, no YPrim) consumed by Load/VSource/Storage as the
-//! daily/yearly/duty multiplier source (wired in WP5.3) and by the time-series
-//! solution modes (WP5.8).
+//! daily/yearly/duty multiplier source and by the time-series solution modes.
 //!
-//! Scope (WP5.2a/b, WPG.1): the in-memory core — fixed- and variable-interval
+//! Scope: the in-memory core — fixed- and variable-interval
 //! data, `GetMultAtHour` (the consumer-facing lookup), `Normalize`,
 //! `SetMaxPandQ`, lazy mean/std-dev, `MakeLike`, and the four file inputs —
 //! `CSVFile`/`PQCSVFile` (text) and `SngFile`/`DblFile` (little-endian binary)
@@ -24,7 +23,7 @@
 //! float32 branch requires `dQ = NIL`, and any later `QMult=` edit runs
 //! `UseFloat64` first) and is not modeled — greppable:
 //! NOT_PORTED(LoadShape `sQ` single storage — API-only, unreachable from
-//! script). Memory-mapped files (`MemoryMapping=Yes`, WPG.17) ARE modeled by
+//! script). Memory-mapped files (`MemoryMapping=Yes`) ARE modeled by
 //! *eager* reads: the actual `CreateFileMapping`/`mmap` I/O strategy is not
 //! ported (no observable numerics), but each MMF file reader
 //! (`read_{sng,dbl,csv,pq_csv}_file`, and the raw `mult=(sngfile=…)`
@@ -188,7 +187,7 @@ pub struct LoadShapeObj {
     /// Deferred binary saves queued by `Action=SngSave/DblSave` (drained by the
     /// executive, which owns `OutputDirectory`/`GlobalResult`).
     pending_shape_saves: Vec<crate::obj::base::ShapeSave>,
-    /// WPG.19: `action=normalize`/`ln` requested while a file directive is still
+    /// `action=normalize`/`ln` requested while a file directive is still
     /// pending (`mult=(file=…) ln`). Pascal reads the file inline, so `Normalize`
     /// sees the data; our deferred read makes it run in `run_deferred_actions`
     /// (after the file loads). `false` ⇒ normalize ran inline (numeric mult).
@@ -245,8 +244,8 @@ impl LoadShapeObj {
     }
 
     /// Pascal `PMultipliers^` — the raw active-power multiplier array (1-indexed
-    /// in Pascal; 0-indexed here). `AggregateProfiles` (WP-AD.5) reads it directly
-    /// rather than through the interpolating `mult(i)` getter. Empty when the
+    /// in Pascal; 0-indexed here). The `AggregateProfiles` command (not ported
+    /// yet) needs it raw rather than through the interpolating `mult(i)` getter. Empty when the
     /// shape carries no P data (a freed NIL pointer upstream).
     pub fn p_mult_raw(&self) -> &[f64] {
         self.p_mult.as_deref().unwrap_or(&[])

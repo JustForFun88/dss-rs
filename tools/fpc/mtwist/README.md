@@ -22,7 +22,7 @@ FPC capture then confirmed.
 
 The RNG is **nondeterministic in the engine** (upstream `Shared/mathutil.pas`
 does `initialization Randomize;`, time-seeding per process), so no RNG-carried
-value can be golden- or oracle-pinned (GAPS_PLAN.md §2.1). The generator is
+value can be golden- or oracle-pinned. The generator is
 therefore gated **only** by the Rust-only fixed-seed unit tests in `rng.rs`
 (+ the RNG-dispatch tests in `monte_carlo.rs`/`load`/`fault`); this probe backs
 those pins with real FPC output.

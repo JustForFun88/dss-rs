@@ -1,4 +1,4 @@
-//! GOLDEN_REBASE G1.8 — in-engine pins for [`Dss::inc_matrix_view`], the four
+//! In-engine pins for [`Dss::inc_matrix_view`], the four
 //! flat branch-to-node incidence quantities the live corpus gate compares
 //! (`Solution.IncMatrix` / `.Laplacian` / `.IncMatrixRows` / `.IncMatrixCols`;
 //! r4133 `Version8/Source/DDLL/DSolution.pas` `SolutionV` modes 1/5/3/4, capi
@@ -20,8 +20,7 @@ use std::collections::BTreeMap;
 /// Compile a corpus deck by absolute path and return the live engine.
 ///
 /// The four decks read below write no files, so no directory guard is needed.
-/// Never `.inputs/` — the vendored corpus tree is the one the live gate reads
-/// (CLAUDE.md).
+/// Never `.inputs/` — the vendored corpus tree is the one the live gate reads.
 fn compile_corpus_deck(rel: &str) -> Dss {
     let deck = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/corpus")
@@ -238,11 +237,11 @@ fn inc_matrix_cols_are_the_hierarchical_columns_after_calcincmatrix_o() {
 /// `inc(ActiveIncCell[0])` at r4133 `Common/Solution.pas:3039`, outside the
 /// `if BusdotIdx = 0` guard at `:3015` (dss_capi 0.14.5 `Common/Solution.pas:1501`
 /// identical) — so on this deck both oracles put `Reactor.r1` at matrix row **3**
-/// while `Inc_Mat_Rows` holds only **3** names (valid indices 0..=2). The port
-/// emits dense rows (CLAUDE.md: no upstream bug is reproduced in any lane) and
-/// puts it at row **2**; `upstream_row_index` re-derives the oracle index so the
-/// live gate can assert the difference positively instead of excluding the field
-/// (GOLDEN_REBASE G1.8 settlement S-INC).
+/// while `Inc_Mat_Rows` holds only **3** names (valid indices 0..=2). This
+/// engine emits dense rows (no OpenDSS bug is reproduced in any lane) and puts
+/// it at row **2**. `upstream_row_index` re-derives the OpenDSS index so the
+/// live gate can assert the difference positively instead of excluding the
+/// field.
 #[test]
 fn a_shunt_reactor_costs_the_oracle_cursor_a_row() {
     let mut dss = reactor_gap_deck();
@@ -425,14 +424,13 @@ fn the_incidence_pair_pushes_no_diagnostics_and_the_guard_is_live() {
 /// `Reactor.rdel` (bus `b3`, column 3) therefore draws an edge to `b4`, the **last**
 /// bus in `BusList` — and it does move the Laplacian. Both oracles emit that same
 /// edge at row **5** (`inc_matrix_pins.rs`'s measured oracle array `ASYM_INC`),
-/// because this deck also trips the row cursor settlement S-INC settles; the port
-/// numbers it **4** in its dense rows, so only the column pair is
-/// channel-independent. This is a *which element is a row* defect, registered for
-/// the WP-G2 teardown rather than fixed in a comparison sub-step, so the port
-/// reproduces it and the pin states the current behaviour. The teardown's exit
-/// value is **no row at all** for a 1-terminal reactor — it is a shunt, not a
-/// branch — which costs a comparator-side reconstruction of the phantom row and
-/// of its `NumBuses - 1` fallback column, i.e. a settlement of its own.
+/// because this deck also trips the row cursor gap above. This engine numbers it
+/// **4** in its dense rows, so only the column pair is channel-independent. This
+/// is a known *which element is a row* defect that this engine still
+/// reproduces, and the pin states the current behaviour. The right value is
+/// **no row at all** for a 1-terminal reactor — it is a shunt, not a branch.
+/// Fixing it needs a comparator-side reconstruction of the phantom row and of
+/// its `NumBuses - 1` fallback column.
 #[test]
 fn a_one_terminal_reactor_becomes_a_phantom_branch_to_the_last_bus() {
     let mut dss = compile_corpus_deck("asymmetric/reactor/reactor_asym.dss");
@@ -466,9 +464,9 @@ fn a_one_terminal_reactor_becomes_a_phantom_branch_to_the_last_bus() {
 /// but `bus2`. A disabled series reactor is therefore a matrix row while a
 /// disabled line and a disabled series capacitor on the same buses are not — **3**
 /// rows on this deck, where the reactor walk carrying its siblings' `Enabled`
-/// test would give **2** (the teardown's exit value) and no walk having one would
-/// give **5** (both lines, the capacitor and the reactor). Registered for the
-/// WP-G2 teardown; both oracles agree, so the port reproduces it for now.
+/// test would give **2** (the right value) and no walk having one would give
+/// **5** (both lines, the capacitor and the reactor). This is a known defect.
+/// Both OpenDSS engines agree on it, and this engine still reproduces it.
 #[test]
 fn a_disabled_series_reactor_is_still_a_row() {
     let mut dss = build(&[

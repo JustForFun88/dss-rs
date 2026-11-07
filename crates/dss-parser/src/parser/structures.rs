@@ -220,18 +220,16 @@ impl Parser {
     /// (Pascal `ParseAsSymMatrix`). Returns the number of rows that supplied
     /// at least one value (`OrderFound`) — `order` when the matrix is complete.
     ///
-    /// The FPC line the port follows (dss_capi 0.14.5 / 0.15.x) silently
-    /// zero-fills a matrix that supplies fewer rows than `order` and always
-    /// returns `ExpectedOrder`. EPRI Delphi (r4088/r4133) instead tracks
-    /// `OrderFound` and — when it is `< ExpectedOrder` — the *caller* rejects
-    /// the whole matrix (keeps the property's prior value) with the message
-    /// "The matrix entered does not match with the expected order…"
-    /// (`ParserDel.pas` `TParser.ParseAsSymMatrix`). WP-U1.1 item 2 adopts the
-    /// EPRI-r4133 rejection: this function surfaces `OrderFound` so the caller
-    /// (`ClassProps::parse_into`) can apply the log-and-revert policy — see
-    /// `docs/upgrade/DIVERGENCES.md` §ParseAsSymMatrix. The too-many-per-row
-    /// buffer-overflow path stays an `Err` (unchanged; the FPC `subpos>maxpos`
-    /// guard, which both oracles also error on).
+    /// The dss_capi line (0.14.5 / 0.15.x) silently zero-fills a matrix that
+    /// supplies fewer rows than `order` and always returns `ExpectedOrder`.
+    /// EPRI Delphi (r4088/r4133) instead tracks `OrderFound` and — when it is
+    /// `< ExpectedOrder` — the *caller* rejects the whole matrix (keeps the
+    /// property's prior value) with the message "The matrix entered does not
+    /// match with the expected order…". This engine adopts the r4133
+    /// rejection: this function surfaces `OrderFound` so the caller
+    /// (`ClassProps::parse_into`) can apply the log-and-revert policy. The
+    /// too-many-per-row buffer-overflow path stays an `Err` (the FPC
+    /// `subpos>maxpos` guard, which both OpenDSS engines also error on).
     pub fn parse_as_sym_matrix(
         &mut self,
         vars: &ParserVars,

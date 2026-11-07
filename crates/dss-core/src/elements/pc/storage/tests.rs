@@ -47,11 +47,9 @@ fn edit_storage(edits: &[(&str, &str)]) -> Storage {
     st
 }
 
-/// UPGRADE_PLAN ledger L2 (WP-U1.1): a Storage `kW`/`kVA` parsed as 0 clamps to
-/// `1e-8` (EPRI r4133 `DblValueNZ`). `kVA` is the direct rating field; `kW` runs
-/// through `Set_kW`, where the clamped `+1e-8` (>0) resolves the state to
-/// DISCHARGING — a literal 0 would resolve to IDLING, so the state is the
-/// discrete witness that the clamp fired.
+/// A Storage `kW`/`kVA` parsed as zero clamps to the r4133 `DblValueNZ` floor.
+/// The positive clamped `kW` resolves the state to DISCHARGING where a literal
+/// zero would resolve to IDLING, so the state witnesses that the clamp fired.
 #[test]
 fn zero_kw_kva_clamp_dblvaluenz() {
     let st = edit_storage(&[("kVA", "0")]);
@@ -353,9 +351,7 @@ fn kva_clamp_backs_off_kw_on_pf() {
     );
 }
 
-/// `ControlMode=GFM` round-trips but its solve behavior is WP7.7; `gfm_mode` is
-/// set and the per-element solve guard rejects it. (The solve-time error is
-/// exercised by the exec integration test.)
+/// `ControlMode=GFM` sets `gfm_mode`.
 #[test]
 fn control_mode_gfm_sets_flag() {
     let mut st = Storage::new("s1");
@@ -456,7 +452,7 @@ fn direct_shortcut_excluded_in_gfm_mode() {
     );
 }
 
-// --- MakePosSequence (WPG.21) --------------------------------------------
+// --- MakePosSequence -----------------------------------------------------
 
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
 use crate::elements::traits::CktElement;
@@ -513,7 +509,7 @@ fn makeposseq_storage_single_phase() {
     assert_eq!(plan.actions, expect);
 }
 
-// --- WASM_USERMODELS WM.4: DynaDLL/DynaData/UserModel/UserData property surface ---
+// --- DynaDLL/DynaData/UserModel/UserData property surface ---
 
 /// Edit one property through the real property engine, returning any messages
 /// the side effect queued on the object.
@@ -539,11 +535,9 @@ fn edit_storage_prop(st: &mut Storage, name: &str, value: &str) -> crate::diag::
     msgs
 }
 
-/// `DynaDLL=<dll>` parses (no longer a hard NOT_PORTED error) and stores the
-/// name for the dump; the load is DEFERRED to the executive (like a FileLoad),
-/// so the property set does NOT warn. Resolving the queued load for a native-DLL
-/// name (no `.wasm` → `wasm = None`) is the path that warns "Not Loaded" (Pascal
-/// 1570) and falls back to the built-in dynamics model (WASM_USERMODELS WM.4).
+/// `DynaDLL=<dll>` stores the name and defers the load to the executive, so the
+/// property set does not warn. Resolving the load for a native-DLL name warns
+/// "Not Loaded" and falls back to the built-in dynamics model.
 #[test]
 fn dyna_dll_stores_and_warns_not_loaded() {
     use crate::obj::base::DssObject;

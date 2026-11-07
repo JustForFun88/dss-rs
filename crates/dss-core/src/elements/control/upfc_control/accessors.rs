@@ -32,14 +32,10 @@ impl CktElement for UpfcControl {
         curr.fill(Complex64::ZERO);
     }
 
-    /// Pascal `TUPFCControlObj.MakePosSequence`
-    /// (`Controls/UPFCControl.pas:179`). **NIL-deref hazard** (Access violation
-    /// #303, `docs/wpg21_makeposseq_probes.md`): a *fleet* control whose
-    /// `ControlledElement` is always NIL, yet the body guards on
-    /// `MonitoredElement` then dereferences `ControlledElement.NPhases`. Per
-    /// CLAUDE.md UB is never reproduced: when `ctx.controlled` is `None`,
-    /// safe-skip the whole block. (Probe `3c` — no `element=` set — takes the
-    /// NIL-guard-skip path and converges cleanly.)
+    /// `MakePosSequence`. A fleet control's `ControlledElement` is always unset,
+    /// yet the OpenDSS body guards on `MonitoredElement` and then dereferences
+    /// `ControlledElement.NPhases`, an access violation. This engine does not
+    /// crash: when `ctx.controlled` is `None`, it skips the whole block.
     fn make_pos_sequence(&mut self, ctx: &PosSeqCtx) -> PosSeqPlan {
         // Pascal guards on `MonitoredElement <> NIL` then derefs `ControlledElement`;
         // act only when BOTH are resolved.

@@ -23,7 +23,7 @@ use crate::report::table::{Cell, Report, Row};
 use crate::support::mathutil::SymComp;
 
 /// Build the `Show Overloads` text (Pascal `ShowOverloads`). Walks the PDElements
-/// (terminal 1 only) via the mutating `GetCurrents` getter (PHASE8_PLAN §2.1);
+/// (terminal 1 only) via the mutating `GetCurrents` getter;
 /// capacitors are skipped (`(CLASSMASK and DSSObjType) <> CAP_ELEMENT`).
 pub(crate) fn show_overloads(
     classes: &mut [DssClass],

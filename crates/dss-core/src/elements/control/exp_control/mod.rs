@@ -1,7 +1,6 @@
-//! Port of `Controls/ExpControl.pas` — `TExpControlObj`, the adaptive
-//! dynamic-`Vreg` smart-inverter control over a fleet of PVSystem elements
-//! (PHASE7_PLAN WP7.5 step 3). Upstream note: *"adapted and simplified from
-//! InvControl for adaptive controller research."*
+//! `ExpControl`, the adaptive dynamic-`Vreg` smart-inverter control over a fleet
+//! of PVSystem elements, adapted and simplified from InvControl for adaptive
+//! controller research.
 //!
 //! ExpControl runs a single volt-var-like law with an **adaptive voltage
 //! regulation reference** (`Vreg`) that the controller slews toward the present
@@ -26,10 +25,9 @@
 //! pattern. **ExpControl controls only PVSystem** (never Storage), so the env is
 //! PVSystem-typed.
 //!
-//! `MakePosSequence` is ported (WPG.21) as a NIL-deref-safe partial: the defined
-//! `FNphases := 3; Nconds := 3` resync plus the resolved-DER bus adopt, with the
-//! empty-list `MonitoredElement` deref safe-skipped (Access violation,
-//! `docs/wpg21_makeposseq_probes.md`; CLAUDE.md forbids reproducing it).
+//! `MakePosSequence` is a NIL-deref-safe partial: the defined
+//! `FNphases := 3; Nconds := 3` resync plus the resolved-DER bus adopt. The
+//! empty-list `MonitoredElement` dereference, which crashes OpenDSS, is skipped.
 
 mod accessors;
 mod compute;
@@ -182,7 +180,7 @@ impl ExpVars {
     }
 }
 
-/// `TExpControlObj`. The parse-time property surface plus the WP7.5 step-3
+/// `TExpControlObj`. The parse-time property surface plus the
 /// runtime state: the resolved PVSystem fleet (`fleet`), the per-DER [`ExpVars`]
 /// (`ctrl_vars`), and the derived open-loop time constant (`f_open_tau`).
 #[derive(Debug, Clone)]
@@ -226,7 +224,7 @@ pub struct ExpControl {
     f_voltage_change_tolerance: f64,
     f_var_change_tolerance: f64,
 
-    // --- WP7.5 step-3 runtime state (the PVSystem fleet + dispatch) ---
+    // --- Runtime state (the PVSystem fleet + dispatch) ---
     /// `FPVSystemPointerList` → `ControlledElement` — the resolved PVSystem fleet,
     /// built lazily on the first `Sample` (empty until then). An empty fleet
     /// re-triggers the build (Pascal `FPVSystemPointerList.Count = 0`); a
@@ -307,8 +305,7 @@ impl ExpControl {
         &self.pvsystem_name_list
     }
 
-    // --- Read-only accessors for the CIM `TIEEE1547Controller` export (WPG.18
-    // Stage F, `ExportCIMXML.pas` `PullFromExpControl`). No behavior change. ---
+    // --- Read-only accessors for the CIM `TIEEE1547Controller` export. ---
 
     /// `DERNameList` — the class-prefixed controlled-DER names.
     pub(crate) fn der_name_list(&self) -> &[String] {

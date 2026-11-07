@@ -1,6 +1,5 @@
 program abi_probe_r4133;
-// WASM_USERMODELS WP-WM.3 pre-round (ABI re-freeze to r4133, user decision
-// 2026-07-19) — layouts of the SAME boundary records as the r4133 example DLL
+// Probe P8 (ABI re-freeze to r4133, 2026-07-19) — layouts of the SAME boundary records as the r4133 example DLL
 // compiles against
 // (.inputs/electricdss-code-r4133-trunk/Version8/Source/IndMach012a/), i.e. the
 // r4133 headers:

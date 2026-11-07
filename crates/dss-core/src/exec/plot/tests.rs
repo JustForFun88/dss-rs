@@ -273,8 +273,7 @@ fn visualize_unsolved_guard() {
 }
 
 /// The solution guard covers every guarded first letter (`A C D G M P Z`,
-/// `PlotOptions.pas:236`) — not only `C` (audit settlement: only the C path
-/// was unit-covered).
+/// `PlotOptions.pas:236`) — not only `C`.
 #[test]
 fn unsolved_guard_covers_all_guarded_types() {
     for ty in [
@@ -299,8 +298,8 @@ fn unsolved_guard_covers_all_guarded_types() {
 }
 
 /// `channels=` caps at 51 values (Pascal `DblBuffer[0..50]`) and a negative
-/// entry wraps like FPC `Round` into `Cardinal` (audit settlement — `as u32`
-/// alone would saturate to 0).
+/// entry wraps like FPC `Round` into `Cardinal` (`as u32` alone would
+/// saturate to 0).
 #[test]
 fn channels_cap_and_negative_wrap() {
     let (mut dss, cap) = dss_with_capture();
@@ -322,7 +321,7 @@ fn channels_cap_and_negative_wrap() {
     assert_eq!(ch[1].as_u64(), Some(4294967294), "-2 wraps modulo 2^32");
 }
 
-/// The marker-style `Set` handlers (audit settlement) drive the payload's
+/// The marker-style `Set` handlers drive the payload's
 /// `Markers` object; `Get` echoes them back (`ExecOptions.pas:615-682/978-1041`).
 #[test]
 fn marker_set_options_reach_payload_and_get() {

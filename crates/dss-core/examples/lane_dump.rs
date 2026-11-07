@@ -1,6 +1,4 @@
-//! Stage F **parity↔default differential gate**, executable half
-//! (`DE_PASCALIZE_PLAN.md` Part IV.2, "Two validation lanes … + the
-//! differential gate"; step F.5).
+//! The **parity↔default differential gate**, executable half.
 //!
 //! The two lanes are two *builds*, so no `#[test]` can compare them: a test
 //! binary only ever contains one of them. This example is therefore the gate's
@@ -10,33 +8,31 @@
 //! pure text arithmetic) reads the two dumps and checks them against the
 //! documented per-kernel bounds.
 //!
-//! `tools/lanes/lane_diff.ps1` is the job that drives all three steps; see
-//! `TESTING.md` §"The parity↔default differential gate" for how to run it and
-//! what its output means.
+//! `tools/lanes/lane_diff.ps1` is the job that drives all three steps. Run it
+//! from the repository root with `pwsh -File tools/lanes/lane_diff.ps1`.
 //!
 //! # Why this is the strongest default-lane test
 //!
 //! The parity lane is byte-exact against the committed report goldens and, on
-//! the live oracles, is compared at the calibrated floors of
-//! `tests/TOLERANCE_NOTES.md` (with its own pinned entries in
-//! `tests/corpus/ledger.json`). It is *not* bitwise equal to the oracle — the
-//! faer-vs-KLU last-ulp floors `CLAUDE.md` documents are real in both lanes —
-//! so the honest chain is the triangle inequality:
+//! the live OpenDSS engines, is compared at the calibrated floors of
+//! `harness::tol_for` (with its own pinned entries in
+//! `tests/corpus/ledger.json`). It is *not* bitwise equal to the OpenDSS
+//! engines (the faer-vs-KLU last-ulp floors are real in both lanes), so the
+//! honest chain is the triangle inequality:
 //!
 //! ```text
 //! |default − oracle|  ≤  |default − parity|  +  |parity − oracle|
 //! ```
 //!
 //! What makes this job the transitive proof is therefore not an assumed
-//! premise but the **measured** left term. The 2026-07-31 run came back
-//! `max |Δ| = 0` exactly on every gated kind, which makes the default lane
-//! bit-identical to the parity lane and so gives it precisely the parity
-//! lane's oracle standing — nothing is inherited by assumption.
+//! premise but the **measured** left term. When `max |Δ| = 0` on every gated
+//! kind, the default lane is bit-identical to the parity lane and has exactly
+//! the parity lane's standing against the OpenDSS engines.
 //!
-//! Read the second term back in whenever the first stops being zero: a future
+//! Read the second term back in whenever the first stops being zero: a
 //! non-zero `|Δ|` bounds `|default − oracle|` at *this job's bound plus the
-//! case's tier*, not at this job's bound. Expect that in the MULTITHREADING
-//! M3c and RESONANCE WP-R1 rungs, which are the two planned changes that make
+//! case's tier*, not at this job's bound. Wiring the default lane's parallel
+//! factorization or iterative refinement knobs (`dss_sparse::compat`) makes
 //! the lanes genuinely diverge.
 //!
 //! While `|Δ| = 0` holds, the job is also sharper than the oracle comparison:
@@ -93,9 +89,8 @@ use dss_test_harness::harness::lane::DOCUMENTED_DIVERGENCES;
 /// Reusing the micro tier rather than inventing a bound is deliberate, and it
 /// is a *tightening*, not a loosening: the corpus's feeder/large tiers are
 /// looser (1e-8 … 5e-6 rel), so every case here is held to a bound at or below
-/// the one its own oracle comparison uses. `CLAUDE.md`'s no-fudging rule
-/// applies unchanged — an excess is a finding to diagnose, never a number to
-/// raise.
+/// the one its own oracle comparison uses. An excess is a finding to
+/// diagnose, never a number to raise.
 const REL: f64 = 1e-9;
 
 /// Absolute floor of the continuous bound; see [`REL`].
@@ -640,8 +635,8 @@ fn main() {
         _ => {
             eprintln!(
                 "usage:\n  lane_dump dump <out-file>       # solve the corpus, write the records\n  \
-                 lane_dump diff <lane-a> <lane-b>  # compare two dumps against the Stage F bounds\n\n\
-                 Drive both through tools/lanes/lane_diff.ps1 (TESTING.md)."
+                 lane_dump diff <lane-a> <lane-b>  # compare two dumps against the documented bounds\n\n\
+                 Drive both through tools/lanes/lane_diff.ps1."
             );
             std::process::exit(2);
         }

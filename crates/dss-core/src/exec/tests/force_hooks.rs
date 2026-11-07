@@ -1,4 +1,4 @@
-//! WP-U1.9 PCE force-hook option gates (`Set`/`Get` `InjCurrent`/`ITerminal`/
+//! PCE force-hook option gates (`Set`/`Get` `InjCurrent`/`ITerminal`/
 //! `YPrim`/`StateVar`/`IterNumber`/`CtrlIterNumber`/`IntegrationFlag`).
 //!
 //! Ported from dss_capi **0.15.0b4** (`ExecOptions.pas` @ `e936d210`, the exact
@@ -191,7 +191,7 @@ fn iter_counters_readback_and_readonly() {
     );
 }
 
-/// `Set PyPath=` is a loud NOT_PORTED (pyControl co-simulation, §0).
+/// `Set PyPath=` is a loud NOT_PORTED (pyControl co-simulation).
 #[test]
 fn pypath_is_not_ported() {
     let mut dss = force_deck();
@@ -338,16 +338,14 @@ fn generator_force_inj_freezes_iterminal() {
 /// Discriminating: a weak source + a large `[400,0,400]` A force pulls the
 /// recompute far from the frozen value. Dropping the guard makes the port
 /// recompute `[-110.744, -31.467, …]` (imag +18.88 → −31.47, a ≈50 A miss) and
-/// energises the neutral conductor, so this assertion fails without the fix
-/// (re-verified by toggling the guard, RP3.10).
+/// energises the neutral conductor, so this assertion fails without the fix.
 ///
 /// **Both engines' numbers.** The deck's WindGen types `pf=0.95` and no
-/// `QMode=`, so since R4133_PROPS_PLAN RP3.10 the frozen operating point itself
-/// differs by design: this engine dispatches `kvarBase` in the constant-Q mode
-/// (`elements/pc/windgen/nominal.rs`), r4133 dispatches nothing (`Else kvarCalc
-/// := 0`, `WindGen.pas:1320-1321` — an upstream omission that CLAUDE.md's
-/// 2026-08-02 policy forbids reproducing; cause `windgen-qmode0-no-arm`, pinned
-/// by `elements::pc::windgen::tests::qmode0_dispatches_the_base_kvar`). The
+/// `QMode=`, so the frozen operating point itself differs by design: this engine
+/// dispatches `kvarBase` in the constant-Q mode (`elements/pc/windgen/nominal.rs`),
+/// r4133 dispatches nothing (an OpenDSS omission that is not reproduced, cause
+/// `windgen-qmode0-no-arm`, pinned by
+/// `elements::pc::windgen::tests::qmode0_dispatches_the_base_kvar`). The
 /// **own r4133 probe** (epri-worker, this exact deck, `set InjCurrent=[400 0 400
 /// 0 400 0]` + re-solve, `ActiveCktElement.Currents`) reported the frozen
 /// `[-89.231224, -11.202775, 34.913725, 82.877894, 54.317500, -71.675120]`,
@@ -392,7 +390,7 @@ fn windgen_force_inj_freezes_iterminal() {
         .iter()
         .find(|e| e.name.eq_ignore_ascii_case("WindGen.w1"))
         .expect("WindGen.w1 in snapshot");
-    // The frozen pre-force currents of THIS engine (RP3.10 constant-Q
+    // The frozen pre-force currents of THIS engine (constant-Q
     // dispatch). WITHOUT the guard the port recomputes [-110.744, -31.467,
     // …] (fails here).
     let frozen = [

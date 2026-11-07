@@ -11,7 +11,12 @@
 //!   currents, variables, monitor channels, bus kVBase);
 //! - the error path (`ok:false` on a bad command, worker stays alive).
 //!
-//! Needs no oracle installed; gate-neutral (`run`/`ping`/`clear` untouched).
+//! Needs no dss-python installed; gate-neutral (`run`/`ping`/`clear` untouched).
+//!
+//! # Knobs
+//!
+//! - `LOCALAPPDATA` (set by Windows): its `Temp` directory holds the lock file
+//!   of the registry tests. The OS temp directory when unset.
 
 #![cfg(windows)]
 
@@ -46,7 +51,7 @@ impl WorkerProc {
     }
 
     /// [`WorkerProc::spawn`] with the child's working directory pinned — the
-    /// D39 init-trace probe needs a directory it owns and can sweep, so that
+    /// init-trace probe needs a directory it owns and can sweep, so that
     /// "the throwaway init circuit wrote nothing" is a measurement and not a
     /// claim.
     fn spawn_in(dir: Option<&std::path::Path>) -> WorkerProc {
@@ -328,8 +333,7 @@ fn dropping_a_worker_still_running_kills_it() {
 /// must answer `new circuit` and exit cleanly. The first hang stops every
 /// thread, since one hang already makes the test red, so a regression reds in
 /// about a minute instead of holding the test slot for one minute per hung
-/// worker. Measured 2026-10-03 with the drop's `ClearAll` removed: red in each
-/// of 3 runs, at 60.0 to 60.2 s.
+/// worker.
 #[test]
 fn a_worker_that_quits_right_after_new_circuit_exits() {
     const WORKERS: usize = 240;
@@ -855,18 +859,11 @@ fn ymatrix_before_compile_is_guarded_not_a_crash() {
     w.quit();
 }
 
-/// G1.0 audit settlement: the [`dss_epri::modes::DO_NOT_CALL`] register is
-/// enforced at the FFI **chokepoint** (`Engine::ffi_dispatch`), not only inside
-/// the typed accessors — so the worker's raw `{"cmd":"ffi"}` channel, the one a
-/// probe author reaches for first, cannot dispatch either memory-unsafe mode.
-///
-/// Both are r4133 defects: `Solution` V:2 `BusLevels` writes `ArrSize+1`
-/// elements into an `ArrSize`-long array (`DSolution.pas:580-582`), and `Bus`
-/// V:17 `ZSC012Matrix` calls `Zsc.MtrxMult(As2p)` with no `Assigned(Zsc)` guard
-/// (`DBus.pas:803-838`) — a **measured** process kill of this very worker on a
-/// bus with no fault study (G1.0 probe, 2026-09-04). The `ping` at the end is
-/// the non-vacuity: a refusal that still dispatched would take the worker with
-/// it and the test could not reach it.
+/// The [`dss_epri::modes::DO_NOT_CALL`] register is enforced at the FFI
+/// chokepoint, so the worker's raw `{"cmd":"ffi"}` channel cannot dispatch
+/// either memory-unsafe r4133 mode (both OpenDSS bugs, `Bus` V:17 kills the
+/// worker on a bus with no fault study). The closing `ping` is the
+/// non-vacuity: a refusal that still dispatched would take the worker with it.
 #[test]
 fn the_raw_ffi_command_refuses_the_do_not_call_modes() {
     let mut w = WorkerProc::spawn();
@@ -896,25 +893,17 @@ fn the_raw_ffi_command_refuses_the_do_not_call_modes() {
     w.quit();
 }
 
-/// G1.0 / WP-G1 rail: the **two-double `XxxF` ABI**. `CmathLibF(mode; arg1,
-/// arg2: double)` (`DCmathLib.pas:5`, impl `:12`) and `CircuitF(mode; arg1,
-/// arg2: double)` (`DCircuit.pas:27`, impl `:193`) are the only two of the 42
-/// DDLL families whose `F` export takes a second double; the bridge used to bind
-/// every `F` as `fn(i32, f64)`, so `XMM2` carried whatever the caller left
-/// behind.
+/// The **two-double `XxxF` ABI**. `CmathLibF(mode; arg1, arg2: double)` and
+/// `CircuitF(mode; arg1, arg2: double)` are the only two DDLL families whose
+/// `F` export takes a second double, so a binding of every `F` as
+/// `fn(i32, f64)` leaves `XMM2` holding whatever the caller left behind.
 ///
-/// Measured against this same DLL **before** the fix (2026-09-04):
-/// `CmathLibF(0, 3.0, ?)` = `3.0` instead of `Cabs(3+4j)` = `5.0` — XMM2 held a
-/// tiny positive leftover, so `sqrt(9 + ε²)` rounded back to `3.0`.
-///
-/// Every reading below is pinned by **exact** equality; none is 90°-clean,
-/// because r4133's own complex math is built on two truncated constants:
-/// `CDANG(a) = ATAN2(a.re, a.im) * 57.29577951` (`Ucomplex.pas:118-121`) over
-/// OpenDSS's hand-written `ATAN2` with `CONST PI = 3.14159265359`
-/// (`Ucomplex.pas:96-111`). So `Cdang(0+1j)` is `(3.14159265359/2)·57.29577951`
-/// = `89.99999999516423`, **not** `90.0`, and `Cdang(3+4j)` is
-/// `arctan(4/3)·57.29577951` = `53.13010235129776`. These are *oracle* readings
-/// of the DLL under test, not values `dss-core` reproduces.
+/// Every reading below is pinned by **exact** equality. None is 90°-clean,
+/// because r4133's own complex math is built on two truncated constants (the
+/// degree factor `57.29577951` and `PI = 3.14159265359`), so `Cdang(0+1j)` is
+/// `(3.14159265359/2)·57.29577951`, **not** `90.0`, and `Cdang(3+4j)` is
+/// `arctan(4/3)·57.29577951`. These are readings of the DLL under test, not
+/// values `dss-core` reproduces.
 ///
 /// `Cdang(0, 1)` alone would NOT prove the fix: the angle of a purely imaginary
 /// number is the same for every positive magnitude, so the pre-fix garbage read
@@ -922,8 +911,8 @@ fn the_raw_ffi_command_refuses_the_do_not_call_modes() {
 /// with the one-double binding it reads `arctan(ε/3)·57.29577951 ≈ 0`.
 ///
 /// `CircuitF` mode 0 (`Circuit.Capacity`) is deliberately NOT driven: it writes
-/// `CapacityStart`/`CapacityIncrement` and runs `ComputeCapacity`
-/// (`DCircuit.pas:195-203`) — a mutating probe. Its correctness rides on the
+/// `CapacityStart`/`CapacityIncrement` and runs `ComputeCapacity` — a mutating
+/// probe. Its correctness rides on the
 /// same `FnF2` binding this test pins.
 #[test]
 fn cmath_lib_f_takes_two_doubles() {
@@ -1011,7 +1000,7 @@ fn cmath_lib_f_takes_two_doubles() {
 }
 
 // ---------------------------------------------------------------------------
-// D13 — the bridge must not carry state between cases or between processes
+// The bridge must not carry state between cases or between processes
 // ---------------------------------------------------------------------------
 
 /// `HKCU\Software\OpenDSS\MainSect` — the key `TIniRegSave.Create('\Software\' +
@@ -1039,9 +1028,9 @@ fn reg_read(name: &str) -> Option<String> {
 }
 
 /// Put the key back exactly as it was found: rewrite the saved value, or DELETE
-/// the value when the machine did not have one (G1.4a audit settlement T6 —
-/// writing a default `60` there would create machine state the test found
-/// absent, and r4133 reads that key at DLL load).
+/// the value when the machine did not have one (writing a default `60` there
+/// would create machine state the test found absent, and r4133 reads that key
+/// at DLL load).
 fn reg_restore(name: &str, before: Option<&str>) {
     try_reg_restore(name, before).unwrap_or_else(|e| panic!("{e}"));
 }
@@ -1174,11 +1163,9 @@ impl Drop for RegGuard {
     }
 }
 
-/// [`reg_restore`]'s absent-value branch, driven on a scratch value name (the
-/// live tests below find `BaseFrequency` present on a developed machine, so
-/// their restore takes the rewrite branch). Proves that "restored" means the key
-/// is left exactly as found — the value is removed, not created with a default
-/// r4133 would then read at DLL load (G1.4a audit settlement T6).
+/// [`reg_restore`]'s absent-value branch, driven on a scratch value name:
+/// "restored" means the key is left exactly as found, the value removed, not
+/// created with a default r4133 would then read at DLL load.
 #[test]
 fn reg_restore_removes_a_value_the_machine_did_not_have() {
     const PROBE: &str = "DssRsSettleProbe";
@@ -1235,7 +1222,7 @@ fn a_test_that_panics_still_restores_the_registry_value() {
     );
 }
 
-/// D13 (i): **`clear` must reset `DefaultBaseFreq` to the port's 60 Hz.**
+/// **`clear` must reset `DefaultBaseFreq` to the port's 60 Hz.**
 ///
 /// r4133's `clear` (`Executive/ExecHelper.pas:987-995` → `TExecutive.Clear`,
 /// `Executive/Executive.pas:234-275`) resets `DefaultEarthModel`, `LogQueries`
@@ -1248,8 +1235,7 @@ fn a_test_that_panics_still_restores_the_registry_value() {
 ///
 /// The pre-`clear` half of the test is the live control: it proves the observable
 /// really moves with `DefaultBaseFreq`, so the post-`clear` `60` is a reset and
-/// not a constant. With the reset removed both post-`clear` reads come back `50`
-/// (measured 2026-09-04 on a throwaway copy of the bridge).
+/// not a constant.
 ///
 /// `Get DefaultBaseFrequency` needs an active circuit — `DoGetCmd_NoCircuit`
 /// (`Executive/ExecOptions.pas:1510`) does not serve option 73 — hence the
@@ -1289,7 +1275,7 @@ fn clear_resets_the_default_base_frequency_to_sixty() {
     w.quit();
 }
 
-/// D13 (iii): **a fresh session must not inherit the registry's base frequency.**
+/// **A fresh session must not inherit the registry's base frequency.**
 ///
 /// `Set RegistryUpdate=No` (see `Engine::new`) stops this process from *writing*
 /// the key, but the *read* is already done by then: `ReadDSS_Registry` assigns
@@ -1304,9 +1290,8 @@ fn clear_resets_the_default_base_frequency_to_sixty() {
 ///
 /// The test pre-poisons the machine key with `50` — the one non-60 base
 /// frequency the corpus actually uses (`LVTestCase/Master.dss`) — spawns a fresh
-/// worker and reads the default back **without any `clear`**. With the init
-/// reset removed the read comes back `50` (measured 2026-09-04 on a throwaway
-/// copy of the bridge). The machine key is put back on every exit path — the
+/// worker and reads the default back **without any `clear`**. The machine key
+/// is put back on every exit path — the
 /// saved value rewritten, or the value DELETED when the machine had none
 /// ([`RegGuard`], which also restores it when a request panics or times out) —
 /// so a regression cannot leave it poisoned.
@@ -1345,7 +1330,7 @@ fn init_resets_the_default_base_frequency_to_sixty() {
     );
 }
 
-/// D13 (ii): **the worker must not write `HKCU\Software\OpenDSS` on exit.**
+/// **The worker must not write `HKCU\Software\OpenDSS` on exit.**
 ///
 /// r4133 reads `BaseFrequency` from that key at DLL load
 /// (`Common/DSSGlobals.pas:1005` from `TExecutive.Create`,
@@ -1354,8 +1339,8 @@ fn init_resets_the_default_base_frequency_to_sixty() {
 /// `TExecutive.Destroy`, `Executive/Executive.pas:141`, reached through the unit
 /// `Finalization` at `Common/DSSGlobals.pas:2159`). `UpdateRegistry` defaults to
 /// `TRUE` (`:2131`), so every unguarded worker leaked its last base frequency to
-/// the next worker process **on the whole machine** — the cross-worktree channel
-/// D13 closes. `Engine::new` now issues `Set RegistryUpdate=No`
+/// the next worker process **on the whole machine**, a cross-worktree channel.
+/// `Engine::new` issues `Set RegistryUpdate=No`
 /// (`Executive/ExecOptions.pas:146` names option 102; `:574` sets it with no
 /// circuit active).
 ///
@@ -1366,8 +1351,7 @@ fn init_resets_the_default_base_frequency_to_sixty() {
 ///
 /// The sentinel is `37` so a *different* worker exiting concurrently (another
 /// lane's gate) cannot green or red this test by accident — no deck and no
-/// default produces 37. Measured 2026-09-04 without the fix: the key moved
-/// `60 -> 37`; with it, unchanged.
+/// default produces 37.
 #[test]
 fn the_worker_never_writes_the_opendss_registry_key() {
     let mut key = RegGuard::save("BaseFrequency");
@@ -1392,7 +1376,7 @@ fn the_worker_never_writes_the_opendss_registry_key() {
 }
 
 // ---------------------------------------------------------------------------
-// D25 — the bridge must not fire the OS editor on `Show`/`Dump`
+// The bridge must not fire the OS editor on `Show`/`Dump`
 // ---------------------------------------------------------------------------
 
 /// The editor the bridge installs at init (`Engine::new`). Kept here so the test
@@ -1409,7 +1393,7 @@ const BRIDGE_EDITOR: &str = "rundll32.exe";
 const EDITOR_SENTINEL_A: &str = "DssRsEditorSentinelA.exe";
 const EDITOR_SENTINEL_B: &str = "DssRsEditorSentinelB.exe";
 
-/// D25: **a fresh session must not inherit the registry's OS editor, and must
+/// **A fresh session must not inherit the registry's OS editor, and must
 /// not write its own back.**
 ///
 /// r4133 keeps `AutoDisplayShowReport := TRUE` (`Common/DSSGlobals.pas:2052`)
@@ -1424,8 +1408,8 @@ const EDITOR_SENTINEL_B: &str = "DssRsEditorSentinelB.exe";
 /// `DSSI(8, 0)` does not reach it. On Windows `FireOffEditor` is a
 /// `ShellExecute` of `DefaultEditor` (`Common/Utilities.pas:304`), i.e. one OS
 /// process per report; `DefaultEditor` is read from the machine key at DLL load
-/// with the default `'Notepad.exe'` (`Common/DSSGlobals.pas:990`), which is how
-/// ~900 orphaned notepads accumulated across the lanes before D25.
+/// with the default `'Notepad.exe'`, so an unguarded bridge leaves one orphaned
+/// notepad per report.
 ///
 /// That read happens before the bridge gets control, so `Engine::new` overwrites
 /// the variable instead (`Set Editor=`, served with no circuit active by
@@ -1488,7 +1472,7 @@ fn init_overrides_the_os_editor_and_never_writes_it_back() {
 }
 
 // ---------------------------------------------------------------------------
-// D30 — the r4133 event-log capture reads in memory, not through a file
+// The r4133 event-log capture reads in memory, not through a file
 // ---------------------------------------------------------------------------
 
 /// Decode `<CircuitName>_EXP_EventLog.CSV` exactly as the retired Oddie capture
@@ -1511,35 +1495,18 @@ fn decode_exported_event_log(path: &std::path::Path) -> Vec<String> {
         .collect()
 }
 
-/// D30 (class A): **the event log the r4133 transport reports must be the
+/// **The event log the r4133 transport reports must be the
 /// in-memory `Solution.EventLog`, and it must equal what `export eventlog`
 /// writes.**
 ///
-/// `capture.rs::capture_eventlog` used to issue `export eventlog` and read the
-/// CSV back. That command is a *write*: r4133 `Common/ExportResults.pas:3527-3532`
-/// (`ExportEventLog` = `EventStrings[ActiveActor].SaveToFile`) drops
-/// `<CircuitName>_EXP_EventLog.CSV` (`Executive/ExportOptions.pas:365`) into
-/// `OutputDirectory` — a file neither the capi transport (`ckt.Solution.EventLog`,
-/// dss_capi 0.14.5 `src/CAPI/CAPI_Solution.pas:525-540`) nor the port ever
-/// creates, so G1.10a's created-file-set comparison reddened on **59** (case,
-/// channel) pairs that were purely our own capture's artifact. The fix is to read
-/// the same list both other producers read: `SolutionV(0)`
-/// (`Version8/Source/DDLL/DSolution.pas:518`, `:526-541`), i.e.
-/// [`dss_epri::dss::Engine::eventlog`], blank-filtered.
-///
-/// The equivalence was measured corpus-wide before the switch — the export path
-/// and the in-memory read compared line-for-line inside `capture_eventlog` over a
-/// full 526-case gate drive (83 cases with `evlog=1`): **0 mismatches**. This test
-/// is that assertion, promoted to a deck that actually logs events: [`DECK`]
-/// applies `Fault.f` at t=0.2 s and blows `Fuse.fz` at t=0.4 s, so the log is
-/// non-empty and the comparison cannot pass vacuously.
-///
-/// The export runs **here only**, in a scratch directory the test removes, so the
-/// gate's own r4133 runs no longer write it.
+/// The in-memory event log ([`dss_epri::dss::Engine::eventlog`],
+/// blank-filtered) equals the file `export eventlog` writes, on a deck that
+/// logs events, so the capture can read it without the export's file. The
+/// export runs here only, in a scratch directory the test removes.
 #[test]
 fn the_in_memory_event_log_equals_the_exported_file() {
     let scratch = std::env::temp_dir().join(format!(
-        "dss-rs-g110a-evlog-{}-{}",
+        "dss-rs-evlog-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -1625,21 +1592,20 @@ fn the_in_memory_event_log_equals_the_exported_file() {
         in_memory, from_file,
         "the in-memory `Solution.EventLog` (SolutionV(0)) and the CSV \
          `export eventlog` wrote disagree — `capture.rs::capture_eventlog` may \
-         not read in memory (D30 class A), because the two are no longer the \
+         not read in memory, because the two are no longer the \
          same list"
     );
     swept.expect("remove the scratch dir");
 }
 
-/// D30 (class A), the behavioural half: **a `run` that captures the event log
+/// The behavioural half: **a `run` that captures the event log
 /// must create no file.**
 ///
 /// The equivalence above is why reading in memory is *allowed*; this is why it
-/// is *required*. The gate's r4133 transport used to leave
-/// `<CircuitName>_EXP_EventLog.CSV` in the case directory on every
-/// event-logging case, which is invisible to every model comparison and shows up
-/// only in G1.10a's created-file SET — where it reddened 59 (case, channel)
-/// pairs against a capi channel and a port that never write it. So this drives
+/// is *required*. An `<CircuitName>_EXP_EventLog.CSV` left in the case
+/// directory is invisible to every model comparison and shows up only in the
+/// created-file set, against a capi channel and an engine that never write it.
+/// So this drives
 /// the real capture path (`capture::run_case` with `eventlog: true`) over
 /// [`DECK`] and asserts, from the run's own `run_files` report, that the set is
 /// empty: the same `CorpusGuard` pass that sweeps the case dir also classifies
@@ -1649,7 +1615,7 @@ fn the_in_memory_event_log_equals_the_exported_file() {
 #[test]
 fn the_event_log_capture_creates_no_file() {
     let scratch = std::env::temp_dir().join(format!(
-        "dss-rs-g110a-evrun-{}-{}",
+        "dss-rs-evrun-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -1672,8 +1638,7 @@ fn the_event_log_capture_creates_no_file() {
 
     // `expect`, not `unwrap_or_default`: an ABSENT (or null) `run_files` key
     // would otherwise read as "the run created nothing" and green this test
-    // while proving nothing — the very claim it exists to make (G1.10a audit
-    // settlement, finding AC-1/AT-2).
+    // while proving nothing — the very claim it exists to make.
     let created: Vec<String> = result["run_files"]
         .as_array()
         .expect("the run must report its created-file set (`run_files`)")
@@ -1710,21 +1675,21 @@ fn the_event_log_capture_creates_no_file() {
         created,
         Vec::<String>::new(),
         "an event-log capture created {created:?} — `capture_eventlog` is issuing \
-         `export eventlog` again (r4133 `Common/ExportResults.pas:3527-3532`), a \
-         file neither the capi channel nor the port writes (D30 class A)"
+         `export eventlog` again, a file neither the capi channel nor this engine \
+         writes"
     );
     swept.expect("remove the scratch dir");
 }
 
 // ---------------------------------------------------------------------------
-// D39 (G1.10a F0′) — the bridge gags report auto-display with the engine's own
-// switches; `Set Editor=` is only the safety net
+// The bridge gags report auto-display with the engine's own switches, and
+// `Set Editor=` is only the safety net
 // ---------------------------------------------------------------------------
 
 /// A fresh scratch directory under the OS temp dir, unique per process + call.
 fn scratch_dir(tag: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!(
-        "dss-rs-g110a-{tag}-{}-{}",
+        "dss-rs-{tag}-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -1868,9 +1833,9 @@ const SHOW_DECK: &[&str] = &[
 /// `dir_entries` returns them: the deck source itself, one file per guarded
 /// `Show` (r4133 `Common/ShowResults.pas`) and per guarded `Export`
 /// (`Executive/ExportOptions.pas`), and the property dump of the unguarded
-/// `Dump` the same test issues as its liveness control. Measured 2026-09-11;
-/// the set is compared whole, so a writer the switches silence reds instead of
-/// slipping under a count.
+/// `Dump` the same test issues as its liveness control. The set is compared
+/// whole, so a writer the switches silence reds instead of slipping under a
+/// count.
 const F0PRIME_REPORTS: &[&str] = &[
     "f0prime_Buses.Txt",
     "f0prime_Curr_Elem.Txt",
@@ -1883,7 +1848,7 @@ const F0PRIME_REPORTS: &[&str] = &[
     "f0prime_shows.dss",
 ];
 
-/// D39 layers 1+2: **the init switches survive a `Compile`, and no *guarded*
+/// **The init switches survive a `Compile`, and no *guarded*
 /// `FireOffEditor` site fires — while every report is still written.**
 ///
 /// The observable is `DSS error #702`, not a process count: `FireOffEditor`
@@ -1902,8 +1867,8 @@ const F0PRIME_REPORTS: &[&str] = &[
 /// resets `ErrorNumber := 0` at the start of every command
 /// (`Executive/ExecCommands.pas:604`), so a #702 raised by a `Show` inside a
 /// compiled script is wiped by the script's next line and never reaches the
-/// caller (measured 2026-09-11 — the deck below returns `ok` even with
-/// `AutoDisplayShowReport` left on).
+/// caller (the deck below returns `ok` even with `AutoDisplayShowReport` left
+/// on).
 ///
 /// The `ShowExport` layer is driven two-sided for the same reason: its flag is
 /// already `FALSE` at unit initialization (`Common/DSSGlobals.pas:2051`), so
@@ -1914,14 +1879,14 @@ const F0PRIME_REPORTS: &[&str] = &[
 /// and hang this headless worker for good. That assertion is an *invariant*,
 /// not a drive of the executive command: `Engine::new` calls `DSSI(8, 0)`
 /// (`DDLL/DDSS.pas:68-69`, `NoFormsAllowed := TRUE`) before it, so deleting
-/// `Set AllowForms=No` alone leaves it green (measured 2026-09-11), and with
+/// `Set AllowForms=No` alone leaves it green, and with
 /// `DSSI(8, 0)` deleted as well the worker stops answering `Get AllowForms`
 /// altogether — the modal hang layer 1 exists to prevent — rather than
 /// answering `Yes`. So this assertion guards the invariant (a future DLL that
 /// no longer starts with `NoFormsAllowed := TRUE`), not the command.
 ///
-/// Non-vacuity (driven in-tree 2026-09-11, each edit reverted and the diff
-/// re-checked): with `Set ShowReports=No` deleted from `Engine::new` the direct
+/// Non-vacuity (each edit driven in-tree and reverted): with
+/// `Set ShowReports=No` deleted from `Engine::new` the direct
 /// `Show Voltages LN Nodes` comes back `DSS error #702 (exec: Show Voltages LN
 /// Nodes): Editor "DssRsEditorSentinelA.exe"  Not Found.` and the test reds on
 /// that assertion; with `new circuit.dssrs_bridge_init` deleted the worker never
@@ -1961,8 +1926,8 @@ fn report_switches_survive_a_compile_and_gag_every_guarded_editor_site() {
     // resets `ErrorNumber := 0` at the start of EVERY command
     // (`Executive/ExecCommands.pas:604`), so a #702 raised by a `Show` *inside*
     // a compiled script is wiped by the next line of that script and never
-    // reaches the caller (measured 2026-09-11: the deck above returns `ok` even
-    // with `AutoDisplayShowReport` on). Issued directly, the errno survives into
+    // reaches the caller (the deck above returns `ok` even with
+    // `AutoDisplayShowReport` on). Issued directly, the errno survives into
     // the reply — which is what makes these two assertions worth anything.
     let shown_ln = w.request(json!({"cmd": "exec", "text": "Show Voltages LN Nodes"}));
     let shown_buses = w.request(json!({"cmd": "exec", "text": "Show Buses"}));
@@ -1989,7 +1954,7 @@ fn report_switches_survive_a_compile_and_gag_every_guarded_editor_site() {
     assert_eq!(
         after_init,
         Vec::<String>::new(),
-        "`Engine::new` left {after_init:?} in its working directory — the D39 \
+        "`Engine::new` left {after_init:?} in its working directory — the \
          init sequence must build and drop `circuit.dssrs_bridge_init` without \
          touching the disk (`MakeNewCircuit`, `Common/DSSGlobals.pas:793-836`)"
     );
@@ -2061,10 +2026,9 @@ fn report_switches_survive_a_compile_and_gag_every_guarded_editor_site() {
         Some(true),
         "`Set ShowExport=No` did not gag the same `Export`: {export_gagged}"
     );
-    // The whole point of D39: the viewer is gone, the reports are not. Asserted
-    // as the WHOLE set, never a floor (audit settlement 2026-09-11): with a
-    // count-plus-two-suffixes test any one of the other seven writers could
-    // fall silent and still pass.
+    // The whole point: the viewer is gone, the reports are not. Asserted as the
+    // WHOLE set, never a floor: with a count-plus-two-suffixes test any one of
+    // the other seven writers could fall silent and still pass.
     assert_eq!(
         reports,
         F0PRIME_REPORTS
@@ -2074,13 +2038,13 @@ fn report_switches_survive_a_compile_and_gag_every_guarded_editor_site() {
         "the switches moved the created-file set: the deck's five `Show`s, two \
          `Export`s, its own source and the unguarded `Dump`'s property dump \
          must all be on disk — every writer does `CloseFile(F)` BEFORE it \
-         consults its switch (`Common/ShowResults.pas:401-403`), so D39 \
-         suppresses the viewer launch and nothing else"
+         consults its switch, so the switches suppress the viewer launch and \
+         nothing else"
     );
     swept.expect("remove the scratch dir");
 }
 
-/// D39 layer 3: **the safety net is live where no switch reaches.**
+/// **The safety net is live where no switch reaches.**
 ///
 /// `Dump` (r4133 `Executive/ExecHelper.pas:1357`) is one of the 12
 /// `FireOffEditor` call sites neither `ShowReports`, `ShowExport` nor
@@ -2094,9 +2058,7 @@ fn report_switches_survive_a_compile_and_gag_every_guarded_editor_site() {
 /// so it runs the editor `Engine::new` installed and nothing else: a worker
 /// missing layer 3 would ShellExecute the machine's factory `'Notepad.exe'`
 /// (`Common/DSSGlobals.pas:2122`) on this test's own dump file, which is what
-/// the notepad diff below catches (audit settlement 2026-09-11 — before it, the
-/// `Dump` ran under an editor the test had just set itself, and the notepad
-/// count could not move). Both process diffs are attributed by command line to
+/// the notepad diff below catches. Both process diffs are attributed by command line to
 /// this test's scratch directory: `rundll32.exe` is a busy Windows image and a
 /// machine-wide PID diff would red on someone else's process.
 ///
@@ -2106,8 +2068,8 @@ fn report_switches_survive_a_compile_and_gag_every_guarded_editor_site() {
 /// test that pins the registry write-back; this one never touches the registry,
 /// so the two cannot race.
 ///
-/// Non-vacuity (driven in-tree 2026-09-11, each edit reverted and the diff
-/// re-checked): with `Engine::new` installing [`EDITOR_SENTINEL_A`] instead of
+/// Non-vacuity (each edit driven in-tree and reverted): with `Engine::new`
+/// installing [`EDITOR_SENTINEL_A`] instead of
 /// `rundll32.exe` the test reds on the first assertion (`a fresh worker holds
 /// Editor="DssRsEditorSentinelA.exe"`); with the sentinel half pointed at a
 /// *guarded* writer (`Show Voltages LN Nodes`) instead of `Dump` it reds on the
@@ -2172,7 +2134,7 @@ fn the_editor_safety_net_covers_the_sites_no_switch_guards() {
         installed,
         json!(BRIDGE_EDITOR),
         "a fresh worker holds Editor={installed}, not the bridge's \
-         {BRIDGE_EDITOR:?} — the D39 safety net is not installed"
+         {BRIDGE_EDITOR:?} — the editor safety net is not installed"
     );
     let sentinel_err = with_sentinel
         .get("error")
@@ -2198,7 +2160,7 @@ fn the_editor_safety_net_covers_the_sites_no_switch_guards() {
         "the safety-net editor left {lingering:?} running after 10 s with \
          {scratch_tag:?} on its command line: `rundll32.exe` is chosen because \
          it exits immediately on a non-DLL argument — a lingering process is \
-         what D25 measured for `where.exe`, `cmd.exe` and `PING.EXE`"
+         what `where.exe`, `cmd.exe` and `PING.EXE` leave"
     );
     assert_eq!(
         new_notepads,
@@ -2206,13 +2168,13 @@ fn the_editor_safety_net_covers_the_sites_no_switch_guards() {
         "the unguarded `Dump` started notepad(s) {new_notepads:?} on this \
          test's own file ({scratch_tag:?} is on their command line) — \
          `Engine::new` did not install `Set Editor={BRIDGE_EDITOR}`, so the \
-         machine's factory editor reached a report (the ~900 orphaned Notepad \
-         windows D25 measured)"
+         machine's factory editor reached a report (one orphaned Notepad \
+         window per report)"
     );
     swept.expect("remove the scratch dir");
 }
 
-/// D39 layer 2, per case: **`Engine::clear` re-asserts the report switches, so
+/// **`Engine::clear` re-asserts the report switches, so
 /// a deck that turns `ShowExport` on cannot leak it into the next case.**
 ///
 /// `AutoShowExport` is a unit global `TExecutive.Clear` never resets (r4133
@@ -2221,11 +2183,10 @@ fn the_editor_safety_net_covers_the_sites_no_switch_guards() {
 /// (`EPRITestCircuits/ckt5/Run_ckt5.dss:66`, `ckt7/RunDSS_ckt7.dss:61`,
 /// `IEEETestCases/8500-Node/Run_8500Node.dss:27`, `Run_8500Node_Unbal.dss:28`,
 /// `Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_Unbal.dss:28`), as
-/// does `Estimate` (`Executive/ExecHelper.pas:3779`). Measured before the fix
-/// (audit settlement 2026-09-11): `new circuit` → `Set ShowExport=True` →
-/// `clear` → `new circuit` → `Get ShowExport` came back **`Yes`** for the rest
-/// of that pooled worker's life, i.e. the D25 editor no-op, not the switch, was
-/// what kept `Executive/ExportOptions.pas:517` quiet from then on.
+/// does `Estimate`. Without a re-gag after `clear`, `new circuit` →
+/// `Set ShowExport=True` → `clear` → `new circuit` → `Get ShowExport` reads
+/// **`Yes`** for the rest of that pooled worker's life, and only the editor
+/// no-op keeps the export viewer quiet.
 ///
 /// The drive is two-sided by construction: the flags are read back `Yes` while
 /// the "deck" holds them, so a re-assertion that silently did nothing would

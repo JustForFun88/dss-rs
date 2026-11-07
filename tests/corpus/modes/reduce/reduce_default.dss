@@ -1,5 +1,5 @@
-// Reduce coverage (PHASE8_PLAN WP8.7): the DEFAULT strategy (ReduceAlgs
-// DoReduceDefault, ReduceAlgs.pas:335) - generic in-line series merge:
+// Reduce coverage: the DEFAULT strategy (ReduceAlgs
+// DoReduceDefault) - generic in-line series merge:
 // a line whose to-bus has exactly 1 child branch, 0 shunt objects and is
 // not on the KeepList is merged into its child (Line.MergeWith SERIES,
 // merged name = "other~self"). The capacitor at b3 pins the

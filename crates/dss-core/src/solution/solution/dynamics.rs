@@ -86,7 +86,7 @@ pub(crate) fn calc_initial_machine_states(ckt: &mut Circuit, env: &mut SolveEnv)
     // side effect (no solution channel there); raise it here so the next
     // `solve_snap` rebuilds Y. Without it the machine's power-flow YPrim survives
     // into dynamics and its (large) Norton injection current is left uncancelled
-    // (the WindGen runs the terminal voltage away — WP-U1.8).
+    // (the WindGen runs the terminal voltage away).
     ckt.solution.system_y_changed = true;
 }
 
@@ -201,7 +201,7 @@ pub(crate) fn refusal_of_an_element_outside_the_run(
 /// power flow does not re-initialise per step. The `finally`'s
 /// `MonitorClass.SaveAll()` runs unconditionally (even on an early
 /// `Err`/aborted step) — see `mod.rs`'s `flushed_records` doc for why this
-/// now matters (WPG.2: `SolveGeneralTime` is the one mode that never flushes).
+/// matters (`SolveGeneralTime` is the one mode that never flushes).
 pub(super) fn solve_dynamic(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     // If we're in dynamics mode, no need to re-initialize.
     ckt.solution.solution_initialized = true;

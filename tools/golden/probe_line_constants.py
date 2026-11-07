@@ -1,5 +1,5 @@
-"""Probe the pinned oracle (dss-python 0.15.7 / backend 0.14.5) for Phase-7
-WP7.1 line-constants reference matrices: CN cable, TS cable, a non-power-
+"""Probe the pinned oracle (dss-python 0.15.7 / backend 0.14.5) for the
+line-constants reference matrices: CN cable, TS cable, a non-power-
 frequency overhead case (radius branch), and a non-default rho_earth case.
 
 Builds each geometry through a Line and reads RMatrix/XMatrix (ohm per unit

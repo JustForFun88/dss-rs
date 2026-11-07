@@ -7,7 +7,7 @@ use std::ops::Range;
 pub struct ParserError {
     message: String,
     /// Byte range of the offending token in the parser's `cmd_string`, when the
-    /// raiser knew it (P5b). `None` for errors raised without a live token
+    /// raiser knew it. `None` for errors raised without a live token
     /// context. Consumed by `dss-core`'s `From<ParserError>` to underline the
     /// token in the rendered diagnostic.
     span: Option<Range<usize>>,
@@ -28,7 +28,7 @@ impl ParserError {
         }
     }
 
-    /// Attach the byte range of the offending token (P5b builder).
+    /// Attach the byte range of the offending token (builder).
     pub fn with_span(mut self, span: Range<usize>) -> Self {
         self.span = Some(span);
         self
@@ -44,7 +44,7 @@ impl ParserError {
         &self.message
     }
 
-    /// Byte range of the offending token in the parser source, if known (P5b).
+    /// Byte range of the offending token in the parser source, if known.
     pub fn span(&self) -> Option<Range<usize>> {
         self.span.clone()
     }

@@ -1,4 +1,4 @@
-// PHASE8_PLAN WP8.5 Dump step 3 fixture: one micro deck containing every
+// Dump fixture: one micro deck containing every
 // class whose DumpProperties override is still unported EXCEPT Capacitor
 // (Fault, Vsource, UPFC, RegControl, Monitor, EnergyMeter, Spectrum) plus
 // the loads the `dump alloc` file needs (xfkva- and kwh-spec). The
@@ -12,7 +12,7 @@
 //     uninitialized-memory denormals (~1e-305) ALWAYS;
 //   - Reactor: FaultRate/pctPerm print the same garbage whenever an
 //     ENERGYMETER exists in the circuit (fine without one - which is why
-//     the meterless WP8.5-step-1 dump_reactor goldens are byte-exact).
+//     the meterless dump_reactor goldens are byte-exact).
 // Line/Transformer/Fault/loads stay deterministic even with the meter.
 // Capacitor dump coverage lives in the dedicated dump_capacitor.dss
 // fixture with those three lines masked.

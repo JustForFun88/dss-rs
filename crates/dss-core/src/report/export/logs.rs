@@ -7,7 +7,7 @@
 //! accumulate across the run.
 
 /// `TStringList.SaveToFile`: each entry on its own line, every line terminated
-/// (including the last), an empty string when the list is empty. The Phase-8
+/// (including the last), an empty string when the list is empty. The report
 /// comparator strips trailing newlines, so the terminator style is not
 /// load-bearing — this stays faithful to the Pascal `GetTextStr` anyway.
 fn save_string_list(entries: &[String]) -> String {
@@ -36,7 +36,7 @@ pub(crate) fn export_event_log(entries: &[String]) -> String {
 /// The **content** is never oracle-compared: Pascal builds each `ErrorStrings`
 /// entry as `Format('(%d) %s', [ErrorNumber, S])` (`DSSGlobals.pas:275`) — a
 /// different prefix and hand-ported wording — so `Export ErrorLog` is gated
-/// Rust-side only (STATUS §WP8.3 step 3a). The empty dump (the common case, and
+/// Rust-side only. The empty dump (the common case, and
 /// the `export_errorlog` golden) is byte-identical regardless of format.
 pub(crate) fn export_error_log(entries: &[crate::diag::DssDiagnostic]) -> String {
     let mut out = String::new();

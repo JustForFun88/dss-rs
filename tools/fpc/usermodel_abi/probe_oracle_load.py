@@ -1,4 +1,4 @@
-"""WASM_USERMODELS WP-WM.0 P1 — does the pinned dss-python oracle load a
+"""Probe P1 — does the pinned dss-python oracle load a
 native win64 user-model DLL through `Generator.UserModel=`?
 
 Drives the stub DLL built from genstub.pas (15 exports; Calc writes

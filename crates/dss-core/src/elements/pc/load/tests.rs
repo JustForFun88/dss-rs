@@ -66,30 +66,17 @@ fn build_growth_shape(
     obj
 }
 
-/// B3-r3723: `Load.GrowthFactor` at Year=0 with a GrowthShape now tracks the
-/// simulated hours (`calcYear = dblHour/8760`) instead of a flat 1.0 — so a
-/// long (>8760 h) Year=0 run advances through the growth curve.
-///
-/// Oracle-validated against capi015 (backend 0.15.0b4 = SVN r4103, which carries
-/// the r4088-era `GrowthFactor` rewrite; `/tmp/probe_b3*.py`, 2026-07-16;
-/// growthshape `year=(0,1,2) mult=(1.2,1.5,2.0)`, a 100 kW pf 0.9 3-phase load):
-///
-/// | run (year=0)             | capi015 total kW | pre-B3 (0.14.5) |
-/// |--------------------------|------------------|-----------------|
-/// | snapshot, any hour       | 120 (factor 1.2) | 100 (flat 1.0)  |
-/// | daily, dblHour≈8760      | 180 (GetMult 2)  | 100             |
-///
-/// The snapshot 120-vs-100 split is the deck-gated witness
-/// (`modes/upgrade/upgrade_growth_year0.dss`, `oracle: "capi015"`); the exact
-/// per-branch values below match the same oracle (`GetMultIdx(1)=1.2`,
-/// `GetMult(2)=1.8`).
+/// `Load.GrowthFactor` at Year=0 with a GrowthShape tracks the simulated hours
+/// (`calcYear = dblHour/8760`), so a long Year=0 run advances through the growth
+/// curve. The corpus deck `modes/upgrade/upgrade_growth_year0.dss` compares the
+/// snapshot case with dss_capi 0.15.
 #[test]
 fn growth_factor_year0_tracks_simulated_hours_with_growthshape() {
     let gs = build_growth_shape(&[("npts", "3"), ("year", "0 1 2"), ("mult", "1.2 1.5 2.0")]);
     let mut load = load_100kw_pf09(); // 33.333 kW/phase nominal
     load.growth_shape_obj = Some(gs);
     // Year 0, dblHour 100 → calcYear ≈ 0.011 < 1 AND firstY == 0 ⇒
-    // factor = GetMultIdx(1) = 1.2 (pre-B3 this was a flat 1.0). capi015 probe:
+    // factor = GetMultIdx(1) = 1.2. capi015 probe:
     // snapshot year=0 hour=100 → 120 kW total = 40 kW/phase.
     load.set_nominal_load(&mode_ctx(SolveMode::Snapshot, 100.0));
     assert!(
@@ -182,9 +169,9 @@ fn edit_load(edits: &[(&str, &str)]) -> Load {
     load
 }
 
-/// UPGRADE_PLAN ledger L2 (WP-U1.1): `kW`/`kVA` parsed as 0 clamp to `1e-8`
-/// (EPRI r4133 `DblValueNZ`), never kept as 0 and never an error. The whole
-/// open band `(-1e-8, 1e-8)` maps to `+1e-8`; out-of-band values are untouched.
+/// `kW`/`kVA` parsed as zero clamp to the r4133 `DblValueNZ` floor, never kept
+/// as zero and never an error. The whole open band around zero maps to the
+/// floor, and out-of-band values are untouched.
 #[test]
 fn zero_kw_kva_clamp_dblvaluenz() {
     let load = edit_load(&[("kw", "0"), ("kva", "0")]);
@@ -368,7 +355,7 @@ fn snapshot_mode_ignores_shape() {
 /// `Yeq`: it is the `%SeriesRL` split (a parallel R-L part with `Y.im /= h` and a
 /// series R-L part with `Z.im *= h`). This pins that split entry-by-entry and,
 /// as a discriminator, asserts it differs substantially from the naive path — a
-/// regression to `Yeq; Y.im /= h` (the pre-WP7.6 placeholder) fails here. A
+/// regression to `Yeq; Y.im /= h` fails here. A
 /// network solve dilutes the ~40% YPrim error down to ~0.1% on the node
 /// voltages, so the offline golden caught it but only barely; this unit test
 /// pins the admittance itself.
@@ -447,8 +434,8 @@ fn use_actual_daily_sets_kw_kvar_and_seeds_yearly() {
 // (every Monte deck runs `random=none`). Expected values are derived
 // externally from the seed-12345 draw sequence pinned in
 // `support::mathutil::rng` — the canonical MT19937 stream verified there
-// against `mt19937ar.out` / CPython — never captured from `randomize` itself
-// (GAPS_PLAN.md §2.1). `Gauss(0,1) = Σ12 Random − 6.0` exactly, so
+// against `mt19937ar.out` / CPython — never captured from `randomize` itself.
+// `Gauss(0,1) = Σ12 Random − 6.0` exactly, so
 // `Gauss(m,s) = G01·s + m` and `QuasiLognormal(m) = exp(G01)·m` bit-for-bit.
 
 /// First `next_f64()` draw for seed 12345 (`rng.rs`).
@@ -504,7 +491,7 @@ fn randomize_gaussian_with_yearly_uses_shape_mean_std() {
 /// is `(Σ12 − 6)·0.4 + 0.4` with `Σ12` = 6.173185993684456, so upstream draws
 /// 0.4692743974737823 where the port draws 0.4. r4133's Delphi-built `Random`
 /// is another generator and sums another `Σ12` for the same seed. Not
-/// reproduced in either lane (GOLDEN_REBASE G2.1a; `issue-11`), and pinned here
+/// reproduced in either lane (`issue-11`), and pinned here
 /// because no gated deck reaches this path: every Monte deck runs
 /// `random=none`.
 #[test]
@@ -562,7 +549,7 @@ fn randomize_none_sets_one_and_draws_nothing() {
     );
 }
 
-// --- MakePosSequence (WPG.21) --------------------------------------------
+// --- MakePosSequence -----------------------------------------------------
 
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
 use crate::elements::traits::CktElement;

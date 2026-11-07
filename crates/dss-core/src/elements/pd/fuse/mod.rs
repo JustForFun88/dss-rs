@@ -6,20 +6,17 @@
 //! that single phase** of the controlled (switched) element. Each phase has its
 //! own independent fuse link, arm timer, and queue action.
 //!
-//! Joins the WP5.7 control sweep with no new dispatch: `Sample` reads the
+//! Joins the control sweep with no new dispatch: `Sample` reads the
 //! monitored currents, evaluates `GetTCCTime(Cmag / CurveMultiplier)` per phase and
 //! arms/disarms a per-phase control-queue action at `TripTime + Delay`;
 //! `DoPendingAction(phase)` opens that conductor and logs `Phase N Blown`;
 //! `Reset` restores every phase to its `Normal` state.
 //!
-//! **r4133 overhaul (WP-U2.1, delta rows C3/D1)** — `fuse.pas` moved from
-//! `PDElements/` to `Controls/` upstream (file org only; this Rust home stays):
-//! `RatedCurrent` is repurposed from the TCC divisor to a purely informational
-//! continuous rating (default 1.0 → **0.0**); the new `CurveMultiplier` (default
-//! 1.0) is the divisor; the default `FuseCurve` `tlink` → **none** so a
-//! default-constructed fuse **never blows**; a new informational
-//! `InterruptingRating` is added. `GetTccCurve('none')` returns NIL silently (no
-//! #401).
+//! **The r4133 Fuse:** `RatedCurrent` is a purely informational continuous
+//! rating (default **0.0**); `CurveMultiplier` (default 1.0) is the divisor;
+//! the default `FuseCurve` is **none**, so a default-constructed fuse **never
+//! blows**; `InterruptingRating` is informational. `GetTccCurve('none')`
+//! returns NIL silently (no #401).
 //!
 //! **Property quirks settled against the oracle** (probed):
 //! - `Normal`/`State` are **per-phase enum arrays** sized by `GetFuseStateSize`
@@ -70,7 +67,7 @@ pub mod prop {
     pub const ACTION: usize = 8;
     pub const NORMAL: usize = 9;
     pub const STATE: usize = 10;
-    // r4133 (WP-U2.1) added props 11/12 (delta rows C3/D1).
+    // r4133 props 11/12.
     pub const CURVE_MULTIPLIER: usize = 11;
     pub const INTERRUPTING_RATING: usize = 12;
     // TCktElementClass tail (shifted +2 by the r4133 additions):
@@ -91,11 +88,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // behavior (store ref + snapshot) is identical to the generic path.
         PropDef::object_ref_any("SwitchedObj"),
         PropDef::integer("SwitchedTerm"),
-        // r4133 (WP-U2.1): `GetTccCurve('none')` returns NIL **silently** (no
-        // #401) and the default is now `none` — a default-constructed fuse never
-        // blows. `ALLOW_NONE_REF` gives this single ref the r4133 `none`→NIL-silent
-        // parse (Fuse-local; Recloser/Relay keep the not-found path until U2.2/U2.3).
-        // Supersedes the WP-U1.1 item-4 capi015 no-op decision. Delta row D1/E3.
+        // r4133: `GetTccCurve('none')` returns NIL **silently** (no #401) and
+        // the default is `none` — a default-constructed fuse never blows.
+        // `ALLOW_NONE_REF` gives this single ref the r4133 `none`→NIL-silent
+        // parse (Fuse-local; Recloser/Relay keep the not-found path).
         PropDef::object_ref_class("TCC_Curve", "FuseCurve").flags(PropFlags::ALLOW_NONE_REF),
         PropDef::double("RatedCurrent").flags(PropFlags::FINITE_RATING),
         PropDef::double("Delay").flags(PropFlags::UNITS_S),
@@ -106,13 +102,13 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::mapped_string_enum_array("Normal", enums.fuse_state)
             .flags(PropFlags::DYNAMIC_DEFAULT),
         PropDef::mapped_string_enum_array("State", enums.fuse_state),
-        // r4133 (WP-U2.1, delta C3/D1): the new TCC divisor (`GetTCCTime(Cmag/
-        // CurveMultiplier)`) and an informational interrupting rating. WP-U2.5
-        // brought the Fuse `Dump commands` block to its full r4133 12-prop shape
-        // (self-referential golden), so these no longer hide from the full-enum
-        // surface — like the sibling r4133 Recloser props, which never carried a
-        // HIDE flag. `compare_all_properties` still excludes them from the 0.14.5
-        // property-table walk via the name-based `PROPS_015X` allowlist.
+        // r4133: the TCC divisor (`GetTCCTime(Cmag/CurveMultiplier)`) and an
+        // informational interrupting rating. The Fuse `Dump commands` block has
+        // the full r4133 12-prop shape (self-referential golden), so these do
+        // not hide from the full-enum surface — like the sibling r4133 Recloser
+        // props, which carry no HIDE flag. `compare_all_properties` still
+        // excludes them from the 0.14.5 property-table walk via the name-based
+        // `PROPS_015X` allowlist.
         PropDef::double("CurveMultiplier"),
         PropDef::double("InterruptingRating").flags(PropFlags::FINITE_RATING),
         // TCktElementClass tail:
@@ -147,9 +143,8 @@ pub struct Fuse {
     /// The resolved `FuseCurve` clone (snapshot-clone; resolved by the executive
     /// from `fuse_curve_name`, like the Pascal constructor's `Find('tlink')`).
     fuse_curve_obj: Option<TccCurveObj>,
-    /// `RatedCurrent` (A). r4133 (WP-U2.1): repurposed from the TCC divisor to a
-    /// purely informational continuous rating (default 1.0 → 0.0); no longer used
-    /// in `Sample`.
+    /// `RatedCurrent` (A). r4133: a purely informational continuous rating
+    /// (default 0.0), not used in `Sample`.
     rated_current: f64,
     /// `CurveMultiplier` (r4133): the TCC divisor — `GetTCCTime(Cmag /
     /// CurveMultiplier)` (default 1.0).
@@ -191,7 +186,7 @@ impl Fuse {
             mon_snap: None,
             ctrl_snap: None,
             monitored_element_terminal: 1,
-            // r4133 (WP-U2.1): default `FuseCurve` is now `none` (Pascal
+            // r4133: default `FuseCurve` is `none` (Pascal
             // `FuseCurve := NIL`) — a default-constructed fuse never blows. The
             // executive resolves the (empty) clone after edit; `find("none")`
             // misses → `fuse_curve_obj` stays None.
@@ -398,8 +393,8 @@ impl Fuse {
 
             // Phase trip time (Pascal uses `cBuffer[i]` — terminal-1 currents;
             // the `CondOffset` it computes in RecalcElementData is vestigial).
-            // r4133 (WP-U2.1): the TCC divisor is `CurveMultiplier`, not the
-            // (now informational) `RatedCurrent` — `GetTCCTime(Cmag/CurveMultiplier)`.
+            // r4133: the TCC divisor is `CurveMultiplier`, not the
+            // (informational) `RatedCurrent` — `GetTCCTime(Cmag/CurveMultiplier)`.
             let mut trip_time = -1.0;
             if let Some(curve) = self.fuse_curve_obj.as_mut() {
                 let cmag = cbuffer[i - 1].norm();
@@ -468,8 +463,8 @@ impl Fuse {
     ///
     /// The force is **unconditional** per phase — Pascal's `Closed[i] := …`
     /// raises `SystemYChanged` every time; gating on an all-or-nothing aggregate
-    /// would miss a real change on a partially-blown terminal (the WP7.2 step-2a
-    /// dirty-edge guard). Reset is rare, so a redundant rebuild is negligible.
+    /// would miss a real change on a partially-blown terminal (the dirty-edge
+    /// guard). Reset is rare, so a redundant rebuild is negligible.
     pub(crate) fn reset_with(&mut self, ctrl: &mut dyn CktElement) -> bool {
         let element_terminal = self.ccd.element_terminal.max(1) as usize;
         if element_terminal <= ctrl.cd().nterms {

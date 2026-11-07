@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""d2_twin_direct.py — WM.3 D2 sub-bug #2 investigation.
+"""d2_twin_direct.py — probe of the wasm Generator dynamics first-step divergence.
 
 Drive the r3723 244-B native twin DLL DIRECTLY (ctypes, no OpenDSS engine) with
 the wasm_gen_dyn machine params + the deck's converged snapshot terminal V/I,
@@ -12,7 +12,7 @@ exercised by the companion `d2_twin_step.py`, which drives a full step with V
 held fixed and calls `dll.Integrate()`). Here the twin's Init+CalcDynamic gives
 |Is1| = 189.10 (the power-flow point), BIT-IDENTICAL to the Rust engine + wasm
 fixture. Together with `d2_twin_step.py` (guest keeps 189.10 at h=1e-9 with V
-fixed) this shows the guest math is not the bug; the ~5e-4 D2 divergence lives
+fixed) this shows the guest math is not the bug. The ~5e-4 divergence lives
 entirely in how the OpenDSS engine drives the machine to the dynamic operating
 point (|Is1| = 189.207) at the first dynamics step — an h-independent jump the
 guest's own Init/Integrate does not produce with fixed inputs.
@@ -20,7 +20,7 @@ guest's own Init/Integrate does not produce with fixed inputs.
 Usage:  python d2_twin_direct.py <path-to-244B-IndMach012a.dll>
 Env:    PNOM (Pnominalperphase, default -1333333.333), PREINIT=1 (run a
         dynamics-mode CalcDynamic with E1=0 before Init — disproven hypothesis,
-        kept for reproducibility).
+        kept for reproducibility; default off).
 """
 import ctypes
 import os
@@ -134,7 +134,7 @@ def main():
     dll.Calc(ctypes.byref(vin), ctypes.byref(iout))
     print(f"after Init+CalcDyn(Vsnap): |Is1|(var8)={gv(8):.10f}")
     print("  -> 189.10 => guest gives the PFLOW point (== Rust engine, guest is bit-exact)")
-    print("  -> the engine drives it to 189.207 (dynamic point): the D2 bug is engine-flow")
+    print("  -> the engine drives it to 189.207 (dynamic point): the divergence is engine-flow")
 
 
 if __name__ == "__main__":

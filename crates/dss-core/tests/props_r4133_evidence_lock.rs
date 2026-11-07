@@ -1,24 +1,22 @@
 //! Integrity lock over the vendored r4133 property census
-//! (`tests/corpus/props_r4133/`, `R4133_PROPS_PLAN.md` sub-step RP0.1).
+//! (`tests/corpus/props_r4133/`).
 //!
 //! # Why
 //!
-//! That directory is frozen evidence: five byte-identical copies of extracts
-//! whose source is local-only and gitignored, plus derivations of a 270 MiB
-//! census that is not in the repo. Every row of every table `R4133_PROPS_PLAN`
-//! introduces has to trace back to a row here, and from RP2.1 on
-//! `examples_full.txt` is the *input* of the replay-accounting test — a lost or
-//! quietly edited row would not fail that test, it would only shrink what it
-//! proves. Nothing else guards these bytes: the tree is deliberately outside
-//! `golden_lock.rs`'s scope (recorded there in `EXCLUDED_TREES`, reasoned in the
-//! directory's `README.md`), so this file is the guard — and what stops a quiet
-//! edit is the **digest** of item 1, not the structural checks of items 2-3: an
-//! in-place rewrite of a value in `examples_full.txt`'s 2 203 numeric-only rows
-//! keeps every count, sum and bin of those items (RETRO_FIXES RF-D00-16).
+//! That directory is frozen evidence: verbatim copies of extracts whose source
+//! is local-only and gitignored, plus derivations of a census that is not in
+//! the repo. `examples_full.txt` is the *input* of the replay-accounting test —
+//! a lost or quietly edited row would not fail that test, it would only shrink
+//! what it proves. Nothing else guards these bytes: the tree is deliberately
+//! outside `golden_lock.rs`'s scope (recorded there in `EXCLUDED_TREES`), so
+//! this file is the guard. What stops a quiet edit is the **digest** of item 1,
+//! not the structural checks of items 2-3: an in-place rewrite of a value in
+//! `examples_full.txt`'s numeric-only rows keeps every count, sum and bin of
+//! those items.
 //!
 //! # What is locked
 //!
-//! 1. **Bytes** — SHA-256 + length over the five verbatim copies
+//! 1. **Bytes** — SHA-256 + length over the verbatim copies
 //!    ([`VERBATIM`]) and over the six derived files ([`DERIVED`]): the four the
 //!    replay consumes (`examples_full.txt`, `examples_supplement.txt`,
 //!    `bins.tsv`, `shape_in_scope.txt`) and the two in-scope pair extracts
@@ -26,7 +24,7 @@
 //!    are hashed **raw**: `.gitattributes` marks the directory `-text`
 //!    (asserted below), so the committed bytes and the working-tree bytes are
 //!    the same on every platform, CRLF and LF files alike.
-//! 2. **Row counts** of the derived files (the acceptance criterion of WP-RP0).
+//! 2. **Row counts** of the derived files.
 //! 3. **Cross-file equalities** — `bins.tsv` ↔ the pair files ↔
 //!    `examples_full.txt` ↔ the in-scope pair files ↔ `shape_in_scope.txt`,
 //!    including every value column: both `max_rel` columns against their pair
@@ -39,46 +37,34 @@
 //!    These catch a partial regeneration and tie the files to each other;
 //!    what pins a value the triple check admits (another recorded spelling of
 //!    the same pair) is the digest of item 1.
-//! 4. **The two counted claims the README's data traps make** — the 17
-//!    heterogeneous structural pairs and bin 1's nine echo-carrying pairs (four
-//!    mixed, five pure echo). Both are re-derived here from
-//!    `examples_full.txt` + `bins.tsv`, so the corrected numbers are machine-
-//!    checked rather than prose.
-//! 5. **The RP2.1 supplement** — `examples_supplement.txt`, the measured
-//!    spelling inventory of the 26 pairs no frozen row can carry (24 created by
-//!    the WP-RP1 shape closures, plus the pair the 2026-08-08 walk missed and
-//!    the pair a `SKIP_PROPS` row hid). Row/pair/cell counts, a unique
-//!    `(pair, rust, r4133)` triple, disjointness from `bins.tsv`, the
-//!    presence of the provenance header that IS those pairs' bin assignment,
-//!    and its machine-readable `# BIN <pair> <bin>` lines ([`SUPPLEMENT_BINS`]).
+//! 4. **The two counted data traps** — the heterogeneous structural pairs and
+//!    bin 1's echo-carrying pairs, both re-derived here from
+//!    `examples_full.txt` + `bins.tsv`.
+//! 5. **The supplement** — `examples_supplement.txt`, the measured spelling
+//!    inventory of the pairs no frozen row can carry (the pairs the shape
+//!    closures made live, plus the two pairs the census walk could not record).
+//!    Row/pair/cell counts, a unique `(pair, rust, r4133)` triple, disjointness
+//!    from `bins.tsv`, the presence of the provenance header that IS those
+//!    pairs' bin assignment, and its machine-readable `# BIN <pair> <bin>`
+//!    lines ([`SUPPLEMENT_BINS`]).
 //! 6. **The population the in-scope numbers measure** — the live manifests'
-//!    `engines ∈ {both, r4133}` cases are the census's 462 ([`CENSUS_IN_SCOPE`],
-//!    count + digest) plus the named post-census additions
-//!    ([`IN_SCOPE_ADDED_SINCE_CENSUS`]), no census-time `capi_v0145` case
-//!    ([`CENSUS_OUT_OF_SCOPE`], by name, the list itself locked by
+//!    `engines ∈ {both, r4133}` cases are the census's in-scope cases
+//!    ([`CENSUS_IN_SCOPE`], count + digest) plus the named post-census
+//!    additions ([`IN_SCOPE_ADDED_SINCE_CENSUS`]), no census-time `capi_v0145`
+//!    case ([`CENSUS_OUT_OF_SCOPE`], by name, the list itself locked by
 //!    [`CENSUS_ALL`]) is in scope or named as an addition, [`MANIFESTS`] are
 //!    the manifests the gate's population lock counts, and the r4133
-//!    `kind: "skip"` rows of `tests/corpus/ledger.json` the README's in-scope
-//!    section counts are still the ones it names ([`R4133_SKIPS`]). These read
-//!    live files, so they are the tripwire for the README's population prose
-//!    (RETRO_FIXES RF-D00-16).
-//! 7. **The README's tables and headline counts for these files** — the row
-//!    counts and byte totals of its §"Files", the census cell sum, the two
-//!    traps of item 4 with their tables, the per-bin totals and the bin-8
-//!    sentence, each rebuilt from the constants here or from the vendored files
-//!    in the README's own spelling ([`the_readme_quotes_the_locked_numbers`]
-//!    lists them). An in-scope per-cell count is read where the pair's
-//!    `bins.tsv` counts fix it ([`in_scope_share`]), and only the local census
-//!    holds the others.
+//!    `kind: "skip"` rows of `tests/corpus/ledger.json` are still the ones
+//!    [`R4133_SKIPS`] names. These read live files, so they are the tripwire
+//!    for population drift.
 //!
-//! Nothing here needs an oracle, a solve or a feature flag: it is a data lock,
-//! green in both lanes.
+//! Nothing here needs an OpenDSS engine, a solve or a feature flag: it is a
+//! data lock, green in both lanes.
 //!
-//! A deliberate re-measurement (the RP0.2 knob) that legitimately moves these
-//! files updates the constants below in the same commit — that diff is the
-//! review artifact.
+//! A deliberate re-measurement (the corpus gate's `DSS_PROPS_CENSUS` knob)
+//! that legitimately moves these files updates the constants below in the same
+//! commit — that diff is the review artifact.
 
-use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
@@ -91,8 +77,7 @@ const DIR: &str = "tests/corpus/props_r4133";
 /// The one file in [`DIR`] that carries `#` comment lines — see [`data_rows`].
 const SUPPLEMENT: &str = "examples_supplement.txt";
 
-/// The five verbatim copies: name, SHA-256 over the raw bytes, byte length.
-/// Their total is the 24 944 bytes the plan's RP0.1 text and the README quote.
+/// The verbatim copies: name, SHA-256 over the raw bytes, byte length.
 const VERBATIM: &[(&str, &str, usize)] = &[
     (
         "numeric_pairs.txt",
@@ -114,25 +99,17 @@ const VERBATIM: &[(&str, &str, usize)] = &[
         "496e45d801ae9a470d09b5bb56c22614001b6b72a5cd9d4f5710836ed196c4d3",
         81,
     ),
-    (
-        "triage.md",
-        "ec261b373376b035126788afbdaae02e0c961bd64c1135825a1a76cc16256007",
-        8966,
-    ),
 ];
 
 /// The six derived files: name, SHA-256 over the raw bytes, byte length.
 /// Unlike [`VERBATIM`] they have no local source to be a copy of —
 /// `examples_full.txt`, `bins.tsv`, `shape_in_scope.txt` and the two in-scope
-/// pair extracts are WP-RP0's derivations of the 2026-08-08 census,
-/// `examples_supplement.txt` is RP2.1's measurement — so the digest is the only
-/// thing that pins their value text: the structural checks below hold across
-/// an in-place value rewrite (RETRO_FIXES RF-D00-16, finding
-/// `RP|RP0.1|AC1|AC1-1`), and an in-scope extract's example cell can be
-/// re-pointed at another spelling `examples_full.txt` records for the same
-/// pair without breaking any count or triple (the settlement's finding AT-2:
-/// 112 of the 198 structural and 39 of the 53 numeric in-scope pairs have
-/// more than one).
+/// pair extracts are derivations of the census, `examples_supplement.txt` is a
+/// later measurement — so the digest is the only thing that pins their value
+/// text: the structural checks below hold across an in-place value rewrite, and
+/// an in-scope extract's example cell can be re-pointed at another spelling
+/// `examples_full.txt` records for the same pair without breaking any count or
+/// triple (most in-scope pairs have more than one).
 const DERIVED: &[(&str, &str, usize)] = &[
     (
         "examples_full.txt",
@@ -179,32 +156,26 @@ const ROW_COUNTS: &[(&str, usize)] = &[
     ("shape_in_scope.txt", 5),
 ];
 
-/// `examples_supplement.txt` (RP2.1 part C): the pairs no frozen row can carry —
-/// 24 the WP-RP1 shape closures made live, plus the one the 2026-08-08 walk
-/// missed (`regcontrol.fwdthreshold`, RP0.2 correction 1) and the one a
-/// `SKIP_PROPS` row hid on both channels until RP2.1 part A disposed of it
-/// (`regcontrol.revthreshold`).
+/// `examples_supplement.txt`: the pairs no frozen row can carry — the ones the
+/// shape closures made live, plus the one the census walk missed
+/// (`regcontrol.fwdthreshold`) and the one a `SKIP_PROPS` row hid on both
+/// channels (`regcontrol.revthreshold`).
 const SUPPLEMENT_PAIRS: usize = 26;
-/// Cells behind those 76 rows (the file's own `count` column).
+/// Cells behind the supplement's rows (the file's own `count` column).
 const SUPPLEMENT_CELLS: usize = 4541;
-/// The supplement header's `# BIN <pair> <bin>` lines: the two pairs no README
-/// WP-RP1 record bins (the replay reads the README's prose binning only for
-/// the 24 WP-RP1 pairs), declared by the file itself and checked against their
-/// own data rows by the README's rule in
-/// [`the_supplement_carries_only_pairs_no_frozen_row_can`]:
-/// `regcontrol.fwdthreshold` echoes prop 36
-/// (`Version8/Source/Controls/RegControl.pas:294`), which `InitPropertyValues`
-/// never writes (`:1423-1459` initialises 1..32 only);
-/// `regcontrol.revthreshold` echoes the `PropertyValue[23]` store through the
-/// getter's fallthrough (`:820-827`) — `:1448`'s default `'100'`, or the
-/// deck's own token stored by the `Edit` loop at `:420`.
+/// The supplement header's `# BIN <pair> <bin>` lines: the two pairs no shape
+/// closure record bins, declared by the file itself and checked against their
+/// own data rows by the census's assignment rule in
+/// [`the_supplement_carries_only_pairs_no_frozen_row_can`]. Both are r4133
+/// property-value echoes: `regcontrol.fwdthreshold` of a property r4133 never
+/// initialises, `regcontrol.revthreshold` of the stored default or the deck's
+/// own token.
 const SUPPLEMENT_BINS: &[(&str, u8)] = &[
     ("regcontrol.fwdthreshold", 5),
     ("regcontrol.revthreshold", 7),
 ];
 
-/// Characters `structural_pairs.txt` keeps of a longer example value (README
-/// §"Known data traps").
+/// Characters `structural_pairs.txt` keeps of a longer example value.
 const STRUCTURAL_PAIRS_CUT: usize = 40;
 
 /// The `structural_pairs.txt` pairs whose printed example is a
@@ -218,7 +189,7 @@ const STRUCTURAL_PAIRS_CUT_PAIRS: &[&str] = &["energymeter.mask"];
 /// itself.
 const STRUCTURAL_PAIRS_ESCAPED: &str = "storage.dynadll";
 
-/// `R4133_PROPS_PLAN.md` §1.1: bin → (pairs, cells) over the full census.
+/// Bin → (pairs, cells) over the full census.
 const BIN_TOTALS: &[(u8, usize, usize)] = &[
     (1, 75, 297_593),
     (2, 61, 93_213),
@@ -229,28 +200,25 @@ const BIN_TOTALS: &[(u8, usize, usize)] = &[
     (7, 33, 47_432),
 ];
 
-/// Structural bins in scope (`cells_in_scope > 0`), §1.1's 198.
+/// Structural bins in scope (`cells_in_scope > 0`).
 const STRUCTURAL_IN_SCOPE: &[(u8, usize)] = &[(1, 75), (2, 59), (3, 7), (4, 14), (5, 43)];
 
-/// Bin 2's two subbins (README §"Per-bin totals"): subbin, pairs, cells (full
-/// census), pairs in scope.
+/// Bin 2's two subbins: subbin, pairs, cells (full census), pairs in scope.
 const BIN2_SUBBINS: &[(&str, usize, usize, usize)] =
     &[("case", 59, 72_007, 57), ("trail", 2, 21_206, 2)];
 
-/// The in-scope numeric pairs by their re-derived class (README §"Known data
-/// traps"): display precision (bin 6), genuine value jump (bin 7).
+/// The in-scope numeric pairs by their re-derived class: display precision
+/// (bin 6), genuine value jump (bin 7).
 const NUMERIC_IN_SCOPE: (usize, usize) = (37, 16);
 
-/// The eleven Delphi boolean spellings r4133 answers with (README §bin 1).
-/// Anything else on a bin-1 pair is a `PropertyValue[]` echo.
+/// The Delphi boolean spellings r4133 answers with. Anything else on a bin-1
+/// pair is a property-value echo.
 const BOOL_SPELLINGS: &[&str] = &[
     "true", "True", "false", "False", "YES", "yes", "no", "NO", "n", "y", "Y",
 ];
 
 /// Bin-1 pairs whose r4133 side is an echo in some or all cells: pair, foldable
-/// cells, echo cells, the echo spelling. Four mixed + five pure echo — the
-/// measurement that corrects the plan's "three mixed pairs" (README §"Bin 1
-/// carries nine echo pairs, not three").
+/// cells, echo cells, the echo spelling.
 const BIN1_ECHO: &[(&str, usize, usize, &str)] = &[
     ("capcontrol.reset", 0, 446, ""),
     ("recloser.debugtrace", 0, 230, ""),
@@ -267,7 +235,7 @@ const BIN1_ECHO: &[(&str, usize, usize, &str)] = &[
 /// bin: pair, its `bins.tsv` bin, its off-bin cell count (full census).
 /// `isource.bus1` is excluded — it is the one name that is both a structural
 /// and a numeric pair, so `examples_full.txt` cannot separate its two
-/// populations (README §"One pair name is both structural and numeric").
+/// populations.
 const HETEROGENEOUS: &[(&str, u8, usize)] = &[
     ("capcontrol.type", 2, 30),
     ("fault.bus2", 2, 1),
@@ -288,14 +256,7 @@ const HETEROGENEOUS: &[(&str, u8, usize)] = &[
     ("swtcontrol.action", 3, 6),
 ];
 
-/// The README's in-scope per-cell counts that `bins.tsv` fixes
-/// ([`in_scope_share`]): the off-bin cells in scope of `fuse.switchedobj`, all
-/// of whose cells are in scope, and the echo cells in scope of bin 1's five
-/// pure-echo pairs.
-const IN_SCOPE_CELLS_FIXED: usize = 6;
-
-/// `shape_in_scope.txt`: class → (rows, rows in scope). 429 → 149 (§1.1,
-/// WP-RP1's acceptance number).
+/// `shape_in_scope.txt`: class → (rows, rows in scope).
 const SHAPE_IN_SCOPE: &[(&str, usize, usize)] = &[
     ("autotrans", 42, 7),
     ("generator", 273, 137),
@@ -304,19 +265,18 @@ const SHAPE_IN_SCOPE: &[(&str, usize, usize)] = &[
     ("windgen", 5, 5),
 ];
 
-/// The `shape.txt` classes RP1.1 closes, with the census's own `oracle_count`
-/// (the r4133 table's name-list length) and the names the port was missing.
-/// `shape.txt` is frozen evidence, so its `rust_count` stays at the pre-RP1.1
-/// number — what must be true *now* is that the live table has grown to
-/// `oracle_count` and carries the once-missing names.
-const RP1_1_CLOSED: &[(&str, usize, &[&str])] = &[
+/// The `shape.txt` classes whose shape gap is closed, with the census's own
+/// `oracle_count` (the r4133 table's name-list length) and the names this
+/// engine was missing at the census. `shape.txt` is frozen evidence, so its
+/// `rust_count` stays at the census number — what must be true *now* is that
+/// the live table has grown to `oracle_count` and carries those names.
+const SHAPE_GAPS_CLOSED: &[(&str, usize, &[&str])] = &[
     ("generator", 50, &["rneut", "xneut"]),
     ("sensor", 16, &["action"]),
 ];
 
 /// The four manifests the in-scope filter joins census `case` labels to, as
-/// `(label prefix, repo-root-relative path)`: a label is `"<prefix>:<path>"`
-/// (vendored `README.md` §"The in-scope filter").
+/// `(label prefix, repo-root-relative path)`: a label is `"<prefix>:<path>"`.
 const MANIFESTS: &[(&str, &str)] = &[
     ("solvable_now", "tests/corpus/manifests/solvable_now.json"),
     ("asymmetric", "tests/corpus/asymmetric/manifest.json"),
@@ -325,16 +285,14 @@ const MANIFESTS: &[(&str, &str)] = &[
 ];
 
 /// **The population every in-scope number here measures**: the census-time
-/// cases of [`MANIFESTS`] with `engines ∈ {both, r4133}` — 462 of 521 — as
-/// `(count, digest)`, the digest being the SHA-256 over the sorted labels,
-/// each followed by `\n`.
-/// `cells_in_scope`, `max_rel_in_scope`, the two `*_in_scope.txt` extracts and
-/// `shape_in_scope.txt` are all measured over exactly these cases, and
-/// `props_r4133_replay.rs` uses `max_rel_in_scope` as a ceiling. Re-derived
-/// 2026-09-27 (RETRO_FIXES RF-D00-16, finding `RP|RP0.1|AT2|AT2-3`) by applying
-/// the filter to the four manifests as RP0.1's vendoring commit `6db7f202`
-/// holds them (`git show 6db7f202:<manifest>`): 521 cases = 366 `both` + 96
-/// `r4133` + 59 `capi_v0145`.
+/// cases of [`MANIFESTS`] with `engines ∈ {both, r4133}`, as `(count,
+/// digest)`, the digest being the SHA-256 over the sorted labels, each
+/// followed by `\n`. `cells_in_scope`, `max_rel_in_scope`, the two
+/// `*_in_scope.txt` extracts and `shape_in_scope.txt` are all measured over
+/// exactly these cases, and `props_r4133_replay.rs` uses `max_rel_in_scope` as
+/// a ceiling. Derived by applying the filter to the four manifests as the
+/// census's vendoring commit `6db7f202` holds them
+/// (`git show 6db7f202:<manifest>`).
 const CENSUS_IN_SCOPE: (usize, &str) = (
     462,
     "4bb3fa6ff02c9ba8f1581c42f14cb394134b17b0849cddd910ce286464418e03",
@@ -344,13 +302,9 @@ const CENSUS_IN_SCOPE: (usize, &str) = (
 /// census never saw. None of them has a frozen cell, so no in-scope number
 /// above describes them: they are named here so that the population lock can
 /// tell a known addition from drift. A census-time case is never an addition
-/// — one of [`CENSUS_OUT_OF_SCOPE`] named here reds. At RF-D00-16 the live
-/// manifests hold 526 cases (366 `both` + 101 `r4133` + 59 `capi_v0145`), 467
-/// in scope = the census's 462 + these five; the other change since, three GIC
-/// decks moved `both` → `r4133`, stays in scope and moves nothing. The live
-/// manifests hold 527 cases (366 + 101 + 60) since
-/// `modes:makeposseq/makeposseq_pc_repeat.dss` joined as a `capi_v0145` case,
-/// outside the in-scope population, so the 467 stand.
+/// — one of [`CENSUS_OUT_OF_SCOPE`] named here fails. A case that moved
+/// between `both` and `r4133` stays in scope and moves nothing, and a new
+/// `capi_v0145` case lies outside the in-scope population.
 const IN_SCOPE_ADDED_SINCE_CENSUS: &[&str] = &[
     "asymmetric:autotrans/autotrans_xfmrcode.dss",
     "controls:energymeter/midi_relcalc.dss",
@@ -360,14 +314,12 @@ const IN_SCOPE_ADDED_SINCE_CENSUS: &[&str] = &[
 ];
 
 /// The census-time cases of [`MANIFESTS`] the in-scope filter left out — the
-/// 59 `capi_v0145` cases of the 521, sorted, re-derived like
-/// [`CENSUS_IN_SCOPE`] from `git show 6db7f202:<manifest>` (RETRO_FIXES
-/// RF-D00-16 settlement, findings AT-1/AC-1/AT-4). Their census cells were
-/// measured *outside* the in-scope population, so none of them may join it
-/// unnoticed: a flip to `both`/`r4133` reds with its label, and naming it in
-/// [`IN_SCOPE_ADDED_SINCE_CENSUS`] cannot green that red (a subtraction of
-/// the named additions alone would restore the census digest exactly). All 59
-/// are still `capi_v0145` at RF-D00-16.
+/// `capi_v0145` cases, sorted, derived like [`CENSUS_IN_SCOPE`] from
+/// `git show 6db7f202:<manifest>`. Their census cells were measured *outside*
+/// the in-scope population, so none of them may join it unnoticed: a flip to
+/// `both`/`r4133` fails with its label, and naming it in
+/// [`IN_SCOPE_ADDED_SINCE_CENSUS`] cannot make that pass (a subtraction of the
+/// named additions alone would restore the census digest exactly).
 const CENSUS_OUT_OF_SCOPE: &[&str] = &[
     "controls:autotrans/autotrans_both.dss",
     "controls:autotrans/autotrans_reg.dss",
@@ -430,9 +382,9 @@ const CENSUS_OUT_OF_SCOPE: &[&str] = &[
     "solvable_now:Version8/Distrib/IEEETestCases/8500-Node/Run_RecloserSiting.DSS",
 ];
 
-/// All 521 census-time labels of [`MANIFESTS`], any `engines`, as `(count,
-/// digest)` in [`CENSUS_IN_SCOPE`]'s form (`git show 6db7f202:<manifest>`,
-/// 34 258 bytes hashed). The census in-scope set and [`CENSUS_OUT_OF_SCOPE`]
+/// All census-time labels of [`MANIFESTS`], any `engines`, as `(count,
+/// digest)` in [`CENSUS_IN_SCOPE`]'s form (`git show 6db7f202:<manifest>`).
+/// The census in-scope set and [`CENSUS_OUT_OF_SCOPE`]
 /// must add up to it, so that list cannot lose or gain a label unnoticed.
 const CENSUS_ALL: (usize, &str) = (
     521,
@@ -442,9 +394,8 @@ const CENSUS_ALL: (usize, &str) = (
 /// Every r4133-channel `kind: "skip"` row of `tests/corpus/ledger.json`, as
 /// `(case label, ledger id, cause_ref)`: in-scope cases whose r4133 side never
 /// runs, so the `engines`-only filter admits cells the r4133 compare cannot
-/// reach. The README's "four of the 462" are the `epri-303-crash` rows (all
-/// census cases); the fifth is the post-census `espvlcontrol` deck, whose
-/// class r4133 cannot instantiate.
+/// reach. The `epri-303-crash` rows are census cases; the other one is the
+/// post-census `espvlcontrol` deck, whose class r4133 cannot instantiate.
 const R4133_SKIPS: &[(&str, &str, &str)] = &[
     (
         "asymmetric:line/line_spacing_asym.dss",
@@ -489,10 +440,7 @@ fn read(name: &str) -> String {
 /// provenance header IS the bin assignment of the pairs it holds (they have no
 /// `bins.tsv` row). The frozen extracts carry no comment line and are not
 /// allowed to grow one: for them a `#` line stays a data row, so it fails the
-/// row-count lock loudly. (RP2.1 first widened the filter to every file, which
-/// quietly made a `#` line inserted into a frozen extract invisible to
-/// [`derived_extracts_keep_their_row_counts`] — the only assertion that would
-/// have seen it. Audit round.)
+/// row-count lock ([`derived_extracts_keep_their_row_counts`]) loudly.
 fn data_rows(name: &str, header: Option<&str>) -> Vec<String> {
     let comments_allowed = name == SUPPLEMENT;
     let text = read(name);
@@ -509,8 +457,8 @@ fn data_rows(name: &str, header: Option<&str>) -> Vec<String> {
     rows
 }
 
-/// Parse one `class.prop | 'left' | 'right' | tail` row with the quote anchors
-/// the README prescribes — values may contain `|`, never `'`.
+/// Parse one `class.prop | 'left' | 'right' | tail` row with its quote anchors
+/// — values may contain `|`, never `'`.
 fn parse_row(name: &str, line: &str) -> (String, String, String, String) {
     fn bad(name: &str, line: &str) -> ! {
         panic!("{name}: unparsable row {line:?}")
@@ -583,7 +531,7 @@ fn bins() -> Vec<Bin> {
         .collect()
 }
 
-/// The README's structural classification chain, first match wins. Applied to a
+/// The census's structural classification chain, first match wins. Applied to a
 /// **cell** (a distinct `(rust, r4133)` spelling), which is what makes the
 /// heterogeneity check below possible.
 fn classify(rust: &str, r4133: &str) -> u8 {
@@ -602,8 +550,7 @@ fn classify(rust: &str, r4133: &str) -> u8 {
     }
 }
 
-/// A `max_rel` cell of `bins.tsv` (`%.2e`, README §"Known data traps"):
-/// finite, >= 0.
+/// A `max_rel` cell of `bins.tsv` (`%.2e`): finite, >= 0.
 fn parse_max_rel(pair: &str, column: &str, cell: &str) -> f64 {
     let v: f64 = cell
         .parse()
@@ -647,8 +594,8 @@ fn read_json(rel: &str) -> serde_json::Value {
 
 /// The live manifests' cases as `"<prefix>:<path>" -> engines`, every case of
 /// [`MANIFESTS`]. A case with no `engines` key is `both`, the corpus schema's
-/// default the gate applies (`corpus_gate/manifest.rs`, `default_engines`;
-/// TESTING.md names `"both"` the default), so such a case is classified exactly
+/// default the gate applies (`corpus_gate/manifest.rs`, `default_engines`), so
+/// such a case is classified exactly
 /// as the gate channels it; an `engines` that is not a string, an unknown
 /// channel or a case listed twice panics — the join must be exact.
 fn manifest_engines() -> BTreeMap<String, String> {
@@ -688,7 +635,7 @@ fn label_digest(labels: &BTreeSet<&str>) -> String {
     format!("{:x}", Sha256::digest(blob.as_bytes()))
 }
 
-/// The in-scope filter of the vendored `README.md`: `engines ∈ {both, r4133}`.
+/// The census's in-scope filter: `engines ∈ {both, r4133}`.
 fn in_scope(engines: &str) -> bool {
     engines == "both" || engines == "r4133"
 }
@@ -705,23 +652,18 @@ fn verbatim_copies_keep_their_bytes() {
         );
         assert_eq!(
             got, *want,
-            "{name}: content digest moved. The five copies in {DIR} are byte-identical to the \
-             G1.1 extracts in the (gitignored) investigations/g1_1_r4133_props/; if a \
-             re-measurement legitimately replaced them, update VERBATIM in the same commit."
+            "{name}: content digest moved. The copies in {DIR} are byte-identical to the \
+             census extracts they were vendored from; if a re-measurement legitimately \
+             replaced them, update VERBATIM in the same commit."
         );
         total += got_len;
     }
-    assert_eq!(total, 24_944, "the five copies total 24 944 bytes");
+    assert_eq!(total, 15_978, "the verbatim copies' total byte length");
 }
 
-/// **The digest is what stops a quiet edit of a derived file** ([`DERIVED`]).
-/// The row counts, sums and bins below hold across an in-place rewrite of a
-/// value; one moved byte anywhere — a value, a count, a comment line of the
-/// supplement's header — moves the digest. That includes the two in-scope
-/// extracts: [`bins_tsv_agrees_with_the_pair_files`] ties their columns to the
-/// other files, but an example cell re-pointed at another spelling
-/// `examples_full.txt` records for the same pair passes it — only the digest
-/// sees that edit.
+/// The digest stops a quiet edit of a derived file ([`DERIVED`]): the row
+/// counts, sums, bins and triple joins below all hold across an in-place
+/// rewrite of a value, one moved byte anywhere moves the digest.
 #[test]
 fn derived_files_keep_their_bytes() {
     for (name, want, len) in DERIVED {
@@ -733,7 +675,7 @@ fn derived_files_keep_their_bytes() {
         );
         assert_eq!(
             got, *want,
-            "{name}: content digest moved. A deliberate re-measurement (the RP0.2 knob, or a \
+            "{name}: content digest moved. A deliberate re-measurement (the census knob, or a \
              supplement re-measure) that legitimately replaces this file updates DERIVED in the \
              same commit — that diff is the review artifact; a hand edit of a value is what \
              this assertion exists to stop."
@@ -807,7 +749,7 @@ fn bins_tsv_agrees_with_the_pair_files() {
     }
 
     // The in-scope extracts' example columns must name a spelling the
-    // digest-locked census extract recorded, on the same side (RF-D00-16).
+    // digest-locked census extract recorded, on the same side.
     let full = examples_full_triples();
     let (mut max_rel_full, mut max_rel_in_scope, mut triples) = (0usize, 0usize, 0usize);
 
@@ -901,17 +843,10 @@ fn bins_tsv_agrees_with_the_pair_files() {
     );
 }
 
-/// `R4133_PROPS_PLAN.md` §1.1's numeric rule on the numbers that carry it
-/// (README §"Numeric pairs (bins 6–7)"): `bin = 7` iff the pair's full-census
-/// `max_rel` is `>= 1e-4`, else `bin = 6`. The in-scope maximum is taken over a
-/// subset of the same cells, so it never exceeds the full one, and it is `-`
-/// exactly when the pair has no in-scope cell; structural rows carry `-` in
-/// both columns. The replay reads both columns as ceilings
-/// (`props_r4133_replay.rs`: `max_rel_in_scope` through `PairEvidence`, the
-/// full `max_rel` through `frozen_max_rel`), so an inflated cell would loosen a
-/// comparison silently: the pair files agree with them cell for cell
-/// ([`bins_tsv_agrees_with_the_pair_files`]), this rule pins the bin, and the
-/// digest ([`DERIVED`]) pins the bytes.
+/// A numeric pair's bin follows its full-census `max_rel` threshold, and the
+/// in-scope maximum, taken over a subset of the same cells, never exceeds the
+/// full one. The replay reads both columns as ceilings, so an inflated cell
+/// would loosen a comparison silently.
 #[test]
 fn numeric_bins_follow_their_max_rel() {
     let (mut numeric, mut in_scope) = (0usize, 0usize);
@@ -988,7 +923,7 @@ fn examples_full_carries_every_pair_and_every_cell() {
         assert!(
             triples.insert((pair.clone(), rust, r4133)),
             "examples_full.txt: duplicate (pair, rust, r4133) triple in {line:?} — the join key \
-             the README prescribes must stay unique"
+             must stay unique"
         );
         *got.entry(pair).or_default() += count;
         total += count;
@@ -1005,14 +940,11 @@ fn examples_full_carries_every_pair_and_every_cell() {
     );
 }
 
-/// `structural_pairs.txt` prints one representative cell per pair. Every
-/// example is a row of the digest-locked `examples_full.txt`, exactly or cut at
-/// [`STRUCTURAL_PAIRS_CUT`] characters ([`STRUCTURAL_PAIRS_CUT_PAIRS`]), except
-/// [`STRUCTURAL_PAIRS_ESCAPED`], which joins no row and is a cut census cell
-/// once its doubled backslashes are undone. The example is also the cell the
-/// pair's `bins.tsv` label was classified on (README §"`bins.tsv` — the
-/// assignment rule"), so [`classify`] reproduces every structural bin and
-/// bin-2 subbin from this file alone.
+/// Every `structural_pairs.txt` example is a row of the digest-locked
+/// `examples_full.txt` (exactly, cut, or for [`STRUCTURAL_PAIRS_ESCAPED`] cut
+/// and escaped), and [`classify`] reproduces every structural bin and bin-2
+/// subbin from it, since it is the cell the pair's `bins.tsv` label was
+/// classified on.
 #[test]
 fn structural_pairs_examples_are_census_cells() {
     let full = examples_full_triples();
@@ -1099,14 +1031,9 @@ fn structural_pairs_examples_are_census_cells() {
     );
 }
 
-/// **The RP2.1 supplement.** `examples_supplement.txt` is not a copy of anything
-/// — it is a measurement (a full `DSS_PROPS_CENSUS=1` run on the post-RP1.4 tree,
-/// 2026-08-23) of the pairs the frozen extracts *structurally cannot* contain,
-/// and the RP2.1 replay reads it as one population with `examples_full.txt`.
-/// What must hold for that join to be sound: the same row shape, a unique
-/// `(pair, rust, r4133)` triple, and **no pair in both files** — a pair on both
-/// sides would make the triple join ambiguous and would mean one of the two
-/// files is describing a population it should not.
+/// The supplement holds only pairs the frozen extracts cannot, in their row
+/// shape, with unique triples and `# BIN` lines its own rows confirm. A pair in
+/// both files would make the replay's triple join ambiguous.
 #[test]
 fn the_supplement_carries_only_pairs_no_frozen_row_can() {
     let frozen: BTreeSet<String> = bins().into_iter().map(|b| b.pair).collect();
@@ -1160,7 +1087,7 @@ fn the_supplement_carries_only_pairs_no_frozen_row_can() {
     }
 
     // Its machine-readable form: one `# BIN <pair> <bin>` line per pair no
-    // README WP-RP1 record bins, each naming a pair with data rows in the file.
+    // shape-closure record bins, each naming a pair with data rows in the file.
     let declared: Vec<(String, u8)> = text
         .lines()
         .filter_map(|l| l.trim_end_matches('\r').strip_prefix("# BIN "))
@@ -1184,10 +1111,8 @@ fn the_supplement_carries_only_pairs_no_frozen_row_can() {
         .collect();
     assert_eq!(declared, want, "examples_supplement.txt `# BIN` lines");
 
-    // A declared bin is the one the README's assignment rule (§"`bins.tsv` —
-    // the assignment rule") gives the pair's own data rows, so the declaration
-    // is checked, not trusted (RETRO_FIXES RF-D00-16 settlement, finding
-    // AC-6). Numeric — every row `Numeric` under the census's own comparator
+    // A declared bin is the one the census's assignment rule gives the pair's
+    // own data rows, so the declaration is checked, not trusted. Numeric — every row `Numeric` under the census's own comparator
     // (`harness::value_verdict`, at a zero floor: these rows are divergent by
     // construction) — is bin 7 iff the pair's `max_rel` is >= 1e-4, else 6.
     // Structural is the chain of [`classify`]; the supplement orders a pair's
@@ -1217,14 +1142,14 @@ fn the_supplement_carries_only_pairs_no_frozen_row_can() {
         assert_eq!(
             derived,
             BTreeSet::from([*bin]),
-            "examples_supplement.txt `# BIN {pair} {bin}`: the README's rule puts its data rows \
+            "examples_supplement.txt `# BIN {pair} {bin}`: the assignment rule puts its data rows \
              {rows:?} in bin(s) {derived:?}"
         );
     }
 }
 
 #[test]
-fn per_bin_totals_match_the_plan() {
+fn per_bin_totals_match_the_census() {
     let bins = bins();
     let mut pairs: BTreeMap<u8, usize> = BTreeMap::new();
     let mut cells: BTreeMap<u8, usize> = BTreeMap::new();
@@ -1261,9 +1186,9 @@ fn per_bin_totals_match_the_plan() {
                 assert_eq!(b.subbin, "-", "{}: numeric rows carry no subbin", b.pair);
                 if b.cells_in_scope > 0 {
                     // The in-scope numeric split is *re-derived* from
-                    // `max_rel_in_scope`, not read off the full-census bin
-                    // (README, last data trap): four bin-7 pairs are display
-                    // class once the capi-only cases are dropped.
+                    // `max_rel_in_scope`, not read off the full-census bin:
+                    // some bin-7 pairs are display class once the capi-only
+                    // cases are dropped.
                     let max_rel: f64 = b
                         .max_rel_in_scope
                         .parse()
@@ -1312,21 +1237,13 @@ fn per_bin_totals_match_the_plan() {
         198,
         "in-scope structural pairs"
     );
-    assert_eq!(
-        (display, jump),
-        NUMERIC_IN_SCOPE,
-        "in-scope numeric split (README §per-bin totals)"
-    );
+    assert_eq!((display, jump), NUMERIC_IN_SCOPE, "in-scope numeric split");
 }
 
-/// The README's two counted data traps, re-derived from the vendored files.
-///
-/// Both correct a claim the plan makes, so they are locked rather than left as
-/// prose: `bins.tsv`'s one-bin-per-pair label hides 17 heterogeneous pairs, and
-/// bin 1 holds nine echo-carrying pairs where `R4133_PROPS_PLAN.md` §1.2 names
-/// three.
+/// The heterogeneous structural pairs that `bins.tsv`'s one-bin-per-pair label
+/// hides, and bin 1's echo-carrying pairs, re-derived from the vendored files.
 #[test]
-fn the_readme_data_traps_are_still_the_measurement() {
+fn the_census_data_traps_are_still_the_measurement() {
     let bins = bins();
     let bin_of: BTreeMap<(String, String), u8> = bins
         .iter()
@@ -1342,7 +1259,7 @@ fn the_readme_data_traps_are_still_the_measurement() {
     assert_eq!(
         dual_kind.iter().map(String::as_str).collect::<Vec<_>>(),
         ["isource.bus1"],
-        "the README names isource.bus1 as the one pair living in both kinds"
+        "isource.bus1 is the one pair living in both kinds"
     );
 
     let mut per_pair_bins: BTreeMap<String, BTreeMap<u8, usize>> = BTreeMap::new();
@@ -1395,8 +1312,8 @@ fn the_readme_data_traps_are_still_the_measurement() {
         .collect();
     assert_eq!(
         het, want,
-        "the set of structural pairs whose cells split across bins moved — the README's \
-         \"A pair's bin is a label\" table and RP2.1's admissibility rule are measured on it"
+        "the set of structural pairs whose cells split across bins moved — the replay's \
+         admissibility rule is measured on it"
     );
     assert_eq!(off_bin_total, 6_719, "off-bin structural cells");
 
@@ -1424,8 +1341,8 @@ fn the_readme_data_traps_are_still_the_measurement() {
         .collect();
     assert_eq!(
         echo, want,
-        "bin 1's echo population moved — RP2.3's echo rows are sized on exactly these nine pairs \
-         (the plan's \"three mixed pairs\" is the number this measurement corrects)"
+        "bin 1's echo population moved — the replay's echo rows are sized on exactly these \
+         pairs"
     );
     assert_eq!(
         echo.iter().filter(|(_, f, _, _)| *f > 0).count(),
@@ -1438,427 +1355,6 @@ fn the_readme_data_traps_are_still_the_measurement() {
         "bin-1 echo cells"
     );
     assert_eq!(bin1.len(), 75, "bin 1 has 75 pairs");
-}
-
-/// `n` the way the README writes it: digits grouped in threes by a space
-/// (`24 944`, `3 378`, `209`).
-fn grouped(n: usize) -> String {
-    let digits = n.to_string();
-    let mut out = String::new();
-    for (i, d) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i).is_multiple_of(3) {
-            out.push(' ');
-        }
-        out.push(d);
-    }
-    out
-}
-
-/// A small count the way the README spells it out (`nine`).
-fn word(n: usize) -> &'static str {
-    const WORDS: [&str; 13] = [
-        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
-        "eleven", "twelve",
-    ];
-    WORDS
-        .get(n)
-        .copied()
-        .unwrap_or_else(|| panic!("no word for {n}"))
-}
-
-/// A count the way the README's tables write it: [`grouped`], a zero in bold.
-fn table_cell(n: usize) -> String {
-    if n == 0 {
-        "**0**".to_string()
-    } else {
-        grouped(n)
-    }
-}
-
-/// The in-scope cells of a `part` of a pair's `cells` cells, `in_scope` of
-/// them in scope, when those counts fix it. It lies between `part` less the
-/// out-of-scope cells and the smaller of `part` and `in_scope`, which meet
-/// only for a pair with no out-of-scope cell or no in-scope cell, or a `part`
-/// that is empty or every cell.
-fn in_scope_share(part: usize, cells: usize, in_scope: usize) -> Option<usize> {
-    let out_of_scope = cells
-        .checked_sub(in_scope)
-        .unwrap_or_else(|| panic!("{in_scope} cells in scope of {cells}"));
-    let lowest = part.saturating_sub(out_of_scope);
-    let highest = part.min(in_scope);
-    (lowest == highest).then_some(lowest)
-}
-
-/// The data rows of the first table in the README section headed exactly
-/// `heading` (header and separator rows dropped), each split into its trimmed
-/// cells.
-fn readme_table_cells(readme: &str, heading: &str) -> Vec<Vec<String>> {
-    let mut lines = readme.lines().map(|l| l.trim_end_matches('\r'));
-    assert!(
-        lines.any(|l| l == heading),
-        "README.md has no section headed {heading:?}"
-    );
-    lines
-        .take_while(|l| !l.starts_with('#'))
-        .skip_while(|l| !l.starts_with('|'))
-        .take_while(|l| l.starts_with('|'))
-        .skip(2)
-        .map(|l| {
-            let inner = l.trim_end();
-            let inner = inner.strip_prefix('|').unwrap_or(inner);
-            let inner = inner.strip_suffix('|').unwrap_or(inner);
-            inner.split('|').map(|c| c.trim().to_string()).collect()
-        })
-        .collect()
-}
-
-/// The row of `rows` whose first cell is `first`.
-fn readme_row<'a>(rows: &'a [Vec<String>], first: &str) -> &'a [String] {
-    rows.iter()
-        .find(|r| r.first().is_some_and(|c| c == first))
-        .unwrap_or_else(|| panic!("README.md has no table row for {first}"))
-}
-
-/// The README states numbers this lock measures, so it is read here: each one
-/// is rebuilt from this file's constants or from the vendored files in the
-/// README's own spelling (digits grouped by a space, small counts as words)
-/// and must appear in its text, line breaks aside. Read: the row counts, the
-/// line count of `triage.md` and the byte totals of §"Files"; the census cell
-/// sum of §"Row formats"; the heterogeneous pairs' headline counts, their share
-/// of the structural cells and their table; bin 1's echo counts and table; the
-/// per-bin totals table and the bin-8 sentence; a cell of the two tables'
-/// in-scope per-cell columns (off-bin in scope, echo cells in scope) where the
-/// pair's `bins.tsv` counts fix it ([`in_scope_share`]). Not read: the other
-/// in-scope per-cell counts and the counts drawn from them, which only the
-/// local census holds, and prose that repeats a number already read. A README
-/// edit that changes a number read here, or a constant that moves without the
-/// README, fails here.
-#[test]
-fn the_readme_quotes_the_locked_numbers() {
-    let readme = read("README.md");
-    let text = readme.split_whitespace().collect::<Vec<_>>().join(" ");
-    let quotes = |want: String| {
-        assert!(text.contains(&want), "README.md no longer quotes {want:?}");
-    };
-
-    // §"Files": every row-shaped file's data-row count, the line count of the
-    // one LF copy, `triage.md`, the five verbatim copies' total bytes, and
-    // `triage.md`'s share of them.
-    for (name, rows) in ROW_COUNTS {
-        quotes(format!("| `{name}` | {} data", grouped(*rows)));
-    }
-    quotes(format!(
-        "| `triage.md` | {} lines |",
-        grouped(read("triage.md").lines().count())
-    ));
-    let verbatim_bytes: usize = VERBATIM.iter().map(|(_, _, len)| len).sum();
-    let triage_bytes = VERBATIM
-        .iter()
-        .find(|(name, _, _)| *name == "triage.md")
-        .map(|(_, _, len)| *len)
-        .unwrap_or_default();
-    quotes(format!("({} bytes total)", grouped(verbatim_bytes)));
-    quotes(format!(
-        "({} of the {} bytes)",
-        grouped(triage_bytes),
-        grouped(verbatim_bytes)
-    ));
-
-    // §"Row formats": the census cells `examples_full.txt` accounts for.
-    let cells = |bins: std::ops::RangeInclusive<u8>| -> usize {
-        BIN_TOTALS
-            .iter()
-            .filter(|(bin, _, _)| bins.contains(bin))
-            .map(|(_, _, cells)| cells)
-            .sum()
-    };
-    let (structural_cells, numeric_cells) = (cells(1..=5), cells(6..=7));
-    let examples_rows = ROW_COUNTS
-        .iter()
-        .find(|(name, _)| *name == "examples_full.txt")
-        .map(|(_, rows)| *rows)
-        .unwrap_or_default();
-    quotes(format!(
-        "The {} rows' counts sum to {} = every value cell in the census ({} structural + {} \
-         numeric)",
-        grouped(examples_rows),
-        grouped(structural_cells + numeric_cells),
-        grouped(structural_cells),
-        grouped(numeric_cells)
-    ));
-
-    // §"A pair's bin is a label": the 17 heterogeneous pairs, the structural
-    // pairs in scope, the off-bin cells and their share of the structural
-    // cells, and one table row per pair.
-    let structural_pairs: usize = BIN_TOTALS
-        .iter()
-        .filter(|(bin, _, _)| *bin <= 5)
-        .map(|(_, pairs, _)| pairs)
-        .sum();
-    let structural_in_scope: usize = STRUCTURAL_IN_SCOPE.iter().map(|(_, pairs)| pairs).sum();
-    let off_bin: usize = HETEROGENEOUS.iter().map(|(_, _, off)| off).sum();
-    quotes(format!(
-        "**{} of the {}** structural pairs",
-        HETEROGENEOUS.len(),
-        grouped(structural_pairs)
-    ));
-    quotes(format!(
-        "of the {} in scope) split across two or three bins: {} cells — {:.2} % of the \
-         structural population,",
-        grouped(structural_in_scope),
-        grouped(off_bin),
-        100.0 * off_bin as f64 / structural_cells as f64
-    ));
-    quotes(format!("— {} pairs are heterogeneous", HETEROGENEOUS.len()));
-
-    // The table, every column of it (the off-bin cells in scope only where the
-    // pair's counts fix them). The last column lists the pair's cells by the
-    // bin they classify into, largest first.
-    let pair_cells: BTreeMap<String, (usize, usize)> = bins()
-        .into_iter()
-        .filter(|b| b.kind == "structural")
-        .map(|b| (b.pair, (b.cells, b.cells_in_scope)))
-        .collect();
-    let mut per_bin: BTreeMap<String, BTreeMap<u8, usize>> = BTreeMap::new();
-    for line in data_rows(
-        "examples_full.txt",
-        Some("class.prop | rust | r4133 | count"),
-    ) {
-        let (pair, rust, r4133, tail) = parse_row("examples_full.txt", &line);
-        if HETEROGENEOUS.iter().any(|(p, _, _)| *p == pair) {
-            *per_bin
-                .entry(pair)
-                .or_default()
-                .entry(classify(&rust, &r4133))
-                .or_default() += rows_field("examples_full.txt", &tail);
-        }
-    }
-    let rows = readme_table_cells(
-        &readme,
-        "### A pair's bin is a label, not a per-cell classification",
-    );
-    assert_eq!(
-        rows.len(),
-        HETEROGENEOUS.len(),
-        "README.md's heterogeneous-pair table rows"
-    );
-    let mut fixed_cells = 0usize;
-    for (pair, bin, off) in HETEROGENEOUS {
-        let row = readme_row(&rows, &format!("`{pair}`"));
-        assert_eq!(row.len(), 7, "README.md's heterogeneous-pair row {row:?}");
-        let (pair_total, pair_in_scope) = pair_cells[*pair];
-        let mut by_size: Vec<(u8, usize)> = per_bin[*pair].iter().map(|(b, c)| (*b, *c)).collect();
-        by_size.sort_by_key(|&(b, c)| (Reverse(c), b));
-        let split = by_size
-            .iter()
-            .map(|(b, c)| format!("{b}: {}", grouped(*c)))
-            .collect::<Vec<_>>()
-            .join(" · ");
-        let want = [
-            format!("`{pair}`"),
-            bin.to_string(),
-            grouped(pair_total),
-            grouped(*off),
-            grouped(pair_in_scope),
-            split,
-        ];
-        let got = [0, 1, 2, 3, 4, 6].map(|i| row[i].clone());
-        assert_eq!(
-            got, want,
-            "README.md's heterogeneous-pair row for {pair} (its off-bin-in-scope column aside)"
-        );
-        if let Some(off_in_scope) = in_scope_share(*off, pair_total, pair_in_scope) {
-            assert_eq!(
-                row[5],
-                table_cell(off_in_scope),
-                "README.md's off-bin-in-scope cell for {pair}, which its cells ({pair_total}, \
-                 {pair_in_scope} in scope) and off-bin cells ({off}) fix"
-            );
-            fixed_cells += 1;
-        }
-    }
-
-    // §"Bin 1 carries nine echo pairs": the pair counts, the echo cells, and
-    // one table row per echo pair, every column of it (the echo cells in scope
-    // only where the pair's counts fix them).
-    let bin1_pairs = BIN_TOTALS
-        .iter()
-        .find(|(bin, _, _)| *bin == 1)
-        .map(|(_, pairs, _)| *pairs)
-        .unwrap_or_default();
-    let echo_pairs = BIN1_ECHO.len();
-    let mixed = BIN1_ECHO.iter().filter(|(_, f, _, _)| *f > 0).count();
-    let echo_cells: usize = BIN1_ECHO.iter().map(|(_, _, e, _)| e).sum();
-    let heading = format!(
-        "### Bin 1 carries {} echo pairs, not three",
-        word(echo_pairs)
-    );
-    quotes(heading.clone());
-    quotes(format!(
-        "Of bin 1's {bin1_pairs} pairs, {} render one of the {} Delphi boolean spellings",
-        bin1_pairs - echo_pairs,
-        word(BOOL_SPELLINGS.len())
-    ));
-    quotes(format!(
-        "**{}** answer with an echo in some or all cells — {} echo cells",
-        word(echo_pairs),
-        grouped(echo_cells)
-    ));
-    quotes(format!("**{} genuinely mixed pairs**", word(mixed)));
-    quotes(format!("**{} pure-echo pairs**", word(echo_pairs - mixed)));
-    quotes(format!(
-        "**{} pairs** that are pure boolean rendering",
-        bin1_pairs - echo_pairs
-    ));
-    quotes(format!(
-        "bin 1 holds {} echo-carrying pairs",
-        word(echo_pairs)
-    ));
-    let rows = readme_table_cells(&readme, &heading);
-    assert_eq!(rows.len(), echo_pairs, "README.md's bin-1 echo table rows");
-    for (pair, foldable, echo, spelling) in BIN1_ECHO {
-        let row = readme_row(&rows, &format!("`{pair}`"));
-        let foldable = table_cell(*foldable);
-        let spelling = format!("`{}`", if spelling.is_empty() { "''" } else { spelling });
-        assert!(
-            row.len() == 5
-                && row[1] == foldable
-                && row[2] == grouped(*echo)
-                && row[3].starts_with(&spelling),
-            "README.md's bin-1 echo row for {pair} is {row:?}, not {foldable} | {} | {spelling} \
-             (its in-scope column aside)",
-            grouped(*echo)
-        );
-        let (pair_total, pair_in_scope) = pair_cells[*pair];
-        if let Some(echo_in_scope) = in_scope_share(*echo, pair_total, pair_in_scope) {
-            assert_eq!(
-                row[4],
-                table_cell(echo_in_scope),
-                "README.md's echo-cells-in-scope cell for {pair}, which its cells ({pair_total}, \
-                 {pair_in_scope} in scope) and echo cells ({echo}) fix"
-            );
-            fixed_cells += 1;
-        }
-    }
-    assert_eq!(
-        fixed_cells, IN_SCOPE_CELLS_FIXED,
-        "README.md in-scope per-cell counts that bins.tsv fixes"
-    );
-
-    // §"Per-bin totals": one row per bin and the total row, every column but
-    // the bin's description. Bin 2 spells out its two subbins.
-    let in_scope_pairs = |bin: u8| -> usize {
-        match bin {
-            6 => NUMERIC_IN_SCOPE.0,
-            7 => NUMERIC_IN_SCOPE.1,
-            _ => STRUCTURAL_IN_SCOPE
-                .iter()
-                .find(|(b, _)| *b == bin)
-                .map(|(_, pairs)| *pairs)
-                .unwrap_or_default(),
-        }
-    };
-    let with_subbins =
-        |total: usize, parts: Vec<String>| format!("{} ({})", grouped(total), parts.join(" + "));
-    let rows = readme_table_cells(
-        &readme,
-        "### Per-bin totals (both the full census and the in-scope re-derivation)",
-    );
-    assert_eq!(
-        rows.len(),
-        BIN_TOTALS.len() + 1,
-        "README.md's per-bin totals rows: one per bin and the total"
-    );
-    for (bin, pairs, bin_cells) in BIN_TOTALS {
-        let in_scope = in_scope_pairs(*bin);
-        let want = if *bin == 2 {
-            [
-                with_subbins(
-                    *pairs,
-                    BIN2_SUBBINS
-                        .iter()
-                        .map(|(name, p, _, _)| format!("{} {name}", grouped(*p)))
-                        .collect(),
-                ),
-                with_subbins(
-                    *bin_cells,
-                    BIN2_SUBBINS
-                        .iter()
-                        .map(|(_, _, c, _)| grouped(*c))
-                        .collect(),
-                ),
-                with_subbins(
-                    in_scope,
-                    BIN2_SUBBINS
-                        .iter()
-                        .map(|(_, _, _, s)| grouped(*s))
-                        .collect(),
-                ),
-            ]
-        } else {
-            [grouped(*pairs), grouped(*bin_cells), grouped(in_scope)]
-        };
-        let row = readme_row(&rows, &bin.to_string());
-        assert_eq!(row.len(), 5, "README.md's per-bin totals row {row:?}");
-        assert_eq!(
-            row[2..],
-            want,
-            "README.md's per-bin totals row for bin {bin} (its description aside)"
-        );
-    }
-    let total_pairs: usize = BIN_TOTALS.iter().map(|(_, pairs, _)| pairs).sum();
-    let total_in_scope: usize = BIN_TOTALS
-        .iter()
-        .map(|(bin, _, _)| in_scope_pairs(*bin))
-        .sum();
-    assert_eq!(
-        readme_row(&rows, "**total**"),
-        [
-            "**total**".to_string(),
-            String::new(),
-            format!("**{}**", grouped(total_pairs)),
-            format!("**{}**", grouped(structural_cells + numeric_cells)),
-            format!("**{}**", grouped(total_in_scope)),
-        ],
-        "README.md's per-bin totals row"
-    );
-
-    // Bin 8, the sentence under that table: `shape_in_scope.txt`'s classes and
-    // rows, the in-scope classes largest first, the others by their rows. The
-    // README capitalises the sentence's first word and two class names.
-    let mut kept: Vec<(&str, usize)> = SHAPE_IN_SCOPE
-        .iter()
-        .filter(|(_, _, k)| *k > 0)
-        .map(|(class, _, k)| (*class, *k))
-        .collect();
-    kept.sort_by_key(|&(_, k)| Reverse(k));
-    let mut dropped: Vec<(&str, usize)> = SHAPE_IN_SCOPE
-        .iter()
-        .filter(|(_, _, k)| *k == 0)
-        .map(|(class, rows, _)| (*class, *rows))
-        .collect();
-    dropped.sort_by_key(|&(_, rows)| Reverse(rows));
-    let bin8 = format!(
-        "bin 8 (property-table shape, `shape.txt`): {} classes / {} element rows in the full \
-         census; **{}** rows over {} classes in scope — {} ({} sit entirely on capi-only cases)",
-        SHAPE_IN_SCOPE.len(),
-        grouped(SHAPE_IN_SCOPE.iter().map(|(_, rows, _)| rows).sum()),
-        grouped(SHAPE_IN_SCOPE.iter().map(|(_, _, k)| k).sum()),
-        kept.len(),
-        kept.iter()
-            .map(|(class, k)| format!("{class} {}", grouped(*k)))
-            .collect::<Vec<_>>()
-            .join(", "),
-        dropped
-            .iter()
-            .map(|(class, rows)| format!("{class}'s {}", grouped(*rows)))
-            .collect::<Vec<_>>()
-            .join(" and "),
-    );
-    assert!(
-        text.to_lowercase().contains(&bin8),
-        "README.md no longer quotes {bin8:?} (case aside)"
-    );
 }
 
 #[test]
@@ -1902,28 +1398,19 @@ fn shape_in_scope_splits_shape_txt() {
         kept += want_kept;
     }
     assert_eq!(rows, 429, "shape rows in the full census");
-    assert_eq!(
-        kept, 149,
-        "shape rows on r4133-gating cases (WP-RP1's 149 -> 0)"
-    );
+    assert_eq!(kept, 149, "shape rows on r4133-gating cases");
 }
 
-/// RP1.1's deliverable, read back against the evidence that motivated it: the
-/// live Generator and Sensor property tables now have exactly the length
-/// `shape.txt` records for the r4133 oracle, and carry the names that file lists
-/// as `oracle_only`.
-///
-/// This is the offline half of "the generator `shape_count` gap is closed" — the
-/// live half is the census knob on the r4133 channel, which cannot run in plain
-/// `cargo test`. It is deliberately driven off the vendored file rather than
-/// literal counts, so a re-measurement that moved `shape.txt` moves this
-/// assertion with it instead of leaving a stale number behind.
+/// The live Generator and Sensor property tables have exactly the length
+/// `shape.txt` records for r4133 and carry the names that file lists as
+/// `oracle_only`. It reads the vendored file rather than literal counts, so a
+/// re-measurement that moves `shape.txt` moves this assertion with it.
 #[test]
-fn rp1_1_closes_the_generator_and_sensor_shape_gaps() {
+fn the_generator_and_sensor_tables_close_their_shape_gaps() {
     let rows = data_rows("shape.txt", None);
 
     // Read the tables through the same surface the census does: the live
-    // property list of a real element (`AllPropertyNames` on the oracle side,
+    // property list of a real element (`AllPropertyNames` on the r4133 side,
     // `Dss::element_properties` here).
     let mut dss = dss_core::exec::Dss::new();
     for cmd in [
@@ -1941,7 +1428,7 @@ fn rp1_1_closes_the_generator_and_sensor_shape_gaps() {
         other => panic!("no probe element for {other}"),
     };
 
-    for (class, want_oracle_count, want_missing) in RP1_1_CLOSED {
+    for (class, want_oracle_count, want_missing) in SHAPE_GAPS_CLOSED {
         let line = rows
             .iter()
             .find(|l| l.starts_with(&format!("{class}: ")))
@@ -1958,12 +1445,12 @@ fn rp1_1_closes_the_generator_and_sensor_shape_gaps() {
         let oracle_count = field("oracle_count=");
         assert_eq!(
             oracle_count, *want_oracle_count,
-            "{class}: shape.txt's oracle_count moved — RP1.1 sized the port's \
-             table on it"
+            "{class}: shape.txt's oracle_count moved — this engine's table is \
+             sized on it"
         );
         assert!(
             field("rust_count=") < oracle_count,
-            "{class}: shape.txt must still record the PRE-RP1.1 rust_count (it is \
+            "{class}: shape.txt must still record the census-time rust_count (it is \
              frozen evidence, never edited in place)"
         );
         for name in *want_missing {
@@ -1973,7 +1460,7 @@ fn rp1_1_closes_the_generator_and_sensor_shape_gaps() {
             );
         }
 
-        // What the port answers today.
+        // What this engine answers today.
         let live: Vec<String> = dss
             .element_properties(element_of(class))
             .unwrap_or_else(|| panic!("{class}: probe element missing"))
@@ -1983,37 +1470,25 @@ fn rp1_1_closes_the_generator_and_sensor_shape_gaps() {
         assert_eq!(
             live.len(),
             oracle_count,
-            "{class}: the port's table is {} names long, r4133's is {oracle_count} \
-             — the shape gap this sub-step closes is back",
+            "{class}: this engine's table is {} names long, r4133's is {oracle_count} \
+             — the shape gap is back",
             live.len()
         );
         for name in *want_missing {
             assert!(
                 live.contains(&(*name).to_string()),
-                "{class}: the port's table still lacks {name:?}"
+                "{class}: this engine's table still lacks {name:?}"
             );
         }
     }
 }
 
-/// RP1.4's deliverable, read back the same way — but this shape row runs
-/// **backwards**, so what must hold is the opposite of the test above: the port
-/// KEEPS the property, and the r4133 side is the one that lost it.
-///
-/// `shape.txt` records `gendispatcher: rust_count=10 oracle_count=9
-/// oracle_only=[] rust_only=['weights']` — r4133's `TGenDispatcher` names seven
-/// properties but declares six (`Version8/Source/Controls/GenDispatcher.pas:92,133`),
-/// so `TCktElementClass.DefineProperties` overwrites slot 7 with `basefreq`
-/// (`Common/CktElementClass.pas:98`). RP1.4 closes the gap with a `PROPS_015X`
-/// row, NOT by touching the engine, and the failure mode that row would hide is
-/// exactly a port that "fixed" the shape by dropping or renaming `Weights`.
-/// This pins that it did not: 10 names, `weights` still at slot 7, still after
-/// `genlist` and ahead of the inherited tail — the ordering r4133 intended and
-/// dss_capi has. The row's own inertness on a capture that knows the name is
-/// pinned in the harness
-/// (`props_015x_tests::shipped_gendispatcher_weights_row_is_inert_when_the_oracle_knows_it`).
+/// GenDispatcher keeps its `Weights` property after `GenList` and ahead of the
+/// inherited tail, the ordering r4133 intends and dss_capi has. r4133's own
+/// table loses the name to an OpenDSS bug, which a `PROPS_015X` row excludes
+/// without touching this engine.
 #[test]
-fn rp1_4_keeps_the_gendispatcher_weights_the_r4133_table_loses() {
+fn gendispatcher_keeps_the_weights_the_r4133_table_loses() {
     let rows = data_rows("shape.txt", None);
     let line = rows
         .iter()
@@ -2056,8 +1531,8 @@ fn rp1_4_keeps_the_gendispatcher_weights_the_r4133_table_loses() {
     assert_eq!(
         live.len(),
         rust_count,
-        "the port's GenDispatcher table is {} names long, the census recorded \
-         {rust_count} — RP1.4 changes no engine code, so this must not move",
+        "this engine's GenDispatcher table is {} names long, the census recorded \
+         {rust_count} — the r4133 shape gap is excluded, never fixed by dropping a name",
         live.len()
     );
     assert_eq!(
@@ -2075,7 +1550,7 @@ fn rp1_4_keeps_the_gendispatcher_weights_the_r4133_table_loses() {
 
 /// **The in-scope numbers still describe the population they were measured
 /// on.** Every in-scope figure in this directory is a measurement over the
-/// census's 462 in-scope cases ([`CENSUS_IN_SCOPE`]), while the manifests it
+/// census's in-scope cases ([`CENSUS_IN_SCOPE`]), while the manifests it
 /// joins to are live files that keep growing. So, instead of silently changing
 /// what `max_rel_in_scope` is a ceiling over:
 ///
@@ -2085,12 +1560,9 @@ fn rp1_4_keeps_the_gendispatcher_weights_the_r4133_table_loses() {
 /// * the live in-scope set, less the named additions, is the census set
 ///   exactly — same count, same digest — so a census case that left the scope
 ///   or a new in-scope deck nobody named reds;
-/// * the census set and [`CENSUS_OUT_OF_SCOPE`] add up to the census's 521
+/// * the census set and [`CENSUS_OUT_OF_SCOPE`] add up to the census's
 ///   labels ([`CENSUS_ALL`]), so the out-of-scope list cannot be trimmed to
-///   let a flip through
-///
-/// (RETRO_FIXES RF-D00-16, finding `RP|RP0.1|AT2|AT2-3`, and its settlement's
-/// AT-1/AC-1).
+///   let a flip through.
 #[test]
 fn the_in_scope_population_is_the_census_one_plus_named_additions() {
     let engines = manifest_engines();
@@ -2129,7 +1601,7 @@ fn the_in_scope_population_is_the_census_one_plus_named_additions() {
         "census-time `capi_v0145` case(s) now in scope: {entered:?}. Their census cells were \
          measured outside the in-scope population, so `cells_in_scope`, `max_rel_in_scope` and \
          the in-scope extracts no longer cover what the r4133 channel compares: re-derive them \
-         (the RP0.2 census knob) or keep the case `capi_v0145` — never re-baseline this pin"
+         (the census knob) or keep the case `capi_v0145` — never re-baseline this pin"
     );
     for label in &added {
         assert!(
@@ -2158,7 +1630,7 @@ fn the_in_scope_population_is_the_census_one_plus_named_additions() {
          the {{both, r4133}} scope (live `capi_v0145` cases the census did not have as \
          `capi_v0145`: {left:?}), means the frozen in-scope measurements no longer cover what \
          the r4133 channel compares (diff the labels against `git show 6db7f202:<manifest>` of \
-         the four MANIFESTS): re-derive them (the RP0.2 census knob), never re-baseline this pin",
+         the four MANIFESTS): re-derive them (the census knob), never re-baseline this pin",
         added.len(),
         live.len(),
         engines.len()
@@ -2181,8 +1653,7 @@ fn the_in_scope_population_is_the_census_one_plus_named_additions() {
 /// population.lock.json` (`population_lock.rs` fails on any live count that
 /// moves), records `solvable_now.json`'s case count and each family's
 /// (`family_counts`): [`MANIFESTS`] must be `solvable_now` plus exactly those
-/// families, at `tests/corpus/<family>/manifest.json`, with those counts
-/// (RETRO_FIXES RF-D00-16 settlement, finding AC-5).
+/// families, at `tests/corpus/<family>/manifest.json`, with those counts.
 #[test]
 fn the_census_manifests_are_the_gated_ones() {
     let lock = read_json("tests/corpus/manifests/population.lock.json");
@@ -2233,17 +1704,12 @@ fn the_census_manifests_are_the_gated_ones() {
     );
 }
 
-/// **The r4133 skip rows the README's in-scope section names are still skip
-/// rows.** The filter is `engines`-only, so it admits cases whose r4133 side
-/// the ledger switches off; the README counts them (the four `epri-303-crash`
-/// census cases, and since G1.2 the `espvlcontrol` deck). This pins the ledger
-/// side of that prose: every r4133 `kind: "skip"` row is one of
-/// [`R4133_SKIPS`] and each of those is still there with its id and cause, on
-/// an in-scope `engines: both` case (the `capi_v0145` channel gates each deck
-/// fully), census or named addition as the table says (RETRO_FIXES RF-D00-16,
-/// finding `RP|RP0.1|AT3|AT3-1`).
+/// Every r4133 `kind: "skip"` row of the ledger is one of [`R4133_SKIPS`], each
+/// still on an in-scope `engines: both` case, census or named addition. The
+/// in-scope filter is `engines`-only, so these are the in-scope cases whose
+/// r4133 side never runs.
 #[test]
-fn the_r4133_skip_rows_are_the_readme_four_plus_espvlcontrol() {
+fn the_r4133_skip_rows_are_the_named_ones() {
     let engines = manifest_engines();
     let ledger = read_json("tests/corpus/ledger.json");
     let entries = ledger["entries"]
@@ -2266,8 +1732,8 @@ fn the_r4133_skip_rows_are_the_readme_four_plus_espvlcontrol() {
         .collect();
     assert_eq!(
         skips, want,
-        "the r4133 skip rows of tests/corpus/ledger.json moved: the README's in-scope section \
-         counts them, so update R4133_SKIPS together with a README note"
+        "the r4133 skip rows of tests/corpus/ledger.json moved: update R4133_SKIPS \
+         together with the ledger"
     );
 
     let mut crash_303 = 0usize;
@@ -2285,8 +1751,5 @@ fn the_r4133_skip_rows_are_the_readme_four_plus_espvlcontrol() {
             assert!(post_census, "{id}: {case} is the post-census skip");
         }
     }
-    assert_eq!(
-        crash_303, 4,
-        "the README names exactly four `epri-303-crash` skip cases"
-    );
+    assert_eq!(crash_303, 4, "exactly four `epri-303-crash` skip cases");
 }

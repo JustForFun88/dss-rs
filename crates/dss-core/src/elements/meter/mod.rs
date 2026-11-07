@@ -1,5 +1,5 @@
-//! Metering devices (`Meters/*.pas`): the `TMeterElement` base plus Monitor
-//! (Phase 6 WP6.3), EnergyMeter (WP6.4) and Sensor (WP6.7).
+//! Metering devices (`Meters/*.pas`): the `TMeterElement` base plus Monitor,
+//! EnergyMeter and Sensor.
 
 pub mod energymeter;
 pub mod meter_element;

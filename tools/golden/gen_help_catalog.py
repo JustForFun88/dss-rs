@@ -1,5 +1,5 @@
 """Generate `crates/dss-core/src/report/help_catalog.rs` from the pinned
-oracle's gettext help catalog (PHASE8_PLAN WP8.5 step 3b item 1).
+oracle's gettext help catalog.
 
 The pinned dss-python wheel ships the property/command help strings as a
 gettext catalog, `dss/messages/properties-en-US.mo` (keys `Command.<name>`,
@@ -132,14 +132,13 @@ def main() -> None:
     pairs = parse_mo(mo)
     print(f"parsed {len(pairs)} entries from {mo}")
 
-    # WP-U2.5: override/add the r4133 protection help for all four classes
+    # Override/add the r4133 protection help for all four classes
     # (Relay/Recloser/Fuse/SwtControl property surfaces the 0.14.5 wheel predates —
     # see `r4133_help.py`). A key that already exists (deprecated aliases whose help
     # became "DEPRECATED. See …") is replaced in place; a renamed/new prop
     # (`PhCurve`, `SinglePhTrip`, `CurveMultiplier`, …) is appended. The Recloser
-    # help was hand-edited into the catalog at WP-U2.2; U2.5 folds it into the
-    # supplement too, so `gen_help_catalog.py` reproduces the committed file exactly
-    # instead of silently reverting it.
+    # help lives in the supplement too, so `gen_help_catalog.py` reproduces the
+    # committed file exactly instead of silently reverting it.
     catalog = dict(pairs)
     catalog.update(R4133_HELP)
     # The engine's own help where the wheel's text contradicts a rule the

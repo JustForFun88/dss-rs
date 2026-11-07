@@ -1,4 +1,4 @@
-// Recloser single-phase tripping (r4133 WP-U2.2, delta rows B3/C2): SinglePhTrip
+// Recloser single-phase tripping (r4133): SinglePhTrip
 // enables per-phase trip/reclose so a single-line-to-ground fault opens ONLY the
 // faulted phase, leaving the other two closed. A bolted SLG fault on phase 1
 // drives the phase-1 current far above the PhFastPickup while phases 2/3 stay

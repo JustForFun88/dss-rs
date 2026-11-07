@@ -19,7 +19,7 @@ use super::PVSystem;
 
 impl PVSystem {
     /// Pascal `CalcYPrimMatrix` (power-flow + harmonic paths). A grid-forming
-    /// PVSystem stamps the `CalcGFMYprim` short-circuit admittance instead (WPG.13).
+    /// PVSystem stamps the `CalcGFMYprim` short-circuit admittance instead.
     pub(super) fn calc_yprim_matrix(&mut self, ymatrix: &mut CMatrix, sys: &SysCtx) {
         self.cd.yprim_freq = sys.frequency;
         let freq_multiplier = self.cd.yprim_freq / self.cd.base_frequency;
@@ -278,10 +278,9 @@ impl PVSystem {
             1 => self.do_constant_pq(sys, node_v),
             2 => self.do_constant_z(sys, node_v),
             3 => {
-                // Pascal `TPVsystemObj.DoUserModel` (PVsystem.pas:1822-1840):
-                // CalcYPrimContribution(InjCurrent) then, if UserModel.Exists,
-                // FCalc + negate into InjCurrent (inside `user_model_fcalc`);
-                // else #567 (WASM_USERMODELS WM.4).
+                // `DoUserModel`: CalcYPrimContribution(InjCurrent) then, if
+                // UserModel.Exists, FCalc + negate into InjCurrent (inside
+                // `user_model_fcalc`), else #567.
                 self.calc_yprim_contribution(node_v);
                 if !self.user_model_fcalc(sys, node_v, errors)
                     && self.base.user_model_name.trim().is_empty()

@@ -1,4 +1,4 @@
-//! Corpus manifest coverage gate (CORPUS_TEST_PLAN.md §2) — the "no silent
+//! Corpus manifest coverage gate — the "no silent
 //! omissions" guarantee. Oracle-free and always-on (runs in the gate's
 //! `cargo nextest run --workspace`).
 //!

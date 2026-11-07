@@ -1,8 +1,8 @@
 //! The host-services surface: the Pascal 32-slot `TDSSCallBacks` vtable
-//! (`Common/DSSCallBackRoutines.pas:19-67`) re-expressed as the [`Callbacks`]
+//! re-expressed as the [`Callbacks`]
 //! trait (tier A pure reads + tier B effect seeds), the tier-B [`Effect`]
 //! queue, and the per-instance [`CallData`] store state (context snapshot +
-//! owned AuxParser + effect queue — plan §2.3, ABI doc §4).
+//! owned AuxParser + effect queue — ABI doc §4).
 //!
 //! wasmi host functions only see the `Store` data, never the live engine — so
 //! dss-core implements [`Callbacks`] on an owned per-call snapshot it builds
@@ -27,8 +27,8 @@ use crate::records::DynamicsRec;
 /// (`DSSCallBackRoutines.pas:493` "this is bad") is deliberately NOT
 /// reproduced (ABI doc §4, documented decision).
 ///
-/// `Send` keeps `wasmi::Store<CallData>` `Send` for the MULTITHREADING M3
-/// disjoint-`&mut` pattern (plan §2.7).
+/// `Send` keeps `wasmi::Store<CallData>` `Send` for the disjoint-`&mut`
+/// pattern.
 pub trait Callbacks: Send {
     /// Pascal `GetActiveElementNameCallBack` (`:423-437`): the element's
     /// `FullName`. `None` ⇒ no active element (import returns 0, buffer
@@ -182,7 +182,7 @@ pub struct NoCallbacks;
 impl Callbacks for NoCallbacks {}
 
 /// A tier-B mutation recorded during a guest call, drained by the engine
-/// immediately after the call returns, in order (plan §2.3 tier B).
+/// immediately after the call returns, in order (tier B).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Effect {
     /// Pascal `MsgCallBack` → `DoSimpleMsgCallback`
@@ -230,9 +230,8 @@ pub(crate) enum Fault {
 
 /// Per-instance store state: the pre-call context snapshot, the owned
 /// AuxParser (tier C — Pascal `CallBackParser`, a plain `TDSSParser`
-/// instance, `DSSCallBackRoutines.pas:90/:493`), the tier-B effect queue, the
-/// tier-C deferred DSS-command mechanism (WP-WM.6) and the host-fault slot
-/// (plan §2.3).
+/// instance), the tier-B effect queue, the tier-C deferred DSS-command
+/// mechanism and the host-fault slot.
 pub(crate) struct CallData {
     /// The tier-A context snapshot for the current call.
     pub(crate) ctx: Box<dyn Callbacks>,
@@ -246,13 +245,12 @@ pub(crate) struct CallData {
     pub(crate) last_param_value: String,
     /// Tier-B effects queued during the current call, in order.
     pub(crate) effects: Vec<Effect>,
-    /// WP-WM.6 tier-C deferred DSS-command mechanism
-    /// (`DoDSSCommand`/`GetResultStr`, `DSSCallBackRoutines.pas:150-154/:449-452`).
-    /// **Opt-in** (default `false`): `do_dss_command`/`get_result_str` raise the
-    /// loud [`Fault::Unsupported`] (the pre-WM.6 behavior — never a silent
-    /// no-op) unless a host that can re-enter the executive between calls opts
-    /// in via [`crate::UserModelInstance::enable_dss_commands`]. The dss-rs
-    /// element call sites hold a disjoint borrow and cannot reach the executive
+    /// Tier-C deferred DSS-command mechanism (`DoDSSCommand`/`GetResultStr`).
+    /// **Opt-in** (default `false`): `do_dss_command`/`get_result_str` raise
+    /// the loud [`Fault::Unsupported`] (never a silent no-op) unless a host
+    /// that can re-enter the executive between calls opts in via
+    /// [`crate::UserModelInstance::enable_dss_commands`]. The dss-rs element
+    /// call sites hold a disjoint borrow and cannot reach the executive
     /// (`Dss::command`), so they leave it disabled; the mechanism is exercised
     /// by the channel-2 protocol tests, which act as the re-entrant host. See
     /// ABI doc §4 rows 7/32 + the ordering note.

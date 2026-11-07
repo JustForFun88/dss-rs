@@ -1,9 +1,9 @@
-//! Pascal number formatters shared across the Phase-8 reports — the
+//! Pascal number formatters shared across the reports — the
 //! `Format('%…g', …)` / `Format('%…f', …)` call sites in `ExportResults.pas`
 //! and `ShowResults.pas` (Pascal `Common/Utilities.pas` number helpers).
 //!
-//! The text/CSV golden gate parses numbers out (`harness::compare_export`,
-//! PHASE8_PLAN §2.3), so these only need to be *faithful* (notation + digit
+//! The text/CSV golden gate parses numbers out (`harness::compare_export`), so
+//! these only need to be *faithful* (notation + digit
 //! count), not bit-exact to FPC's formatter — the value comparison is by
 //! tolerance. `%g` delegates to the existing C-`printf`-style
 //! [`crate::util::fmt_g`].
@@ -39,7 +39,7 @@ pub fn fixed(v: f64, decimals: usize) -> String {
 /// text/CSV comparator collapses the padding, but the separation must exist).
 ///
 /// This uses Rust's native `{:.N}` (round-half-to-even on the true `f64`), which
-/// is *faithful* for the value-parsed Show tables — and, since F.4, it is also
+/// is *faithful* for the value-parsed Show tables — and it is also
 /// the **default kernel** the whole-circuit JSON PostCommands render through
 /// ([`crate::compat::fixed_w_script`]); the parity lane keeps the byte-exact
 /// [`fixed_w_fpc_impl`] there.
@@ -59,7 +59,7 @@ pub fn fixed_w(v: f64, width: usize, decimals: usize) -> String {
 /// `99999.995 -> 100000.00`. Empirically pinned against the pinned oracle
 /// (`tools/golden/gen_json.py` `circuit_positive_seq`).
 ///
-/// **The parity kernel of the F-FMT seam's fixed renderer**
+/// **The parity kernel of the lane-switched fixed renderer**
 /// ([`crate::compat::fixed_w_script`]). The two-stage decimal rounding it
 /// reproduces is the row's deliberate inexactness; the default lane selects
 /// [`fixed_w`], which is the single correctly-rounded fixed format that
@@ -224,7 +224,7 @@ pub fn fpc_sci_body(v: f64, width: usize) -> String {
 /// **Case-fold before padding with `to_ascii_uppercase`, never `to_uppercase`.**
 /// `ShowResults.pas` pads first and upper-cases second
 /// (`FromBus := Pad(StripExtension(...), MaxBusNameLength)` then
-/// `AnsiUpperCase(FromBus)`), and F.4e's table model necessarily inverts that —
+/// `AnsiUpperCase(FromBus)`), and the table model necessarily inverts that —
 /// the `Cell` owns the padding, so the text reaching it is already folded. The
 /// two orders agree **iff** folding preserves byte length. Pascal's
 /// `AnsiUpperCase` on an `AnsiString` does; Rust's Unicode-aware
@@ -294,7 +294,7 @@ mod tests {
     /// (a fractional weight at a rounding boundary).
     ///
     /// Asserted against the **impl**, not the seam, so it pins the parity kernel
-    /// in *both* lanes (the F-FMT mechanism: both kernels always compiled).
+    /// in *both* lanes (both kernels are always compiled).
     #[test]
     fn fixed_w_fpc_matches_oracle_percent_8_2f() {
         // (input weight, oracle `Set ueweight=` value with its width-8 padding)
@@ -341,17 +341,11 @@ mod tests {
         assert_eq!(fixed_w_fpc_impl(-0.005, 8, 2), "   -0.01"); // ties-away, sign kept
     }
 
-    /// The F-FMT fixed row, at its observable: the seam
-    /// [`crate::compat::fixed_w_script`] resolves to FPC's two-stage rounding in
-    /// the parity lane and to the single correctly-rounded [`fixed_w`] in the
-    /// default lane — and the two genuinely disagree, so this is a real split
-    /// and not a rename.
-    ///
-    /// The expected values are the *documented* difference between the rules:
-    /// `0.125` is an exact binary half, so ties-away gives `0.13` and Rust's
-    /// ties-to-even gives `0.12`; `2.675` is really `2.67499999999999982…`, which
-    /// FPC's 15-significant intermediate (`2.67500000000000`) rounds up to `2.68`
-    /// while a single correct rounding of the true value gives `2.67`.
+    /// Pins that the lane seam [`crate::compat::fixed_w_script`] resolves to
+    /// FPC's two-stage rounding in the parity lane and to the single
+    /// correctly-rounded [`fixed_w`] in the default lane. The two rules disagree
+    /// at an exact binary half and wherever FPC's 15-significant-digit
+    /// intermediate rounds up a value that lies just below a tie.
     #[test]
     fn fixed_w_script_is_the_lane_kernel() {
         use crate::compat::{OPENDSS_PARITY, fixed_w_script};

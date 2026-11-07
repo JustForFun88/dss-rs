@@ -95,12 +95,12 @@ enum ControlKind {
     },
     /// InvControl dispatches a *dynamic* PVSystem/Storage fleet, so — like the
     /// GenDispatcher / StorageController — it reaches the fleet through the whole
-    /// class registry (not a fixed pair). WP7.5 step 2b ports the VOLTVAR mode;
-    /// every other mode records an explicit NOT_PORTED error (never a silent skip).
+    /// class registry (not a fixed pair). A mode this engine does not model
+    /// records an explicit NOT_PORTED error (never a silent skip).
     Inv,
     /// ExpControl dispatches a *dynamic* PVSystem fleet (the adaptive-`Vreg`
     /// volt-var control); like InvControl it reaches the fleet through the whole
-    /// class registry (WP7.5 step 3).
+    /// class registry.
     Exp,
     /// UPFCControl drives a *dynamic* UPFC fleet (scanned from the whole class
     /// registry); `Sample` polls every UPFC's `CheckStatus`, `Action` uploads

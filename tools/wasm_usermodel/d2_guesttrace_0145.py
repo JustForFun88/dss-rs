@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""d2_guesttrace_0145.py — WM.3 D2 sub-bug #2 investigation.
+"""d2_guesttrace_0145.py — probe of the wasm Generator dynamics first-step divergence.
 
 Enable the IndMach012 model's OWN built-in DebugTrace (`option=Debug`) on the
 pinned 0.14.5 oracle + r3723 244-B twin and dump IndMach012_Trace.CSV, which
@@ -9,7 +9,7 @@ records the GUEST-INTERNAL state per CalcDynamic:
 This is the only channel that exposes the guest flux `E1` on the oracle side
 (it is not in the 14-var monitoring surface). With `H` it varies the step size:
 at h=1e-9 the guest |E1| still jumps to the dynamic operating point (7412.15,
-not the pflow 7412.52), proving the D2 first-step E1 move is h-INDEPENDENT.
+not the pflow 7412.52), proving the first-step E1 move is h-INDEPENDENT.
 
 Usage: python d2_guesttrace_0145.py <twin.dll> <outdir> [nsteps]
 Env:   DECK (deck path; default tools/golden/wasm_decks/wasm_gen_dyn.dss),

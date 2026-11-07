@@ -9,7 +9,7 @@ use crate::util::sqrt3;
 
 /// Build the `Export Voltages` CSV body (Pascal `ExportVoltages`). Read-only
 /// over the solved circuit; the caller writes the returned text to the report
-/// file (PHASE8_PLAN §2.1).
+/// file.
 pub fn export_voltages(ckt: &Circuit) -> String {
     // `MaxNumNodes := max over buses of NumNodesThisBus` (sets the column count).
     let max_num_nodes = ckt

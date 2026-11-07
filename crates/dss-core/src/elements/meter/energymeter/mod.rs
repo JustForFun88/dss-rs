@@ -7,12 +7,12 @@
 //! `NodeRef` from `SetBus(1, <metered bus>)`) and the circuit `energy_meters`
 //! list, but never PD/PC.
 //!
-//! WP6.4 scope: the property table (1–24 + the `CktElementClass` tail), the
+//! Scope: the property table (1–24 + the `CktElementClass` tail), the
 //! ctor register-name initialization, `MakeLike`, `RecalcElementData`,
 //! `ResetRegisters`, and the zone-build surface (`MakeMeterZoneLists` /
 //! `AddToVoltBaseList` / `AssignVoltBaseRegisterNames` / `GetPCEatZone`, driven
-//! from [`crate::solution::meters`]). The register accumulation (`TakeSample`,
-//! WP6.5) and reliability indices (WP6.6) land in later work packages.
+//! from [`crate::solution::meters`]). The register accumulation (`TakeSample`)
+//! and the reliability indices are computed in [`crate::solution::meters`].
 //!
 //! Split into submodules mirroring `monitor/`, `reactor/`, `transformer/`:
 //! - this `mod.rs` — register/property ordinals, `class_props`, the `EmSnapshot`
@@ -188,7 +188,7 @@ pub struct FeederSection {
     pub sum_branch_flt_rates: f64,
 }
 
-/// Parse-time snapshot of the metered element (the WP4.7 `RefSnapshot`
+/// Parse-time snapshot of the metered element (the `RefSnapshot`
 /// pattern): `RecalcElementData` runs at `EndEdit` after the foreign-class view
 /// is gone, so the parse-relevant shape is captured when `element=` resolves.
 #[derive(Debug, Clone, Default)]
@@ -241,7 +241,7 @@ pub struct EnergyMeter {
     /// matching Pascal.
     assume_restoration: bool,
 
-    // Reliability outputs (read-only; WP6.6 fills them).
+    // Reliability outputs (read-only; the reliability sweep fills them).
     saifi: f64,
     saifi_kw: f64,
     saidi: f64,
@@ -265,7 +265,7 @@ pub struct EnergyMeter {
     /// Parse-time snapshot of the metered element.
     metered_snap: Option<EmSnapshot>,
 
-    // Register machinery (WP6.5 fills TakeSample/Integrate).
+    // Register machinery (TakeSample/Integrate fill it).
     register_names: Vec<String>,
     registers: Vec<f64>,
     derivatives: Vec<f64>,
@@ -279,7 +279,7 @@ pub struct EnergyMeter {
     vbase_list: Vec<f64>,
     vbase_count: usize,
 
-    // --- Demand-interval machinery (WP8.3 step 4) --------------------------
+    // --- Demand-interval machinery -----------------------------------------
     /// Pascal `This_Meter_DIFileIsOpen`.
     di_file_is_open: bool,
     /// Pascal `VPhaseReportFileIsOpen`.

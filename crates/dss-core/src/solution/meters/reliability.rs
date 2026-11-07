@@ -1,4 +1,4 @@
-//! EnergyMeter reliability indices (WP6.6) — Pascal `TExecHelper.DoLambdaCalcs`
+//! EnergyMeter reliability indices — Pascal `TExecHelper.DoLambdaCalcs`
 //! / `TEnergyMeterObj.CalcReliabilityIndices` (EnergyMeter.pas l.2411): the
 //! backward fault-rate sweep, the forward interruption sweep (counting the
 //! feeder sections delimited by OCP devices), then SAIFI/SAIDI/CAIDI.
@@ -13,7 +13,7 @@ use crate::elements::traits::{CktElement, ElemId, ElemStore, TypedStore};
 use super::meter_mut;
 use super::zones::total_up_downstream_customers;
 
-// ===================== Reliability (WP6.6) ==================================
+// ===================== Reliability ==========================================
 
 /// FROM bus (0-based index into `ckt.buses`) of a PD element's metered terminal.
 fn pd_from_bus(store: &dyn ElemStore, r: ElemId) -> usize {
@@ -40,10 +40,9 @@ fn pd_from_bus(store: &dyn ElemStore, r: ElemId) -> usize {
 ///
 /// There is **no `Enabled` filter** on that scan, while `HasOCPDevice` — the
 /// flag gating the call — is set only by an *enabled* OCP control, so the two
-/// can disagree. Measured on the pinned capi oracle
-/// (`tmp/g13d2/probe_f5_ocp.py`: a disabled `Fuse` plus an enabled `Relay` on
-/// the section head): `Meters.OCPDeviceType == 1` (FUSE) while the port's
-/// registration-time latch `CktElementData::ocp_device_type` — written once for
+/// can disagree. With a disabled `Fuse` plus an enabled `Relay` on the section
+/// head, dss_capi reports `Meters.OCPDeviceType == 1` (FUSE), while this
+/// engine's registration-time latch `CktElementData::ocp_device_type` — written once for
 /// the first *enabled* OCP control (`exec/command.rs`
 /// `RefAction::SetOcpDevice`) — holds `3` (RELAY). The latch is therefore not
 /// read here; pinned by `exec::tests::reliability`'s
@@ -100,8 +99,8 @@ pub(crate) fn calc_all_reliability_indices(
 /// *sections* delimited by OCP devices), then SAIFI/SAIDI/CAIDI.
 ///
 /// A zone with no OCP device (no enabled Relay/Recloser/Fuse on any branch) has
-/// `SectionCount == 0` and the sweep aborts with error 52902 exactly as the
-/// oracle does. Since WP7.2 step 3 those controls set `Flg.HasOCPDevice` on
+/// `SectionCount == 0` and the sweep aborts with error 52902 exactly as
+/// OpenDSS does. Those controls set `Flg.HasOCPDevice` on
 /// their controlled element, so a protected zone reaches the live section/SAIFI
 /// math below.
 fn calc_reliability_indices(
@@ -135,8 +134,8 @@ fn calc_reliability_indices(
     // the call, r3723 (the SVN base of the pinned oracle) included; dss_capi
     // 0.14.5 dropped it in its own refactor (`EnergyMeter.pas:2411-2427` goes
     // straight from the zone check to the zeroing loop) and therefore weights
-    // the sections with the totals the last zone build left. r4133 is the
-    // behavioral authority (CLAUDE.md), so the port follows it: the divergence
+    // the sections with the totals the last zone build left. This engine
+    // follows r4133: the divergence
     // is unreachable on the corpus (no gate case passes the flag — measured)
     // and is named on both sides by
     // `exec::tests::reliability::relcalc_recomputes_the_customer_totals_it_depends_on`
@@ -193,7 +192,7 @@ fn calc_reliability_indices(
 
     // Forward sweep: number of interruptions + section assignment. The buses it
     // touches are exactly this meter's zone — recorded so the duration loop
-    // below can stay inside it (the clean fix, G2.2a).
+    // below can stay inside it (the clean fix).
     let mut section_count: i32 = 0;
     let mut zone_buses: Vec<usize> = Vec::with_capacity(seq.len() + 1);
     {
@@ -250,7 +249,7 @@ fn calc_reliability_indices(
     }
 
     if section_count == 0 {
-        // No OCP devices (Phase 6 always lands here, matching the oracle).
+        // No OCP devices: abort as OpenDSS does.
         // Pascal mutated the meter's `SectionCount` field during the forward
         // sweep, so the abort leaves 0 there (a later `Export Sections` writes
         // no rows) while the stale `FeederSections` array is untouched.
@@ -345,8 +344,8 @@ fn calc_reliability_indices(
     //       overwrite: the later meter replaces an earlier meter's bus duration
     //       with the average repair time of its *own* unrelated section, so the
     //       reported durations depend on meter order. Both gating oracles carry
-    //       it; neither lane reproduces it (`GOLDEN_REBASE_PLAN.md` G2.2a;
-    //       `issue-02`), so a meter's durations no longer depend on which meters
+    //       it, and neither lane reproduces it (`issue-02`), so a meter's
+    //       durations no longer depend on which meters
     //       ran before it.
     //   (b) out-of-range id — Pascal reads `FeederSections[id]` past the
     //       `section_count + 1` allocation: an OOB heap read, **proven

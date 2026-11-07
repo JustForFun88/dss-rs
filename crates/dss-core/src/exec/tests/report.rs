@@ -1,5 +1,5 @@
-//! Phase 8 report-router skeleton tests (WP8.1): the `Plot`/`Visualize`
-//! headless no-op (PHASE8_PLAN §2.5), the faithful `Show` no-op that keeps the
+//! Report-router tests: the `Plot`/`Visualize` headless no-op, the faithful
+//! `Show` no-op that keeps the
 //! `solvable_now` decks green, and the scoped `NOT_PORTED` stubs for the not-yet
 //! ported `Export`/`Save`/`Dump` verbs.
 
@@ -33,7 +33,7 @@ fn solve_currents(extra: &[&str]) -> Vec<(String, Vec<Complex64>)> {
 
 /// `Plot` is a GUI command whose headless dispatch (`DoPlotCmd`,
 /// `PlotOptions.pas:202-213`) exits before any guard — an exact no-op: the
-/// solved model is bit-identical with and without it (PHASE8_PLAN §2.5).
+/// solved model is bit-identical with and without it.
 #[test]
 fn plot_visualize_are_headless_noops() {
     let base = solve_currents(&[]);
@@ -44,7 +44,7 @@ fn plot_visualize_are_headless_noops() {
 
 /// `Visualize` (`DoVisualizeCmd`, `ExecHelper.pas:4099`) runs its guards
 /// before the NIL-callback no-op, so they are engine-observable: #24722 on an
-/// unsolved circuit (oracle-probed, WP8.1 audit), #282 not-found — including a
+/// unsolved circuit (probed on dss_capi), #282 not-found — including a
 /// general-object reference (dead wrong-type arm: `Handle = 0` upstream). A
 /// valid element reference on a solved circuit is a clean no-op.
 #[test]
@@ -103,7 +103,7 @@ fn visualize_guards_match_oracle() {
 /// `Plot`/`Visualize`/`Show` are post-circuit verbs (Pascal `ProcessCommand`):
 /// issued before any circuit, the engine's dispatch gate records the #301
 /// "create a circuit first" error *before* the GUI/report routine runs —
-/// oracle-probed (audit-code WP8.1). So they must NOT be clean no-ops here.
+/// probed on dss_capi. So they must NOT be clean no-ops here.
 #[test]
 fn report_verbs_before_circuit_error_301() {
     for verb in [
@@ -126,7 +126,7 @@ fn report_verbs_before_circuit_error_301() {
 /// this is what keeps the `solvable_now` decks that contain `Show Power`/`Show
 /// meters`/`Show f` green (the live gate asserts `errors().is_empty()`).
 ///
-/// Route the datapath to a scratch dir first: since WP8.4 several `Show` forms
+/// Route the datapath to a scratch dir first: several `Show` forms
 /// (Voltages/Currents/Elements) are **real reports** that write a file, so a
 /// no-datapath `Show Voltage … Nodes` here would leak into the source tree. The
 /// keywords below are the ones *still* deferred (Powers element form → code-1
@@ -228,10 +228,9 @@ fn show_zone_error_paths() {
 /// a disabled meter): Pascal `ShowMeterZone` guards the entire body — header
 /// included — on `BranchList <> NIL` (`ShowResults.pas:2453`), so it writes an
 /// **empty** file and raises no error; `ShowLoops` skips it (`:3063`). Regression
-/// guard for the audit-code step-12 Major fix (the port previously wrote the 2-line
-/// header for this case — a silent, gate-invisible divergence, oracle-confirmed
-/// 46 bytes vs 0). Not corpus-reachable (all corpus meters are enabled), so
-/// synthesized (PHASE8_PLAN §1). Byte-checked here (a golden can't: `Show` sets no
+/// guard: writing the 2-line header for this case is a silent, gate-invisible
+/// divergence. Not corpus-reachable (all corpus meters are enabled), so
+/// synthesized. Byte-checked here (a golden can't: `Show` sets no
 /// diffable content and this asserts the *absence* of any).
 #[test]
 fn show_zone_disabled_meter_is_empty() {
@@ -279,7 +278,7 @@ fn show_zone_disabled_meter_is_empty() {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
-/// The export router's non-formatting outcomes: the WP8.2 solution guard
+/// The export router's non-formatting outcomes: the solution guard
 /// (#24712), the retired CDPSM profiles' fixed upstream message (#252), an
 /// unknown keyword's Pascal 24713, and earliest-wins abbreviation resolution.
 /// The *happy* path (a real report written + diffed vs the oracle) is the
@@ -287,16 +286,16 @@ fn show_zone_disabled_meter_is_empty() {
 /// so this never reaches the live gate.)
 ///
 /// The router's `_ =>` "not ported yet" arm is now **unreachable** — every one of
-/// the 64 `EXPORT_OPTIONS` keywords has a dispatch arm (`Estimation`(5), the last
-/// holdout, landed with ORPHANED_GAPS §1.10). It stays as the safety valve for a
-/// keyword added to the table without a route, and is therefore **untested by
-/// construction**: a newly added keyword left unrouted lands on a path no test
-/// exercises, so route it in the same change that adds it to `EXPORT_OPTIONS`.
+/// the 64 `EXPORT_OPTIONS` keywords has a dispatch arm. It stays as the safety
+/// valve for a keyword added to the table without a route, and is therefore
+/// **untested by construction**: a newly added keyword left unrouted lands on a
+/// path no test exercises, so route it in the same change that adds it to
+/// `EXPORT_OPTIONS`.
 #[test]
 fn export_router_outcomes_match_oracle() {
     // Defensive: route any report write to a scratch dir, never the source tree.
     // Every branch below errors *before* a write, but a future write-reaching
-    // branch must not pollute the tree (audit-tests WP8.2).
+    // branch must not pollute the tree.
     let set_dp = format!("set datapath=\"{}\"", std::env::temp_dir().display());
 
     // (1) A solution-requiring export (`Voltages`) on an *unsolved* circuit hits
@@ -395,10 +394,10 @@ fn export_router_outcomes_match_oracle() {
 
     // (4) The ambiguous `elem` prefix resolves *earliest-wins* like the oracle's
     //     `ExportCommands` — `ElemCurrents`(42), not `ElemVoltages`(43)/
-    //     `ElemPowers`(44) — and is now a **real** report (WP8.2 step 2c), not a
-    //     `NOT_PORTED` stub. On a solved circuit it emits `…_EXP_ElemCurrents.csv`
-    //     with no error (the abbreviation-disambiguation coverage the golden's
-    //     full keywords don't exercise; audit-tests WP8.2 step 2c).
+    //     `ElemPowers`(44) — and is a **real** report, not a `NOT_PORTED` stub.
+    //     On a solved circuit it emits `…_EXP_ElemCurrents.csv` with no error
+    //     (the abbreviation-disambiguation coverage the golden's full keywords
+    //     don't exercise).
     let mut dss = Dss::new();
     dss.command("clear");
     dss.command("new circuit.t basekv=12.47 phases=3 bus1=src");
@@ -423,10 +422,9 @@ fn export_router_outcomes_match_oracle() {
 /// to the compiled deck, an explicit *relative* filename resolves against the
 /// DSS current dir (= the deck dir), and a nested Compile cannot leave the dirs
 /// pointing at the inner deck. Plain `Redirect` moves neither. All four
-/// behaviors oracle-verified (dss-python 0.15.7 probe, WP8.2 follow-up: the
-/// original WP8.1 port kept `output_directory` pinned to the startup cwd and
-/// resolved explicit names against the process cwd — files landed in the wrong
-/// directory after any `Compile`).
+/// behaviors are verified on dss-python 0.15.7. Pinning `output_directory` to
+/// the startup cwd and resolving explicit names against the process cwd would
+/// land files in the wrong directory after any `Compile`.
 #[test]
 fn compile_moves_output_directory_redirect_does_not() {
     let root = std::env::temp_dir().join(format!("dss_outdir_{}", std::process::id()));
@@ -499,7 +497,7 @@ fn compile_moves_output_directory_redirect_does_not() {
 /// degenerate output the oracle produces (`ExportFaultStudy` reads precomputed
 /// state — "Isc has been previously computed" — and garbage/zeros it if none ran).
 /// This guards that `Ysc == None` branch (the `golden_reports` fixture always runs
-/// a faultstudy first, so it never exercises it; audit-tests WP8.3 step 3b). No
+/// a faultstudy first, so it never exercises it). No
 /// oracle capture needed — the zeros are structural (`max_1ph`/`max_ll` never
 /// leave their `0.0` init), so a Rust-only assertion is faithful and non-vacuous.
 #[test]
@@ -548,7 +546,7 @@ fn export_faultstudy_snapshot_ysc_none_is_zeroed() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// `Save circuit` is ported (WP8.5 step 5): it writes a re-compilable script
+/// `Save circuit` writes a re-compilable script
 /// tree (`Master.dss` + a file per class) with no error, and reports the
 /// directory in `GlobalResult`. (The full round-trip / structural gate lives in
 /// the `save_roundtrip.rs` integration test.)
@@ -573,8 +571,7 @@ fn save_circuit_writes_master() {
 }
 
 /// Every holder of [`crate::obj::props::PropFlags::RENDERS_LIVE_RESULT`] in the
-/// **whole registry** is a class `Dss::refresh_live_result_cache` dispatches on
-/// (RP3.8 audit settlement).
+/// **whole registry** is a class `Dss::refresh_live_result_cache` dispatches on.
 ///
 /// The dispatch is a hardcoded two-arm `if` over StorageController / IndMach012.
 /// A third class given the flag would get no refresh at all and would render
@@ -625,14 +622,14 @@ fn renders_live_result_holders_have_a_refresh_arm() {
     );
 }
 
-// RP3.8 EXPECTED-VALUE PIN [SAVE_RENDERS_LIVE_RESULTS]: `Save` renders every
+// EXPECTED-VALUE PIN [SAVE_RENDERS_LIVE_RESULTS]: `Save` renders every
 // marked live property from the live model, and renders it the same whether or
 // not the session read it first. Dropping either
 // `Dss::refresh_render_caches_for_save` call site makes the assertions below
 // fail on the construction default (`PF=1`, `kWhTotal=0`, an all-zero
 // `WdgCurrents`) — or, worse, pass only after some earlier `?`.
 /// `Save` is the **fifth** `ClassProps::get_value` reader, and it renders the
-/// live result like the other four (RP3.8 audit settlement, 2026-09-02).
+/// live result like the other four.
 ///
 /// `Save` emits only the properties a deck explicitly **set**, in the order it
 /// set them (Pascal `GetNextPropertySet` → `TDSSObject.SaveWrite`) — and a write
@@ -644,21 +641,21 @@ fn renders_live_result_holders_have_a_refresh_arm() {
 /// `New "StorageController.sc" … kWhTotal=6000` and the solved
 /// `Transformer.t1 … WdgCurrents=`.
 ///
-/// Before the settlement the port wrote the render caches unrefreshed: `PF=1` /
-/// `kWhTotal=0` / an all-zero `WdgCurrents` by default, and the live number only
-/// when some earlier `?` had happened to refresh it — a *read-history-dependent*
+/// Unrefreshed render caches would write `PF=1` / `kWhTotal=0` / an all-zero
+/// `WdgCurrents` by default, and the live number only when some earlier `?`
+/// happened to refresh it — a *read-history-dependent*
 /// saved deck, which is the contamination shape the corpus gate's own three-run
 /// artifact exists to forbid. Leg (2) is that regression's tripwire.
 ///
-/// Legs (1)-(4) are RP3.8's own [`crate::obj::props::PropFlags::
-/// RENDERS_LIVE_RESULT`] properties; leg (5) is the same latency on the older
+/// Legs (1)-(4) are [`crate::obj::props::PropFlags::RENDERS_LIVE_RESULT`]
+/// properties. Leg (5) is the same latency on the older
 /// [`crate::obj::props::PropFlags::READS_VTERMINAL`] marker (Transformer
-/// `WdgCurrents`), which pre-dates RP3.8 and is fixed with it — the `Save` pass
-/// runs the same per-object choke point, so all four of its jobs happen.
+/// `WdgCurrents`) — the `Save` pass runs the same per-object choke point, so all
+/// four of its jobs happen.
 ///
 /// The port renders full precision like every other double property; r4133's own
 /// `%.6g` / `%-.8g` digits are checked through [`crate::util::fmt_g`], the same
-/// two-clause display class the other RP3.8 pins use. (`WdgCurrents` is an
+/// two-clause display class the other live-result pins use. (`WdgCurrents` is an
 /// r4133-formatted string on both engines, so it is compared byte-for-byte.)
 #[test]
 fn save_renders_the_live_result_properties() {
@@ -738,7 +735,7 @@ fn save_renders_the_live_result_properties() {
         fmt_g(v, 6),
         "0.886059",
         "r4133's own byte for this deck's saved `pf=` (epri-worker, 2026-09-02); \
-         the pre-settlement port wrote the construction default `1`: {cold_line}"
+         an unrefreshed cache writes the construction default `1`: {cold_line}"
     );
     assert_eq!(
         pf, "0.886059022116548",
@@ -803,14 +800,13 @@ fn save_renders_the_live_result_properties() {
         total, "6000",
         "the live fleet `kWhRating` sum — r4133's own saved byte on this deck \
          (epri-worker, 2026-09-02); the deck's ignored `kWhTotal=42` and the \
-         pre-settlement `0` are both wrong: {sc_line}"
+         unrefreshed `0` are both wrong: {sc_line}"
     );
 
-    // (5) The same latency on the older `READS_VTERMINAL` marker, which
-    // pre-dates RP3.8 and is fixed with it: a deck writing `wdgcurrents=` gets
-    // the SOLVED winding currents back from r4133, and an all-zero buffer from
-    // the pre-settlement port (the `&self` getter read a `Vterminal` nothing had
-    // reloaded).
+    // (5) The same latency on the older `READS_VTERMINAL` marker: a deck
+    // writing `wdgcurrents=` gets the SOLVED winding currents back from r4133,
+    // and an all-zero buffer from a getter that reads a `Vterminal` nothing has
+    // reloaded.
     let mut dss = Dss::new();
     for c in [
         "clear",
@@ -837,14 +833,14 @@ fn save_renders_the_live_result_properties() {
     assert!(
         wdg_line.contains(want),
         "r4133's own saved `WdgCurrents=` on this deck (epri-worker, 2026-09-02); \
-         the pre-settlement port saved an all-zero buffer: {wdg_line}"
+         an unreloaded `Vterminal` saves an all-zero buffer: {wdg_line}"
     );
 }
 
 /// The **generic-base ordering** for the two `Dump` element kinds that have no
 /// byte golden yet (their property names are not yet in the oracle display case —
 /// tracked for the systematic name pass), pinned structurally by line position so
-/// the `dump_generic` logic can't silently reorder (WP8.5 audit-tests #2). The
+/// the `dump_generic` logic can't silently reorder. The
 /// orderings are oracle-probe-confirmed: a **PCElement** (Load) writes
 /// `! ENABLED` + (debug) Y-block + `! VARIABLES` **before** its `~ prop` lines;
 /// a non-PC **CktElement** (CapControl) writes its `~ prop` lines **before**
@@ -900,8 +896,7 @@ fn dump_generic_base_ordering() {
 
 /// `Dump <class>.<name>` error fidelity: an unknown class → Pascal `#903`
 /// (`SetObjectClass` fail); a known class + unknown object → `#256`
-/// (`Object … not found`). `dump solution` (whole-circuit family, WP8.5 step
-/// 3b) succeeds and writes the `! OPTIONS` listing (byte fidelity is pinned by
+/// (`Object … not found`). `dump solution` (whole-circuit family) succeeds and writes the `! OPTIONS` listing (byte fidelity is pinned by
 /// the `dump3_solution` golden).
 #[test]
 fn dump_single_object_errors() {
@@ -952,25 +947,24 @@ fn dump_solution_renders_ldcurve_name() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// RP3.11 P1 — `Save circuit` writes `CalcVoltageBases` **uncommented**, the way
+/// `Save circuit` writes `CalcVoltageBases` **uncommented**, the way
 /// r4133 does (`Version8/Source/Common/Circuit.pas:2716-2740`:
 /// `Writeln(F,'Set Voltagebases='+VBases); Writeln(F, 'CalcVoltagebases');`,
 /// two plain `Writeln`s with no flag between them). dss_capi 0.14.5 is the only
 /// engine that ever writes `! CalcVoltageBases`
 /// (`.inputs/dss_capi/src/Common/Circuit.pas:2708-2731`) and only outside its
 /// own `DSS_CAPI_NOCOMPATFLAGS` branch, i.e. as the compat-flag side of a flag
-/// this port hard-codes to the ON side; the port followed 0.14.5 until RP3.11.
+/// this engine hard-codes to the ON side.
 ///
 /// The comment is not cosmetic: without the `CalcVoltageBases` call the
 /// re-compiled tree carries `kVBase = 0` on **every** bus, which is what this
-/// test pins on the emitted circuit. RP3.11 measured the consequence on
+/// test pins on the emitted circuit. The consequence, measured on
 /// `modes/ncim/ncim_pv_pq.dss`: `bus_kvbase(genbus)` 0.0 instead of
 /// 7.199557856794634, the deck NOT CONVERGED at 15 iterations; and on
 /// `controls/expcontrol/expcontrol_basic.dss` the PV moved from -0.0060 kvar /
 /// 14 iterations to +307.94 kvar / 53 — per-unit-driven controls read those
-/// bases (`tmp/rp311/out_bisect.txt` §A, §B: swapping this one file into
-/// r4133's own otherwise-exact save is what breaks the round trip, on either
-/// engine).
+/// bases (swapping this one file into r4133's own otherwise-exact save is what
+/// breaks the round trip, on either engine).
 #[test]
 fn save_writes_calcvoltagebases_like_r4133() {
     let dir = std::env::temp_dir().join(format!("dss_rp311_vbases_{}", std::process::id()));
@@ -1030,7 +1024,7 @@ fn save_writes_calcvoltagebases_like_r4133() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// RP3.11 P2 — `TDSSObject.SaveWrite`'s LoadShape branch (r4133
+/// `TDSSObject.SaveWrite`'s LoadShape branch (r4133
 /// `Version8/Source/General/DSSObject.pas:139-150` + `:163-172`). `npts` sizes
 /// the `Mult`/`Hour` allocation on reload, so the Pascal starts the walk at
 /// property 1 instead of at the head of the chain and then restarts the chain
@@ -1038,8 +1032,8 @@ fn save_writes_calcvoltagebases_like_r4133() {
 /// first to be declared when saving LoadShapes"*. dss_capi 0.14.5 reaches the
 /// same output from the other end: `TLoadShapeObj.SaveWrite` stamps
 /// `PrpSequence[ord(TProp.npts)] := -999; // make sure Npts prop is first` and
-/// calls `inherited` (`CAPI:General/LoadShape.pas:2376-2380`). Both upstreams
-/// guard this class; this port had neither guard until RP3.11.
+/// calls `inherited` (`CAPI:General/LoadShape.pas:2376-2380`). Both OpenDSS
+/// engines guard this class, and so does this engine.
 ///
 /// Legs (1)/(2) — a deck that types an array property, the only case r4133's
 /// re-stamp fires in — are the agreement case: `ls1` types `npts` first (this
@@ -1056,17 +1050,16 @@ fn save_writes_calcvoltagebases_like_r4133() {
 /// (`TLoadShapeObj.Set_NumPoints` re-stamps `PropertyValue[1]` **and then** the
 /// array property, `R4133:General/LoadShape.pas:631-636` + `:1665-1677`, so
 /// without an array `npts` stays at the head). Both serializations, measured
-/// 2026-09-03 on `OpenDSSDirect.dll` 11.0.0.1 rev r4133 (`epri-worker`,
-/// `tmp/rp311/fix/probe_settle.log`):
+/// 2026-09-03 on `OpenDSSDirect.dll` 11.0.0.1 rev r4133 (`epri-worker`):
 ///
 /// ```text
 /// r4133: New "LoadShape.ls3" npts=5 npts=5              port: New "LoadShape.ls3" NPts=5
 /// r4133: New "LoadShape.ls4" npts=4 npts=4 interval=2   port: New "LoadShape.ls4" NPts=4 Interval=2
 /// ```
 ///
-/// The duplicate is harmless on reload but is still a defect the port does not
-/// reproduce (CLAUDE.md 2026-08-02); writing `npts` exactly once, first, is also
-/// literally 0.14.5's rule, so the port matches one upstream on every deck and
+/// The duplicate is harmless on reload but is still an OpenDSS bug this engine
+/// does not reproduce. Writing `npts` exactly once, first, is also literally
+/// 0.14.5's rule, so this engine matches one OpenDSS engine on every deck and
 /// the other on every deck that types an array.
 #[test]
 fn save_write_puts_npts_first_for_loadshape() {
@@ -1142,7 +1135,7 @@ fn save_write_puts_npts_first_for_loadshape() {
             "npts must be written exactly once: {line:?}"
         );
     }
-    // (4) `npts` never typed (RF-D01-04 settlement, audit AT-4): the generic
+    // (4) `npts` never typed: the generic
     // sizing-property hoist has no set `NPts` to move, so this token is the
     // LoadShape always-write rule's alone. r4133 (epri-worker, rev r4133):
     // `New "LoadShape.lb" npts=0 interval=1 mult=[]` — its 0-point `mult`
@@ -1156,7 +1149,7 @@ fn save_write_puts_npts_first_for_loadshape() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// RP3.11 §1 — **the `Save` verdict: KEEP_LIVE_PINNED.** `Save` renders the
+/// **`Save` keeps the live render.** `Save` renders the
 /// *live* field, and the divergence from r4133's serializer is recorded here
 /// instead of being reproduced.
 ///
@@ -1165,8 +1158,7 @@ fn save_write_puts_npts_first_for_loadshape() {
 /// converts the machine to model 4 (PQ). After the converged solve the two
 /// engines serialize the same object differently. Both lines are measured
 /// (2026-09-03, `epri-worker` / `OpenDSSDirect.dll` 11.0.0.1 rev r4133 against
-/// this port on the same deck; transcripts
-/// `tmp/rp311/out/{r4133,port}_ncim/save/Generator.dss`):
+/// this engine on the same deck):
 ///
 /// ```text
 /// r4133: New "Generator.g1" bus1=genbus phases=3 kv=12.47 kW=800 model=3 maxkvar=1500 minkvar=-1500 Vpu=1.01
@@ -1188,16 +1180,15 @@ fn save_write_puts_npts_first_for_loadshape() {
 /// an artifact of which arms each class's author happened to write, not a rule.
 ///
 /// So matching r4133 here means printing `model=3` while `gen_model == 4` in the
-/// same process — reproducing the echo as *behaviour*, which the 2026-08-02
-/// policy forbids. RP3.11's **kill criterion fires**, and `Save` keeps the live
+/// same process — reproducing the echo as *behaviour*, an OpenDSS bug this
+/// engine never reproduces. So `Save` keeps the live
 /// render it shares with `Dump`, the property API, `?` and batchedit through the
 /// one [`crate::obj::props::ClassProps`]`::get_value`. The compare-side twin of
 /// this very cell is already excluded and pinned: the `generator.model` echo row
 /// (`harness::props_norm::PROPS_ECHO_R4133`) →
 /// `props_r4133_pins::generator_model_renders_the_live_pv2pq_conversion`.
 ///
-/// **The cost, recorded rather than dressed up** (RP3.11 §1.4,
-/// `tmp/rp311/out_bisect.txt` §A/§C1): `Save` renders live values over an
+/// **The cost, recorded rather than dressed up**: `Save` renders live values over an
 /// *authored* membership, so on a property the solve mutates it reproduces
 /// neither the authored problem nor the full solved state. Re-compiling the
 /// port's line yields a PQ machine at pf 0.88 — Q = 800·tan(acos 0.88) =
@@ -1209,9 +1200,8 @@ fn save_write_puts_npts_first_for_loadshape() {
 ///
 /// The divergence runs both ways on this surface: r4133's own `SaveWrite` emits
 /// `kvar=0` for a `windgen`, which on reload flattens `PFNominal` to 1.0 and
-/// `kvarMax`/`kvarMin` to 0 (the RP3.2 `"windgen.kvar"` verdict of
-/// `RP3_ROUTING` in `tests/props_r4133_replay.rs`) — an upstream defect the
-/// port does not have.
+/// `kvarMax`/`kvarMin` to 0 (the `"windgen.kvar"` verdict of `RP3_ROUTING` in
+/// `tests/props_r4133_replay.rs`) — an OpenDSS bug this engine does not have.
 #[test]
 fn save_renders_the_live_model_after_ncim_pv2pq() {
     let deck = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -1287,8 +1277,8 @@ fn save_renders_the_live_model_after_ncim_pv2pq() {
     );
 }
 
-/// RP3.11 §2 — **the `Dump` verdict: KEEP_LIVE_PINNED**, for `Save`'s reasons
-/// plus one of its own.
+/// **`Dump` keeps the live render too**, for `Save`'s reasons plus one of its
+/// own.
 ///
 /// `Dump` renders through the same [`crate::obj::props::ClassProps`]`::get_value`
 /// as `Save`, the property API, `?` and batchedit, so every argument of
@@ -1300,7 +1290,7 @@ fn save_renders_the_live_model_after_ncim_pv2pq() {
 /// renders live.
 ///
 /// Measured on `tests/corpus/modes/ncim/ncim_pv_pq.dss` after the converged NCIM
-/// solve (2026-09-03; `tmp/rp311/out/{r4133,port}_ncim/dump_Generator_g1.txt`),
+/// solve (2026-09-03),
 /// the store-vs-live axis is exactly **one** of the ten differing rows:
 ///
 /// ```text
@@ -1311,7 +1301,7 @@ fn save_renders_the_live_model_after_ncim_pv2pq() {
 /// (The other nine rows belong to axes with their own owners: r4133's deleted
 /// `DumpProperties` overrides — `!DQDV=`, the double-paren wrap, `Refuel=False`,
 /// itself an r4133 bug against its own getter `generator.pas:2495` vs `:3028` —
-/// the RP3 name census, `fmt_g` float spelling and header quoting.)
+/// the property-name census, `fmt_g` float spelling and header quoting.)
 #[test]
 fn dump_renders_the_live_model_after_ncim_pv2pq() {
     let deck = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -1374,8 +1364,8 @@ fn dump_renders_the_live_model_after_ncim_pv2pq() {
     // nominal (800 * tan(acos 0.88)), NOT the kvar the NCIM solve dispatched —
     // the solve clamps Q at `maxkvar` = 1500. Both engines print the same
     // number here (r4133 `~ kvar=431.794` under its `%.6g` display), so it is
-    // not part of this divergence; the gap between it and the dispatched 1500
-    // is STATUS §RP3.11 open item (b), owned by the proposed §RP3.13.
+    // not part of this divergence. The gap between it and the dispatched 1500
+    // is an open item.
     assert_eq!(
         row("kvar"),
         "~ kvar=431.79425771047",
@@ -1388,10 +1378,11 @@ fn dump_renders_the_live_model_after_ncim_pv2pq() {
     );
 }
 
-/// RP3.11 §3 — the `PF=0.88`-class item: **a membership (sequence) difference,
-/// explained, not a port bug.** `Save`'s *values* are live (§1); its *membership
-/// and order* are the explicitly-set chain, and that chain differs from r4133's
-/// because this port carries dss_capi 0.14.5's **property tracking**, which
+/// The `PF=0.88`-class item: **a membership (sequence) difference, explained,
+/// not a bug of this engine.** `Save`'s *values* are live
+/// ([`save_renders_the_live_model_after_ncim_pv2pq`]). Its *membership and
+/// order* are the explicitly-set chain, and that chain differs from r4133's
+/// because this engine carries dss_capi 0.14.5's **property tracking**, which
 /// r4133 has no counterpart for.
 ///
 /// ```text
@@ -1412,7 +1403,7 @@ fn dump_renders_the_live_model_after_ncim_pv2pq() {
 /// and the PVSystem/Storage/VSource/Fault/Transformer twins), and seeds take
 /// sequence 1..n — which is exactly why `PF` is printed first.
 ///
-/// **Why they stay** (RP3.11 §3.2, the evidence the earlier survey missed): the
+/// **Why they stay**: the
 /// same bitmap has a second product reader, the AltDSS JSON export
 /// (`report/export/json/build.rs:61-70` ← `CAPI_Obj.pas:665-733`), and *there*
 /// dss_capi is not an outdated oracle — r4133 has no JSON export at all, so its
@@ -1421,14 +1412,14 @@ fn dump_renders_the_live_model_after_ncim_pv2pq() {
 /// `tests/golden/json/vsource_micro.json`'s own bytes: a deck typing neither
 /// `mvasc3` nor `mvasc1` emits both, ahead of the typed `BasekV`. Dropping the
 /// seeds would buy a partial alignment on a surface that stays divergent anyway
-/// (§1) and pay for it with a measured loss on the only surface where 0.14.5
+/// and pay for it with a measured loss on the only surface where 0.14.5
 /// *is* the authority.
 ///
 /// Nothing here is stale: `0.88` is the live `PFNominal` on **both** engines, and
 /// r4133's own `Dump` prints `~ pf=0.88` for this machine. No sequence-axis row
 /// has a measured consequence in either direction — substituting the port's
 /// `Line.dss`, `Vsource.dss`, `ExpControl.dss`, `PVSystem.dss` or `Master.dss`
-/// into r4133's own save changes nothing (`tmp/rp311/out_bisect.txt` §A). The
+/// into r4133's own save changes nothing. The
 /// reverse direction is [`save_omits_the_tapwinding_that_r4133_stamps`].
 #[test]
 fn save_membership_follows_property_tracking_not_prpsequence() {
@@ -1493,16 +1484,15 @@ fn save_membership_follows_property_tracking_not_prpsequence() {
     );
 }
 
-/// RP3.11 §3.3 — the sequence axis in the **other** direction: r4133 stamps a
-/// property this port does not, and the port's line is still round-trip-safe.
+/// The sequence axis in the **other** direction: r4133 stamps a property this
+/// engine does not, and this engine's line is still round-trip-safe.
 ///
 /// r4133's `winding=` arm writes `PropertyValue[20] := Param`
 /// (`R4133:Controls/RegControl.pas:480-483`), so `tapwinding` joins the chain
 /// and `SaveWrite` prints it. dss_capi 0.14.5 deliberately dropped that stamp
 /// (`CAPI:Controls/RegControl.pas:417` — *"not really required"*) and this port
-/// followed. Measured on both engines (2026-09-03, `epri-worker` probe
-/// `tmp/rp311/i1/probe_saveorder.py` on the deck below, and the corpus deck
-/// `controls/autotrans/midi_autotrans.dss` in `tmp/rp311/out/*_autotrans/save/`):
+/// followed. Measured on both engines (2026-09-03, `epri-worker`, on the deck
+/// below and on the corpus deck `controls/autotrans/midi_autotrans.dss`):
 ///
 /// ```text
 /// r4133: New "RegControl.rc1" transformer=t1 winding=2 tapwinding=2 vreg=122 band=3 ptratio=20
@@ -1515,7 +1505,7 @@ fn save_membership_follows_property_tracking_not_prpsequence() {
 /// side effect r4133 was recording — `TapWinding := ElementTerminal`
 /// (`elements/control/reg_control/accessors.rs`, the `WINDING` arm) — which leg
 /// (2) below asserts on the re-compiled tree. (`Transformer=` coming first is
-/// RP3.11 P4, r4133's own `SaveWrite` override, pinned separately by
+/// r4133's own `SaveWrite` override, pinned separately by
 /// `elements::control::reg_control::tests::regcontrol_save_write_puts_the_transformer_first`.)
 #[test]
 fn save_omits_the_tapwinding_that_r4133_stamps() {
@@ -1585,14 +1575,12 @@ fn save_omits_the_tapwinding_that_r4133_stamps() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// RP3.11 settlement P5 — `TXfmrCodeObj.SaveWrite` (dss_capi 0.14.5
-/// `General/XfmrCode.pas:667-745`), the eighth member of the "union of both
-/// upstreams' `SaveWrite` overrides" the sub-step declared and the audit found
-/// missing.
+/// `TXfmrCodeObj.SaveWrite` (dss_capi 0.14.5 `General/XfmrCode.pas:667-745`),
+/// one member of the union of both OpenDSS engines' `SaveWrite` overrides.
 ///
 /// Both serializations, measured 2026-09-03 on a 3-winding code whose windings
 /// were written with the per-winding `wdg=` scalars (`epri-worker`,
-/// `OpenDSSDirect.dll` 11.0.0.1 rev r4133 / this port, `tmp/rp311/fix/`):
+/// `OpenDSSDirect.dll` 11.0.0.1 rev r4133 / this engine):
 ///
 /// ```text
 /// r4133: New "XfmrCode.xc" phases=3 windings=3 Xhl=7 Xht=9 Xlt=8 wdg=3 conn=wye kV=4.16 kVA=5000 %R=0.7 tap=0.975
@@ -1604,8 +1592,8 @@ fn save_omits_the_tapwinding_that_r4133_stamps() {
 /// their defaults — a silent wrong circuit, because the re-compile converges.
 /// 0.14.5 fixed it with the same array rewrite `TTransfObj.SaveWrite` uses
 /// (*"Like Transformer's, XfmrCode structure not conducive to standard means of
-/// saving"*), and CLAUDE.md's 2026-08-02 policy forbids reproducing r4133's
-/// side. Leg (2) is the point of the guard: the re-compiled code carries all
+/// saving"*), and r4133's side is an OpenDSS bug this engine does not
+/// reproduce. Leg (2) is the point of the guard: the re-compiled code carries all
 /// three windings.
 #[test]
 fn save_rewrites_xfmrcode_windings_like_capi_0145() {
@@ -1672,15 +1660,14 @@ fn save_rewrites_xfmrcode_windings_like_capi_0145() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// RP3.11 settlement P7 — the sizing property (`npts` / `numharm`) is written
-/// **first** for every curve/shape class, not only `LoadShape` (P2) and
-/// `XYcurve` (P3).
+/// The sizing property (`npts` / `numharm`) is written **first** for every
+/// curve/shape class, not only `LoadShape` and `XYcurve`.
 ///
 /// A deck that re-sets the sizing property after its arrays moves it to the tail
 /// of the set-order chain, and the emitted line then reloads as a zero-filled
 /// array of the wrong length. Neither upstream guards these five classes;
-/// measured 2026-09-03 on the live `OpenDSSDirect.dll` 11.0.0.1 rev r4133
-/// (`tmp/rp311/fix/probe_settle.log`), r4133 emits, for the same decks:
+/// measured 2026-09-03 on the live `OpenDSSDirect.dll` 11.0.0.1 rev r4133,
+/// r4133 emits, for the same decks:
 ///
 /// ```text
 /// New "TCC_Curve.z" C_array=[ 1 2] T_array=[ 10 5] npts=2
@@ -1800,7 +1787,7 @@ fn save_puts_the_sizing_property_first_for_every_curve_class() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// RF-D01-04 — one Save → recompile → re-save round trip of a live session:
+/// One Save → recompile → re-save round trip of a live session:
 /// `save circuit` into `<root>/s1`, recompile that `Master.dss` in a fresh
 /// engine ([`Self::back`]), `save circuit` the reloaded engine into `<root>/s2`.
 /// The directory is removed on drop.
@@ -1885,7 +1872,7 @@ fn query(dss: &mut Dss, q: &str) -> String {
     dss.result().to_string()
 }
 
-/// RF-D01-04 (RP3.11 AC-1) — `NumSteps` is written ahead of the step arrays it
+/// `NumSteps` is written ahead of the step arrays it
 /// sizes, so a multi-step capacitor bank reloads whole.
 ///
 /// The step arrays (`kvar`, `Cuf`, `R`, `XL`, `Harm`, `States`) are parsed
@@ -1894,7 +1881,7 @@ fn query(dss: &mut Dss, q: &str) -> String {
 /// that writes `kvar=` before `NumSteps=` re-reads it against the default single
 /// step. The corpus spelling `kvar=600 … numsteps=4` sets the sizer after the
 /// array; measured on the live `OpenDSSDirect.dll` 11.0.0.1 rev r4133
-/// (epri-worker, RF-D01-04 part 1):
+/// (epri-worker):
 ///
 /// ```text
 /// r4133 save:   New "Capacitor.cstep" phases=3 bus1=b2 kvar=[ 150 150 150 150] kv=12.47 Numsteps=4 states=[ 1 0 1 0]
@@ -1969,7 +1956,7 @@ fn save_hoists_numsteps_so_a_capacitor_bank_reloads_whole() {
     );
 }
 
-/// RF-D01-04 — the hoist is transient: it re-stamps the set-order chain only
+/// The hoist is transient: it re-stamps the set-order chain only
 /// for the duration of the write and restores it exactly, so the chain the deck
 /// built is what every later reader walks (a second `Save`, the JSON export,
 /// an `EndEdit` boundary test), and a second `Save` writes the same line.
@@ -2168,14 +2155,14 @@ fn save_writes_linespacing_nconds_first() {
     }
 }
 
-/// RF-D01-04 (RP3.11 AC-1) — `Seasons` is written ahead of the `Ratings` it
+/// `Seasons` is written ahead of the `Ratings` it
 /// sizes, so a seasonal LineCode reloads every rating.
 ///
 /// `Ratings` is parsed against the live `Seasons` (r4133
 /// `General/LineCode.pas:442`, `NumAmpRatings := InterpretDblArray(Param,
 /// NumAmpRatings, Pointer(AmpRatings))`; `Seasons` itself is `:436`). With
 /// `Seasons` re-set after it, measured on the
-/// live `OpenDSSDirect.dll` 11.0.0.1 rev r4133 (epri-worker, RF-D01-04 part 1):
+/// live `OpenDSSDirect.dll` 11.0.0.1 rev r4133 (epri-worker):
 ///
 /// ```text
 /// r4133 save:   New "LineCode.lcs" nphases=3 Ratings=[400,500,] Seasons=2
@@ -2218,14 +2205,14 @@ fn save_hoists_seasons_so_linecode_ratings_reload_whole() {
     );
 }
 
-/// RF-D01-04 — the per-winding cursor classes: `Windings` is written ahead of
+/// The per-winding cursor classes: `Windings` is written ahead of
 /// the winding block, and the cursor tokens keep their relative order.
 ///
 /// The Transformer / AutoTrans `SaveWrite` overrides turn every winding cursor
 /// token (`Wdg`, `Bus`, `kV`, …) into the array block + `Wdg=i` tail at the
 /// first such token, so a `Windings=3` written after it reloads the block
 /// against the default two windings. Measured on the live `OpenDSSDirect.dll`
-/// 11.0.0.1 rev r4133 (epri-worker, RF-D01-04) for these two decks, r4133 writes
+/// 11.0.0.1 rev r4133 (epri-worker) for these two decks, r4133 writes
 /// `windings=3` last and reloads `buses=[ba, bb, tc_3, ]` /
 /// `buses=[a1, a2, at_3, ]` — the third winding's bus is replaced by the
 /// default name. The port reloads every bus.
@@ -2292,7 +2279,7 @@ fn save_hoists_windings_ahead_of_the_winding_cursor_tokens() {
     }
 }
 
-/// RF-D01-04 settlement (audit AT-2) — the hoist stops at an object reference:
+/// The hoist stops at an object reference:
 /// a sizer re-set after its arrays moves to just behind the last `ObjectRef`
 /// ahead of it, never ahead of it, because the reference re-sets that sizer on
 /// reload. Both witnesses reference an object with a smaller count than their
@@ -2301,8 +2288,7 @@ fn save_hoists_windings_ahead_of_the_winding_cursor_tokens() {
 /// Transformer (`FetchXfmrCode`'s `SetNumWindings`,
 /// `PDElements/Transformer.pas:2334`). Written ahead of the reference, the sizer
 /// reloads as the reference's count. r4133 writes both sizer-last and loses the
-/// same entries (epri-worker, `OpenDSSDirect.dll` 11.0.0.1 rev r4133, RF-D01-04
-/// settlement):
+/// same entries (epri-worker, `OpenDSSDirect.dll` 11.0.0.1 rev r4133):
 ///
 /// ```text
 /// r4133 save:   New "Line.llc" bus1=c1 bus2=c2 linecode=lc3 normamps=400 emergamps=600 length=1 units=km Ratings=[400,500,] Seasons=2
@@ -2374,7 +2360,7 @@ fn save_hoists_a_sizer_only_to_behind_the_reference_that_resets_it() {
     );
 }
 
-/// RF-D01-04 settlement (audit AT-3) — step 2 of the hoist: the arrays a re-set
+/// Step 2 of the hoist: the arrays a re-set
 /// sizer sizes move to directly behind it, crossing whatever lies between.
 ///
 /// * A sizer: `numsteps=3 kvar=[100 200 300]`, then `phases=3` and a
@@ -2382,12 +2368,11 @@ fn save_hoists_a_sizer_only_to_behind_the_reference_that_resets_it() {
 ///   chain order) and `kvar` follows it. r4133 writes the set order,
 ///   `New "Capacitor.cx" bus1=b2 kvar=[ 100 200 300] kv=12.47 phases=3
 ///   Numsteps=3`, and reloads the bank as `[ 33.3333 33.3333 33.3333]`
-///   (epri-worker, rev r4133, RF-D01-04 settlement).
+///   (epri-worker, rev r4133).
 /// * A reference: a 2-phase Reactor whose matrices precede its `RCurve=` and a
 ///   `phases=2` re-set. Left ahead of the reference, the matrices reload at the
 ///   default order and the solve panics "SpecType 3 has Rmatrix" (measured on a
-///   build that fenced every reference; the matrix-order defect itself is
-///   RF-D01-04's ORPHANED_GAPS item). Only a Line matrix stays ahead of its
+///   build that fenced every reference). Only a Line matrix stays ahead of its
 ///   reference (`save_keeps_line_matrices_ahead_of_the_reference_that_rebuilt_them`).
 #[test]
 fn save_moves_sized_arrays_behind_their_sizer_across_sizers_and_references() {
@@ -2459,15 +2444,14 @@ fn save_moves_sized_arrays_behind_their_sizer_across_sizers_and_references() {
     assert!(rt.back.errors().is_empty(), "{:?}", rt.back.error_texts());
 }
 
-/// RF-D01-04 settlement (audit AC-1, settlement audit SA-1) — a Line impedance
+/// A Line impedance
 /// matrix set ahead of the line's last reference stays there, and the line's
 /// `Phases` is also written at the head of the line. Lines typed with matrices
 /// and then a `LineCode=` that replaces them, `Phases=` last — in one `New`, by
 /// later edits, and through `like=`. Moved behind `Phases`, the matrices would
 /// land behind the LineCode, and on reload their parse clears it and resets the
 /// length units (r4133 `PDElements/Line.pas:691-692`): the line comes back
-/// matrix-specified, `LineCode` dropped (the RF-D01-04 hoist did that until
-/// its settlement). The matrices stay where the deck set them, which is r4133's
+/// matrix-specified, `LineCode` dropped. The matrices stay where the deck set them, which is r4133's
 /// order too. Ahead of the trailing `Phases` they would parse at the default
 /// order 3, so a 2-phase line (`l2p` with a 2-phase LineCode, `x` with a
 /// spacing that has no wires and so leaves the typed matrices in force)
@@ -2478,12 +2462,11 @@ fn save_moves_sized_arrays_behind_their_sizer_across_sizers_and_references() {
 /// and the trailing one still follows the reference that may re-set it. Every
 /// line is a byte fixed point that keeps its references and units, the reload
 /// reports no error, and every node voltage reloads unchanged. r4133 on the
-/// 3-phase decks (epri-worker, rev r4133, RF-D01-04 settlement): `New "Line.l"
+/// 3-phase decks (epri-worker, rev r4133): `New "Line.l"
 /// bus1=src bus2=b rmatrix=[…] xmatrix=[…] linecode=cab Seasons=1
 /// Ratings=[400,] normamps=400 emergamps=600 length=20 units=kft phases=3`,
 /// save 1 == save 2, and the reloaded node voltages equal the live ones. On the
-/// 2-phase shapes (epri-worker, rev r4133, RF-D01-04 settlement audit,
-/// 2026-09-27: each deck run in a circuit of its own, `Save circuit`, the saved
+/// 2-phase shapes (epri-worker, rev r4133, 2026-09-27: each deck run in a circuit of its own, `Save circuit`, the saved
 /// Master recompiled, `?` and the node voltages read back) r4133 writes the
 /// same order without the leading token: the LineCode line's recompile raises
 /// #18202 (the LineCode then rebuilds Z), and the spacing line's raises #18101
@@ -2644,7 +2627,7 @@ fn save_keeps_line_matrices_ahead_of_the_reference_that_rebuilt_them() {
     );
 }
 
-/// The (class, sizer, sized properties) census the RF-D01-04 hoist covers — the
+/// The (class, sizer, sized properties) census the sizer hoist covers — the
 /// census of the `PropDef` constructors that carry a sizing ordinal plus the
 /// per-winding cursor properties the struct count bounds. Locked exactly by
 /// `save_writes_every_sizing_property_ahead_of_its_arrays`: a class that gains
@@ -2767,8 +2750,8 @@ const NATURAL_ORDER_ONLY: &[(&str, &str, &str)] = &[(
      (`Set_NPhases` exits on an unchanged count, `General/LineCode.pas:620-626`; only \
      the matrix arms touch `SymComponentsModel`, `:450`) and saves them ahead of a \
      trailing `nphases=` (epri-worker: `rmatrix=[1.5 0.1 | 0.1 1.5]` survives the \
-     re-set). Handed over with the RF-D01-04 settlement; the pair's hoist is \
-     unexercised until the side effect follows r4133",
+     re-set). The pair's hoist is unexercised until the side effect follows \
+     r4133",
 )];
 
 /// (class, sizer, arrays) — the typed arrays that the table pin's own sizer
@@ -2800,7 +2783,7 @@ const RESET_REPLACES: &[(&str, &str, &[&str])] = &[
     ),
 ];
 
-/// RF-D01-04 (RP3.11 AT-1 + AC-1) — every sizing property of every class is
+/// Every sizing property of every class is
 /// written ahead of the arrays it sizes, and every such line is a Save fixed
 /// point.
 ///
@@ -2813,7 +2796,7 @@ const RESET_REPLACES: &[(&str, &str, &[&str])] = &[
 /// entries (`N` = the sizer's default + 1, at least 2 — an array parsed against
 /// the default count loses entries; a `StringList` sizer gets `N` names), then
 /// `edit rfx <sizer>=N` again — the re-set moves the sizer behind its arrays in
-/// the set-order chain, which both upstreams save sizer-last except where r4133
+/// the set-order chain, which both OpenDSS engines save sizer-last except where r4133
 /// guards (LoadShape, XYcurve, and the last-set `Price`/`Temp` of PriceShape /
 /// TShape — see the `report::save::save` module doc); the pairs of
 /// [`NATURAL_ORDER_ONLY`] skip the re-set. Asserted per pair: (1) the saved
@@ -2825,7 +2808,7 @@ const RESET_REPLACES: &[(&str, &str, &[&str])] = &[
 /// StorageController or ESPVLControl makes the port's `calcvoltagebases` report
 /// a singular Y matrix (6 of the pairs), where r4133's is silent (its edit-time
 /// checks raise #372 / #37201, and `new espvlcontrol` an access violation) —
-/// a port defect handed over by the RF-D01-04 settlement, tolerated here only
+/// a known defect of this engine, tolerated here only
 /// because the reload repeats it. Leg (2) is live only where the re-set keeps
 /// the typed values: on the arrays [`RESET_REPLACES`] lists (10 of the pairs),
 /// the re-set itself replaces them, so there the order leg is the only live
@@ -3144,7 +3127,7 @@ fn save_writes_every_sizing_property_ahead_of_its_arrays() {
     );
 }
 
-/// RP3.11 settlement P6 — `TDynEqPCE.SaveWrite` (dss_capi 0.14.5
+/// `TDynEqPCE.SaveWrite` (dss_capi 0.14.5
 /// `PCElements/DynEqPCE.pas:252-273`), the ninth member of the union: the
 /// `UserDynInit` tail. The `DynamicEq` state-variable initializers are not class
 /// properties, so they are in no `PrpSequence` chain and the generic walk cannot

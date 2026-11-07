@@ -1,5 +1,5 @@
-// Reduce coverage (PHASE8_PLAN WP8.7): the KeepList guard
-// (`Set KeepList=(...)` -> DoKeeperBusList, ExecHelper.pas:2035 ->
+// Reduce coverage: the KeepList guard
+// (`Set KeepList=(...)` -> DoKeeperBusList ->
 // Bus.Keep). Same chain as reduce_default but WITHOUT the capacitor:
 // b2 is on the KeepList so the l1+l2 merge is blocked
 // (DoReduceDefault:358 `not Buses[ToBusReference].Keep`); b3 is not

@@ -8,7 +8,7 @@ use crate::solution::solution::sys_ctx;
 use crate::support::cmatrix::CMatrix;
 
 /// FPC `UComplex.cstr`: a complex as a string — the real part alone when the
-/// imaginary part is exactly zero, else `re±imi`. Used by the WP-U1.9
+/// imaginary part is exactly zero, else `re±imi`. Used by the
 /// `Get InjCurrent`/`ITerminal`/`YPrim` renderers.
 fn cstr(c: Complex64) -> String {
     if c.im == 0.0 {
@@ -26,7 +26,7 @@ fn cstr(c: Complex64) -> String {
 /// Pascal `Get InjCurrent`/`ITerminal`/`YPrim` (ExecOptions.pas @ 0.15.0b4):
 /// render the active PCE's injection/terminal currents (over `NConds`) or its
 /// primitive Y. Non-PCE → the EPRI-compatible "not PCE" text; an
-/// unallocated buffer → "not initialized yet". WP-U1.9.
+/// unallocated buffer → "not initialized yet".
 ///
 /// Returns `Err(text)` for the two Pascal error cases (both `AppendGlobalResult`
 /// the text and then `Exit`) so the caller can reproduce the `Exit` (abort the
@@ -105,7 +105,7 @@ fn cmatrix_to_string(m: &CMatrix) -> String {
 /// Pascal `get voltagebases` (`ExecOptions.pas`): the legal-voltage-base list
 /// rendered `(b1, b2, … , )` — each value `FloatToStr`-formatted, followed by
 /// `, `, closed with `)`. Shared by [`Dss::do_get_cmd`] and `Circuit.Save`'s
-/// `SaveVoltageBases` (WP8.5 step 5).
+/// `SaveVoltageBases`.
 pub(crate) fn voltage_bases_result(ckt: &Circuit) -> String {
     let mut result = "(".to_string();
     for v in &ckt.legal_voltage_bases {
@@ -152,8 +152,8 @@ impl Dss {
             let mut abort = false;
             match pointer {
                 0 => {
-                    // A-Diakoptics options (§0.2 departure): intercept before the
-                    // "Unknown parameter" error. `get ADiakoptics` is WP-AD.3.
+                    // A-Diakoptics options (a recorded departure): intercept
+                    // before the "Unknown parameter" error.
                     if !crate::exec::tearing::try_get_ad_option(ckt, &param, &mut result) {
                         errors.push(format!(
                             "Unknown parameter \"{param_name}\" for Get Command"
@@ -345,8 +345,8 @@ impl Dss {
                 // Pascal `ExecOptions.pas:959/961` (the plot-marker echoes).
                 opt::MARKER_CODE => append_result(&mut result, &ckt.node_marker_code.to_string()),
                 opt::NODE_WIDTH => append_result(&mut result, &ckt.node_marker_width.to_string()),
-                // The GUI plot-marker style echoes (`ExecOptions.pas:978-1041`,
-                // WPG.17 Plot audit settlement); DaisySize is `%-.6g` (`:983`).
+                // The GUI plot-marker style echoes (`ExecOptions.pas:978-1041`);
+                // DaisySize is `%-.6g` (`:983`).
                 opt::DAISY_SIZE => {
                     append_result(&mut result, &crate::report::format::g(*daisy_size, 6))
                 }
@@ -435,7 +435,7 @@ impl Dss {
                 opt::STEP_TIME => {
                     append_result(&mut result, &float_to_str(ckt.solution.step_time_elapsed))
                 }
-                // WP-U1.9 PCE force hooks / counters (ExecOptions.pas @ 0.15.0b4).
+                // PCE force hooks / counters (ExecOptions.pas @ 0.15.0b4).
                 opt::ITER_NUMBER => append_result(&mut result, &ckt.solution.iteration.to_string()),
                 opt::CTRL_ITER_NUMBER => {
                     append_result(&mut result, &ckt.solution.control_iteration.to_string())

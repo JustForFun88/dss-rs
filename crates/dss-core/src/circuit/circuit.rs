@@ -1,4 +1,4 @@
-//! Port of `Common/Circuit.pas` (`TDSSCircuit`), Phase 3 subset:
+//! The circuit (`TDSSCircuit`):
 //! `AddCktElement`, `AddBus`, `ProcessBusDefs`, `ReprocessBusDefs`, the
 //! bus/node mapping and the circuit-level solve settings.
 
@@ -23,9 +23,8 @@ pub struct NodeBus {
 
 /// Pascal `Circuit.pas` `TReductionStrategy` — the circuit-reduction mode
 /// selected by `Set ReduceOption=` and consumed by `EnergyMeter.ReduceZone`.
-/// (`rsTapEnds` was removed upstream 2018-02-28.) The option/command surface
-/// landed in WP6.8; the reduction algorithms themselves (`ReduceAlgs.pas`,
-/// incl. `TLineObj.MergeWith`) are ported in WP8.7 (`report/reduce.rs`).
+/// (`rsTapEnds` was removed upstream 2018-02-28.) The reduction algorithms
+/// themselves live in `exec/reduce.rs`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ReductionStrategy {
     #[default]
@@ -39,7 +38,7 @@ pub enum ReductionStrategy {
 }
 
 /// Which class-specific list an element joins in `AddCktElement`
-/// (the `DSSObjType and CLASSMASK` dispatch, Phase 3 subset).
+/// (the `DSSObjType and CLASSMASK` dispatch).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ElemKind {
     Source,
@@ -191,7 +190,7 @@ pub struct Circuit {
     pub name: String,
     /// `TNamedObject.pUuid` (`TDSSCircuit` is a named object): lazily-created
     /// UUID slot — random v4 on first read; preloaded by the `Uuids` command
-    /// and read by `DefaultCircuitUUIDs` (WP8.6 step 6).
+    /// and read by `DefaultCircuitUUIDs`.
     pub uuid: Option<crate::cim::Uuid>,
     pub case_name: String,
     /// Bus name list; index aligns with `buses` (0-based).
@@ -224,15 +223,15 @@ pub struct Circuit {
     /// only this list (walked by `Check_Fault_Status` / `DoResetFaults`).
     pub faults: Vec<ElemId>,
     pub generators: Vec<ElemId>,
-    /// PVSystem elements (Phase 7): PC elements; in `pc_elements` and this list.
+    /// PVSystem elements: PC elements; in `pc_elements` and this list.
     pub pv_systems: Vec<ElemId>,
-    /// Storage elements (Phase 7): PC elements; in `pc_elements` and this list.
+    /// Storage elements: PC elements; in `pc_elements` and this list.
     /// Walked by `StorageClass.UpdateAll` in the time-step cleanup.
     pub storages: Vec<ElemId>,
-    /// IndMach012 (induction machine) elements (Phase 7, WP7.7): PC elements; in
+    /// IndMach012 (induction machine) elements: PC elements; in
     /// `pc_elements` and this list.
     pub ind_machines: Vec<ElemId>,
-    /// UPFC elements (Phase 7): PC elements; in `pc_elements` and this list. The
+    /// UPFC elements: PC elements; in `pc_elements` and this list. The
     /// list is walked in creation order by `UPFCControl.MakeUPFCList` (the control
     /// scans every enabled UPFC).
     pub upfcs: Vec<ElemId>,
@@ -257,12 +256,12 @@ pub struct Circuit {
     /// Deliberately separate from [`Self::controls`]: reordering the sampling
     /// list would change `DoControlActions`' order and therefore the event log.
     pub control_attach_order: Vec<ElemId>,
-    /// Monitor elements (Phase 6): no Yprim, not PD/PC; device list + own list.
+    /// Monitor elements: no Yprim, not PD/PC; device list + own list.
     pub monitors: Vec<ElemId>,
-    /// EnergyMeter elements (Phase 6): no Yprim, not PD/PC; device list + own
+    /// EnergyMeter elements: no Yprim, not PD/PC; device list + own
     /// list. Walked in creation order by `ResetMeterZonesAll` / `SampleAll`.
     pub energy_meters: Vec<ElemId>,
-    /// Sensor elements (Phase 6, WP6.7): no Yprim, not PD/PC; device list + own
+    /// Sensor elements: no Yprim, not PD/PC; device list + own
     /// list. Walked in creation order by `SetHasSensorFlag` / `CalcAllocationFactors`.
     pub sensors: Vec<ElemId>,
 
@@ -273,7 +272,7 @@ pub struct Circuit {
     /// `Fault.Randomize`). Upstream lives in the `Shared/mathutil.pas` unit and
     /// is time-seeded once by `initialization Randomize;`; reproduced by seeding
     /// from the clock at circuit creation (documented nondeterministic like
-    /// upstream — no golden/oracle reads an RNG-carried value, GAPS_PLAN.md §2.1).
+    /// upstream — no golden/oracle reads an RNG-carried value).
     pub rng: FpcRng,
 
     pub fundamental: f64,
@@ -325,10 +324,9 @@ pub struct Circuit {
     /// `TrapezoidalIntegration` (meter integration rule; reset by `Set mode=`).
     pub trapezoidal_integration: bool,
     /// The `TEnergyMeter` class-level demand-interval state + the
-    /// [`crate::solution::meters::demand_interval::SystemMeter`] (WP8.3 step
-    /// 4). On the circuit so the executive (`Set` handlers / `Reset` /
-    /// `CloseDI`) and the solve loop share it (Pascal keeps it on the DSS
-    /// context / meter class).
+    /// [`crate::solution::meters::demand_interval::SystemMeter`]. On the circuit
+    /// so the executive (`Set` handlers / `Reset` / `CloseDI`) and the solve loop
+    /// share it (Pascal keeps it on the DSS context / meter class).
     pub em_di: crate::solution::meters::EmDiState,
     /// `NodeMarkerCode` (Circuit.pas:499; `Set Markercode=`): a GUI plot-marker
     /// style code — headless-inert except that `Export Profile` echoes it into
@@ -377,8 +375,7 @@ pub struct Circuit {
     pub bus_marker_list: Vec<BusMarker>,
 
     /// `DefaultHourMult`: the circuit-wide multiplier SolveDaily/Yearly derive
-    /// from the default shape each step (consumed by generator dispatch, which
-    /// is Phase 6+; kept faithfully nonetheless).
+    /// from the default shape each step. Nothing in this engine reads it.
     pub default_hour_mult: Complex64,
     /// `ActiveLoadShapeClass` (`Set LoadShapeClass=`, Circuit.pas:252): the one
     /// load-shape class the GENERALTIME (`mode=Time`) and DYNAMICMODE dispatches
@@ -388,7 +385,7 @@ pub struct Circuit {
     pub active_load_shape_class: i32,
     /// `PriceSignal` ($/MWh) and the `PriceCurveObj` that drives it in the
     /// time-series modes (`Set pricecurve=`). The shape is snapshot-cloned at
-    /// `Set` time exactly like the Load/VSource shape refs (STATUS §1c WP5.3).
+    /// `Set` time exactly like the Load/VSource shape refs.
     pub price_signal: f64,
     pub price_curve_obj: Option<crate::elements::general::price_shape::PriceShapeObj>,
     /// `DefaultDailyShapeObj`/`DefaultYearlyShapeObj`: both resolve to the
@@ -403,7 +400,7 @@ pub struct Circuit {
     /// exactly like the other LoadShape refs above.
     pub load_dur_curve_obj: Option<crate::elements::general::load_shape::LoadShapeObj>,
 
-    /// `DSS.SeasonalRating` (`Set SeasonRating=`; GAPS_PLAN WPG.11). Pascal
+    /// `DSS.SeasonalRating` (`Set SeasonRating=`). Pascal
     /// declares this on `TDSSContext` (`DSSClass.pas`), not the circuit —
     /// carried here instead because the engine models exactly one circuit and
     /// every live-solve consumer (`StorageController.Get_DynamicTarget`,
@@ -429,10 +426,9 @@ pub struct Circuit {
     /// `55400a29` `TPDElement.GetRatings` guard is `0 <= idx < NumAmpRatings`
     /// (the `-1` inactive value fails `>= 0`), applied to ANY PDElement — Line,
     /// Transformer, cable (0.14.5 restricted the `DI_Overloads` override to
-    /// `ClassName='line'`). NOTE this drops the pre-`55400a29`/r4133 `NumAmpRatings
-    /// > 1` guard, so a single-season element under an active signal at idx 0 now
-    /// takes `AmpRatings[0]` for BOTH norm and emerg (a no-op only when
-    /// `AmpRatings[0] == NormAmps`); the port follows capi015, the binding oracle.
+    /// `ClassName='line'`). This engine's guard
+    /// ([`CktElement::get_ratings`]) also requires `NumAmpRatings > 1`, so a
+    /// single-season element keeps its `NormAmps`/`EmergAmps`.
     pub seasonal_rating_idx: i32,
 
     pub normal_min_volts: f64,
@@ -464,7 +460,7 @@ pub struct Circuit {
     pub auto_add_bus_list: Vec<String>,
 
     /// `ReductionStrategy`/`ReductionStrategyString` — the `Set ReduceOption=`
-    /// state consumed by the WP8.7 `EnergyMeter.ReduceZone` dispatch (see
+    /// state consumed by the `EnergyMeter.ReduceZone` dispatch (see
     /// [`ReductionStrategy`]).
     pub reduction_strategy: ReductionStrategy,
     pub reduction_strategy_string: String,
@@ -473,8 +469,7 @@ pub struct Circuit {
     /// `ReduceLateralsKeepLoad` (`Set KeepLoad=`).
     pub reduce_laterals_keep_load: bool,
 
-    /// A-Diakoptics circuit-tearing state (Circuit.pas:205–231/321; WP-AD.2
-    /// Stage B). See [`AdTearing`](crate::circuit::AdTearing).
+    /// A-Diakoptics circuit-tearing state. See [`AdTearing`](crate::circuit::AdTearing).
     pub ad: crate::circuit::AdTearing,
 
     /// Scratch for `ProcessBusDefs`/`AddBus` (`NodeBuffer`).
@@ -482,7 +477,7 @@ pub struct Circuit {
 }
 
 impl Circuit {
-    /// Pascal `TDSSCircuit.Create` (Phase 3 fields).
+    /// Pascal `TDSSCircuit.Create`.
     pub fn new(name: &str, default_base_freq: f64) -> Self {
         Self {
             name: name.to_ascii_lowercase(),
@@ -679,14 +674,14 @@ impl Circuit {
                 self.pc_elements.push(r);
                 self.ind_machines.push(r);
             }
-            // VSConverter (Phase 7, WP7.8): a power-flow PC element; no dedicated
+            // VSConverter: a power-flow PC element; no dedicated
             // list (nothing iterates them specifically).
             ElemKind::VsConverter => self.pc_elements.push(r),
-            // VCCS (Phase 7): a current-source PC element with dynamics state vars;
+            // VCCS: a current-source PC element with dynamics state vars;
             // in `pc_elements` (the dynamics driver + monitor mode-3 walk that
             // list), no dedicated list.
             ElemKind::Vccs => self.pc_elements.push(r),
-            // UPFC (Phase 7): a power-flow PC element controlled by UPFCControl;
+            // UPFC: a power-flow PC element controlled by UPFCControl;
             // in `pc_elements` and its own list (the control scans `upfcs`).
             ElemKind::Upfc => {
                 self.pc_elements.push(r);
@@ -719,13 +714,11 @@ impl Circuit {
     /// ([`crate::circuit::controls::derive_control_lists`]).
     ///
     /// `attached` is `Assigned(Value)`: a control whose element reference did
-    /// not resolve (`ControlledElement := nil`, r4133 `Controls/Relay.pas:983`)
-    /// is removed and not re-appended. Called from the port's
-    /// `RecalcElementData` moment — the tail of every control edit
-    /// (`exec/command.rs::apply_edit_signal_tail`) — because upstream re-assigns
-    /// `ControlledElement` there on *every* edit, not only when the element-ref
-    /// property is written (capi 0.14.5 differs; `DIVERGENCES.md`, r4133 is the
-    /// authority). Pinned by
+    /// not resolve (`ControlledElement := nil`) is removed and not re-appended.
+    /// Called from this engine's `RecalcElementData` moment — the tail of every
+    /// control edit (`exec/command.rs::apply_edit_signal_tail`) — because OpenDSS
+    /// re-assigns `ControlledElement` there on *every* edit, not only when the
+    /// element-ref property is written (capi 0.14.5 differs). Pinned by
     /// `exec::tests::element_extras::ocp_dev_type_follows_the_last_attach_order`.
     ///
     /// [`Self::controls`] — the sampling order — is deliberately untouched.
@@ -1024,16 +1017,12 @@ impl Circuit {
         }
         // < RestoreBusInfo
 
-        // Pascal `ReprocessBusDefs` tail (r4133 `Common/Circuit.pas:2411`
-        // `DoResetMeterZones(ActorID);  // Fix up meter zones to correspond`,
-        // capi `Common/Circuit.pas:2246`): the meter zones are rebuilt HERE,
-        // inside the reprocess, before the flag is cleared — every caller of
+        // `ReprocessBusDefs` tail: the meter zones are rebuilt HERE, inside the
+        // reprocess, before the flag is cleared — every caller of
         // `ReprocessBusDefs` therefore gets fresh zones, not just the
-        // `BuildYMatrix` one. Hoisting it into the callers left `MakeBusList`
-        // (`ExecCommands.pas` → `exec/solve.rs::do_make_bus_list_cmd`) consuming
-        // `bus_name_redefined` without ever resetting the zones, so a deck that
-        // issues `MakeBusList` after defining an EnergyMeter kept an empty zone
-        // (GOLDEN_REBASE G1.6b/D9).
+        // `BuildYMatrix` one. `MakeBusList` (`exec/solve.rs::do_make_bus_list_cmd`)
+        // also consumes `bus_name_redefined`, so a deck that issues `MakeBusList`
+        // after defining an EnergyMeter gets its zones from here.
         crate::solution::meters::do_reset_meter_zones(self, store);
 
         self.bus_name_redefined = false;

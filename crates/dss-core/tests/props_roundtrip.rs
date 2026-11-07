@@ -7,7 +7,7 @@
 //! records. A file's values are what its `golden.lock.json` anchor names: an
 //! oracle capture for every file but the two [`PROPS_SELF_ANCHORED`] ones,
 //! whose values are the port's own renders
-//! ([`props_self_anchored_share_is_locked`]). Per PORTING_PLAN.md §4, numbers
+//! ([`props_self_anchored_share_is_locked`]). Numbers
 //! are compared with tolerance and the surrounding structure exactly, never by
 //! raw float-string diffing.
 
@@ -44,13 +44,13 @@ struct Scenario {
 
 /// How many `<class>.json` files the gate replays, how many scenarios they hold
 /// in total, and how many property cells those scenarios pin — the **population
-/// lock** of this gate (`GOLDEN_REBASE_PLAN.md` G0.2).
+/// lock** of this gate.
 ///
 /// [`props_roundtrip_matches_oracle`] used to assert only that the flattened
 /// scenario list was non-empty, so a class file (or a scenario, or a property
 /// inside one) could leave the gate and take its coverage with it silently: 50
 /// files still pass a non-emptiness check exactly as well as 51 do.
-/// `golden_lock.rs` (G0.1) digests each artifact's committed content, so an
+/// `golden_lock.rs` digests each artifact's committed content, so an
 /// edit that drops a scenario or a property *does* red the lock as a `DIGEST
 /// MOVED` — what it cannot see is the same drop made across a deliberate
 /// `DSS_UPDATE_GOLDEN_LOCK=1` regen, where the digest moves with the bytes.
@@ -197,55 +197,33 @@ fn scan_number(s: &str) -> Option<(f64, usize)> {
 /// per-scenario. Each excluded cell must still read a value other than the
 /// capture's: one that matches the capture again fails the gate as a stale row.
 ///
-/// * `isource_bus2_clobbered_by_bus1` / `Bus2` — the scenario exists to pin the
-///   upstream quirk that `TIsourceObj.PropertySideEffects`
-///   (`.inputs/dss_capi/src/PCElements/Isource.pas:221`; r4133 keeps the same
-///   hole, `Version8/Source/PCElements/Isource.pas:354-366`) has no `Bus2`
+/// * `isource_bus2_clobbered_by_bus1` / `Bus2` — the scenario pins the OpenDSS
+///   bug (both engines) that the Isource property side effects have no `Bus2`
 ///   case, so `Bus2Defined` never latches and the `Bus1` side effect re-derives
-///   `b1.0.0.0` over the explicit `b2` this deck wrote first.
-///   `TVsourceObj.PropertySideEffects` (`Vsource.pas:498`; r4133 `:468`)
-///   latches it on the very same property, and since GOLDEN_REBASE G2.2b so
-///   does this engine — in **both** lanes, which is why the exclusion is
-///   unconditional (it was default-lane-only while the parity lane still
-///   reproduced the clobber). Pinned by
+///   `b1.0.0.0` over the explicit `b2` this deck wrote first. Vsource latches
+///   it on the very same property, and so does this engine — in **both** lanes,
+///   which is why the exclusion is unconditional. Pinned by
 ///   `elements::pc::isource::tests::bus2_latches_like_the_sibling_class`.
 /// * `gictransformer_auto` / `R2` — the scenario builds
 ///   `GICTransformer.tg3 … %R1=0.2 %R2=0.15 kvll1=345 kvll2=138 mva=300`, and
 ///   `R2` is the stored second-winding conductance read back through the
-///   property's `INVERSE_VALUE` flag. Both gating oracles derive `G2` from
-///   `FPctR1` (`.inputs/dss_capi/src/PDElements/GICTransformer.pas:441`; r4133
-///   `Version8/Source/PDElements/GICTransformer.pas:495` is the same line), so
-///   the capture holds `ZBase2·%R1/100 = 0.12696`; since GOLDEN_REBASE G2.5 the
-///   engine reads `%R2` in **both** lanes and reports `ZBase2·%R2/100 =
-///   0.09522`. Every other property of the scenario — including `%R1`, `%R2`,
+///   property's `INVERSE_VALUE` flag. Both OpenDSS engines derive `G2` from
+///   `%R1` (an OpenDSS bug), so the capture holds `ZBase2·%R1/100`, while this
+///   engine reads `%R2` in **both** lanes and reports `ZBase2·%R2/100`. Every other property of the scenario — including `%R1`, `%R2`,
 ///   `R1`, the bases and the `type=Auto` bus promotion — still compares against
 ///   the capture. Pinned by
 ///   `exec::tests::compat_quirks::gic_transformer_pct_r2_drives_winding_two`.
-/// * the **21 RP3.8 live-render cells** — `indmach012_*` / `PF` (5) and
-///   `storagecontroller_*` / `kWhTotal`, `kWTotal`, `kWhActual`, `kWActual`
-///   (16). The capture's `""` is not a rendered value at all: the pinned 0.14.5
-///   oracle flags those five properties `[TPropertyFlag.SilentReadOnly,
-///   TPropertyFlag.ReadByFunction]` and leaves their `PropertyOffset` at `-1`
-///   (`.inputs/dss_capi/src/PCElements/IndMach012.pas:288-289`,
-///   `src/Controls/StorageController.pas:416-423`), so `GetObjPropertyValue`'s
-///   `PropertyOffset[Index] <> -1` guard
-///   (`src/General/DSSObjectHelper.pas:2203-2204`) short-circuits before the
-///   read function runs. r4133 — the behavioral authority — renders each one
-///   **live**: `Version8/Source/PCElements/IndMach012.pas:1790`
-///   (`Format('%.6g', [PowerFactor(Power[1, ActiveActor])])`) and
-///   `Version8/Source/Controls/StorageController.pas:991-994`, calling
-///   `GetkWhTotal`/`GetkWTotal`/`GetkWhActual`/`GetkWActual` (bodies
-///   `:1162-1197`). Measured on these very nine scenarios through the
-///   epri-worker bridge (RP3.8 P0), the r4133 DLL prints `'0'` for all four
-///   aggregates on the empty fleet these scripts build, and `'1'` for `PF`
-///   once a `calcv` has run — on this gate's own preamble, which has none, it
-///   access-violates instead (`Get_Power` guards only on `FEnabled`,
-///   `CktElement.pas:679`), a crash this engine deliberately does not inherit.
-///   `0` and `1` are exactly what this engine now renders.
-///   The capture **cannot be regenerated into agreement**: re-running
-///   `tools/golden/gen_props.py`'s own `run_scenario` for these two classes on
-///   the pinned oracle reproduces both artifacts byte-for-byte, the `""` cells
-///   included (measured, RP3.8 P2a), so no golden byte and no
+/// * the **live-render cells** — `indmach012_*` / `PF` and
+///   `storagecontroller_*` / `kWhTotal`, `kWTotal`, `kWhActual`, `kWActual`.
+///   The capture's `""` is not a rendered value at all: the pinned 0.14.5
+///   engine flags those five properties silent read-only, so its property
+///   getter short-circuits before the read function runs (an OpenDSS bug).
+///   r4133 renders each one **live**, as this engine does: the fleet
+///   aggregates of an empty fleet read `0`, and `PF` of a machine without
+///   power reads `1` (where r4133 crashes on this gate's own preamble, which
+///   runs no `calcv`). The capture **cannot be regenerated into agreement**:
+///   `tools/golden/gen_props.py` on the pinned dss-python reproduces both
+///   artifacts byte-for-byte, the `""` cells included, so no golden byte and no
 ///   `golden.lock.json` digest moves and the exclusion is the whole
 ///   disposition. Every other cell of the nine scenarios still compares.
 ///   Pinned by
@@ -261,14 +239,14 @@ fn scan_number(s: &str) -> Option<(f64, usize)> {
 ///   default too). The pinned 0.14.5 oracle defaults the count to 0 and
 ///   prints `0` in both cells, and regenerating the capture would print `0`
 ///   again. r4133 reads back `20` for both decks, and `0` only for a written
-///   `nvariables=0` (epri-worker on the r4133 DLL, 2026-10-04). Every other
+///   `nvariables=0` (epri-worker on the r4133 DLL). Every other
 ///   property of the two scenarios still compares. Pinned by
 ///   `exec::tests::dynamic_eq_memory::an_omitted_nvariables_reads_back_twenty`,
 ///   which replays both scenarios.
 /// * the **20 LineGeometry selection cells** — `linegeometry_default` /
 ///   `Cond`; `linegeometry_spacing` / `Cond`, `Wire`, `X`, `H`, `CNCable`,
 ///   `TSCable`; `linegeometry_makelike` / the same six;
-///   `linegeometry_buried` / those six and `Units`. User decision 2026-10-04: only an
+///   `linegeometry_buried` / those six and `Units`. Only an
 ///   explicit `cond=N` selects a conductor, so a new geometry, a `spacing=` +
 ///   `wires=` geometry and a `like=` copy have none selected (`Cond` reads 0,
 ///   `X` and `H` empty, the conductor names empty, `Units` the default, the
@@ -279,9 +257,9 @@ fn scan_number(s: &str) -> Option<(f64, usize)> {
 ///   `dss_core::exec::tests::line_geometry_rules::readback_shows_no_conductor_after_new_like_and_arrays`,
 ///   which writes the four scenarios and every value they read.
 /// * `linegeometry_default` / `NPhases` — a geometry that writes no `nphases`
-///   holds the documented default of 3 in both lanes (coordinator ruling
-///   2026-10-10). The pinned 0.14.5 oracle prints `0`, and so does r4133
-///   (epri-worker on the r4133 DLL, 2026-10-10), which then refuses a neutral
+///   holds the documented default of 3 in both lanes. The pinned 0.14.5
+///   engine prints `0`, and so does r4133 (epri-worker on the r4133 DLL),
+///   which then refuses a neutral
 ///   `wires=` after three `cncables=` and fails the solve. Pinned by
 ///   `dss_core::exec::tests::line_geometry_rules::nphases_defaults_to_three`
 ///   and by the readback pin above.
@@ -289,31 +267,30 @@ fn scan_number(s: &str) -> Option<(f64, usize)> {
 ///   documented word, and the LineSpacing list `mi kft km m ft in cm mm` has no
 ///   `none`, so `units=none` is refused at its token and the spacing keeps
 ///   feet, in both lanes. The pinned 0.14.5 oracle stores `none` and prints
-///   it, and so does r4133 (epri-worker on the r4133 DLL, 2026-10-17), which
+///   it, and so does r4133 (epri-worker on the r4133 DLL), which
 ///   then reads the positions in metres. The refusal itself is a register
 ///   entry of [`SCENARIO_ERRORS`]. Pinned by
 ///   `dss_core::exec::tests::unit_words::every_class_refuses_a_word_that_is_not_whole`.
 /// * the **5 LineSpacing coordinate cells** — `linespacing_default` / `X`,
 ///   `H`; `linespacing_array_clamp` / `H`; `linespacing_equivalent_spacing` /
 ///   `X`, `H` (capi015 capture). A coordinate list holds the values given, in
-///   order (coordinator ruling 2026-10-17): a new spacing and an equivalent
+///   order: a new spacing and an equivalent
 ///   spacing given no `x=`/`h=` read `''`, and `h=(28)` on three conductors
 ///   reads `[ 28]`, conductors 2 and 3 having no height, in both lanes. The
 ///   pinned 0.14.5 oracle and capi015 pad each list with zeros (`[ 0 0 0]`,
 ///   `[ 28 0 0]`, `[ 0 0 0 0]`). r4133 reads zeros for the new spacing and
 ///   uninitialized memory past `h=(28)` and in the four-conductor equivalent
-///   spacing (epri-worker on the r4133 DLL, 2026-10-17, e.g. `[28,4.2E-314,
+///   spacing (epri-worker on the r4133 DLL, e.g. `[28,4.2E-314,
 ///   1.6E-317]`). Every other property of the
 ///   three scenarios still compares. Pinned by
 ///   `dss_core::exec::tests::line_geometry_rules::a_short_spacing_list_keeps_its_gaps`
 ///   and the `line_spacing` module tests `defaults` and
 ///   `x_h_arrays_sized_by_nconds`.
 /// * `linespacing_shrink_nconds` / `X`, `H` — each `nconds=` of a LineSpacing
-///   keeps no position and returns the unit to feet (coordinator ruling
-///   2026-10-17), so after `nconds=2` both lists read `''` in both lanes. The
+///   keeps no position and returns the unit to feet, so after `nconds=2` both lists read `''` in both lanes. The
 ///   pinned 0.14.5 oracle keeps the leading positions (`[ -1.2 0]`,
 ///   `[ 28 28]`) and so does r4133 (`[-1.2,0]`, `[28,28]`, epri-worker on the
-///   r4133 DLL, 2026-10-17), both re-reading the metres given as feet. Every
+///   r4133 DLL), both re-reading the metres given as feet. Every
 ///   other property of the scenario still compares. Pinned by
 ///   `dss_core::exec::tests::line_geometry_rules::a_spacing_nconds_keeps_no_position_and_returns_to_feet`
 ///   and the `line_spacing` module test
@@ -321,8 +298,8 @@ fn scan_number(s: &str) -> Option<(f64, usize)> {
 const LANE_SKIP_SCENARIO_PROPS: &[(&str, &str)] = &[
     ("isource_bus2_clobbered_by_bus1", "Bus2"),
     ("gictransformer_auto", "R2"),
-    // RP3.8: the five properties r4133 renders live and the pinned 0.14.5
-    // oracle short-circuits to `""` (see the register doc above).
+    // The five properties r4133 renders live and the pinned 0.14.5 engine
+    // short-circuits to `""` (see the register doc above).
     ("indmach012_default", "PF"),
     ("indmach012_full", "PF"),
     ("indmach012_wye_fixedslip", "PF"),
@@ -347,8 +324,7 @@ const LANE_SKIP_SCENARIO_PROPS: &[(&str, &str)] = &[
     // The `NVariables` default of 20, where the 0.14.5 capture prints 0.
     ("dynamicexp_default", "NVariables"),
     ("dynamicexp_makelike", "NVariables"),
-    // User decision 2026-10-04: only `cond=N` selects a LineGeometry conductor
-    // (see the register above).
+    // Only `cond=N` selects a LineGeometry conductor (see the register above).
     ("linegeometry_default", "Cond"),
     // The documented `nphases` default of 3 (see the register above).
     ("linegeometry_default", "NPhases"),
@@ -459,8 +435,8 @@ const LANE_SKIP_PROP_VALUE_CELLS: usize = 33;
 /// 0.14.5 oracle prints its "no rating" number. A conductor (`WireData`,
 /// `CNData`, `TSData`) starts at `-1` and fills seasons not supplied with `0`,
 /// which only a `WireData` capture shows, so only that row takes `0`; a
-/// `LineGeometry`, a `Fault` and a `GICTransformer` start at `0` (user decision
-/// 2026-10-04: a rating that is not set is its own value, not a number), and a
+/// `LineGeometry`, a `Fault` and a `GICTransformer` start at `0` (a rating that
+/// is not set is its own value, not a number), and a
 /// `Capacitor` without kvar (the `cap_cmatrix` bank) derives a zero rating,
 /// which is not set where the oracle prints `0`.
 ///
@@ -593,7 +569,7 @@ fn props_roundtrip_matches_oracle() {
     // happens: `compared` is every cell this run actually checked (by value or,
     // for the sym-matrix exclusion, by shape), `lane_skips` every cell
     // [`LANE_SKIP_SCENARIO_PROPS`] deliberately does not compare (in both
-    // lanes since G2.2b).
+    // lanes).
     let mut compared = 0usize;
     let mut lane_skips = 0usize;
     let mut error_scenarios = 0usize;
@@ -638,15 +614,14 @@ fn props_roundtrip_matches_oracle() {
             // lanes scale `G2` off `%R2`, so both drop the value compare on
             // `gictransformer_auto`'s `R2` (the capture carries the upstream
             // `%R1` reading).
-            // RP3.8 LANE EXCLUSION [RP38_LIVE_READ_ONLY_RENDERS]: and both lanes render
+            // LANE EXCLUSION (live read-only renders): and both lanes render
             // the five properties r4133 computes live (IndMach012 `PF`, the four
-            // StorageController fleet aggregates), which the pinned 0.14.5 oracle
-            // short-circuits to `""`, so both drop the compare on those 21 cells.
+            // StorageController fleet aggregates), which the pinned 0.14.5 engine
+            // short-circuits to `""`, so both drop the compare on those cells.
             // Both lanes also default `DynamicExp.NVariables` to 20 and
             // `LineGeometry.NPhases` to 3 where the capture prints 0, and read
-            // the LineGeometry conductor selection the user decision of
-            // 2026-10-04 sets, which the capture reads off the upstream cursor
-            // (20 more cells). See the register above for every row.
+            // the LineGeometry conductor selection only `cond=N` sets, which the
+            // capture reads off the OpenDSS cursor (more cells). See the register above for every row.
             dss.command(&format!("? {}.{}", sc.target, prop));
             let actual = dss.result().to_string();
             let ctx = format!("scenario {} property {prop}", sc.name);

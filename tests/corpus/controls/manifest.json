@@ -1,5 +1,5 @@
 {
- "comment": "Controls live gate decks (CONTROL_COVERAGE_PLAN.md): control/protection/metering elements in symmetric, asymmetric, and combination scenarios, live-compared by controls_cases_match_oracle with the full-model mandate plus element-specific state channels (probes / compare_variables / compare_eventlog / compare_ctrlqueue / check_meters_monitors). Cases with pending=true cover features the port does not implement yet (absorbed from the former gaps/ staging family, GAPS_PLAN.md section 3.1): the gate asserts the Rust engine errors loudly on them; the WP in each wp field flips pending=false when it ports the feature.",
+ "comment": "Controls live gate decks: control/protection/metering elements in symmetric, asymmetric, and combination scenarios, live-compared by controls_cases_match_oracle with the full-model mandate plus element-specific state channels (probes / compare_variables / compare_eventlog / compare_ctrlqueue / check_meters_monitors). Cases with pending=true cover features the port does not implement yet: the gate asserts the Rust engine errors loudly on them, and the WP in each wp field flips pending=false when it ports the feature.",
  "cases": [
   {
    "path": "invcontrol/invcontrol_multi_vv_wye.dss",
@@ -11,7 +11,7 @@
    ],
    "compare_eventlog": true,
    "engines": "both",
-   "note": "WP-U1.3 / ledger L1 (InvControlDeltaV per-control 2-slot buffer). TWO InvControls on separate wye PVSystems (different monitored buses), both VOLTVAR, single snapshot. This deck is revision-insensitive: pv1/pv2 kvar are byte-identical on 0.14.5 and capi015 (probed -- the D1 buffer refactor is a proven numeric no-op in a snapshot), so it does NOT witness the D1 divergence live. The D1 time-series bug (shared FVpuSolutionIdx, only bites the 2nd+ control over a multi-step hysteresis run the capi015 oracle cannot re-nominalize -- STATUS/ledger L1) is pinned by the unit test d1_buffer_2slot_tracks_last_two_pu_voltages. What this deck gates is the generic multi-InvControl fleet build + independent per-control dispatch (pv1 kvar != pv2 kvar proves each control resolves its own DER / monitored voltage / curve Q); kept on capi015 to stay aligned with the WP-U1.3 target engine. Full-model per-element compare + event log, n_steps=1."
+   "note": "InvControlDeltaV per-control 2-slot buffer. TWO InvControls on separate wye PVSystems (different monitored buses), both VOLTVAR, single snapshot. The deck is revision-insensitive: pv1/pv2 kvar are byte-identical on dss_capi 0.14.5 and 0.15.x (probed: the buffer layout is a numeric no-op in a snapshot), so it does not witness the time-series buffer bug (a shared FVpuSolutionIdx that bites only the 2nd+ control over a multi-step hysteresis run). That bug is pinned by the unit test d1_buffer_2slot_tracks_last_two_pu_voltages. What this deck gates is the generic multi-InvControl fleet build + independent per-control dispatch (pv1 kvar != pv2 kvar proves each control resolves its own DER / monitored voltage / curve Q). Full-model per-element compare + event log, n_steps=1."
   },
   {
    "path": "invcontrol/invcontrol_vv_delta.dss",
@@ -23,7 +23,7 @@
    ],
    "compare_eventlog": true,
    "engines": "r4133",
-   "note": "WP-U1.3 / row D4 (delta-DER LL monitored voltage). A DELTA-connected PVSystem under VOLTVAR: 0.15.x monitors line-to-line terminal voltages (InvControl.pas l.1647-1652), 0.14.5 used line-neutral. Feature-sensitive: LL vs LN flips the curve point and the var SIGN (probe scratch_probe_d4.py: capi015/r4133 Q=+520 kvar vs 0.14.5 -31 kvar). r4133==capi015 here. Gated capi015; per-step pv1 kvar (full-model) + event log exact."
+   "note": "Delta-DER LL monitored voltage. A DELTA-connected PVSystem under VOLTVAR: 0.15.x and r4133 monitor line-to-line terminal voltages, dss_capi 0.14.5 line-neutral. Feature-sensitive: LL vs LN flips the curve point and the var SIGN (probe scratch_probe_d4.py: 0.15.x/r4133 Q=+520 kvar vs 0.14.5 -31 kvar). Per-step pv1 kvar (full-model) + event log exact."
   },
   {
    "path": "regcontrol/regcontrol_sym.dss",
@@ -384,7 +384,7 @@
   {
    "path": "combo/midi_protection.dss",
    "compare_reliability": true,
-   "note": "WP-U2.1 handoff restore: the three-tier fuse-save race (backup relay -> midline recloser -> lateral fuse) re-armed on the version-consistent r4133 chain (Fuse U2.1 / Recloser U2.2 / Relay U2.3). The fuse melts phase 1 of L6 on the recloser's delayed cycle at Sec=0.9 while the recloser reclose restores the other phases and the backup relay never trips (probe-verified on oddie:r4133). Recloser/Relay per-phase state arrays + the per-phase event log compared vs oddie:r4133 (the r4133 Relay 'Debug Sample' lines are dropped from the capture in both lanes since GOLDEN_REBASE_PLAN.md G2.2d: the engine writes them under DebugTrace, as every sibling trace line does). EnergyMeter registers/zone + the mode-0 monitor channels are compared vs oddie:r4133 too (check_meters_monitors): the comparator now normalizes the Delphi monitor-CSV header artifact (leading-space + trailing-empty columns).",
+   "note": "The three-tier fuse-save race (backup relay -> midline recloser -> lateral fuse) on the r4133 protection classes. The fuse melts phase 1 of L6 on the recloser's delayed cycle at Sec=0.9 while the recloser reclose restores the other phases and the backup relay never trips (probe-verified on r4133). Recloser/Relay per-phase state arrays + the per-phase event log compared vs r4133 (the r4133 Relay 'Debug Sample' lines are dropped from the capture in both lanes: the engine writes them under DebugTrace, as every sibling trace line does). EnergyMeter registers/zone + the mode-0 monitor channels are compared vs r4133 too (check_meters_monitors): the comparator normalizes the Delphi monitor-CSV header artifact (leading-space + trailing-empty columns).",
    "engines": "r4133",
    "ad": "off:too-small",
    "kind": "micro",
@@ -427,7 +427,7 @@
   {
    "path": "combo/combo_protection.dss",
    "compare_reliability": true,
-   "note": "WP-U2.1 handoff restore: the classic three-tier fuse-save race (substation backup relay -> midline recloser -> lateral fuse) re-armed on the version-consistent r4133 chain (Fuse U2.1 / Recloser U2.2 / Relay U2.3). The recloser FAST shot clears at Sec=0.4, the fuse melts the faulted phase on the delayed cycle at Sec=0.5, the recloser recloses restoring service except the blown phase, and the backup relay never trips (probe-verified on oddie:r4133). Recloser/Relay per-phase state arrays + the per-phase event log compared vs oddie:r4133. EnergyMeter registers/zone + the mode-0 monitor channels are compared vs oddie:r4133 too (check_meters_monitors): the comparator now normalizes the Delphi monitor-CSV header artifact (leading-space + trailing-empty columns).",
+   "note": "The classic three-tier fuse-save race (substation backup relay -> midline recloser -> lateral fuse) on the r4133 protection classes. The recloser FAST shot clears at Sec=0.4, the fuse melts the faulted phase on the delayed cycle at Sec=0.5, the recloser recloses restoring service except the blown phase, and the backup relay never trips (probe-verified on r4133). Recloser/Relay per-phase state arrays + the per-phase event log compared vs r4133. EnergyMeter registers/zone + the mode-0 monitor channels are compared vs r4133 too (check_meters_monitors): the comparator normalizes the Delphi monitor-CSV header artifact (leading-space + trailing-empty columns).",
    "engines": "r4133",
    "ad": "pf",
    "kind": "micro",
@@ -686,7 +686,7 @@
   },
   {
    "path": "recloser/recloser_perm.dss",
-   "note": "WP-U2.2 ganged lockout-to-OPEN: a 3ph permanent fault drives the ganged phase path (explicit phasefast=a phasedelayed=d, since r4133 D2 removed the default curves) -> FAST trip -> reclose -> SLOW trip -> reclose -> lockout -> ends [open,open,open]. Re-validates the do_open_ganged lockout branch against oddie:r4133 (restores the retired 0.14.5 golden's coverage).",
+   "note": "Ganged lockout-to-OPEN: a 3ph permanent fault drives the ganged phase path (explicit phasefast=a phasedelayed=d, since r4133 has no default curves) -> FAST trip -> reclose -> SLOW trip -> reclose -> lockout -> ends [open,open,open]. Gates the do_open_ganged lockout branch against r4133.",
    "engines": "r4133",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
@@ -793,7 +793,7 @@
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
-   "note": "WP-U2.1 (r4133 C3/D1): explicit fusecurve=tlink scaled by the new CurveMultiplier divisor (curvemultiplier=40 -> GetTCCTime(Cmag/40)) blows ONLY the SLG phase 2 at Sec=0.4 -> State=[closed,open,closed]. Feature-sensitive: curvemultiplier=1 melts all three at Sec=0.2 (probe-proven); RatedCurrent is the r4133 informational default 0, so dividing by it (the pre-r4133 divisor) would divide-by-zero and blow every phase -- pins CurveMultiplier as the divisor. r4133-only property. Full-model per-step + State/Normal probes + blow event log + ctrlqueue."
+   "note": "Explicit fusecurve=tlink scaled by the CurveMultiplier divisor (curvemultiplier=40 -> GetTCCTime(Cmag/40)) blows ONLY the SLG phase 2 at Sec=0.4 -> State=[closed,open,closed]. Feature-sensitive: curvemultiplier=1 melts all three at Sec=0.2 (probe-proven). RatedCurrent is the r4133 informational default 0, so dividing by it would divide-by-zero and blow every phase, which pins CurveMultiplier as the divisor. r4133-only property. Full-model per-step + State/Normal probes + blow event log + ctrlqueue."
   },
   {
    "path": "fuse/fuse_legacy_noblow.dss",
@@ -817,7 +817,7 @@
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
-   "note": "WP-U2.1 (r4133 breaking default D1): a legacy fuse (RatedCurrent only, no explicit curve) gets the r4133 default FuseCurve=none and NEVER blows even under a solid 3ph fault -> State stays [closed,closed,closed], empty blow event log + ctrlqueue (blew all three on 0.14.5). Pins the never-blows breaking default. r4133-only observable. Full-model per-step + State/Normal probes."
+   "note": "A legacy fuse (RatedCurrent only, no explicit curve) gets the r4133 default FuseCurve=none and NEVER blows even under a solid 3ph fault -> State stays [closed,closed,closed], empty blow event log + ctrlqueue (dss_capi 0.14.5 blows all three). Pins the never-blows default. r4133-only observable. Full-model per-step + State/Normal probes."
   },
   {
    "path": "fuse/indmach_r4133/indmach_snap.dss",
@@ -853,7 +853,7 @@
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
-   "note": "WP-U2.1 re-evaluation (2026-07-17): r4133 twin of the vendored InductionMachine/Master.DSS, which is UNSOLVABLE under r4133 by upstream design (INTENTIONAL breaking change, 11.0.0.1 release notes 'Protection Elements Enhancements': RatedCurrent demoted to informational nameplate, new CurveMultiplier default 1.0 is the TCC divisor, no legacy fallback -- Controls/fuse.pas Edit case 6 writes only RatedCurrent). Single functional edit: CurveMultiplier=65 on both fuses restores the original coordination -- Fuse.f2 (Tlink) sees ~54-56 A of motor load = 0.83x-0.86x of the 65 A curve base, below the 2.0x minimum-melt threshold, so it HOLDS (under the r4133 default divisor 1.0 the same current reads 54x-56x -> instant melt at Sec=0, islanding Transformer.Tg + IndMach012.Motor1 -> non-convergence; probe-proven on oddie:r4133, eventlog 'Fuse.f2 PHASE 1/2/3 BLOWN'). 1.7 validated on oddie:r4133 2026-07-17: converged 8/8 (iters 18,2,...,2), fingerprint sha256 0a90d76d bit-identical across two processes; feature-sensitive (divisor 65 vs default 1.0 flips converged/blown, the divide-by-RatedCurrent pre-r4133 path is pinned by sibling fuse_curvemult_blow). Full-model per-step + fuse State/Normal/curve/multiplier probes + eventlog + ctrlqueue. AD classified (DSS_AD_CLASSIFY probe, 2026-07-17): snapshot-mode and AD-eligible by mode, but the AD save/reload leg fails to re-open the deck's relative-path fixture wpwind2400.csv from the torn-circuit scratch dir (probe: 'ad-init: Error opening file: wpwind2400.csv') -> off:save-roundtrip-relpath, same class as ExpControl/Master.dss."
+   "note": "r4133 twin of the vendored InductionMachine/Master.DSS, which r4133 cannot solve by design (an intentional change, 11.0.0.1 release notes 'Protection Elements Enhancements': RatedCurrent is informational nameplate, the CurveMultiplier default 1.0 is the TCC divisor, no legacy fallback). Single functional edit: CurveMultiplier=65 on both fuses restores the original coordination: Fuse.f2 (Tlink) sees ~54-56 A of motor load = 0.83x-0.86x of the 65 A curve base, below the 2.0x minimum-melt threshold, so it HOLDS (under the r4133 default divisor 1.0 the same current reads 54x-56x -> instant melt at Sec=0, islanding Transformer.Tg + IndMach012.Motor1 -> non-convergence, probe-proven on r4133, eventlog 'Fuse.f2 PHASE 1/2/3 BLOWN'). Validated on r4133 2026-07-17: converged 8/8 (iters 18,2,...,2), fingerprint sha256 0a90d76d bit-identical across two processes. Feature-sensitive (divisor 65 vs default 1.0 flips converged/blown; the divide-by-RatedCurrent path is pinned by sibling fuse_curvemult_blow). Full-model per-step + fuse State/Normal/curve/multiplier probes + eventlog + ctrlqueue. AD classified (DSS_AD_CLASSIFY probe, 2026-07-17): snapshot-mode and AD-eligible by mode, but the AD save/reload leg fails to re-open the deck's relative-path fixture wpwind2400.csv from the torn-circuit scratch dir (probe: 'ad-init: Error opening file: wpwind2400.csv') -> off:save-roundtrip-relpath, same class as ExpControl/Master.dss."
   },
   {
    "path": "fuse/indmach_r4133/indmach_dyn.dss",
@@ -926,13 +926,13 @@
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
-   "note": "WP-U2.1 re-evaluation (2026-07-17): r4133 twin of the vendored InductionMachine/Run.dss (see indmach_snap note for the intentional-breaking-change verdict; CurveMultiplier=65 restores the RatedCurrent=65 coordination). Inline driver mirrors Run.dss: snapshot solve + 5001 dynamics steps at h=166.67us -- SLG fault at B3.1 applied t=0.3 s, Relay.mfrov/uv isolates the motor ~0.42 s, Recloser.rec1 trips FAST Sec=0.5115, temporary fault clears, both fuses HOLD (f2 fault-window multiples stay under the Tlink melt clock; r4088-era sequence reproduced identically on oddie:r4133). Monitors modes 0+3 (7 monitors, 5001 samples) compared; Run.dss's mode=5 Monitor.Mtime dropped (wall-clock channels, nondeterministic). Motor coast-down end-state f=57.2053 Hz slip=0.0466. 1.7 validated on oddie:r4133 2026-07-17: converged, fingerprint sha256 a73077ba (23.7 MB capture incl 30029-entry eventlog) bit-identical across two processes; feature-sensitive (without CurveMultiplier=65 the same circuit blows f2 at Sec=0 and does not converge -- the vendored original, probe-proven). n_steps=2 continues the dynamics one 166.67us step each (Set number=1). AD classified (2026-07-17): dynamics deck -> off:mode-outside-AD-scope (AD sweep is power-flow-only; precedent VCCS/DG_Prot_Fdr.dss); the DSS_AD_CLASSIFY probe additionally hits the same wpwind2400.csv save-roundtrip relpath failure as indmach_snap."
+   "note": "r4133 twin of the vendored InductionMachine/Run.dss (see the indmach_snap note for why r4133 cannot solve the original; CurveMultiplier=65 restores the RatedCurrent=65 coordination). Inline driver mirrors Run.dss: snapshot solve + 5001 dynamics steps at h=166.67us. SLG fault at B3.1 applied t=0.3 s, Relay.mfrov/uv isolates the motor ~0.42 s, Recloser.rec1 trips FAST Sec=0.5115, the temporary fault clears, both fuses HOLD (f2 fault-window multiples stay under the Tlink melt clock, the r4088 sequence reproduced identically on r4133). Monitors modes 0+3 (7 monitors, 5001 samples) compared. Run.dss's mode=5 Monitor.Mtime is dropped (wall-clock channels, nondeterministic). Motor coast-down end-state f=57.2053 Hz slip=0.0466. Validated on r4133 2026-07-17: converged, fingerprint sha256 a73077ba (23.7 MB capture incl 30029-entry eventlog) bit-identical across two processes. Feature-sensitive: without CurveMultiplier=65 the same circuit blows f2 at Sec=0 and does not converge (the vendored original, probe-proven). n_steps=2 continues the dynamics one 166.67us step each (Set number=1). AD classified (2026-07-17): dynamics deck -> off:mode-outside-AD-scope (AD sweep is power-flow-only, precedent VCCS/DG_Prot_Fdr.dss). The DSS_AD_CLASSIFY probe additionally hits the same wpwind2400.csv save-roundtrip relpath failure as indmach_snap."
   },
   {
    "path": "fuse/fuse_blow_asym.dss",
    "engines": "r4133",
    "wp": "WP-U2.1",
-   "note": "WP-U2.1 (r4133 breaking default D1): the default FuseCurve moved tlink->none, so this fuse (no explicit curve) NEVER blows on r4133 -- State stays [closed,...], the blow eventlog + ctrlqueue are empty (was 1 on 0.14.5). Pins the never-blows breaking default live; the CurveMultiplier-scaled blow path is the sibling fuse_curvemult_blow deck. RatedCurrent is now informational.",
+   "note": "The r4133 default FuseCurve is none, so this fuse (no explicit curve) NEVER blows on r4133: State stays [closed,...], the blow eventlog + ctrlqueue are empty (dss_capi 0.14.5 logs one blow). Pins the never-blows default live. The CurveMultiplier-scaled blow path is the sibling fuse_curvemult_blow deck. RatedCurrent is informational.",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 8,
@@ -969,7 +969,7 @@
    "probes": [],
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
-   "note": "WP-U2.4 D6 (EPRI r4133 SwtControl.pas): FLIPPED capi015 -> r4133. The deprecated `Action` now forces the ACTUAL state immediately (like State), so the post `action=open` opens line.feed at parse time (before any step) instead of arming a delayed control-queue action. r4133-validated (\u00a71.7 two-process determinant; the switch is open from step 0, line.feed |I|~7e-9, event log empty, control queue empty). Under capi015 (Rung-1) the same post armed a delayed action that fired at the 0.25 s delay (step 3) -- this deck's capi015 trajectory Closed x3 -> Open is exactly the r4088->r4133 D6 move. Render-form probes dropped: r4133 renders state/normal as `[open, open, open, ]` arrays (E3, WP-U2.5 scope) and does not wire prop-5 Delay (renders default 120), so the whole-model V/Y + empty eventlog/ctrlqueue pin the switch physics instead. Feature-sensitive: if Action regressed to setting only the normal state (r4088) the switch would stay closed and the model would not collapse."
+   "note": "The deprecated `Action` forces the ACTUAL state immediately on r4133 (like State), so the post `action=open` opens line.feed at parse time (before any step) instead of arming a delayed control-queue action. r4133-validated (two-process determinism; the switch is open from step 0, line.feed |I|~7e-9, event log empty, control queue empty). dss_capi 0.15.x arms a delayed action that fires at the 0.25 s delay (step 3) instead: Closed x3 -> Open. Render-form probes are not used: r4133 renders state/normal as `[open, open, open, ]` arrays and does not wire prop-5 Delay (renders default 120), so the whole-model V/Y + empty eventlog/ctrlqueue pin the switch physics instead. Feature-sensitive: if Action set only the normal state the switch would stay closed and the model would not collapse."
   },
   {
    "path": "gendispatcher/gendispatcher.dss",
@@ -1205,7 +1205,7 @@
   },
   {
    "path": "recloser/midi_recloser_perm.dss",
-   "note": "WP-U2.2 ganged lockout-to-OPEN on the IEEE123-class midi net: a 3ph permanent fault with explicit phasefast=a phasedelayed=d (r4133 D2 removed the defaults) -> FAST -> reclose -> SLOW -> reclose -> lockout -> ends [open,open,open]. Re-validates do_open_ganged against oddie:r4133 (twin of recloser_perm).",
+   "note": "Ganged lockout-to-OPEN on the IEEE123-class midi net: a 3ph permanent fault with explicit phasefast=a phasedelayed=d (r4133 has no default curves) -> FAST -> reclose -> SLOW -> reclose -> lockout -> ends [open,open,open]. Gates do_open_ganged against r4133 (twin of recloser_perm).",
    "engines": "r4133",
    "ad": "off:too-small",
    "kind": "micro",
@@ -1261,7 +1261,7 @@
    "path": "fuse/midi_fuse.dss",
    "engines": "r4133",
    "wp": "WP-U2.1",
-   "note": "WP-U2.1 (r4133 breaking default D1): the default FuseCurve moved tlink->none, so this fuse (no explicit curve) NEVER blows on r4133 -- State stays [closed,...], the blow eventlog + ctrlqueue are empty (was 1 on 0.14.5). Pins the never-blows breaking default live; the CurveMultiplier-scaled blow path is the sibling fuse_curvemult_blow deck. RatedCurrent is now informational.",
+   "note": "The r4133 default FuseCurve is none, so this fuse (no explicit curve) NEVER blows on r4133: State stays [closed,...], the blow eventlog + ctrlqueue are empty (dss_capi 0.14.5 logs one blow). Pins the never-blows default live. The CurveMultiplier-scaled blow path is the sibling fuse_curvemult_blow deck. RatedCurrent is informational.",
    "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 8,
@@ -1297,7 +1297,7 @@
    "probes": [],
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
-   "note": "WP-U2.4 D6 (EPRI r4133 SwtControl.pas): FLIPPED capi015 -> r4133. The post `action=open` now forces the loop tie (line.tie) open immediately (D6: Action sets the actual state, like State), converting the meshed IEEE123-class midi network to radial at parse time -- a STRONG pin: the loads stay fed (min bus 0.889 pu) so the whole-model V/Y differs materially with the tie open. r4133-validated (\u00a71.7 two-process determinant; line.tie |I|~7e-9, event log empty, control queue empty). Under capi015 (Rung-1) the same post armed a delayed action firing at step 3 -- the r4088->r4133 D6 move. Render-form probes dropped (r4133 renders state/normal as `[.., ..]` arrays, E3/WP-U2.5 scope); the whole-model compare pins the physics. Feature-sensitive: an Action regression to normal-only would leave the tie closed and the mesh intact."
+   "note": "The post `action=open` forces the loop tie (line.tie) open immediately on r4133 (Action sets the actual state, like State), converting the meshed IEEE123-class midi network to radial at parse time. A STRONG pin: the loads stay fed (min bus 0.889 pu) so the whole-model V/Y differs materially with the tie open. r4133-validated (two-process determinism; line.tie |I|~7e-9, event log empty, control queue empty). dss_capi 0.15.x arms a delayed action firing at step 3 instead. Render-form probes are not used (r4133 renders state/normal as `[.., ..]` arrays), the whole-model compare pins the physics. Feature-sensitive: an Action that set only the normal state would leave the tie closed and the mesh intact."
   },
   {
    "path": "energymeter/midi_energymeter.dss",
@@ -1347,7 +1347,7 @@
      ]
     }
    ],
-   "note": "GOLDEN_REBASE G1.6(i): the ONLY corpus deck that runs the executive `AllocateLoads`, and therefore the only place `Meters.CalcCurrent` / `Meters.AllocFactors` are DEFINED on either oracle -- `TMeterElement.AllocateSensorArrays` ReallocMems both arrays without zeroing them (r4133 Meters/MeterElement.pas:45-52) and only `CalcAllocationFactors` (:54-72), driven solely by `DoAllocateLoadsCmd` (Executive/ExecHelper.pas:2624-2683), ever writes them; everywhere else the harness `RELIABILITY_SKIP_FIELDS` drops the two fields as an uninitialized read. Also the only `both`-channel multi-section zone (three Reclosers -> NumSections 3, OCPDeviceType 2, SectSeqIdx 1/2/4). Loads are kW-spec on purpose so `SAIFIkW` stays a function of deck literals (see the deck header). Oracle-validated: two fresh processes bit-identical on BOTH channels, and the two oracles agree bit-for-bit on every scalar, section field and `Meters.Totals` slot; only the two solve-derived arrays differ between them (<= 3.3e-14 rel), which is why they alone are compared on the current tier. Feature-sensitive: commenting out the trailing `AllocateLoads` gives alloc_factors/calc_current [0,0,0] and leaves every zone load's AllocationFactor at 0.5."
+   "note": "The ONLY corpus deck that runs the executive `AllocateLoads`, and therefore the only place `Meters.CalcCurrent` / `Meters.AllocFactors` are DEFINED on either OpenDSS engine: `TMeterElement.AllocateSensorArrays` reallocates both arrays without zeroing them and only `CalcAllocationFactors`, driven solely by the AllocateLoads command, ever writes them. Everywhere else the harness `RELIABILITY_SKIP_FIELDS` drops the two fields as an uninitialized read. Also the only `both`-channel multi-section zone (three Reclosers -> NumSections 3, OCPDeviceType 2, SectSeqIdx 1/2/4). Loads are kW-spec on purpose so `SAIFIkW` stays a function of deck literals (see the deck header). Validated: two fresh processes bit-identical on BOTH channels, and the two OpenDSS engines agree bit-for-bit on every scalar, section field and `Meters.Totals` slot. Only the two solve-derived arrays differ between them (<= 3.3e-14 rel), which is why they alone are compared on the current tier. Feature-sensitive: commenting out the trailing `AllocateLoads` gives alloc_factors/calc_current [0,0,0] and leaves every zone load's AllocationFactor at 0.5."
   },
   {
    "path": "monitor/midi_monitor.dss",
@@ -1457,7 +1457,7 @@
    "pending": false,
    "expect_solve_abort": "Type is set to \"Follow\", but not \"ControlSignal\" was provided. Aborting solution.",
    "wp": "WPG.7",
-   "note": "Malformed input: type=Follow CapControl with no ControlSignal. Pascal CapControl.pas Sample (l.1153-1158) sets DSS.SolutionAbort:=True; the pinned oracle raises #10362 at solve. Both engines abort; the Rust port sets solution_abort + surfaces the same message (WPG.7 audit follow-up)."
+   "note": "Malformed input: type=Follow CapControl with no ControlSignal. CapControl Sample sets SolutionAbort, and dss_capi 0.14.5 raises #10362 at solve. Both engines abort: this engine sets solution_abort and surfaces the same message."
   },
   {
    "path": "invcontrol/invcontrol_expmodel.dss",
@@ -1554,7 +1554,7 @@
    ],
    "pending": false,
    "wp": "WPG.13",
-   "note": "Storage grid-forming (ControlMode=GFM) forming an islanded section (sw1 opened) in daily mode. Feature-sensitive: WITHOUT ControlMode=GFM the islanded storage cannot form voltage and islbus is dead (0 pu, 0 kW) vs the GFM island at ~0.998 pu / ~400 kW. Two-process oracle capture bit-identical (determinism proven). Flipped oracle:capi015 by the GFM WP: the discharging GFM storage reaches CalcGFMYprim, so the B5 Isc1 change (drop *1000, dss_capi de6a5a42 = SVN r3865; DIVERGENCES.md #b5) moves the assembled system Y at the StoBus mutuals (0.14.5 vs capi015 rel 1.209e-1). The op-point is Isc1-invariant, so the ~0.998 pu / ~400 kW feature-sensitivity and the monitor channels are unchanged; only the Norton YPrim moved."
+   "note": "Storage grid-forming (ControlMode=GFM) forming an islanded section (sw1 opened) in daily mode. Feature-sensitive: WITHOUT ControlMode=GFM the islanded storage cannot form voltage and islbus is dead (0 pu, 0 kW) vs the GFM island at ~0.998 pu / ~400 kW. Two-process capture bit-identical (determinism proven). The discharging GFM storage reaches CalcGFMYprim, where 0.15.x and r4133 drop the *1000 factor on Isc1 (dss_capi de6a5a42 = SVN r3865) that dss_capi 0.14.5 applies, so the StoBus mutual Y differs from 0.14.5 (rel 1.209e-1) and the deck gates on r4133. The op-point is Isc1-invariant, so the ~0.998 pu / ~400 kW feature-sensitivity and the monitor channels do not depend on it, only the Norton YPrim does."
   },
   {
    "path": "gfm/gfm_invcontrol.dss",
@@ -1578,7 +1578,7 @@
    ],
    "pending": false,
    "wp": "WPG.13",
-   "note": "InvControl mode=GFM amps limiter over a grid-forming Storage (islanded like gfm_micro). AmpLimit=400 makes CheckAmpsLimit bite (dynVars.IComp>0 -> DoGFM_Mode shrinks BaseV): Storage throttled to ~-158 kW vs ~-400 kW without the limit (feature-sensitive, ~2.5x per step). Two-process oracle capture bit-identical (determinism proven). Flipped oracle:capi015 by the GFM WP: the discharging GFM storage reaches CalcGFMYprim, so B5 (Isc1 drop *1000, de6a5a42/SVN r3865; DIVERGENCES.md #b5) moves the StoBus mutual Y (rel 1.209e-1); op-point Isc1-invariant, so the throttled ~-158 kW feature-sensitivity is unchanged."
+   "note": "InvControl mode=GFM amps limiter over a grid-forming Storage (islanded like gfm_micro). AmpLimit=400 makes CheckAmpsLimit bite (dynVars.IComp>0 -> DoGFM_Mode shrinks BaseV): Storage throttled to ~-158 kW vs ~-400 kW without the limit (feature-sensitive, ~2.5x per step). Two-process capture bit-identical (determinism proven). The discharging GFM storage reaches CalcGFMYprim, where 0.15.x and r4133 drop the *1000 factor on Isc1 (dss_capi de6a5a42 = SVN r3865) that dss_capi 0.14.5 applies, so the StoBus mutual Y differs from 0.14.5 (rel 1.209e-1) and the deck gates on r4133. The op-point is Isc1-invariant, so the throttled ~-158 kW feature-sensitivity does not depend on it."
   },
   {
    "path": "gfm/gfm_dynamics.dss",
@@ -1603,7 +1603,7 @@
    ],
    "pending": false,
    "wp": "WPG.17",
-   "note": "Storage grid-forming (ControlMode=GFM) BLACK-STARTING an islanded section (sw1 opened) in DYNAMICS mode (one solve = 60x 1ms steps; mode-0 + mode-3 monitors). Exercises the ported dynamics-mode GFM: IntegrateStates VDelta droop -> ISPDelta ramp + FixPhaseAngle, DoDynamicMode BaseV=BasekV*1000*(it[0]/iMaxPPhase) internal-source injection, CheckIfDelivering. Re-probed pinned oracle dss-python 0.15.7 (WPG.17): (1) compiles+solves+converges; (2) two-process ByteStream bit-identical (mvi sha 1edc4824..., msv sha d049f4a6...); (3) feature-sensitive -- WITH ControlMode=GFM+SafeVoltage=0 the island energises to islbus ~0.977 pu with the Storage delivering ~-400.7 kW / ~-80.9 kvar (State=DISCHARGING, %stored ~99.9999), vs WITHOUT ControlMode=GFM the islanded inverter is NON-CONVERGENT (NaN node voltages, 0 kW). SafeVoltage=0 is mandatory (default 100 MinVS blocks the black start from 0 V). Flipped oracle:capi015 by the GFM WP: the discharging GFM storage reaches CalcGFMYprim, so B5 (Isc1 drop *1000, de6a5a42/SVN r3865; DIVERGENCES.md #b5) moves the StoBus mutual Y (rel 1.209e-1); the dynamics op-point (islbus ~0.977 pu, ~-400.7 kW) is Isc1-invariant and the monitor channels are unchanged."
+   "note": "Storage grid-forming (ControlMode=GFM) BLACK-STARTING an islanded section (sw1 opened) in DYNAMICS mode (one solve = 60x 1ms steps; mode-0 + mode-3 monitors). Exercises the dynamics-mode GFM: IntegrateStates VDelta droop -> ISPDelta ramp + FixPhaseAngle, DoDynamicMode BaseV=BasekV*1000*(it[0]/iMaxPPhase) internal-source injection, CheckIfDelivering. Probed on dss-python 0.15.7: (1) compiles+solves+converges; (2) two-process ByteStream bit-identical (mvi sha 1edc4824..., msv sha d049f4a6...); (3) feature-sensitive: WITH ControlMode=GFM+SafeVoltage=0 the island energises to islbus ~0.977 pu with the Storage delivering ~-400.7 kW / ~-80.9 kvar (State=DISCHARGING, %stored ~99.9999), vs WITHOUT ControlMode=GFM the islanded inverter is NON-CONVERGENT (NaN node voltages, 0 kW). SafeVoltage=0 is mandatory (default 100 MinVS blocks the black start from 0 V). The discharging GFM storage reaches CalcGFMYprim, where 0.15.x and r4133 drop the *1000 factor on Isc1 (dss_capi de6a5a42 = SVN r3865) that dss_capi 0.14.5 applies, so the StoBus mutual Y differs from 0.14.5 (rel 1.209e-1) and the deck gates on r4133. The dynamics op-point (islbus ~0.977 pu, ~-400.7 kW) and the monitor channels are Isc1-invariant."
   },
   {
    "path": "gfm/pv_gfm_dynamics.dss",
@@ -1627,7 +1627,7 @@
    ],
    "pending": false,
    "wp": "WPG.17",
-   "note": "PVSystem twin of gfm_dynamics.dss (GFM audit settlement: the PV GFM dynamics path previously had only a last-sample unit pin). Islanded PV in ControlMode=GFM black-starts the section in dynamics mode (60x 1ms; mode-0 + mode-3 monitors); exercises PVsystem.pas InitStateVars GFM it:=0 seed, IntegrateStates GFM droop with the OVERWRITTEN iMaxPPhase (unlike Storage's local IMaxPhase), DoDynamicMode GFM injection. Validated pinned oracle dss-python 0.15.7 (2026-07-09): (1) compiles+solves+converges; (2) two-process fingerprint (AllBusVmag + both monitor ByteStreams) bit-identical 9981f5f49a610a61; (3) feature-sensitive -- WITHOUT ControlMode=GFM the islanded dynamics solve is NON-CONVERGENT. SafeVoltage=0 mandatory. Flipped oracle:capi015 by the GFM WP: the generating GFM PVSystem reaches CalcGFMYprim, so B5 (Isc1 drop *1000, de6a5a42/SVN r3865; DIVERGENCES.md #b5) moves the PVBus mutual Y (rel 1.209e-1). WP-U1.2 D7 (iMaxPPhase base) is a numeric no-op here (kVA=Pmpp=800), so capi015 == 0.14.5 for the op-point; only the Norton YPrim moved."
+   "note": "PVSystem twin of gfm_dynamics.dss. Islanded PV in ControlMode=GFM black-starts the section in dynamics mode (60x 1ms; mode-0 + mode-3 monitors). Exercises the PVSystem InitStateVars GFM it:=0 seed, IntegrateStates GFM droop with the OVERWRITTEN iMaxPPhase (unlike Storage's local IMaxPhase), DoDynamicMode GFM injection. Validated on dss-python 0.15.7 (2026-07-09): (1) compiles+solves+converges; (2) two-process fingerprint (AllBusVmag + both monitor ByteStreams) bit-identical 9981f5f49a610a61; (3) feature-sensitive: WITHOUT ControlMode=GFM the islanded dynamics solve is NON-CONVERGENT. SafeVoltage=0 mandatory. The generating GFM PVSystem reaches CalcGFMYprim, where 0.15.x and r4133 drop the *1000 factor on Isc1 (dss_capi de6a5a42 = SVN r3865) that dss_capi 0.14.5 applies, so the PVBus mutual Y differs from 0.14.5 (rel 1.209e-1) and the deck gates on r4133. The iMaxPPhase base (kVA vs Pmpp) is a numeric no-op here (kVA=Pmpp=800), so only the Norton YPrim depends on the engine."
   },
   {
    "path": "storagecontroller/storagecontroller_seasonal.dss",
@@ -1873,7 +1873,7 @@
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
-   "note": "LDC forward path (RegControl.pas Sample l.1040-1048): R+jX line-drop comp shifts the effective control voltage with load current. Feature-sensitive: neutralizing r=0 x=0 changes the tap event log (two-process oracle capture bit-identical; probe-proven)."
+   "note": "LDC forward path (RegControl Sample): R+jX line-drop comp shifts the effective control voltage with load current. Feature-sensitive: neutralizing r=0 x=0 changes the tap event log (two-process capture bit-identical; probe-proven)."
   },
   {
    "path": "regcontrol/regcontrol_reverse.dss",
@@ -1935,7 +1935,7 @@
      ]
     }
    ],
-   "note": "RegControl idle no-load-zone suppression, gated live on r4133 (idle is 0.15.x-only; 0.14.5 rejects it #110). BUG WP regcontrol_idle (2026-07-19): the no-load zone is the BOUNDED interval [RevPowerThreshold, FwdPowerThreshold] (default -100/+100 kW) tested with AND (r4133 RegControl.pas:1218). The through-power here (~7438 kW) is far outside the band, so idle=yes taps identically to idle=no -- tapnum 15, tap 1.09375, MV.1=7650.08 V (probed live on r4133). The port formerly reproduced dss_capi 0.15.x's `or` (8a898cba, still OR at the 0.15.x tip), a tautology under the default symmetric band that made an idling reg never tap (held tap 1.0, MV.1=7030.24 V); adopted r4133's AND per the r4133-and-beyond direction. Live probe D: widening fwdThreshold to 1e6 kW brackets the load and r4133 then idles to exactly MV.1=7030.24 V, proving the bounded-AND mechanism."
+   "note": "RegControl idle no-load-zone suppression, gated live on r4133 (idle is 0.15.x-only; dss_capi 0.14.5 rejects it #110). The no-load zone is the BOUNDED interval [RevPowerThreshold, FwdPowerThreshold] (default -100/+100 kW) tested with AND, as r4133 does. The through-power here (~7438 kW) is far outside the band, so idle=yes taps identically to idle=no: tapnum 15, tap 1.09375, MV.1=7650.08 V (probed live on r4133). dss_capi 0.15.x tests the band with `or` (8a898cba, still OR at the 0.15.x tip), a tautology under the default symmetric band that makes an idling reg never tap (held tap 1.0, MV.1=7030.24 V). Live probe: widening fwdThreshold to 1e6 kW brackets the load and r4133 then idles to exactly MV.1=7030.24 V, proving the bounded-AND mechanism."
   },
   {
    "path": "regcontrol/regcontrol_remotebus.dss",
@@ -1996,7 +1996,7 @@
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
-   "note": "Inverse-time tap delay + Vlimit clamp (RegControl.pas ComputeTimeDelay l.1294 + VLimit l.1086-1096). DUTY mode 2s steps: an overvoltage source (pu=1.045) drives a multi-tap buck so inverse-time places taps on different sub-steps and Vlimit=119 (below the vreg=120/band=4 window) bucks the endpoint lower. Feature-sensitive on BOTH knobs (probe-proven, two-process bit-identical): inversetime=no shifts the first tap Sec=10->18, vlimit=0 settles at tap 0.975 vs 0.95625."
+   "note": "Inverse-time tap delay + Vlimit clamp (RegControl ComputeTimeDelay + VLimit). DUTY mode 2s steps: an overvoltage source (pu=1.045) drives a multi-tap buck so inverse-time places taps on different sub-steps and Vlimit=119 (below the vreg=120/band=4 window) bucks the endpoint lower. Feature-sensitive on BOTH knobs (probe-proven, two-process bit-identical): inversetime=no shifts the first tap Sec=10->18, vlimit=0 settles at tap 0.975 vs 0.95625."
   },
   {
    "path": "capcontrol/capcontrol_pf.dss",
@@ -2607,7 +2607,7 @@
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
-   "note": "Ground-curve path: groundfast/grounddelayed ASSIGNED (else GroundCurve=NIL skips the path, Recloser.pas l.355/578) and phasetrip=3000 set above the SLG faulted-phase current (~2585A) so only the ground curve trips on the residual (~2558A) through the low groundtrip=30 pickup (eventlog GROUND TARGET, Sec=0.4). Temporary fault self-clears, recloses. Feature-sensitive (probe-proven): groundtrip=3000 stops the trip and dropping groundfast/grounddelayed stops it, while phasetrip=30000 is bit-identical (phase path inert)."
+   "note": "Ground-curve path: groundfast/grounddelayed ASSIGNED (else GroundCurve=NIL skips the path) and phasetrip=3000 set above the SLG faulted-phase current (~2585A) so only the ground curve trips on the residual (~2558A) through the low groundtrip=30 pickup (eventlog GROUND TARGET, Sec=0.4). Temporary fault self-clears, recloses. Feature-sensitive (probe-proven): groundtrip=3000 stops the trip and dropping groundfast/grounddelayed stops it, while phasetrip=30000 is bit-identical (phase path inert)."
   },
   {
    "path": "recloser/recloser_1ph.dss",
@@ -2632,7 +2632,7 @@
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
-   "note": "WP-U2.2 single-phase trip/lockout (SinglePhTrip=yes): an SLG fault on phase 1 opens ONLY phase 1 (State [open,closed,closed]) with per-phase event-log wording ('Phase 1 opened on Ph Fast (1ph trip)'). Feature-sensitive on r4133: SinglePhTrip=no trips all three; PhFastPickup above the SLG current stops the trip (probe-proven)."
+   "note": "Single-phase trip/lockout (SinglePhTrip=yes): an SLG fault on phase 1 opens ONLY phase 1 (State [open,closed,closed]) with per-phase event-log wording ('Phase 1 opened on Ph Fast (1ph trip)'). Feature-sensitive on r4133: SinglePhTrip=no trips all three, PhFastPickup above the SLG current stops the trip (probe-proven)."
   },
   {
    "path": "recloser/recloser_pickup_split.dss",
@@ -2657,7 +2657,7 @@
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
-   "note": "WP-U2.2 fast/slow pickup split: PhFastPickup=50 lets the fast op trip a permanent 3ph fault, PhSlowPickup=6000 (above the current) keeps the slow op from re-tripping -> reclose then stays CLOSED. Feature-sensitive on r4133: PhSlowPickup=50 instead locks out open (probe-proven)."
+   "note": "Fast/slow pickup split: PhFastPickup=50 lets the fast op trip a permanent 3ph fault, PhSlowPickup=6000 (above the current) keeps the slow op from re-tripping -> reclose then stays CLOSED. Feature-sensitive on r4133: PhSlowPickup=50 instead locks out open (probe-proven)."
   },
   {
    "path": "fuse/fuse_blow_3ph.dss",
@@ -2679,7 +2679,7 @@
     }
    ],
    "compare_eventlog": true,
-   "note": "WP-U2.1 (r4133 breaking default D1): default FuseCurve tlink->none, so this 3ph deck (no explicit curve) NEVER blows on r4133 -- State stays [closed,closed,closed], blow eventlog empty (was PHASE n BLOWN on 0.14.5). Pins the never-blows breaking default live."
+   "note": "The r4133 default FuseCurve is none, so this 3ph deck (no explicit curve) NEVER blows on r4133: State stays [closed,closed,closed], blow eventlog empty (dss_capi 0.14.5 logs PHASE n BLOWN). Pins the never-blows default live."
   },
   {
    "path": "swtcontrol/swtcontrol_lock.dss",
@@ -2882,7 +2882,7 @@
      ]
     }
    ],
-   "note": "UPFC mode 1 (series voltage regulator) + UPFCControl wrapper: injects a series Vpq through Xs to drive the output to refkV (UPFC.pas GetOutputCurr ModeUPFC=1). Modes 2/3 are NOT covered here: mode-2 series path is a CurrOut:=0 stub in dss_capi 0.14.5 (identical to off) and its shunt reactive-comp path needs element= and does not converge in this topology; mode 3 collapses onto mode 1 here (see STATUS). Feature-sensitive (probe-proven): mode=0 removes the injection AND refkV=0.250/0.230 each shift the regulated output (two-process bit-identical)."
+   "note": "UPFC mode 1 (series voltage regulator) + UPFCControl wrapper: injects a series Vpq through Xs to drive the output to refkV (GetOutputCurr ModeUPFC=1). Modes 2/3 are NOT covered here: the mode-2 series path is a CurrOut:=0 stub in dss_capi 0.14.5 (identical to off) and its shunt reactive-comp path needs element= and does not converge in this topology. Mode 3 collapses onto mode 1 here. Feature-sensitive (probe-proven): mode=0 removes the injection AND refkV=0.250/0.230 each shift the regulated output (two-process bit-identical)."
   },
   {
    "path": "upfc/upfc_doubleref.dss",
@@ -3009,7 +3009,7 @@
     "UPFC.test"
    ],
    "wp": "OG-1.7",
-   "note": "UPFC mode 3 (Dual) DAILY multi-step: gates the Sr0/Sr1 shift-register cross-step persistence (UPFC.pas ll.81-82, never zeroed between solves; Rust upfc/mod.rs recalc mirrors via Vec::resize) that the snapshot upfc_dual deck cannot reach. A 4-point daily loadshape (0.7/1.0/1.25/0.9) ramps the load each hour so the UPFC re-regulates from the Sr0/Sr1 carried over from the prior step. All 4 steps converge (22/16/26/24 iters); QIdeal walks per step (5340/7727/9465/6885 var). All 14 UPFC state variables + full model compared PER STEP. Feature-sensitive (two-process bit-identical): at step1 the dual series deadband does not re-fire so Sr0 STAYS at (79.40,-261.23) while mode=1 on the same feeder moves Sr0 to (111.26,-328.50) - the persisted Sr0 is exactly the cross-step divergence; mode=1 also zeros QIdeal every step; mode=0 zeros Sr0/Sr1/QIdeal every step."
+   "note": "UPFC mode 3 (Dual) DAILY multi-step: gates the Sr0/Sr1 shift-register cross-step persistence (never zeroed between solves, mirrored in upfc/mod.rs recalc via Vec::resize) that the snapshot upfc_dual deck cannot reach. A 4-point daily loadshape (0.7/1.0/1.25/0.9) ramps the load each hour so the UPFC re-regulates from the Sr0/Sr1 carried over from the prior step. All 4 steps converge (22/16/26/24 iters); QIdeal walks per step (5340/7727/9465/6885 var). All 14 UPFC state variables + full model compared PER STEP. Feature-sensitive (two-process bit-identical): at step1 the dual series deadband does not re-fire so Sr0 STAYS at (79.40,-261.23) while mode=1 on the same feeder moves Sr0 to (111.26,-328.50) - the persisted Sr0 is exactly the cross-step divergence; mode=1 also zeros QIdeal every step; mode=0 zeros Sr0/Sr1/QIdeal every step."
   },
   {
    "path": "espvlcontrol/espvlcontrol.dss",
@@ -3100,7 +3100,7 @@
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
    "isolate": true,
-   "note": "GOLDEN_REBASE G1.2 (rewritten by its audit settlement, 2026-08-29; re-shaped by RETRO_FIXES RF-I00-02, 2026-10-01): the ONLY live coverage of class ESPVLControl (no vendored or synthetic deck instantiated it before). Six ESPVLControls over a 12-step daily ramp, all four instantiation shapes present: sys = SystemController over a NAMED LocalControlList with weights [3,1]; scan = SystemController with NO list; loc1/loc2 = LocalControllers whose PVSystem/Storage pointer lists are dead upstream (round-trip only); plain = no `type=` at all (Ftype=0); off = disabled. loc1/loc2/plain/off monitor line.l1, the ramped feeder; sys and scan monitor line.l2, a short branch to the constant-power 8000 kW load ld2, so their PDiff = P - FkWLimit stays at +0.105..+0.142 kW on the pinned oracle (FkWLimit is hardcoded to 8000 kW, ESPVLControl.pas:321, there is no kWLimit property), inside HalfkWBand = 50 kW on every step: Sample and MakeLocalControlList run and the redispatch never fires. WHY SILENT: the redispatch stores Gen.kWBase through a TGeneratorObj cast of another ESPVLControl (TESPVLControlObj.Sample), and on the pinned capi oracle that type-confused store corrupts the process (ISOLATE below), so the oracle is no reference for it; kWBand cannot silence it because HalfkWBand := FkWBand/2 is assigned only in TESPVLControlObj.Create on both oracle revisions (the kWBand edit sets FkWBand alone). The redispatch arithmetic (PDiff, HalfkWBand, the weights, TotalWeight, the Max(1.0,..) floor) AND sys's whole named-list branch are therefore NOT gated here: their regression net is elements/control/espvl_control/tests.rs + exec/tests/espvl_control.rs, the named-list engine path by system_controller_redispatch_writes_the_weighted_deficit, and this deck's silence on all 12 steps by system_controller_inside_the_band_writes_nothing, which steps the deck itself. LIVE-GATED, per step, on capi_v0145: (1) `scan.LocalControlWeights` '' -> '[ 1 1 1 1 1]', the ONE Sample-derived observable in the class -- MakeLocalControlList's no-list branch sweeps the whole class for ENABLED controls (ESPVLControl.pas:609-611, type-blind: it takes local, system and untyped alike) and allocates uniform weights, so both the fact and the LENGTH are two-sided; (2) the full 14-property table of all six controls (compare_all_properties is force-enabled for the controls family on the capi channel), including the '' rendering of plain's unset Type; (3) the no-op contract of the in-band path -- g1/g2 must hold their input bases (600/0 and 400/193.72884193514102), the event log must stay EMPTY and the control queue must stay EMPTY, so a port that dispatched the generators or queued an action while its SystemControllers sit inside the band fails here. No redispatch fires on this deck, so the no-op contract of the firing path (generators held, event log and control queue empty) is pinned by exec/tests/espvl_control.rs, not here. Feature-sensitive through the probes (base is two-process byte-identical; re-measured on this shape 2026-10-01): enabling `off` -> '[ 1 1 1 1 1 1]'; deleting plain -> '[ 1 1 1 1]'; plain type=SystemController -> plain itself renders '[ 1 1 1 1 1]'; sys weights [5,2] -> '[ 5 2]'; scan type=LocalController blanks its weights entirely (the Ftype gate). ISOLATE: with a SystemController's redispatch firing, the pinned oracle's GLOBAL process state breaks -- after one solve a later `compile <deck>` leaves NumCircuits=0 with Error.Number=0 and every API call raises '(#8888) There is no active circuit!', the one-shot's teardown `clear` catches 2-3 access violations per run, and the one-shot now and then dies before it replies (exit 0xc0000094 integer divide by zero or 0xc0000005 access violation, stdout empty, stderr the ready line only: 37 of 9951 concurrent probe runs with sys+scan on line.l1, PDiff -5887..+1505 kW, as in the gate's 'oracle produced no JSON response' reds) or aborts a solve ('(#482) Error Encountered in Solve: Solution aborted.', 2 of the 9951). With the redispatch silent, as on this deck, a second compile keeps NumCircuits=1 (3 of 3 processes), no run catches an access violation, and 0 of 3000 concurrent one-shot runs of the gate's own request died (2026-10-01, the pinned dss-python under a full corpus-gate run). The gate would not see the global-state breakage because run_case issues a top-level `clear` before Compile and workers recycle per case, but neither is this case's contract -- hence isolate:true. No MakePosSequence verb: the ESPVLControl override dereferences the always-NIL ControlledElement and aborts the oracle (docs/wpg21_makeposseq_probes.md; makeposseq_ctrl.dss:9-13)."
+   "note": "The ONLY live coverage of class ESPVLControl. Six ESPVLControls over a 12-step daily ramp, all four instantiation shapes present: sys = SystemController over a NAMED LocalControlList with weights [3,1]; scan = SystemController with NO list; loc1/loc2 = LocalControllers whose PVSystem/Storage pointer lists are dead in OpenDSS (round-trip only); plain = no `type=` at all (Ftype=0); off = disabled. loc1/loc2/plain/off monitor line.l1, the ramped feeder; sys and scan monitor line.l2, a short branch to the constant-power 8000 kW load ld2, so their PDiff = P - FkWLimit stays at +0.105..+0.142 kW on dss_capi 0.14.5 (FkWLimit is hardcoded to 8000 kW, there is no kWLimit property), inside HalfkWBand = 50 kW on every step: Sample and MakeLocalControlList run and the redispatch never fires. WHY SILENT: the redispatch stores Gen.kWBase through a TGeneratorObj cast of another ESPVLControl (TESPVLControlObj.Sample), and on dss_capi 0.14.5 that type-confused store corrupts the process (ISOLATE below), so dss_capi is no reference for it. kWBand cannot silence it because HalfkWBand := FkWBand/2 is assigned only in TESPVLControlObj.Create on both OpenDSS engines (the kWBand edit sets FkWBand alone). The redispatch arithmetic (PDiff, HalfkWBand, the weights, TotalWeight, the Max(1.0,..) floor) AND sys's whole named-list branch are therefore NOT gated here: their regression net is elements/control/espvl_control/tests.rs + exec/tests/espvl_control.rs, the named-list engine path by system_controller_redispatch_writes_the_weighted_deficit, and this deck's silence on all 12 steps by system_controller_inside_the_band_writes_nothing, which steps the deck itself. LIVE-GATED, per step, on capi_v0145: (1) `scan.LocalControlWeights` '' -> '[ 1 1 1 1 1]', the ONE Sample-derived observable in the class -- MakeLocalControlList's no-list branch sweeps the whole class for ENABLED controls (type-blind: it takes local, system and untyped alike) and allocates uniform weights, so both the fact and the LENGTH are two-sided; (2) the full 14-property table of all six controls (compare_all_properties is force-enabled for the controls family on the capi channel), including the '' rendering of plain's unset Type; (3) the no-op contract of the in-band path -- g1/g2 must hold their input bases (600/0 and 400/193.72884193514102), the event log must stay EMPTY and the control queue must stay EMPTY, so an engine that dispatched the generators or queued an action while its SystemControllers sit inside the band fails here. No redispatch fires on this deck, so the no-op contract of the firing path (generators held, event log and control queue empty) is pinned by exec/tests/espvl_control.rs, not here. Feature-sensitive through the probes (base is two-process byte-identical; re-measured on this shape 2026-10-01): enabling `off` -> '[ 1 1 1 1 1 1]'; deleting plain -> '[ 1 1 1 1]'; plain type=SystemController -> plain itself renders '[ 1 1 1 1 1]'; sys weights [5,2] -> '[ 5 2]'; scan type=LocalController blanks its weights entirely (the Ftype gate). ISOLATE: with a SystemController's redispatch firing, the GLOBAL process state of dss_capi 0.14.5 breaks -- after one solve a later `compile <deck>` leaves NumCircuits=0 with Error.Number=0 and every API call raises '(#8888) There is no active circuit!', the one-shot's teardown `clear` catches 2-3 access violations per run, and the one-shot now and then dies before it replies (exit 0xc0000094 integer divide by zero or 0xc0000005 access violation, stdout empty, stderr the ready line only: 37 of 9951 concurrent probe runs with sys+scan on line.l1, PDiff -5887..+1505 kW, as in the gate's 'no JSON response' reds) or aborts a solve ('(#482) Error Encountered in Solve: Solution aborted.', 2 of the 9951). With the redispatch silent, as on this deck, a second compile keeps NumCircuits=1 (3 of 3 processes), no run catches an access violation, and 0 of 3000 concurrent one-shot runs of the gate's own request died (2026-10-01, the pinned dss-python under a full corpus-gate run). The gate would not see the global-state breakage because run_case issues a top-level `clear` before Compile and workers recycle per case, but neither is this case's contract -- hence isolate:true. No MakePosSequence verb: the ESPVLControl override dereferences the always-NIL ControlledElement and aborts dss_capi (see the header of modes/makeposseq/makeposseq_ctrl.dss)."
   }
  ]
 }

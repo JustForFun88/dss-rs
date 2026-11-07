@@ -1,4 +1,4 @@
-// Fuse, r4133 never-blows breaking default (WP-U2.1, delta D1): a LEGACY-style
+// Fuse, r4133 never-blows default: a LEGACY-style
 // fuse defined the pre-r4133 way -- `RatedCurrent` only, NO explicit curve --
 // gets the r4133 default `FuseCurve=none`, so it NEVER blows even under a solid
 // 3-phase fault. On 0.14.5 the same deck would blow all three links (default

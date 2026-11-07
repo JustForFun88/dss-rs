@@ -96,10 +96,9 @@ fn edit_pvsystem(edits: &[(&str, &str)]) -> PVSystem {
     pv
 }
 
-/// UPGRADE_PLAN ledger L2 (WP-U1.1): a PVSystem `kVA` parsed as 0 clamps to
-/// `1e-8` (EPRI r4133 `DblValueNZ`). PVSystem sizes on `Pmpp`/`kVA` (no `kW`
-/// prop), so `kVA` is the only clamped rating; pins that `REPLACE_ZERO` stays on
-/// it.
+/// A PVSystem `kVA` parsed as zero clamps to the r4133 `DblValueNZ` floor.
+/// PVSystem sizes on `Pmpp`/`kVA` (no `kW` prop), so `kVA` is the only clamped
+/// rating and keeps `REPLACE_ZERO`.
 #[test]
 fn zero_kva_clamp_dblvaluenz() {
     let pv = edit_pvsystem(&[("kVA", "0")]);
@@ -438,7 +437,7 @@ fn kvar_absorption_clamp_then_backoff() {
     );
 }
 
-// --- MakePosSequence (WPG.21) --------------------------------------------
+// --- MakePosSequence -----------------------------------------------------
 
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
 use crate::elements::traits::CktElement;

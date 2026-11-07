@@ -10,7 +10,7 @@
 //! meter, walked, and — because the reprocessing strategies rebuild every zone —
 //! either dropped (so `DoResetMeterZones` rebuilds it) or restored.
 //!
-//! Binding fidelity notes (PHASE8_PLAN WP8.7):
+//! Binding fidelity notes:
 //! - only `DoReduceShortLines`/`DoRemoveAll_1ph_Laterals`/`DoRemoveBranches`
 //!   reprocess bus defs themselves; the others rely on the bus1/bus2 edits and
 //!   element disables raising `BusNameRedefined` → the next solve reprocesses.
@@ -212,12 +212,10 @@ impl Dss {
     /// disable `other`. Returns false if the merge is impossible (nil is caught
     /// by the caller here; phase mismatch; no common bus on a series merge).
     ///
-    /// **Citation note (RP3.5).** The Pascal line numbers in the impedance
-    /// section below name **r4133**, the behavioral authority (CLAUDE.md
-    /// 2026-08-02); dss_capi 0.14.5 is named in full wherever it is cited. A bare
-    /// `Line.pas:NNNN` elsewhere in this function still carries the older capi
-    /// numbering (~30-60 lines off r4133's) and is re-pointed as each site is
-    /// touched.
+    /// **Citation note.** The Pascal line numbers in the impedance section below
+    /// name **r4133**. dss_capi 0.14.5 is named in full wherever it is cited. A
+    /// bare `Line.pas:NNNN` elsewhere in this function carries the older capi
+    /// numbering (~30-60 lines off r4133's).
     fn red_merge(&mut self, self_ref: ElemId, other_ref: ElemId, series: bool) -> bool {
         use line::prop::*;
 
@@ -406,8 +404,8 @@ impl Dss {
             // writes `C1=`/`C0=` sets `FCapSpecified` and so is immune, but the
             // two switch arms write neither — so on a partner-is-switch merge
             // into `Units=km` the deferral rescaled the dummy 1.1 nF / 1.0 nF by
-            // `1/0.3048`. Probed live (RP3.5 audit settlement, 2026-08-28):
-            // r4133 and capi 0.14.5 both render `c1 = 1.1`, `c0 = 1` there.
+            // `1/0.3048`. r4133 and capi 0.14.5 both render `c1 = 1.1`,
+            // `c0 = 1` there.
             self.red_recalc_line(self_ref);
         } else if !series {
             // Matrix model, parallel: upstream "assume equal" TODO.
@@ -475,8 +473,8 @@ impl Dss {
             // running the side effects afterwards — dss_capi 0.14.5's order
             // (`src/PDElements/Line.pas:1806-1817`: `LengthUnits :=
             // LenUnitsSaved` then `PropertySideEffects(rmatrix/xmatrix/cmatrix)`)
-            // — leaves the merged line at `UNITS_NONE`. Upstream bugs are never
-            // reproduced (CLAUDE.md 2026-08-02), so the re-apply happens here.
+            // — leaves the merged line at `UNITS_NONE`. This engine does not
+            // reproduce that OpenDSS bug, so the re-apply happens here.
             //
             // `red_set_units` (a typed `SetInteger` + `PropertySideEffects`) is
             // the whole of r4133's two-parameter Edit that is still outstanding:
@@ -550,16 +548,13 @@ impl Dss {
     /// naming `old_name` onto `new_name`.
     ///
     /// `MergeWith` calls it **twice** (`:1682-1683`), once for the surviving
-    /// line's own old name and once for the partner's, both with `NewName`. The
-    /// port had only the partner half, which is the vacuous one in
-    /// `DoReduceDefault`/`DoReduceShortLines`: those refuse to merge a line out
-    /// when it `HasControl` or `IsMonitored` (`Meters/ReduceAlgs.pas:179-180`,
-    /// `:347-348`), so in the reduce strategies a control can only sit on the
-    /// **survivor** — the half that was missing. Probed live (RP3.5 audit
-    /// settlement, 2026-08-28): after a `shortlines` merge of `s1` into `s2` the
-    /// r4133 DLL renders `? CapControl.cc.element` as `line.s1~s2` where the
-    /// port still rendered `Line.s2`. (The class-name capitalization is the
-    /// port's own render convention for a stored element name, unrelated here.)
+    /// line's own old name and once for the partner's, both with `NewName`.
+    /// The partner half is the vacuous one in `DoReduceDefault`/
+    /// `DoReduceShortLines`: those refuse to merge a line out when it
+    /// `HasControl` or `IsMonitored`, so in the reduce strategies a control can
+    /// only sit on the **survivor**, and the survivor's half retargets it. After
+    /// a `shortlines` merge of `s1` into `s2`, `? CapControl.cc.element` names
+    /// `s1~s2`.
     ///
     /// Pascal replays a full `element=<NewName>` property edit
     /// (`Line.pas:1819-1820`) — not a bare pointer swap — so the control's
@@ -771,8 +766,7 @@ impl Dss {
             // silently moved to another bus. That the merge-with-child branch
             // of the same procedure (`:246-258`) spells the identical loop
             // with a single cursor is what makes the parent branch a slip
-            // rather than a rule, so neither lane reproduces it
-            // (`GOLDEN_REBASE_PLAN.md` G2.1d; `issue-31`).
+            // rather than a rule, so neither lane reproduces it (`issue-31`).
             let parent_shunts = tree.node(parent).shunts.clone();
             if parent_shunts.iter().any(|&s| self.red_is_cap_or_reactor(s)) {
                 return false;
@@ -1081,9 +1075,8 @@ impl Dss {
     /// == [`crate::circuit::Circuit::reprocess_bus_defs`]) — so on any solved
     /// circuit the upstream `VBus[1]` read is well defined and the call's
     /// *side effect* is part of the behavior: it refreshes the array that
-    /// `Bus.Voc` publishes. GOLDEN_REBASE G1.5 ports that side effect (it had
-    /// been skipped over a since-disproven NIL-dereference reading of the
-    /// upstream code); the kV base itself is unchanged, because `VBus[1]`
+    /// `Bus.Voc` publishes. This engine runs that side effect. The kV base itself
+    /// is unchanged, because `VBus[1]`
     /// *after* the refresh is exactly `NodeV[RefNo[1]]`.
     fn red_head_base_kv(&mut self, from_bus: Option<usize>) -> f64 {
         let Some(ckt) = self.circuit.as_mut() else {

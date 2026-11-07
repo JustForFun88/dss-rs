@@ -103,12 +103,12 @@ fn line_type_abbreviations_widened_to_five_chars() {
     assert_eq!(lt.string_to_ordinal("ug_c").unwrap(), 4); // ug_cn
 }
 
-/// The `DssEnum`-registry ↔ typed-enum coupling (DE_PASCALIZE §P1).
+/// The `DssEnum`-registry ↔ typed-enum coupling.
 ///
-/// Each P1 field enum claims, in its doc comment, that its discriminants are
-/// exactly the value list of a specific `DssEnum`. Until this module the claim
-/// was prose only: a later edit to a `registry/*.rs` value array (or to a
-/// discriminant) would not fail any unit test — the mismatch would surface far
+/// Each typed field enum claims, in its doc comment, that its discriminants are
+/// exactly the value list of a specific `DssEnum`. Without this module a later
+/// edit to a `registry/*.rs` value array (or to a discriminant) would fail no
+/// unit test — the mismatch would surface far
 /// from its cause, as a corpus-gate/dump difference, and the
 /// `from_ordinal(v).unwrap_or(current)` write path would silently swallow it.
 /// Here the coupling is machine-checked against the **live** registry: every
@@ -117,8 +117,8 @@ fn line_type_abbreviations_widened_to_five_chars() {
 /// Not covered here (deliberate, they have no registry entry): the
 /// `ControlQueue` action codes (`InvPendingChange`, `ExpPendingChange`,
 /// `StorageCtrlAction`, `RegControlAction`), which are class-private queue
-/// codes, `VarMode` (`PVsystem.pas:32-33`), an internal field with no
-/// `DssEnum`, and the four *derived* spec codes of W3.2 (`ReactorSpecType`,
+/// codes, `VarMode`, an internal field with no `DssEnum`, and the four
+/// *derived* spec codes (`ReactorSpecType`,
 /// `CapacitorSpecType`, `VsourceZSpec`, `OcpDeviceType`) — no property writes
 /// them, so they have no registry entry either. All are pinned by their own
 /// Pascal-literal tests. (The shared `ControlAction` channel IS registry-backed

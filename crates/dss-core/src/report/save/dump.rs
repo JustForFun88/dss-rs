@@ -2,8 +2,8 @@
 //! `DoPropertyDump`, `General/DSSObject.pas` `TDSSObject.DumpProperties`,
 //! `Common/CktElement.pas` `TDSSCktElement.DumpProperties`,
 //! `PCElements/PCElement.pas` `TPCElement.DumpProperties`, plus the 14 element/
-//! object leaf overrides ([`overrides`], WP8.5 steps 1–3a) and the aux forms
-//! (WP8.5 step 3b): [`solution`] (`Solution.DumpProperties`),
+//! object leaf overrides ([`overrides`]) and the aux forms:
+//! [`solution`] (`Solution.DumpProperties`),
 //! [`circuit_debug`] (`Circuit.DebugDump`), [`commands`]
 //! (`DumpAllDSSCommands`) and [`allocation_factors`]; the hash-list dumps live
 //! in `support/hashlist/thash_dump.rs`.
@@ -18,26 +18,23 @@
 //! renderer is byte-faithful against the pinned oracle (`props_roundtrip` pins
 //! it).
 //!
-//! **Whose getter that is (corrected by R4133_PROPS RP3.11, 2026-09-03).** The
-//! claim this doc used to make — *"only `TLoadShapeObj` overrides the getter"* —
-//! is true of the pinned dss_capi 0.14.5 (exactly two `GetPropertyValue`
-//! definitions in `src/`: the base and `TLoadShapeObj`) and **false of r4133**,
-//! which overrides it in **49** units of `Version8/Source` to answer *live* on a
-//! hand-picked index set. RP3.11 decided the surface for every class at once and
-//! recorded the verdict `KEEP_LIVE_PINNED`: `Dump` keeps rendering the live field
-//! through the one `get_value` it shares with [`super::save`], `?`, the property
-//! API and batchedit. Matching r4133's stored `~ model=3` would mean printing a
-//! value the engine knows to be superseded (`gen_model == 4` after the NCIM
-//! PV→PQ conversion), which CLAUDE.md's 2026-08-02 policy forbids — and `Dump`
-//! applies no `PrpSequence` filter (`PCElements/generator.pas:2489-2500`), so all
-//! 88 committed `dump*` artifacts sit behind the alternative. The divergence is
-//! pinned, both engines' bytes quoted, by [`crate::exec::tests::report`]`::
-//! dump_renders_the_live_model_after_ncim_pv2pq`; the `Save`-side policy
-//! paragraph lives in [`super::save`]. Recorded and **not** answered there:
-//! r4133 carries **64** `DumpProperties` overrides to the 20 this port inherited
+//! **Whose getter that is.** In the pinned dss_capi 0.14.5 only the base and
+//! `TLoadShapeObj` define `GetPropertyValue`. r4133 overrides it in **49** units
+//! to answer *live* on a hand-picked index set. This engine applies one rule to
+//! every class (`KEEP_LIVE_PINNED`): `Dump` renders the live field through the
+//! one `get_value` it shares with [`super::save`], `?`, the property API and
+//! batchedit. Matching r4133's stored `~ model=3` would mean printing a value
+//! the engine knows to be superseded (`gen_model == 4` after the NCIM PV→PQ
+//! conversion), and `Dump` applies no `PrpSequence` filter, so all 88 committed
+//! `dump*` artifacts sit behind the alternative. The divergence is pinned, both
+//! engines' bytes quoted, by
+//! `exec::tests::report::dump_renders_the_live_model_after_ncim_pv2pq`. The
+//! `Save`-side policy paragraph lives in [`super::save`]. Recorded and **not**
+//! answered there: r4133 carries **64** `DumpProperties` overrides to the 20
+//! this engine inherited
 //! from 0.14.5 (`!DQDV=`, the 34/36 double-paren wrap, the hardcoded
-//! `~ Refuel=False` that contradicts r4133's own getter) — a scope question with
-//! those same 88 goldens behind it, tracked in STATUS §RP3.11.
+//! `~ Refuel=False` that contradicts r4133's own getter) — an open scope
+//! question with those same 88 goldens behind it.
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::meter::EnergyMeter;

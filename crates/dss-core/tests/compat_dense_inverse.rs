@@ -1,6 +1,5 @@
-//! Stage F.3i — the physical end of IV.2 **row 2**'s *no split* verdict
-//! (`DE_PASCALIZE_PLAN.md` Part IV.2; the measurement is in
-//! `dss-core/src/compat.rs`'s "Dense inverse" section).
+//! The physical reason the dense-inverse kernel is not split between the lanes
+//! (the measurement is in `dss-core/src/compat.rs`'s "Dense inverse" section).
 //!
 //! The unit-level twin (`compat::tests::dense_inverse_kernels_differ_by_one_
 //! ulp_on_an_ideal_switch`) pins that the two dense-inverse kernels land one ULP

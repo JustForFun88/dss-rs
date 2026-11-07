@@ -34,14 +34,14 @@
 //! they do for a value never given. Pinned by `exec::tests::line_geometry_rules`.
 //!
 //! Referenced conductor/spacing objects are resolved and **snapshot-cloned** at
-//! edit time (the WP4.2 `FetchLineCode` pattern), so the geometry owns the data
+//! edit time (the `FetchLineCode` pattern), so the geometry owns the data
 //! it needs. The held [`LineConstants`] engine (`FLineData`) is allocated/swapped
 //! by [`LineGeometryObj::change_line_constants_type_at`] to track the conductor
 //! model; [`LineGeometryObj::update_line_geometry_data`] pushes every
 //! conductor's geometry into it and runs the Carson `Calc` (plus a Kron `Reduce`
 //! when `FReduce`), caching `Zmatrix`/`YCmatrix`. The [`LineGeometryObj::z_matrix`]
 //! / [`LineGeometryObj::yc_matrix`] accessors recompute on demand when the
-//! geometry is stale (`data_changed`); a `Line` consumes them in WP7.1 step 3.
+//! geometry is stale (`data_changed`). A `Line` consumes them.
 //!
 //! Split into submodules (no behavioral change): the struct, its constructor and
 //! the read-only accessors live here; the conductor-selection edit helpers are in
@@ -99,8 +99,8 @@ define_properties! {
     // `WireDataClass.Code := 'none'` → #10103 "not defined". BOTH gating oracles
     // reject a geometry-level `none` (0.14.5 #40303, r4133 #10103); only the
     // Line-level lists (compacted before the Carson calc) and the new `conductors`
-    // prop accept it. So NO ALLOW_NONE_ITEM here (0.15.x-adoption sweep — the flag
-    // was justified from dss_capi's side only).
+    // prop accept it. So NO ALLOW_NONE_ITEM here (the flag is justified from
+    // dss_capi's side only).
     12 WIRES     => PropDef::object_ref_array("WireData", "Wires");
     13 CNCABLE   => PropDef::object_ref_class("CNData", "CNCable");
     14 TSCABLE   => PropDef::object_ref_class("TSData", "TSCable");
@@ -113,10 +113,10 @@ define_properties! {
     // merged mixed wire/CN/TS object-reference-array. HIDE_015X keeps the
     // byte-exact 0.14.5 Dump/`Dump commands` goldens green (no LineGeometry JSON
     // golden defines conductors). Text parse resolves class-prefixed items by a
-    // CASE-INSENSITIVE class match (r4133 `LowerCase(CondClass)`; the port dropped
-    // the reproduced capi015 `GetDSSClass` case bug in the 0.15.x-adoption sweep —
-    // see `parse_conductor_proxy`). An all-`none` list keeps the port's clean "At
-    // least one valid conductor" reject (r4133 #303 AV on this input — UB, not
+    // CASE-INSENSITIVE class match (r4133 `LowerCase(CondClass)`, not the
+    // capi015 `GetDSSClass` case bug — see `parse_conductor_proxy`). An
+    // all-`none` list keeps the port's clean "At least one valid conductor"
+    // reject (r4133 #303 AV on this input — UB, not
     // reproduced).
     20 CONDUCTORS => PropDef::object_ref_array_proxy("Conductors", CONDUCTOR_PROXY_NAME, &CONDUCTOR_PROXY_CLASSES)
         .flags(PropFlags::FULL_NAME_AS_ARRAY | PropFlags::FULL_NAME_AS_JSON_ARRAY | PropFlags::ALLOW_NONE_ITEM | PropFlags::HIDE_015X);
@@ -333,7 +333,7 @@ impl LineGeometryObj {
 
     /// Pascal `TLineGeometryObj.NWires` (`property NWires READ FNConds`,
     /// LineGeometry.pas:166): the conductor count the CIM `WireSpacingInfo`
-    /// export iterates over. Read-only accessor for GAPS_PLAN WPG.18 Stage C.
+    /// export iterates over.
     pub fn nwires(&self) -> i32 {
         self.fnconds
     }
@@ -353,8 +353,7 @@ impl LineGeometryObj {
 
     /// Pascal `PhaseChoice[i] = Overhead` (`Get_PhaseChoice`,
     /// LineGeometry.pas:167/762): the CIM `WireSpacingInfo.isCable` flag reads
-    /// `PhaseChoice[1]` (first conductor). `i` is 1-based. Read-only accessor
-    /// for WPG.18 Stage C.
+    /// `PhaseChoice[1]` (first conductor). `i` is 1-based.
     pub fn conductor_is_overhead(&self, i_one_based: usize) -> bool {
         matches!(
             self.fphase_choice.get(i_one_based.wrapping_sub(1)),
@@ -364,8 +363,8 @@ impl LineGeometryObj {
 
     /// Pascal `ConductorData[i]` (`Get_ConductorData`, LineGeometry.pas:746):
     /// the per-conductor catalog object (`WireData`/`CNData`/`TSData`), or
-    /// `None` (Pascal NIL). `i` is 1-based. Read-only accessor for the WPG.18
-    /// Stage C `ACLineSegmentPhase.WireInfo` reference.
+    /// `None` (Pascal NIL). `i` is 1-based. Read-only accessor for the CIM
+    /// `ACLineSegmentPhase.WireInfo` reference.
     pub fn conductor(&self, i_one_based: usize) -> Option<&ConductorObj> {
         if i_one_based >= 1 && i_one_based <= self.fnconds as usize {
             self.fwiredata.get(i_one_based - 1).and_then(|o| o.as_ref())

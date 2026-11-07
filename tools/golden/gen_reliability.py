@@ -1,4 +1,4 @@
-"""Generate tests/golden/reliability.json from the pinned oracle (WP6.6).
+"""Generate tests/golden/reliability.json from the pinned oracle.
 
 For each feeder the oracle runs `relcalc` (which aborts with #52902 — caught)
 and records the per-bus reliability quantities the backward/forward sweep

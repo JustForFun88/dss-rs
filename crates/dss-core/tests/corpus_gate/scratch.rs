@@ -1,8 +1,7 @@
-//! The corpus gate's view of the shared per-run scratch copies
-//! (RETRO_FIXES_PLAN.md RF-I00-01, `INFRA|1`): the implementation lives in
-//! `harness/scratch.rs` (shared with the pin binaries that run vendored
-//! decks); this module re-exports it under the gate's `crate::scratch` path
-//! and keeps its rails, which need the manifest.
+//! The corpus gate's view of the shared per-run scratch copies: the
+//! implementation lives in `harness/scratch.rs` (shared with the pin binaries
+//! that run vendored decks); this module re-exports it under the gate's
+//! `crate::scratch` path and keeps its rails, which need the manifest.
 
 pub(crate) use crate::harness::scratch::*;
 
@@ -53,8 +52,7 @@ mod tests {
     /// every copy is made by, is handed a nonce whose directory is already
     /// there and must refuse it (`create_dir` on the last level) instead of
     /// running in a stale or colliding directory that silently carries another
-    /// run's files (RETRO_FIXES RF-I00-01 settlement: the rail used to exercise
-    /// `std::fs::create_dir` alone, so `create_dir_all` there stayed green).
+    /// run's files.
     #[test]
     fn a_run_directory_that_already_exists_is_refused() {
         let deck = crate::manifest::corpus_file("Test/AutoTrans/Auto3bus.dss");
@@ -91,29 +89,20 @@ mod tests {
         first.finish();
     }
 
-    /// The copy-removal budget is 25 attempts 200 ms apart (RETRO_FIXES
-    /// RF-I00-01 part 1), and `TESTING.md` states the same numbers. Coordinator
-    /// ruling 2026-09-26 16:40: a copy that survives it is a producer to fix,
-    /// never a budget to widen, so a widened budget reds here instead of only
-    /// slowing the held-file rail down.
+    /// A copy that survives the removal budget is a producer to fix, never a
+    /// budget to widen, so a widened budget fails here instead of only slowing
+    /// the held-file rail down.
     #[test]
-    fn the_copy_removal_budget_is_25_attempts_200_ms_apart() {
+    fn the_copy_removal_budget_never_widens() {
         assert_eq!(
             (COPY_REMOVE_ATTEMPTS, COPY_REMOVE_PAUSE),
             (25, std::time::Duration::from_millis(200)),
             "the copy-removal budget moved: fix the producer, never widen the budget"
         );
-        let testing =
-            std::fs::read_to_string(corpus_root().join("../../TESTING.md")).expect("TESTING.md");
-        assert!(
-            testing.contains("25 x 200 ms"),
-            "TESTING.md must state the copy-removal budget as `25 x 200 ms`"
-        );
     }
 
-    /// The D32(2) rail on its new footing: a created file the producer still
-    /// holds open the FPC/Delphi way (`FILE_SHARE_READ` only — deletion NOT
-    /// shared, winnt.h) outlives the whole budget and fails the case naming
+    /// A created file the producer still holds open the FPC/Delphi way
+    /// (`FILE_SHARE_READ` only — deletion NOT shared, winnt.h) outlives the whole budget and fails the case naming
     /// the producer and the file; released afterwards, the copy goes.
     #[cfg(windows)]
     #[test]
@@ -202,9 +191,9 @@ mod tests {
 
     /// A RELATIVE reference that climbs out of `tests/corpus/` cannot be
     /// carried into a copy, so the closure lists it like an absolute one
-    /// instead of skipping it in silence (RETRO_FIXES RF-I00-01 settlement). A
-    /// deck outside the corpus stands in for such a deck, since no vendored
-    /// deck has one (`the_external_closures_are_the_pinned_population`).
+    /// instead of skipping it in silence. A deck outside the corpus stands in
+    /// for such a deck, since no vendored deck has one
+    /// (`the_external_closures_are_the_pinned_population`).
     #[test]
     fn a_relative_reference_that_leaves_the_corpus_is_listed() {
         let root = fixture_root("escape");
@@ -294,7 +283,6 @@ mod tests {
                     .or_default() += 1;
             }
         }
-        // 527 since `modes:makeposseq/makeposseq_pc_repeat.dss` joined the modes family.
         assert_eq!(decks.len(), 527, "the manifest population");
         assert_eq!(
             roots
@@ -311,7 +299,7 @@ mod tests {
         );
     }
 
-    /// Measured 2026-09-26 on `b4160348` (RF-I00-01 part 1, `part_1.md`).
+    /// Decks whose closure leaves their case folder, per closure root.
     const EXTERNAL_CLOSURE_ROOTS: &[(&str, usize)] = &[
         ("electricdss-tst", 1),
         ("electricdss-tst/version8/distrib", 39),
@@ -322,8 +310,7 @@ mod tests {
         ("electricdss-tst/version8/distrib/ieeetestcases", 14),
     ];
     const OUTSIDE_REFERENCES: &[&str] = &["C:\\Users\\prdu001\\OpenDSS\\Source\\DESS1\\Dess1.DLL"];
-    /// RF-I00-01 part 2 — the read-only-tree rail's photograph cannot be
-    /// vacuous: an untouched tree photographs equal, and every way a producer
+    /// The read-only-tree rail's photograph cannot be vacuous: an untouched tree photographs equal, and every way a producer
     /// can touch a tree shows up — a file created and swept again (its
     /// folder's mtime), a file rewritten with its own bytes (its mtime), a
     /// dropping left behind (`+`), a vendored file removed (`-`).
@@ -366,7 +353,7 @@ mod tests {
         std::fs::remove_dir_all(&root).ok();
     }
 
-    /// RF-I00-01 part 2 — the gate-side entry points refuse the vendored tree
+    /// The gate-side entry points refuse the vendored tree
     /// in every spelling (case, the platform separator, `..`) and pass a
     /// scratch copy or a fixture outside it.
     #[test]

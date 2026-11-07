@@ -169,8 +169,8 @@ DECKS = [
     },
     {
         "name": "transformer_solved",
-        # POST-SOLVE companion to `transformer_micro`: the headline §1.3 deliverable
-        # is that the JSON-Full refresh route (`obj_to_json_mut`/`class_batch_to_json_mut`
+        # POST-SOLVE companion to `transformer_micro`: it pins that the JSON-Full
+        # refresh route (`obj_to_json_mut`/`class_batch_to_json_mut`
         # → `refresh_vterminal_if_marked`) transfers the *current solution's* Vterminal
         # into the `WdgCurrents` string. Pre-solve the refresh is a proven no-op
         # (NodeV=0 → all-zeros, same string with or without the refresh call), so
@@ -331,12 +331,10 @@ DECKS = [
     },
     {
         "name": "der_usermodel_full",
-        # og(json-a) item 2: the Generator/PVSystem/Storage user-model string
-        # properties under FULL mode. They used to carry `PropFlags::NOT_PORTED`
-        # and were skipped from the Full sweep while the 0.14.5 oracle emits them
-        # as `""`; WASM_USERMODELS WM.3/WM.4 made them fully ported properties and
-        # `hidden_from_full_enum()` no longer consults NOT_PORTED at all, so they
-        # must now render. This deck pins all six surfaces against the oracle:
+        # The Generator/PVSystem/Storage user-model string properties under FULL
+        # mode. The 0.14.5 oracle emits them as `""`, they are fully ported
+        # properties and `hidden_from_full_enum()` does not consult NOT_PORTED,
+        # so they render. This deck pins all six surfaces against the oracle:
         # Generator `UserModel`/`UserData`/`ShaftModel`/`ShaftData`, Storage
         # `UserModel`/`UserData` + `DynaDLL`/`DynaData`, PVSystem
         # `UserModel`/`UserData`. Left UNSET (the empty-string default) on purpose

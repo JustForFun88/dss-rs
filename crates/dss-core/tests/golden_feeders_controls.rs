@@ -1,4 +1,4 @@
-//! Phase 5 gate (PHASE5_PLAN.md WP5.9): compile the **unmodified** IEEE13,
+//! Controlled-feeder gate: compile the **unmodified** IEEE13,
 //! IEEE37 and IEEE123 masters from the vendored `tests/corpus/electricdss-tst`
 //! — controls active, exactly as the committed Phase-0 goldens were generated — and
 //! match `tests/golden/{ieee13,ieee37,ieee123}.json`:
@@ -54,7 +54,7 @@ fn run_case(name: &str) {
     );
 
     // Solution: converged + total iteration count (exact in the parity lane,
-    // ±`lane::ITER_SLACK` in the default lane — Stage F drift model).
+    // ±`lane::ITER_SLACK` in the default lane).
     let ckt = dss.circuit().expect("circuit after compile");
     assert!(golden.solution.converged, "{name}: oracle did not converge");
     assert!(ckt.is_solved, "{name}: Rust solution did not converge");
@@ -239,11 +239,10 @@ fn run_case(name: &str) {
         let class = el_name.split('.').next().unwrap_or("");
         let props = &golden.elements[el_name].properties;
         for (prop, expected) in props {
-            // WP-U1.6 C5 (r4086): RegControl's `RevThreshold` default flipped from
-            // +100 kW to the signed −100 kW. These Phase-0 goldens are 0.14.5-pinned
-            // (+100) and must not be regenerated (the 0.14.5 oracle still dumps
-            // +100); the port's 0.15.x −100 is a deliberate version mismatch (§1.2),
-            // pinned against capi015 by props/regcontrol.json + regcontrol_idle.dss.
+            // RegControl's `RevThreshold` default is the signed −100 kW since
+            // OpenDSS r4086. These goldens are 0.14.5-pinned (+100) and must not be
+            // regenerated (the 0.14.5 engine still dumps +100); this engine's −100
+            // is pinned against capi015 by props/regcontrol.json + regcontrol_idle.dss.
             if class.eq_ignore_ascii_case("RegControl") && prop.eq_ignore_ascii_case("RevThreshold")
             {
                 continue;
@@ -281,7 +280,7 @@ fn ieee123_controls_matches_phase0_golden() {
     run_case("ieee123");
 }
 
-/// Stretch goal (PHASE5_PLAN §1): the IEEE34 mod-1 feeder.
+/// The IEEE34 mod-1 feeder.
 #[test]
 fn ieee34mod1_controls_matches_phase0_golden() {
     run_case("ieee34mod1");

@@ -1,5 +1,4 @@
-//! `InShowResults` — the report-command bracket and what it suppresses
-//! (GOLDEN_REBASE G1.10b F0, from the G1.10a audit finding AC-5).
+//! `InShowResults` — the report-command bracket and what it suppresses.
 //!
 //! r4133 keeps the flag in its DSS-instance globals (`Common/DSSGlobals.pas:242`),
 //! raises it inside `DoShowCmd` (`Executive/ShowOptions.pas:204`) and
@@ -202,15 +201,13 @@ fn a_show_that_aborts_mid_dispatch_still_lowers_the_flag() {
 /// which not even `clear` runs. So after a single `Save` the authority suppresses
 /// **every** element debug-trace record for the rest of the session — a latch
 /// that contradicts the balanced brackets of `Show`/`Export` and the flag's own
-/// meaning ("a report is being assembled"). CLAUDE.md (2026-08-02) forbids
-/// reproducing an upstream defect in any lane, so the port scopes the flag to the
-/// command.
+/// meaning ("a report is being assembled"). This engine reproduces no OpenDSS
+/// bug in any lane, so it scopes the flag to the command.
 ///
 /// **Both numbers.** After `Save meters` the port's next solve appends its usual
 /// **2** records (trace 2 → **4**); r4133 appends **0** and leaves it at **2**,
-/// for that solve and every one after it. No vendored corpus deck issues `Save`
-/// (GOLDEN_REBASE G1.10b §1: 0 occurrences in the reachable corpus), so neither
-/// gating channel can see the difference.
+/// for that solve and every one after it. No vendored corpus deck issues `Save`,
+/// so neither gating channel can see the difference.
 #[test]
 fn save_scopes_the_flag_instead_of_latching_it() {
     let scratch = trace_scratch("inshowresults_save");
@@ -240,8 +237,7 @@ fn save_scopes_the_flag_instead_of_latching_it() {
 }
 
 /// **The `Export` bracket is two bare statements, so the property that makes it
-/// safe is asserted from the source itself** (G1.10b audit settlement, finding
-/// AT3-4).
+/// safe is asserted from the source itself**.
 ///
 /// `do_show_cmd` and `do_save_cmd` were split into `*_dispatch` helpers exactly
 /// so their early returns stay inside the bracket;
@@ -281,7 +277,7 @@ fn the_export_bracket_has_no_early_exit_between_its_two_statements() {
                 "`do_export_cmd` grew an early exit ({exit:?}) between \
                  `set_in_show_results(true)` and `set_in_show_results(false)`: \
                  the flag would stay up for the rest of the session, exactly the \
-                 r4133 `DoSaveCmd` latch this sub-step refuses to reproduce \
+                 r4133 `DoSaveCmd` latch this engine refuses to reproduce \
                  (`save_scopes_the_flag_instead_of_latching_it`). Split the arm \
                  into an `export_dispatch` helper the way `do_show_cmd` and \
                  `do_save_cmd` are split, so the bracket stays structural."

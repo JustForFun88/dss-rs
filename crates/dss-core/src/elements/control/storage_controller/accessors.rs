@@ -334,7 +334,7 @@ impl DssObject for StorageController {
                 }
             }
             // The dispatch shapes feed `DoLoadShapeMode`; snapshot-clone the
-            // resolved LoadShapeObj (the WP4.2 `FetchLineCode` pattern), keeping
+            // resolved LoadShapeObj, keeping
             // the name for the dump.
             YEARLY => {
                 self.yearly_shape = name;
@@ -411,10 +411,7 @@ impl DssObject for StorageController {
                     1.0
                 };
                 self.half_kw_band_low = self.f_kw_band_low / 2.0 * casemult;
-                // D10 (WP-U1.6, `a14c3f1f`, SVN r4058): 0.14.5 synced the wrong
-                // fields here (`FpctkWBand := FkWBandLow / FkWTarget * 100`) when
-                // `kWBandLow` was set; the fix targets the *Low* pair. Adopted
-                // (r4133-aligned bug fix, plan §1.4 "EPRI r4133 wins").
+                // Setting `kWBandLow` syncs the *Low* pair, as r4133 does.
                 self.f_pct_kw_band_low = self.f_kw_band_low / self.f_kw_target_low * 100.0;
             }
             MODE_DISCHARGE => {

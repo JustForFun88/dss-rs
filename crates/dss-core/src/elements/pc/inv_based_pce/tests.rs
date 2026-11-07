@@ -1,9 +1,7 @@
 //! Spec-pinned unit tests for the shared inverter base (`InvBasedPceData`).
 //!
-//! Pascal is the spec: the oracle exposes none of these helpers outside a full
-//! PVSystem/Storage solve (that numeric pinning arrives with PVSystem, WP7.3
-//! step 2), so these pin the ported `InvBasedPCE.pas` methods to the Pascal
-//! bodies directly.
+//! The OpenDSS engines expose none of these helpers outside a full
+//! PVSystem/Storage solve, so these pin the shared-base methods directly.
 
 use num_complex::Complex64;
 
@@ -163,16 +161,12 @@ fn trait_defaults_and_override() {
     assert_eq!(m.inv_based().kw_out, 5.0);
 }
 
-// --- GFM Norton `CalcGFMYprim` (B5: `Isc1` factor-1000 removal, DIVERGENCES.md
-// §B5; dss_capi de6a5a42 = SVN r3865) ---------------------------------------
+// --- GFM Norton `CalcGFMYprim` (`Isc1` without the factor 1000; dss_capi
+// de6a5a42 = SVN r3865) -----------------------------------------------------
 
-/// The `gfm_micro` storage's GFM Norton admittance (kv=0.48 L-L, kVA=800, delta,
-/// 3-phase). Pinned to the **capi015** live `ActiveCktElement.Yprim` probe
-/// (2026-07-12): with the r3865 `Isc1` change (drop the `*1000`), the assembled
-/// short-circuit admittance is `Y[0,0]=561.4657341-2245.822260j`,
-/// `Y[0,1]=-280.6718528+1122.728087j`. The pre-B5 0.14.5 value
-/// (`Y[0,0]=613.6771792-...`) is far outside the band, so the test is
-/// feature-sensitive to the adopted formula.
+/// The `gfm_micro` storage's GFM Norton admittance, pinned to dss_capi 0.15 with
+/// `Isc1` taken without the factor 1000. The 0.14.5 value with the factor lies
+/// far outside the band, so the pin is sensitive to the formula.
 #[test]
 fn gfm_calc_yprim_matches_capi015_isc1_no_1000() {
     let mut dv = InvDynamicVars::new();
@@ -192,16 +186,16 @@ fn gfm_calc_yprim_matches_capi015_isc1_no_1000() {
         (y01 - want01).norm() / want01.norm() < 1e-8,
         "GFM Y[0,1] {y01:?} != capi015 {want01:?}"
     );
-    // Feature-sensitivity: the pre-B5 (0.14.5, Isc1*1000) diagonal is 613.68 —
+    // Feature-sensitivity: the 0.14.5 (Isc1*1000) diagonal is 613.68 —
     // a ~9% move — so a reverted formula fails the capi015 pin above.
     let pre_b5_00 = Complex64::new(6.136771792e2, -2.402456595e3);
     assert!(
         (y00 - pre_b5_00).norm() / pre_b5_00.norm() > 1e-2,
-        "GFM Y[0,0] must NOT match the pre-B5 0.14.5 value"
+        "GFM Y[0,0] must NOT match the 0.14.5 (Isc1*1000) value"
     );
 }
 
-/// The op-point invariance mechanism (DIVERGENCES.md §B5): `Isc1` feeds ONLY the
+/// The op-point invariance mechanism: `Isc1` feeds ONLY the
 /// R0-quadratic (the ZERO-sequence impedance `Z0 = Zs + 2·Zm`); the
 /// POSITIVE-sequence impedance `Zs − Zm` collapses algebraically to
 /// `R1 + jX1 = Z1` (a function of `X1` alone, `Isc1`-free). A balanced /

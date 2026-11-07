@@ -42,8 +42,8 @@ pub(crate) fn show_y(_n: usize, coords: &[(usize, usize, Complex64)], _ckt: &Cir
     for ((c, r), v) in m {
         // Pascal `Format('[%4d,%4d] = %13.10g + j%13.10g', [row, col, re, im])`
         // (1-based node indices). The brackets and the `j` are written flush
-        // against right-justified numbers, so each stays **inside** its cell
-        // (F.4e rule 1): a `[` or `j` column of its own would move a token in
+        // against right-justified numbers, so each stays **inside** its cell:
+        // a `[` or `j` column of its own would move a token in
         // the table kernel.
         rep.row(
             Row::new()

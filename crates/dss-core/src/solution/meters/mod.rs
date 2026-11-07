@@ -1,7 +1,7 @@
 //! EnergyMeter solution-time logic, split by concern: zone building
 //! ([`zones`]), sampling and load allocation ([`sampling`]), and reliability
 //! indices ([`reliability`]). All three operate as free functions over the
-//! element registry (the WP5.7 control-sweep pattern): the meter's own state is
+//! element registry (the control-sweep pattern): the meter's own state is
 //! taken out of the object for the walk and written back at the end, while the
 //! zone's other elements and the buses are read/mutated through the store.
 

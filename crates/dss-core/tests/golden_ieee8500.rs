@@ -1,4 +1,4 @@
-//! Phase 6 headline gate (PHASE6_PLAN.md WP6.9 / §1.1): compile the
+//! IEEE 8500-Node headline gate: compile the
 //! **unmodified** IEEE 8500-Node master, attach `Energymeter.m1` on
 //! `Line.ln5815900-1`, raise `Maxiterations=20` and `Solve` — exactly as
 //! `Run_8500Node.dss` does (Show/Export/Plot/Interpolate dropped: file/UI
@@ -13,7 +13,7 @@
 //!     numbers and all 10 capacitor states **exactly** — the controls-at-scale
 //!     regression (4 regulator banks + 10 CapControls);
 //!   - the EnergyMeter `m1` registers at 1e-4 rel after the daily segment
-//!     (integration results — looser tolerance per PORTING_PLAN §4), register
+//!     (integration results — looser tolerance), register
 //!     names exact.
 //!
 //! Regenerate only manually: `python tools/golden/gen_ieee8500.py`.
@@ -105,7 +105,7 @@ fn ieee8500_matches_oracle() {
     );
 
     // Convergence + total iteration count (exact in the parity lane,
-    // ±`lane::ITER_SLACK` in the default lane — Stage F drift model).
+    // ±`lane::ITER_SLACK` in the default lane).
     let ckt = dss.circuit().expect("circuit after compile");
     assert!(golden.snap.converged, "oracle did not converge");
     assert!(ckt.is_solved, "Rust solution did not converge");
@@ -239,7 +239,7 @@ fn ieee8500_matches_oracle() {
             "register {i} name differs"
         );
         let exp = golden.registers.values[i];
-        // 1e-4 rel (integration results, PORTING_PLAN §4); abs floor covers the
+        // 1e-4 rel (integration results); abs floor covers the
         // exactly-zero registers and the unsampled -1e50 drag hands.
         let tol = 1e-4 * exp.abs().max(1.0);
         assert!(

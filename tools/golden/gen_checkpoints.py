@@ -1,6 +1,6 @@
 """Generate the checkpointed-model goldens from the pinned oracle.
 
-The *checkpointed-model* gate (see the golden-infrastructure plan). Unlike the
+The *checkpointed-model* gate. Unlike the
 timeseries_controls/metering_monitors command-replay goldens — which compare only converged outputs
 (voltages, currents, registers) — these goldens capture the **assembled
 electrical model itself** after every committed time step: the system Y matrix,
@@ -80,18 +80,15 @@ def _capi015_get_y_sparse(d):
 def check_pin() -> dict:
     """Assert the golden-generation engine matches its pin and return the
     provenance dict stamped into every regenerated golden's top-level `oracle`
-    field (UPGRADE_PLAN §1.5 — a mixed golden tree is self-describing via the
-    `engine_spec` key).
+    field (a mixed golden tree is self-describing via the `engine_spec` key).
 
     Engine selected by `DSS_ORACLE_ENGINE` (default `capi`):
       - `capi` — the pinned dss-python 0.15.7 / dss_capi backend **0.14.5**
-        (`tools/golden/PIN.txt`), the default 0.14.5 oracle for every observable
-        NOT yet upgraded; unchanged from before.
-      - `capi015` — dss-python 0.16.0b2 (the Oddie venv, run its `python`) /
-        dss_capi backend **0.15.0b4** (`tools/opendss/PIN_OPENDSS.txt`), the
-        Rung-1 target-rev oracle. `getYSparse()` drops the `factor` arg
-        (fastdss), so `_get_y_sparse` is rebound to the no-arg form — matches
-        `oracle_server.make_engine`.
+        (`tools/golden/PIN.txt`), the default engine.
+      - `capi015` — dss-python 0.16.0b2 / dss_capi backend **0.15.0b4**, the
+        engine of the few goldens captured on 0.15.x. `getYSparse()` drops the
+        `factor` arg (fastdss), so `_get_y_sparse` is rebound to the no-arg
+        form.
     Any other value fails loudly (a lost env var must never silently pick the
     wrong engine and change the numbers).
     """

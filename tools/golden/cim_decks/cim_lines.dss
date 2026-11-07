@@ -1,6 +1,6 @@
-! GAPS_PLAN WPG.18 CIM export — Stage C golden deck (lines + switches + the
-! conductor/spacing/geometry catalog). Vsource + Load only for the rest (Stage
-! A/B); NO transformer/capacitor/reactor/regcontrol/DER so the export contains
+! CIM export — line golden deck (lines + switches + the
+! conductor/spacing/geometry catalog). Vsource + Load only for the rest
+! (source, loads); NO transformer/capacitor/reactor/regcontrol/DER so the export contains
 ! exactly the ported classes (a not-yet-ported class would fire a NOT_PORTED
 ! error and diverge from the oracle golden). Line/cable/wire data adapted from
 ! the vendored IEEE13_LineAndCableSpacing.dss (known-good, solvable).

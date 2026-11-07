@@ -38,10 +38,10 @@ fn prop_table_shape_matches_pascal() {
     assert_eq!(cp.prop(prop::MON_PHASE).ptype, PropType::MappedStringEnum);
     // Pascal `DoubleDArrayProperty` + IndirectCount over ElementList: modeled as a
     // `DoubleArray` (renders `ArrayOrFilePath` + `$dssLength: ElementList`), the
-    // count resolved via `get_i32(ELEMENT_LIST)` = FleetSize (OG-1.5c B4).
+    // count resolved via `get_i32(ELEMENT_LIST)` = FleetSize.
     assert_eq!(cp.prop(prop::WEIGHTS).ptype, PropType::DoubleArray);
     assert_eq!(cp.prop(prop::SEASON_TARGETS).ptype, PropType::DoubleArray);
-    // Pascal `[SilentReadOnly, ReadByFunction]` fleet-aggregate double (OG-1.5c B4).
+    // Pascal `[SilentReadOnly, ReadByFunction]` fleet-aggregate double.
     assert_eq!(cp.prop(prop::KWH_TOTAL).ptype, PropType::Double);
 }
 
@@ -69,23 +69,8 @@ fn pct_kw_band_side_effect_sets_kw_band() {
     assert!(!sc.f_kw_band_specified);
 }
 
-/// D10 (WP-U1.6, `a14c3f1f`, SVN r4058, in the capi015 backend 0.15.0b4 = SVN
-/// r4103): setting `kWBandLow` syncs the **Low** percent/target pair
-/// (`FpctkWBandLow := FkWBandLow / FkWTargetLow * 100`), not the typo'd
-/// `FpctkWBand := FkWBandLow / FkWTarget * 100` the 0.14.5 baseline reproduced.
-///
-/// Oracle-validated against capi015 (`/tmp/probe_d10.py`, 2026-07-16;
-/// `StorageController kWTarget=300 kWTargetLow=100 kWBand=50 kWBandLow=20`,
-/// applied in that order, then `? %kWBand`/`? %kWBandLow`):
-///
-/// | engine | `%kWBand` | `%kWBandLow` |
-/// |---|---|---|
-/// | capi015 (0.15.0b4, the fix) | `16.6667` | `20` |
-/// | capi 0.14.5 (the typo)      | `6.6667`  | `2`  |
-///
-/// The typo corrupts BOTH: it overwrites the correct `%kWBand` (16.667) with
-/// `20/300*100 = 6.667` and never syncs `%kWBandLow` (kept at its 2.0 default).
-/// Both assertions below flip if the fix is reverted — feature-sensitive.
+/// Setting `kWBandLow` syncs the **Low** percent/target pair
+/// (`FpctkWBandLow := FkWBandLow / FkWTargetLow * 100`) and leaves `%kWBand` alone.
 #[test]
 fn kw_band_low_side_effect_syncs_the_low_pct_pair() {
     let mut sc = StorageController::new("sc1");
@@ -567,11 +552,11 @@ fn sample_peakshave_discharges_overage() {
 
 #[test]
 fn d10_discharge_transition_forces_resolve_on_first_iteration() {
-    // D10 (WP-U1.6, `1b3123ce`, SVN r4058): a peakshave discharge that moves the
+    // A peakshave discharge that moves the
     // fleet OUT of a non-discharging state forces a new power flow on control
     // iteration 1 — even when the per-element kW dispatch itself does NOT change
-    // (Storage already sitting at its rating). Pre-D14 no push happened, so
-    // Storage.kW could stay stale across matching steps.
+    // (Storage already sitting at its rating). Without the push Storage.kW could
+    // stay stale across matching steps.
     fn run(control_iter: i32) -> MockEnv {
         let mut sc = peakshave_controller(10_000.0);
         let mut st = MockStorage::new("a", 2000.0, 500.0, 0.7);
@@ -582,7 +567,7 @@ fn d10_discharge_transition_forces_resolve_on_first_iteration() {
         sc.sample(&mut env);
         env
     }
-    // Iter 1: IDLING→DISCHARGING with no kW change ⇒ D10 forces the re-solve.
+    // Iter 1: IDLING→DISCHARGING with no kW change ⇒ the re-solve is forced.
     let e1 = run(1);
     assert_eq!(e1.fleet[0].state, StorageState::Discharging);
     assert!(
@@ -590,7 +575,7 @@ fn d10_discharge_transition_forces_resolve_on_first_iteration() {
         "iter 1 must force a re-solve, pushes = {:?}",
         e1.pushes
     );
-    // Iter > 1: same transition, but with no kW change D10 does NOT push.
+    // Iter > 1: same transition, but with no kW change there is NO push.
     let e2 = run(2);
     assert_eq!(e2.fleet[0].state, StorageState::Discharging);
     assert!(
@@ -950,8 +935,8 @@ fn dynamic_target_idx_equal_seasons_falls_back_to_fkwtarget() {
 
 #[test]
 fn dynamic_target_idx_beyond_seasons_falls_back_to_fkwtarget() {
-    // RatingIdx > Seasons: the deliberate divergence from Pascal's OOB read
-    // (CLAUDE.md UB policy) — falls back instead of indexing past the array.
+    // RatingIdx > Seasons: falls back instead of indexing past the array, where
+    // OpenDSS reads out of bounds.
     let sc = seasonal_controller();
     let mut env = MockEnv::new(0.0, vec![]);
     env.season_rating_idx = Some(5);
@@ -1105,8 +1090,8 @@ fn storage_ctrl_mode_and_action_pin_pascal_ordinals() {
 /// than `=` over an `Integer` field — so the guard is `(not FleetState) = 0`,
 /// true only for `STORE_CHARGING = -1`. It therefore fires in the one state
 /// those branches do NOT reach by discharging, and a fleet that exhausts its
-/// energy is left discharging. Both gating oracles carry it; neither lane
-/// reproduces it (`GOLDEN_REBASE_PLAN.md` G2.1e; `issue-18`).
+/// energy is left discharging. Both gating oracles carry it, and neither lane
+/// reproduces it (`issue-18`).
 ///
 /// Two levels, because the predicate alone would not notice a caller that
 /// stopped consulting it:
@@ -1241,17 +1226,12 @@ fn fully_charged_branch_idles_the_fleet() {
 }
 
 // ===========================================================================
-// RP3.8 P1a — the four LIVE read-only fleet aggregates
+// The four LIVE read-only fleet aggregates
 // (`kWhTotal`/`kWTotal`/`kWhActual`/`kWActual`)
 //
-// r4133 renders these from live getters (`StorageController.pas:991-994` ->
-// `GetkWhTotal`/`GetkWTotal`/`GetkWhActual`/`GetkWActual`, bodies `:1162-1198`);
-// the port answered the empty string only because dss_capi 0.14.5 flags them
-// `[SilentReadOnly, ReadByFunction]` with no `PropertyOffset`
-// (`DSSObjectHelper.pas:2203-2204`). Every expected byte below was measured on
-// the vendored EPRI r4133 DLL through `epri-worker` (RP3.8 P0 probe); the capi
-// oracle answers the empty string on every one of them and is excluded
-// per-pair in the harness, which is why these pins exist.
+// r4133 renders these from live getters. dss_capi 0.14.5 answers the empty
+// string (`[SilentReadOnly, ReadByFunction]` with no `PropertyOffset`) and is
+// excluded per-pair in the harness, which is why these pins exist.
 // ===========================================================================
 
 /// The P0 pin deck: an **unequal** two-member fleet, so each of the four
@@ -1292,7 +1272,7 @@ fn query(dss: &mut crate::exec::Dss, what: &str) -> String {
     dss.result().to_string()
 }
 
-// RP3.8 EXPECTED-VALUE PIN [STORAGECONTROLLER_FLEET_AGGREGATES_RENDER_LIVE]: the four
+// EXPECTED-VALUE PIN [STORAGECONTROLLER_FLEET_AGGREGATES_RENDER_LIVE]: the four
 // read-only aggregates render the live fleet, in both lanes. A revert to the
 // dss_capi 0.14.5 empty-string suppression (dropping `RENDERS_LIVE_RESULT`, or
 // re-widening the `SILENT_READ_ONLY` gate in `class_props/value.rs`) makes every
@@ -1357,22 +1337,12 @@ fn fleet_aggregates_render_the_live_fleet() {
     );
 }
 
-// RP3.8 EXPECTED-VALUE PIN [STORAGECONTROLLER_FLEET_AGGREGATES_ARE_A_PURE_READ]: reading
+// EXPECTED-VALUE PIN [STORAGECONTROLLER_FLEET_AGGREGATES_ARE_A_PURE_READ]: reading
 // the aggregates changes nothing, in both lanes — the deliberate
 // non-reproduction of r4133's `Var Sum` write-back.
-/// **Reading the four properties is a pure read.**
-///
-/// r4133's `GetkWhTotal(Var Sum)`/`GetkWTotal(Var Sum)` are handed the object's
-/// own `TotalkWhCapacity`/`TotalkWCapacity` (`StorageController.pas:991-992`),
-/// so a property *read* *writes* the object there — the
-/// `VSConverter.GetCurrents` hazard (CLAUDE.md "Known upstream bugs") in
-/// miniature. Nothing upstream ever reads those two fields, so the write is a
-/// dead store with no observable, and the port renders the same number without
-/// it (`PropFlags::RENDERS_LIVE_RESULT`).
-///
-/// The pin: after one warm-up read, a second read of all four leaves **every**
-/// rendered property of the controller and of both fleet members identical, and
-/// two consecutive reads of the same property return the same bytes.
+/// Reading the four aggregates changes nothing: r4133 writes the object on that read,
+/// an OpenDSS bug this engine does not reproduce. A second read leaves every rendered
+/// property of the controller and of both fleet members identical.
 #[test]
 fn fleet_aggregates_are_a_pure_read() {
     let mut dss = pin_deck();
@@ -1408,20 +1378,10 @@ fn fleet_aggregates_are_a_pure_read() {
     assert_eq!(&first[..3], ["8000", "2000", "5800"]);
 }
 
-// RP3.8 EXPECTED-VALUE PIN [STORAGECONTROLLER_FLEET_AGGREGATES_FOLLOW_A_NAMEPLATE_EDIT]:
+// EXPECTED-VALUE PIN [STORAGECONTROLLER_FLEET_AGGREGATES_FOLLOW_A_NAMEPLATE_EDIT]:
 // the totals are re-summed at every read, in both lanes; nothing is latched.
-/// A fleet member's nameplate edit is visible on the very next read, **without**
-/// a fleet rebuild — r4133's getters re-sum `FleetPointerList` from scratch on
-/// every call (`Sum := 0.0; for i := 1 to ListSize do ...`, `:1172-1198`).
-///
-/// Measured on r4133 (RP3.8 P0 probe, the corpus `storagectrl_peakshave` deck
-/// with a 6000+6000 kWh / 1500+1500 kW fleet): `edit storage.sa kwhrated=9999
-/// kwrated=2222` moved `kWhTotal` `'12000'` to `'15999'` and `kWTotal` `'3000'`
-/// to `'3722'` immediately, i.e. `9999 + 6000` and `2222 + 1500`. This deck's
-/// fleet is 6000+2000 / 1500+500, so the same rule gives `9999 + 2000` and
-/// `2222 + 500`. (The two `*Actual` aggregates are left to the corpus gate here:
-/// they additionally depend on the Storage `%stored` re-application, whose bytes
-/// were not measured on r4133 for *this* deck.)
+/// A fleet member's nameplate edit is visible on the very next read of the two
+/// totals, **without** a fleet rebuild, because the totals are re-summed at every read.
 #[test]
 fn fleet_aggregates_follow_a_live_nameplate_edit() {
     let mut dss = pin_deck();
@@ -1435,13 +1395,10 @@ fn fleet_aggregates_follow_a_live_nameplate_edit() {
     assert_eq!(query(&mut dss, "storagecontroller.sc.kWTotal"), "2722");
 }
 
-// RP3.8 EXPECTED-VALUE PIN [STORAGECONTROLLER_FLEET_AGGREGATES_EMPTY_FLEET_IS_ZERO]: an
+// EXPECTED-VALUE PIN [STORAGECONTROLLER_FLEET_AGGREGATES_EMPTY_FLEET_IS_ZERO]: an
 // empty fleet renders '0', not the empty string — in both lanes.
-/// With no Storage in the circuit the four sums are empty sums, and r4133
-/// renders `'0'` for each (measured on all three
-/// `tests/golden/props/storagecontroller.json` scenario preambles: bare, calcv,
-/// solve). This is the shape of the 16 golden props cells RP3.8 moves from `""`
-/// to `"0"`.
+/// With no Storage in the circuit the four sums are empty sums and render `'0'`, not
+/// the empty string.
 #[test]
 fn fleet_aggregates_of_an_empty_fleet_render_zero() {
     let mut dss = crate::exec::Dss::new();
@@ -1503,9 +1460,8 @@ fn fleet_aggregates_match_the_dispatch_sums() {
     assert_eq!(sc.live_aggregates.kw_total, 3000.0);
 }
 
-/// The three JSON/schema surfaces the 0.14.5 `SilentReadOnly` convention still
-/// governs are **unchanged** by RP3.8 — the text render is the only one r4133
-/// disagrees with. Nothing here may move a JSON golden.
+/// The three JSON/schema surfaces keep the `SilentReadOnly` convention: the text
+/// render is the only one that shows the live aggregates, so no JSON golden moves.
 #[test]
 fn fleet_aggregates_stay_out_of_the_json_surfaces() {
     use crate::report::export::json::JsonOpts;
@@ -1602,7 +1558,7 @@ fn fleet_aggregates_are_ignored_by_a_json_load() {
     // …and the walk never even MARKED them set. This is the leg that actually
     // discriminates the flag: these four have no `set_f64` arm, so "nothing was
     // stored" holds with or without `SILENT_READ_ONLY`, and the assertions above
-    // pass either way (RP3.8 audit-tests finding 1). Without the flag the key
+    // pass either way. Without the flag the key
     // reaches `set_json_value` → `edit_property`, whose applier VM stamps
     // `PrpSequence` (Pascal `SetAsNextSeq`) — and a marked property is one
     // `Save` emits, so the load would leak into the saved deck. The writable
@@ -1629,8 +1585,7 @@ fn fleet_aggregates_are_ignored_by_a_json_load() {
 }
 
 /// The flag pair is carried by exactly the four aggregates, and the property
-/// table's shape (names, order, count) is untouched — RP3.8 changes what a
-/// render *says*, never the property list the oracle compares against.
+/// table's shape (names, order, count) is untouched.
 #[test]
 fn only_the_four_aggregates_render_live() {
     use crate::obj::props::PropFlags;
@@ -1653,8 +1608,8 @@ fn only_the_four_aggregates_render_live() {
         assert!(cp.prop(i).flags.contains(PropFlags::SILENT_READ_ONLY));
         assert!(cp.prop(i).flags.contains(PropFlags::RENDERS_LIVE_RESULT));
     }
-    // kWNeed is a plain read-only double with a real offset — not one of the
-    // five RP3.8 pairs, and it must not drift into the set.
+    // kWNeed is a plain read-only double with a real offset — not a live
+    // aggregate, and it must not drift into the set.
     assert!(
         !cp.prop(prop::KW_NEED)
             .flags

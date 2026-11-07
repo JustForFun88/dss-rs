@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""d2_twin_step.py — WM.3 D2 sub-bug #2 DECISIVE twin-Integrate experiment.
+"""d2_twin_step.py — DECISIVE twin-Integrate experiment on the wasm Generator
+dynamics first-step divergence.
 
-Settles audit-code D2F-1/D2F-2: the earlier `d2_twin_direct.py` stopped at
-Init+CalcDynamic (the STEP-0/pflow point everyone already agrees on) and never
-called `dll.Integrate()` — so "guest Integrate is bit-exact on the divergent
-path" was asserted on a path never exercised. This probe drives the SAME 244-B
+`d2_twin_direct.py` stops at Init+CalcDynamic (the STEP-0/pflow point both
+engines agree on) and never calls `dll.Integrate()`, so it cannot show that
+guest Integrate is bit-exact on the divergent path. This probe drives the SAME 244-B
 twin DLL through a full manual dynamics step:
 
     Init(Vsnap, Ipf)
@@ -20,7 +20,8 @@ back to the guest), i.e. host/engine flow, not the guest math. This is the
 direct, in-isolation test of the divergent path.
 
 Usage:  python d2_twin_step.py <path-to-244B-IndMach012a.dll>
-Env:    PNOM (Pnominalperphase), H (step, default 1.67e-4; also try 1e-9).
+Env:    PNOM (Pnominalperphase, default -1333333.333), H (step, default
+        0.000166667; also try 1e-9).
 """
 import ctypes
 import os

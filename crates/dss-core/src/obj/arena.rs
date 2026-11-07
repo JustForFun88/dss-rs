@@ -1,34 +1,29 @@
-//! Typed element arenas — the `PORTING_PLAN.md §2.1` storage design the port
-//! originally shortcut with a heterogeneous `Vec<Box<dyn DssObject>>` per class.
+//! Typed element arenas.
 //!
-//! This is DE_PASCALIZE **R1**: the typed-arena storage. Each registered class
-//! gets its own `Vec<T>` of the concrete element type, held inside a
-//! [`ClassArena`] enum variant. The ownership flip (R1 commit 2) puts one
-//! `ClassArena` on each `DssClass` (`DssClass::arena`), replacing the pre-R1
-//! `Vec<Box<dyn DssObject>>` — this keeps every `classes: &[DssClass]` view and
-//! the `ClassStore`/`ForeignClasses` borrow split unchanged (objects reached via
-//! `class.arena` instead of `class.objects`).
+//! Each registered class gets its own `Vec<T>` of the concrete element type,
+//! held inside a [`ClassArena`] enum variant. Each `DssClass` holds one
+//! `ClassArena` (`DssClass::arena`), so every `classes: &[DssClass]` view and
+//! the `ClassStore`/`ForeignClasses` borrow split reach objects via
+//! `class.arena`.
 //!
 //! An [`ElemId`] enum (one `Idx<T>` variant per class) is the typed element
-//! handle the whole spine speaks (R3 replaced the pre-R3 untyped
-//! `{cls, idx}` tag struct with it; R1 introduced it plus the ordering proof).
-//! [`Elements`] is the corresponding hoisted aggregate (`Vec<ClassArena>` +
-//! whole-registry accessors) that R2 can adopt once the spine is retyped; today
-//! it backs the [`tests`] ordering proof and the `Send` assertions.
+//! handle the whole spine speaks. [`Elements`] is the corresponding hoisted
+//! aggregate (`Vec<ClassArena>` + whole-registry accessors). It backs the
+//! `tests` ordering proof and the `Send` assertions.
 //!
 //! **The single most important invariant:** the arena/variant order is exactly
 //! the `exec/construct.rs` class-registration order. Bare-name
 //! `find_ckt_element` and `ForeignClasses` lookups iterate classes in
 //! registration order and return the first match, so the arena layout and every
 //! iteration over it MUST preserve that order. The macro below emits everything
-//! from ONE class list in that order; [`tests`] proves it against the live
+//! from ONE class list in that order; the `tests` module proves it against the live
 //! registry.
 //!
 //! The typed `Vec<T>` inside each variant is the parallelism substrate
-//! `MULTITHREADING_PLAN.md` M3 needs (`ClassArena::Line(v) => v.par_iter_mut()`);
+//! (`ClassArena::Line(v) => v.par_iter_mut()`);
 //! it is exposed directly (`ClassArena`'s variants / [`ClassArena::objs_mut`],
 //! [`Elements::arenas_mut`] / [`Elements::for_each_ckt_elem_mut`]), never
-//! funnelled through a single `&mut dyn ElemStore` (Part V thread-readiness).
+//! funnelled through a single `&mut dyn ElemStore`.
 //!
 //! `Idx<T>` is stable for the whole life of a circuit: OpenDSS never deletes an
 //! individual element mid-script (`Clear` drops the entire circuit and resets
@@ -44,7 +39,7 @@ use crate::elements::traits::CktElement;
 use crate::obj::base::DssObject;
 
 /// A typed, stable index into the [`Elements`] arena for concrete type `T`
-/// (Pascal had a bare integer; this is `PORTING_PLAN §2.1`'s `Idx<T>`).
+/// (Pascal uses a bare integer).
 ///
 /// Stable because OpenDSS never removes a single element mid-script — see the
 /// module docs. `PhantomData<fn() -> T>` makes `Idx<T>` `Copy`/`Send`/`Sync`
@@ -94,13 +89,13 @@ impl<T> fmt::Debug for Idx<T> {
 /// circuit-element tag (`ckt` if the concrete type `impl CktElement`, `data` for
 /// a plain `DSS_OBJECT` general class that does not). The tag drives
 /// [`ClassArena::try_ckt_elem`]'s direct `&dyn CktElement` upcast — the sole
-/// channel since R3.3 removed the `DssObject::as_ckt_element` `Any`-round-trip.
-/// It must agree with the registry's own class column, pinned by
-/// [`tests::arena_tag_matches_registry_ckt_classes`]. The 15 `data` classes are
+/// channel, with no `Any` round-trip. It must agree with the registry's own
+/// class column, pinned by `tests::arena_tag_matches_registry_ckt_classes`. The
+/// 15 `data` classes are
 /// exactly the `DSS_OBJECT` ones; the 35 `ckt` classes each `impl CktElement`.
 ///
 /// Any new class must be appended here in the same position it is registered in
-/// `construct.rs` — [`tests::arena_order_matches_registry`] fails otherwise.
+/// `construct.rs` — `tests::arena_order_matches_registry` fails otherwise.
 macro_rules! with_all_classes {
     ($m:ident) => {
         $m! {
@@ -250,7 +245,7 @@ macro_rules! define_arena {
 
         impl ElemId {
             /// The registry class names, in registration order — the proof
-            /// surface for [`tests::arena_order_matches_registry`].
+            /// surface for `tests::arena_order_matches_registry`.
             pub const CLASS_NAMES: &'static [&'static str] = &[ $( $cname, )* ];
 
             /// This handle's class name (Pascal `TDSSClass.Name`).
@@ -407,9 +402,8 @@ macro_rules! define_arena {
             /// `ckt` variant), with **no `Any` round-trip** — the arena's
             /// `ckt`/`data` tag ([`with_all_classes!`]) decides per variant,
             /// pinned against the registry's class column by
-            /// [`tests::arena_tag_matches_registry_ckt_classes`]. Landed by R2b
-            /// step (d); the sole circuit-element view since R3.3 removed the
-            /// `DssObject::as_ckt_element` trait method.
+            /// `tests::arena_tag_matches_registry_ckt_classes`. It is the sole
+            /// circuit-element view.
             pub fn try_ckt_elem(&self, idx: usize) -> Option<&dyn CktElement> {
                 match self {
                     $( ClassArena::$variant(v) => ckt_view_ref!($kind, v, idx), )*
@@ -544,8 +538,7 @@ macro_rules! define_arena {
             /// Run `f` over every *circuit* element of this class as
             /// `&mut dyn CktElement`, tagged with its [`ElemId`]. General
             /// (`DSS_OBJECT`) objects are skipped. The typed `Vec<T>` is the
-            /// iteration substrate `MULTITHREADING_PLAN.md` M3 later swaps to
-            /// `par_iter_mut`.
+            /// iteration substrate a parallel walk can swap to `par_iter_mut`.
             fn for_each_ckt_elem_mut(
                 &mut self,
                 cls: usize,
@@ -717,16 +710,14 @@ impl ClassArena {
 
 /// A resolved object reference at the moment the property engine resolved it:
 /// the typed [`ElemId`] handle **plus** a read view of the [`ClassArena`] it
-/// names — the DE_PASCALIZE R3 Category-D replacement for the untyped
-/// `(ElemId, &dyn DssObject)` tuple that `DssObject::set_object_ref` used to
-/// carry.
+/// names.
 ///
 /// The point is the *type channel*, not the timing: a `set_object_ref` impl
 /// that wants a concrete `LoadShapeObj`/`XYcurve`/… snapshot now narrows with
 /// [`ResolvedObj::get`]/[`ResolvedObj::cloned`] (a static [`ArenaClass`] match)
 /// instead of the removed `Any` downcast of `o` to `&T`. **When** the clone
 /// happens is unchanged — still inside the same `set_object_ref` call, at
-/// resolve time (`DE_PASCALIZE_PLAN.md` Part I, "Category D timing").
+/// resolve time.
 #[derive(Clone, Copy)]
 pub struct ResolvedObj<'a> {
     id: ElemId,
@@ -886,7 +877,7 @@ impl Elements {
     }
 
     /// The per-class arenas as a slice — direct typed access for
-    /// `par_iter_mut`-style consumers (`MULTITHREADING_PLAN.md` M3).
+    /// `par_iter_mut`-style consumers.
     pub fn arenas(&self) -> &[ClassArena] {
         &self.arenas
     }

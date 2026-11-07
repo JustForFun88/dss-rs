@@ -1,4 +1,4 @@
-// UPGRADE_PLAN.md WP-U1.9 — the PCE force hooks (dss_capi 0.15.0b4
+// The PCE force hooks (dss_capi 0.15.0b4
 // `ExecOptions.pas` @ e936d210: `Set InjCurrent=` + `Flg.ForceInjCurrents`).
 // After a baseline solve, `Set InjCurrent=` overrides the load's injection
 // currents; the injection loop injects the forced values directly and the
@@ -6,7 +6,7 @@
 // these options do not exist in the 0.14.5 default oracle (they were added in
 // the 0.15.x line), so only capi015 both accepts and applies them.
 //
-// Feature sensitivity (UPGRADE_PLAN §1.7-3): forcing an 80 A injection on the
+// Feature sensitivity: forcing an 80 A injection on the
 // b2 load moves b2 Vmag from 7187.45 V (baseline) to 7224.14 V — a ~37 V shift,
 // far above the live-compare i_abs/v floor. If the injection loop stops
 // honouring `Flg.ForceInjCurrents`, the whole-model V/I/Y diverges from capi015

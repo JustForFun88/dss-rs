@@ -1,5 +1,5 @@
-# WASM user-model reference fixture — IndMach012a (WASM_USERMODELS_PLAN WP-WM.2).
-# Workspace-EXCLUDED tooling crate (plan §2.6): builds the committed golden-class
+# WASM user-model reference fixture — IndMach012a.
+# Workspace-EXCLUDED tooling crate: builds the committed golden-class
 # artifact tests/fixtures/wasm/indmach012a.wasm via tools/wasm_usermodel/build_wasm.ps1
 # with the toolchain pinned in tools/wasm_usermodel/PIN.txt. Zero dependencies.
 [package]
@@ -14,7 +14,7 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 # Opt out of the dss-rs workspace: this crate must never join the product
-# workspace (plan §2.6 — fixture toolchain is pinned separately from the gate).
+# workspace (the fixture toolchain is pinned separately from the gate).
 [workspace]
 
 # Locked release profile — recorded in tools/wasm_usermodel/PIN.txt; the

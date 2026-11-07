@@ -1,7 +1,7 @@
 //! The `Uuids` command (Pascal `ExecHelper.pas` `DoUuidsCmd:4465`), the
 //! `DefaultCircuitUUIDs` hook `DoExportCmd` runs on every export keyword
 //! (`ExportCIMXML.pas:1276` / `ExportOptions.pas:188`), and `Export Uuids`
-//! (`ExportResults.pas` `ExportUuids:2871`). PHASE8_PLAN WP8.6 step 6.
+//! (`ExportResults.pas` `ExportUuids:2871`).
 
 use super::*;
 use crate::cim::{Uuid, UuidChoice, get_or_create_uuid};

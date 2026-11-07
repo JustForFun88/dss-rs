@@ -1,14 +1,13 @@
-"""Generate the **protection** targeted goldens from the pinned oracle
-(PHASE7_PLAN WP7.2 step-4 / §1 focused gate 3: "a fault + protection sequence
-(recloser/relay/fuse trip + reclose), event logs equal (normalized, line-for-line,
-like the time-series control gate), final switch/recloser states exact";
-historically part of "Phase 7").
+"""Generate the **protection** targeted goldens from the pinned oracle: a fault +
+protection sequence (recloser/relay/fuse trip + reclose), event logs equal
+(normalized, line-for-line, like the time-series control gate), final
+switch/recloser states exact.
 
 Command-replay like the time-series goldens (per-`solve`-step captures + the
 event log), but the
 scenarios are protection trip/reclose sequences driven through the **ported**
-`mode=duty controlmode=time` control sweep (dynamics mode — which the corpus relay
-demos use — is unported until WP7.7). Each scenario pins, against the oracle:
+`mode=duty controlmode=time` control sweep (not dynamics mode, which the corpus
+relay demos use). Each scenario pins, against the oracle:
 
   - per-step dblHour + iteration count + converged + node voltages (the feeder
     voltage collapses to ~0 on every step the protection has the line open, so the
@@ -41,13 +40,13 @@ Usage:
 Regeneration is manual; the capi scenarios must use the exact versions in
 tools/golden/PIN.txt. The r4133 scenarios (`EPRI_SCENARIOS`) drive the official
 EPRI engine through the in-house Rust bridge (`epri-worker`, crates/dss-epri —
-auto-built if missing); the retired Oddie/dss-python channel is gone. Parity of
-the bridge path with the committed Oddie-era captures is byte-proven (STATUS
-"EPRI bridge parity round", 2026-07-19): the `scenario` payload regenerates
-byte-identically; only the top-level `oracle` provenance block differs (the raw
-DLL version string no longer carries the retired wrapper's "DSS-Python
-version:" suffix). `DSS_GOLDEN_OUT` redirects the output dir (scratch parity
-runs); default is the committed tests/golden/protection/.
+auto-built if missing). Parity of the bridge path with the committed captures
+is byte-proven (2026-07-19): the `scenario` payload regenerates
+byte-identically. Only the top-level `oracle` provenance block differs (the raw
+DLL version string carries no "DSS-Python version:" suffix).
+
+Environment: `DSS_GOLDEN_OUT` redirects the output dir (scratch parity runs).
+Default `tests/golden/protection`.
 """
 
 from __future__ import annotations
@@ -119,7 +118,7 @@ def deck_relay_current() -> dict:
 
 
 def deck_fuse_blow() -> dict:
-    # WP-U2.1 (r4133): the fuse default is now `none` (never blows) and the TCC
+    # r4133: the fuse default is `none` (never blows) and the TCC
     # divisor is `CurveMultiplier`, not `RatedCurrent`. To keep this the blow gate
     # it was, the curve is named explicitly (`fusecurve=tlink`) and the divisor
     # `curvemultiplier=40` reproduces the exact pre-r4133 `ratedcurrent=40` scaling
@@ -145,7 +144,7 @@ def deck_swt_manual() -> dict:
         DUTY,
     ]
     # Mirror the corpus `edit swtcontrol.x action=o`: a mid-run open before step 5.
-    # Captured on r4133 (WP-U2.4 D6, see EPRI_SCENARIOS): the `Action` forces the
+    # Captured on r4133 (see EPRI_SCENARIOS): the `Action` forces the
     # switch open immediately (no `delay` queue), so the switch is open from step 5
     # and the event log is empty.
     return {
@@ -206,9 +205,9 @@ def build(d, spec: dict) -> dict:
 
 
 # Scenarios captured on the official EPRI r4133 engine instead of the pinned
-# capi oracle, because their behavior is r4133-specific (WP-U2.1: the fuse
-# overhaul — default curve `none`, `CurveMultiplier` divisor — exists only in
-# r4133; WP-U2.4: the SwtControl D6 `Action`-forces-actual-state fix).
+# capi oracle, because their behavior is r4133-specific: the fuse
+# overhaul (default curve `none`, `CurveMultiplier` divisor) exists only in
+# r4133, and so does the SwtControl `Action` that forces the actual state.
 # `fuse_blow`'s blow trajectory is numerically identical to the retired 0.14.5
 # capture (the curve/divisor are pinned to reproduce it), but it must be
 # captured on the engine whose fuse semantics the port now targets. Originally

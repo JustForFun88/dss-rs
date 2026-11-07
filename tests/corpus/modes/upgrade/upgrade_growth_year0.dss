@@ -1,10 +1,10 @@
-// UPGRADE_PLAN.md WP-U1.6 / row B3-r3723 — `Load.GrowthFactor` at Year=0 with a
+// `Load.GrowthFactor` at Year=0 with a
 // GrowthShape tracks the simulated hours (`calcYear = dblHour/8760`) instead of
 // the flat 1.0 the r3723 port emitted. The rewrite is in the capi015 backend
 // 0.15.0b4 (= SVN r4103, which carries the r4088-era `Load.pas GrowthFactor`
-// change); the port adopts it (plan §1.4 "EPRI r4133 wins").
+// change), and the port adopts it.
 //
-// Feature sensitivity (UPGRADE_PLAN §1.7-3): the growthshape's first year is 0,
+// Feature sensitivity: the growthshape's first year is 0,
 // so at Year=0 the `calcYear < 1` branch applies `GetMultIdx(1) = 1.2` — a
 // straight 20% lift of the load power that holds in SNAPSHOT (where `dblHour`
 // never reaches 8760, so the `>= 1yr` `GetMult(Ceil)` branch is not needed for a
@@ -15,8 +15,8 @@
 //
 // Oracle: capi015 — the r3723 baseline (default 0.14.5) and capi015 DIVERGE
 // here (100 vs 120 kW, probed `/tmp/probe_b3*.py` 2026-07-16), so this deck
-// cannot gate against 0.14.5 (§1.2 deliberate-mismatch). Validated per §1.7
-// (two-process determinism on the capi015 engine). The exact per-branch values
+// cannot gate against 0.14.5. Validated by
+// two-process determinism on dss_capi 0.15.0b4. The exact per-branch values
 // (GetMultIdx(1)=1.2, daily GetMult(2)=1.8) are pinned by the Rust unit test
 // `growth_factor_year0_tracks_simulated_hours_with_growthshape`.
 clear

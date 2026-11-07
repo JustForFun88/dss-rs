@@ -220,8 +220,7 @@ impl Transformer {
         // `AmpRatings[i] := kVARatings[i] / Fnphases / Vfactor` (the seasonal
         // ratings now equal the plain per-phase current at each seasonal kVA,
         // NOT 110% of it). `NormMaxHkVA`'s own 1.1 (the 110% default norm rating,
-        // above) is a DIFFERENT quantity and is unchanged upstream. UPGRADE_PLAN
-        // WP-U1.2 row D6; ledger DIVERGENCES.md §D6.
+        // above) is a DIFFERENT quantity and stays.
         self.amp_ratings = self
             .kva_ratings
             .iter()

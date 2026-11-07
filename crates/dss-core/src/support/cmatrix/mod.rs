@@ -310,11 +310,9 @@ impl CMatrix {
         }
     }
 
-    /// In-place inversion (Pascal `TcMatrix.Invert`), through the Stage F
-    /// lane seam: the parity kernel is the exact Pascal algorithm
-    /// (Gauss-Jordan with pivots chosen by largest-magnitude unused diagonal,
-    /// **no row exchanges**), the default kernel is partial-pivoting
-    /// Gauss-Jordan — see [`compat::invert`].
+    /// In-place inversion (Pascal `TcMatrix.Invert`) through [`compat::invert`]:
+    /// Gauss-Jordan with pivots chosen by largest-magnitude unused diagonal and
+    /// **no row exchanges**, one shared kernel in both lanes.
     pub fn invert(&mut self) -> Result<(), SingularMatrix> {
         compat::invert(self)
     }
@@ -468,11 +466,11 @@ impl CMatrix {
     /// `A[elim, elim]`, so an exactly-zero pivot yields IEEE non-finite entries
     /// — defined behavior, identical in both lanes and to upstream, and the same
     /// contract as every other unguarded division in the engine. This is not a
-    /// Stage F compat item (nothing inexact is being reproduced), and the guard
-    /// an earlier marker asked for cannot be expressed here: `None` already
-    /// means "order 1 / index out of range", so a numeric singularity would be
-    /// indistinguishable from a shape error. A typed, diagnosable failure
-    /// belongs to the P5/miette rung, not to the kernel split.
+    /// compat item (nothing inexact is being reproduced), and a guard cannot be
+    /// expressed here: `None` already means "order 1 / index out of range", so a
+    /// numeric singularity would be indistinguishable from a shape error. A
+    /// typed, diagnosable failure belongs to the diagnostics layer, not to the
+    /// kernel.
     pub fn kron(&self, elim: usize) -> Option<CMatrix> {
         if self.n <= 1 || elim >= self.n {
             return None;

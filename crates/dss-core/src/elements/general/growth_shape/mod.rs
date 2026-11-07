@@ -2,12 +2,12 @@
 //! Port of Pascal `General/GrowthShape.pas` (`TGrowthShapeObj`). A `DSS_OBJECT`
 //! class (no terminals, no YPrim): it stores `(year, mult)` pairs and expands
 //! them into a per-year cumulative multiplier table consumed by the yearly
-//! solution mode (Phase 5).
+//! solution mode.
 //!
 //! Growth multipliers are entered relative to the previous year's load (a 2.5%
 //! growth is `1.025`); only the years where the rate changes need to be listed.
 //!
-//! The file-input props (WPG.1) — `CSVFile`/`SngFile`/`DblFile` — are read via
+//! The file-input props — `CSVFile`/`SngFile`/`DblFile` — are read via
 //! the deferred [`FileLoad`] path, dispatching to Pascal `Common/Utilities.pas`
 //! `DoCSVFile`/`DoSngFile`/`DoDblFile` (`OnlyLoadB = False`: every row is
 //! always a `(year, mult)` pair, unlike LoadShape/TShape/PriceShape's
@@ -99,7 +99,7 @@ impl GrowthShapeObj {
     /// Pascal `TGrowthShapeObj.GetMult`: cumulative growth multiplier for `yr`
     /// relative to the base (first) year. Returns 1.0 for the base year or any
     /// earlier year, or when the curve is empty. Consumed by the yearly solution
-    /// mode (Phase 5).
+    /// mode.
     pub fn get_mult(&mut self, yr: i32) -> f64 {
         if self.npts <= 0 {
             return 1.0;

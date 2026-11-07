@@ -220,12 +220,11 @@ fn add_series_caps(b: &mut FlatBuilder, classes: &[DssClass]) {
 /// ([`IncMatrixState::rows`] is "the PD-element name per incidence-matrix row",
 /// exported under the header `B2N Incidence Matrix Row Names (PDElements)`) —
 /// while the walk's three siblings all advance only on an emitted row
-/// (`:2885` Lines, `:2938` Transformers, `:2986` series Capacitors). Per CLAUDE.md
-/// ("no upstream bug is reproduced in any lane") the port emits **dense** rows: the
-/// cursor advances inside the guard. The corpus gate asserts upstream's cursor rule
-/// positively rather than excluding the divergence (GOLDEN_REBASE G1.8 settlement
-/// S-INC: the comparator remaps the port's row index through the view's
-/// `upstream_row_index` before comparing).
+/// (`:2885` Lines, `:2938` Transformers, `:2986` series Capacitors). OpenDSS bugs
+/// are never reproduced, so this engine emits **dense** rows: the cursor advances
+/// inside the guard. The corpus gate asserts the OpenDSS cursor rule positively
+/// rather than excluding the divergence: the comparator remaps this engine's row
+/// index through the view's `upstream_row_index` before comparing.
 ///
 /// Two further defects of this same walk stay **reproduced** here — they decide
 /// *which element becomes a row*, not how rows are indexed, so a comparison
@@ -309,7 +308,7 @@ pub(crate) fn get_inc_matrix_row(inc_mat: &SparseInt, col: i32) -> i32 {
 ///
 /// NOTE(upstream-quirk): Pascal reads `data[idx+1]` (and `data[idx-1]`), which can
 /// run one past the store; the OOB reads are guarded here (`.get`, default `-1`)
-/// rather than reproduced (heap-read UB — CLAUDE.md known-bugs rule).
+/// rather than reproduced (heap-read UB in OpenDSS).
 fn get_inc_matrix_col(inc_mat: &SparseInt, row: i32) -> (i32, [i32; 2]) {
     let nzero = inc_mat.nzero();
     for idx in 1..nzero {

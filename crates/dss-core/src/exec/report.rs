@@ -4,9 +4,7 @@
 //!
 //! These are `impl Dss` like every other command router (`command.rs`,
 //! `set_cmd.rs`): they drive the private parser/circuit/error state and
-//! delegate all formatting to the top-level [`crate::report`] module. This is
-//! the WP8.1 dispatch **skeleton** — keyword matching + scoped `NOT_PORTED`
-//! stubs; the real per-report formatters land in WP8.2–8.5.
+//! delegate all formatting to the top-level [`crate::report`] module.
 
 use super::*;
 use crate::report::EXPORT_OPTIONS;
@@ -96,11 +94,9 @@ impl Dss {
     /// Pascal `DoExportCmd` (`ExportOptions.pas:127`): read the report keyword,
     /// resolve it against `ExportCommands`, dispatch to the matching exporter.
     ///
-    /// WP8.1 skeleton: every keyword records a **scoped `NOT_PORTED`** until its
-    /// WP lands (WP8.2 solution exports, WP8.3 device/meter/reliability, Phase 9
-    /// CIM/GIC/ADiakoptics — PHASE8_PLAN §WP8.1 step 1 / §4) so a half-ported
-    /// `Export` never silently emits nothing. All `Export` corpus decks sit in
-    /// `skipped_unsupported`, so these errors never reach the live gate.
+    /// Every keyword has an arm. A keyword added to the table without a route
+    /// records a "not ported yet" error, so a half-ported `Export` never
+    /// silently emits nothing.
     pub(crate) fn do_export_cmd(&mut self) {
         // Pascal `ParamName := DSS.Parser.NextParam; Parm1 := AnsiLowerCase(...)`.
         self.parser.next_param(&self.vars);
@@ -134,7 +130,7 @@ impl Dss {
         // export keyword (after the solve guard, before the dispatch — even an
         // unknown keyword reaches it): starts the CIM hashed-UUID list if not
         // already started, lazily creates the circuit UUID, and find-or-creates
-        // the `Station=`/`GeoRgn=`/`SubGeoRgn=` keys (WP8.6 step 6).
+        // the `Station=`/`GeoRgn=`/`SubGeoRgn=` keys.
         self.default_circuit_uuids();
 
         if ptr == 0 {
@@ -149,7 +145,7 @@ impl Dss {
         // (Pascal `ExportOptions.pas:190-298`), so its `Parm2` is not
         // mis-consumed as the filename. Ported: 8 UE-only, 9/19 MVA, 15 monitor
         // name, 17 triplet, 32 profile phases, 51 sections meter; the CIM pair
-        // (20-21) stays with its Phase-9 exporter.
+        // (20-21) parses its own options in its exporter.
         let mut mva_opt = 0;
         if matches!(ptr, 9 | 19) {
             self.parser.next_param(&self.vars);
@@ -394,8 +390,8 @@ impl Dss {
             18 => self.export_with(&explicit, "EXP_SEQZ.csv", export::export_seq_z),
             23 => self.export_with(&explicit, "EXP_BUSCOORDS.csv", export::export_bus_coords),
             24 => self.export_with_mut(&explicit, "EXP_LOSSES.csv", export::export_losses),
-            25 => self.export_uuids_to_file(&explicit), // Uuids (WP8.6 step 6)
-            26 => self.export_counts_to_file(&explicit), // Counts (WP8.1)
+            25 => self.export_uuids_to_file(&explicit), // Uuids
+            26 => self.export_counts_to_file(&explicit), // Counts
             27 => self.export_summary_to_file(&explicit),
             39 => self.export_with(&explicit, "EXP_NodeNames.csv", export::export_node_names),
             40 => self.export_with_classes(&explicit, "EXP_Taps.csv", export::export_taps),
@@ -466,7 +462,7 @@ impl Dss {
             59 => self.export_ad(&explicit, "ZCC.csv", export::export_zcc),
             60 => self.export_ad(&explicit, "C.csv", export::export_contours),
             61 => self.export_ad(&explicit, "Y4.csv", export::export_y4),
-            // NCIM solver dumps (WP-U1.7, `ExportResults.pas:3903-3988`): the
+            // NCIM solver dumps (`ExportResults.pas:3903-3988`): the
             // Jacobian triplets + the last mismatch/correction vectors. Only
             // populated after a `Set Algorithm=NCIM` solve; no solution guard
             // (Pascal exits gracefully otherwise — Jacobian errors #222, the
@@ -686,8 +682,7 @@ impl Dss {
     /// resolve the (possibly `fid=`/`sid=`/`sg=`/`rg=`-overridden) circuit UUIDs
     /// (Pascal `DefaultCircuitUUIDs`, `ExportCIMXML.pas:1276` — re-derived here
     /// via the same idempotent `GetDevUuid` lookups the unconditional
-    /// `self.default_circuit_uuids()` call already primed, GAPS_PLAN WPG.18
-    /// Stage A decision), run [`crate::cim::export::export_cdpsm`] (combined
+    /// `self.default_circuit_uuids()` call already primed), run [`crate::cim::export::export_cdpsm`] (combined
     /// mode), and write the result via the shared [`Dss::write_export`] path —
     /// default filename `CIM100x.xml` (`ExportOptions.pas:351`).
     #[allow(clippy::too_many_arguments)]
@@ -1090,8 +1085,8 @@ impl Dss {
     /// `DSS.ErrorStrings` to `EXP_ErrorLog.txt`. Rust's `Dss::errors` accumulates
     /// the same `DoSimpleMsg` messages (same lifecycle), but without Pascal's
     /// `(errnum)` line prefix / oracle-exact wording — so a non-empty dump is not
-    /// oracle-faithful (see [`crate::report::export::export_error_log`]; tracked in
-    /// STATUS §WP8.3 step 3a). No solve/circuit dependency.
+    /// oracle-faithful (see [`crate::report::export::export_error_log`]). No
+    /// solve/circuit dependency.
     fn export_error_log_to_file(&mut self, explicit: &str) {
         let content = crate::report::export::export_error_log(&self.errors);
         self.write_export(explicit, "EXP_ErrorLog.txt", &content);
@@ -1277,8 +1272,8 @@ impl Dss {
                 // `EXP_STORAGEMeters.csv` (`ExportOptions.pas:411`), separate
                 // from `EXP_PVMeters.csv` (`:409`), and every other class has
                 // its own prefix (`EXP_MTR_` `:1792`, `EXP_GEN_` `:1948`).
-                // Both gating oracles carry it; neither lane reproduces it
-                // (`GOLDEN_REBASE_PLAN.md` G2.1f; `issue-20`).
+                // Both gating oracles carry it, and neither lane reproduces it
+                // (`issue-20`).
                 (
                     "Storage",
                     "EXP_STORAGEMeters.csv",
@@ -1583,14 +1578,9 @@ impl Dss {
     /// Pascal `DoShowCmd` (`ShowOptions.pas:89`): read the report keyword and
     /// dispatch to the matching `ShowResults` formatter.
     ///
-    /// WP8.4 (in progress): the ported keywords write their real fixed-width text
-    /// report; `Show panel` reproduces the oracle's #999 (not supported in
-    /// DSS-Extensions); every **not-yet-ported** keyword stays a *silent* headless
-    /// no-op (writes nothing, records no error) so it cannot regress the
-    /// `solvable_now` decks that contain `Show Power`/`Show Voltage`/`Show f` (the
-    /// live gate asserts `errors().is_empty()`). The remaining formatters + the
-    /// unknown→#24700 error land in the later WP8.4 steps. Reports change **no**
-    /// electrical state (PHASE8_PLAN §2.5).
+    /// Every keyword writes its fixed-width text report, except `Show panel`,
+    /// which records the "not supported in DSS-Extensions" error. An unknown
+    /// keyword records #24700. Reports change **no** electrical state.
     pub(crate) fn do_show_cmd(&mut self) {
         // `InShowResults := True` / `:= False` (r4133 `ShowOptions.pas:204` /
         // `:393`), the bracket that keeps the element debug traces out of the
@@ -1624,10 +1614,8 @@ impl Dss {
             .unwrap_or(0);
 
         // Pascal `#24700` (`ShowOptions.pas:119-124`): an unknown keyword errors and
-        // exits BEFORE the solution guard. Now that every real `Show` keyword is
-        // ported (WP8.4), an unmatched keyword is genuinely unknown — so this replaces
-        // the earlier "deferred keyword stays a silent no-op" behavior (all the
-        // `solvable_now`/`corpus_live` decks use ported keywords, verified).
+        // exits BEFORE the solution guard. Every real `Show` keyword is ported, so
+        // an unmatched keyword is genuinely unknown.
         if ptr == 0 {
             self.errors.push(crate::diag::DssDiagnostic::msg(
                 format!("Error: Unknown Show Command:\"{param}\""),
@@ -2372,7 +2360,7 @@ impl Dss {
     ///
     /// 1. empty or `meters` → [`Dss::save_meters_cmd`] (Monitor `Save` flush +
     ///    EnergyMeter `SaveRegisters`), then Exit.
-    /// 2. `circuit` → `Circuit.Save(SaveDir)` (WP8.5 step 5, `report/save/`).
+    /// 2. `circuit` → `Circuit.Save(SaveDir)` (`report/save/`).
     /// 3. `voltages` → [`Dss::save_voltages_cmd`], then Exit.
     /// 4. any class name → `WriteClassFile`: default filename is the **bare
     ///    class name, no `.dss` extension** (probe-proven: `save load` writes a
@@ -2399,10 +2387,10 @@ impl Dss {
         // silently suppresses every element debug-trace record for the rest of the
         // session. That contradicts the balanced brackets of the two sibling
         // commands (`ShowOptions.pas:204`/`:393`, `ExportOptions.pas:328`/`:512`)
-        // and the flag's own meaning, so it is an upstream defect and CLAUDE.md's
-        // policy (2026-08-02) forbids reproducing it in any lane: the port scopes
-        // the flag to the command. Corpus-unreachable (no vendored deck issues
-        // `Save` — GOLDEN_REBASE G1.10b §1), pinned with both behaviours by
+        // and the flag's own meaning, so it is an OpenDSS bug and no lane
+        // reproduces it: this engine scopes the flag to the command.
+        // Corpus-unreachable (no vendored deck issues `Save`), pinned with both
+        // behaviours by
         // `exec::tests::in_show_results::save_scopes_the_flag_instead_of_latching_it`.
         self.set_in_show_results(true);
         self.save_dispatch();
@@ -2586,7 +2574,7 @@ impl Dss {
             for j in 0..bus.num_nodes_this_bus() {
                 // Pascal reads `NodeV[RefNo[j]]` unconditionally; an unsolved
                 // circuit's unallocated read is UB upstream — not reproduced
-                // (safe default 0, CLAUDE.md known-bug rule).
+                // (safe default 0).
                 let v = node_v
                     .get(bus.get_ref(j))
                     .copied()
@@ -2622,7 +2610,7 @@ impl Dss {
     /// way; probe-proven by the second `save load` of a session). An empty class
     /// writes nothing at all (`ElementCount = 0` exits before the file opens).
     /// The `SavedFileList.Add` on success feeds `Circuit.Save`'s Master-file
-    /// Redirect list — WP8.5 step 5 (nothing consumes it on this path).
+    /// Redirect list (nothing consumes it on this path).
     fn write_class_file(&mut self, ci: usize, path: &Path) {
         if self.classes[ci].arena.is_empty() {
             return;
@@ -2941,7 +2929,7 @@ impl Dss {
 /// timestamp (Pascal `DateTimeToStr(Now)`). Pure integer civil-from-days
 /// conversion (Howard Hinnant, "chrono-Compatible Low-Level Date Algorithms"),
 /// no external date dependency. The exact locale format is non-deterministic and
-/// masked in the golden (PHASE8_PLAN §2.3 / `tests/TOLERANCE_NOTES.md`).
+/// masked in the golden.
 fn current_datetime_string() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

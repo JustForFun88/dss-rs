@@ -7,9 +7,8 @@
 /// The rejection stays in **both** lanes: which literals the deck language
 /// accepts is command-input semantics, not a numeric kernel — the product
 /// contract is that a deck parses the same everywhere, and any widening or
-/// tightening of the accepted grammar belongs to the strict-parsing layer
-/// (`DE_PASCALIZE_PLAN.md` IV.1b, explicitly sequenced *after* Stage F), where
-/// it can be opt-in and diagnosed. Note `f64::from_str` would map `infinity`
+/// tightening of the accepted grammar belongs to the strict-parsing layer,
+/// where it can be opt-in and diagnosed. Note `f64::from_str` would map `infinity`
 /// to `inf`, so "collapsing" it here would silently turn a conversion error
 /// into a non-finite property value.
 pub fn val_f64(s: &str) -> Option<f64> {
@@ -48,7 +47,7 @@ pub fn val_i32(s: &str) -> Option<i32> {
     i32::try_from(value).ok()
 }
 
-/// `Round(x)` assigned to a Pascal `Integer`, through the Stage F lane seam:
+/// `Round(x)` assigned to a Pascal `Integer`, through the lane seam:
 /// the parity kernel reproduces FPC's integer-indefinite artifact, the default
 /// kernel saturates — see [`crate::compat::round_i32`].
 pub(super) fn pascal_round_to_i32(x: f64) -> i32 {

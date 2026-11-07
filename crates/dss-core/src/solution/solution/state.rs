@@ -14,7 +14,7 @@ use crate::solution::control_queue::ControlQueue;
 use crate::solution::event_log::EventLog;
 use crate::support::dynamics::IterationFlag;
 
-/// Pascal `TSolveMode` (Phase 3 implements Snapshot and Direct).
+/// Pascal `TSolveMode`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SolveMode {
     #[default]
@@ -111,12 +111,9 @@ pub enum RandomType {
     None = 0,
     /// `TSolutionObj.Create` seeds `RandomType := GAUSSIAN`
     /// (`Solution.pas:487`), so `Gaussian` — not the numerically-zero `None` —
-    /// is this family's `Default`, matching every other enum in this wave
-    /// (`default()` == the Pascal `Create` value). Settler note (2026-07-26):
-    /// the derive originally fell on `None`, which would have silently turned
-    /// `Set random` off had anything ever reached for `unwrap_or_default()`
-    /// here; nothing did, so the change is bit-neutral, and the pin test now
-    /// asserts it.
+    /// is this family's `Default`, matching every other solution enum
+    /// (`default()` == the Pascal `Create` value). A `None` default would
+    /// silently turn `Set random` off on any `unwrap_or_default()`.
     #[default]
     Gaussian = 1,
     Uniform = 2,
@@ -232,7 +229,7 @@ pub enum ActiveY {
 }
 
 /// The solve environment: everything outside the circuit that the solution
-/// flow needs (PORTING_PLAN.md §2.1 disjoint-borrow context).
+/// flow needs (the disjoint-borrow context).
 pub struct SolveEnv<'a> {
     pub store: &'a mut dyn ElemStore,
     pub parser: &'a mut Parser,
@@ -278,8 +275,8 @@ pub struct Solution {
     pub solution_count: i32,
     pub year: i32,
     /// `DynaVars.intHour` / `.t` (seconds into the hour) / `.h` (step size in
-    /// seconds) / `.dblHour` — the Phase 1 `TDynamicsRec` fields the solution
-    /// actually drives (PHASE5_PLAN §WP5.8).
+    /// seconds) / `.dblHour` — the `TDynamicsRec` fields the solution
+    /// actually drives.
     pub int_hour: i32,
     pub t: f64,
     pub h: f64,
@@ -319,7 +316,7 @@ pub struct Solution {
     /// Reusable right-hand-side scratch for [`Solution::solve_system_into`] — the
     /// `Currents[1..]` copy the sparse solve consumes. Kept as a field so the
     /// per-fixed-point-iteration solve does not allocate a fresh vector each call
-    /// (DE_PASCALIZE P15 item 5); `mem::take`-swapped in and out to split the
+    /// and is `mem::take`-swapped in and out to split the
     /// borrow against the active sparse set.
     solve_rhs: Vec<Complex64>,
     /// `VMagSaved`/`ErrorSaved`/`NodeVbase`, 1-based with dummy slot 0.
@@ -336,17 +333,17 @@ pub struct Solution {
     /// frequency in use across the spectra; otherwise it uses `harmonic_list`.
     pub do_all_harmonics: bool,
 
-    /// `ckt.ControlQueue` — pending control actions (WP5.4). Driven by the
-    /// control loop (WP5.7) once RegControl/CapControl `Sample` arms it.
+    /// `ckt.ControlQueue` — pending control actions. Driven by the
+    /// control loop once RegControl/CapControl `Sample` arms it.
     pub control_queue: ControlQueue,
     /// `DSS.EventStrings`, surfaced as `Solution.EventLog` to dss-python.
     pub event_log: EventLog,
     /// Branch-to-node incidence matrix + Laplacian (Pascal `IncMat`/`Laplacian`/
     /// `Inc_Mat_Rows`/`Inc_Mat_Cols`/`Inc_Mat_levels`), built by the
-    /// `CalcIncMatrix`/`CalcIncMatrix_O`/`CalcLaplacian` commands (WP-AD.1).
+    /// `CalcIncMatrix`/`CalcIncMatrix_O`/`CalcLaplacian` commands.
     pub inc_matrix: crate::solution::inc_matrix::IncMatrixState,
 
-    // --- A-Diakoptics (WP-AD.3, `Solution.pas:233–255`). All false/empty until
+    // --- A-Diakoptics. All false/empty until
     // `set ADiakoptics=yes` runs `ADiakopticsInit`. On the coordinator these
     // steer the solve-path AD branches; on a child, the index maps route its
     // local solve into the coordinator's NodeV.
@@ -410,7 +407,7 @@ pub struct Solution {
     /// (l.1157), re-armed nowhere (r4133 has no other writer either). It gates
     /// the first solve's flat start and all-machine registry init; a generator
     /// that joins later is initialised by the self-sizing registries instead
-    /// (`ncim_init_pq_gen` / `ncim_get_num_generators`, RF-D00-05).
+    /// (`ncim_init_pq_gen` / `ncim_get_num_generators`).
     pub ncim_init_gen_q: bool,
     /// `NCIM_Ready` — whether the NCIM structures are initialized.
     pub ncim_ready: bool,
@@ -557,8 +554,8 @@ impl Solution {
         self.currents.fill(Complex64::ZERO);
     }
 
-    /// Pascal `SnapShotInit` (SetGeneratorDispRef is a no-op without
-    /// generators in Phase 3).
+    /// Pascal `SnapShotInit` after its `SetGeneratorDispRef`, which every
+    /// caller runs first (`set_generator_disp_ref`).
     pub(crate) fn snap_shot_init(&mut self) {
         self.control_iteration = 0;
         self.control_actions_done = false;

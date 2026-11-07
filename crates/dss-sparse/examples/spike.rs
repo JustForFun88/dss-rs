@@ -1,4 +1,4 @@
-//! Phase 0 spike: is faer's complex sparse LU adequate for DSS-sized Y matrices?
+//! Spike: is faer's complex sparse LU adequate for DSS-sized Y matrices?
 //!
 //! Builds a synthetic admittance-like matrix on a 2D grid graph (each node
 //! coupled to up to 4 neighbors — denser than a real distribution feeder,

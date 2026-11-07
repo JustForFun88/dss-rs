@@ -1,4 +1,4 @@
-//! Phase 8 report goldens (PHASE8_PLAN §2.3): pin the **report file the oracle
+//! Report goldens: pin the **report file the oracle
 //! writes**. `tools/golden/gen_reports.py` runs a fixture on the pinned engine,
 //! issues the `Export`/`Show`/... command, and captures the produced file's
 //! bytes into `tests/golden/reports/<report>.txt` (+ a `<report>.meta.json` with
@@ -7,11 +7,11 @@
 //! two **after parsing numbers out** via `harness::compare_export` — never a raw
 //! float-string diff.
 //!
-//! WP8.1 self-test: `Export Counts` — a text dump of every DSS class and its
+//! Self-test: `Export Counts` — a text dump of every DSS class and its
 //! instance count. The Rust class registry is a *proper subset* of the oracle's
 //! (only a subset of classes is ported), so the comparison is `RustSubsetByKey`:
 //! every ported class's count is pinned against the oracle; the classes we don't
-//! yet register are ignored (see `tests/TOLERANCE_NOTES.md`). This is a real
+//! yet register are ignored. This is a real
 //! gate (it shakes out the whole output path: registry walk → format → file IO →
 //! the `compare_export` harness), not a self-comparison.
 //!
@@ -105,8 +105,8 @@ fn run_deck_export(stem: &str, policy: &ExportPolicy) {
 /// which assert a value the oracle golden cannot carry — the golden is the
 /// capture of an engine whose reading the fix moves away from (an upstream bug
 /// both gating engines share), so the pin has to read the produced text
-/// directly. Since `GOLDEN_REBASE_PLAN.md` WP-G2 those pins are
-/// lane-independent: they assert the one value **both** lanes now compute.
+/// directly. Those pins are lane-independent: they assert the one value
+/// **both** lanes compute.
 fn run_deck_export_capture(stem: &str) -> String {
     let dir = reports_dir();
     let meta: DeckMeta = {
@@ -203,8 +203,8 @@ fn export_counts_matches_oracle() {
             .iter()
             .map(|s| s.to_string())
             .collect(),
-            // WindGen (WP-U1.8) is a 0.15.x class absent from the pinned 0.14.5
-            // oracle; skip its count row (gated against capi015 live instead).
+            // WindGen is a 0.15.x class absent from the pinned 0.14.5
+            // engine, so its count row is skipped (gated against capi015 live instead).
             allow_extra: vec!["windgen".to_string()],
         },
         rel: 0.0,
@@ -368,16 +368,14 @@ fn locate_show_report(scratch: &Path, suffix: &str, stem: &str) -> String {
 /// tab depth, invisible to the whitespace tokenizer, fails here). Only CRLF→LF is
 /// normalized (the oracle golden is stored LF; the port writes LF).
 ///
-/// Stage F: these goldens render **no number through the F-FMT seam**, so F.4
-/// cannot move their bytes and they stay byte-exact in *both* lanes — the
-/// implementation moved to `harness::lane::assert_bytes_eq` (shared with the
-/// parity-lane arm of `lane::compare_report`); this alias keeps the local name
-/// and documents the determination at the point of use.
+/// These goldens render no number through the formatting seam, so they stay
+/// byte-exact in both lanes. The check is `harness::lane::assert_bytes_eq`
+/// (shared with the parity-lane arm of `lane::compare_report`).
 fn assert_show_bytes_eq(oracle: &str, rust: &str, stem: &str) {
     lane::assert_bytes_eq(oracle, rust, stem);
 }
 
-/// Drive one `Show` report (PHASE8_PLAN §WP8.4): compile the same master the
+/// Drive one `Show` report: compile the same master the
 /// oracle used, replay the post commands, route output into a scratch dir, issue
 /// `Show <keyword>`, and diff the Rust-written fixed-width text file against the
 /// oracle's via `compare_export`. The `Show` twin of `run_feeder_export` — it
@@ -389,15 +387,13 @@ fn run_feeder_show(stem: &str, policy: &ExportPolicy) {
 }
 
 /// [`run_feeder_show`] with an **expected-value transform** on the oracle text,
-/// for the `Show` reports a Stage F row re-lays-out.
+/// for the `Show` reports whose layout differs by lane.
 ///
-/// How far `expected` reaches is the caller's row, not this helper's: while a
-/// row is still split by lane the transform is the identity in the parity lane
-/// (`terminal_total_expected`, `compat::render_rows`, alive until WP-G4.5); once
-/// the row is torn down and both lanes lay the report out the same way, the
-/// transform applies unconditionally (`busflow_expected`,
-/// `GOLDEN_REBASE_PLAN.md` G2.6). Either way it re-lays-out the **oracle** text
-/// — nothing is re-baselined.
+/// How far `expected` reaches is the caller's choice: a lane-split transform is
+/// the identity in the parity lane (`terminal_total_expected`,
+/// `compat::render_rows`), a transform both lanes share applies unconditionally
+/// (`busflow_expected`). Either way it re-lays-out the golden text, so nothing
+/// is re-baselined.
 fn run_feeder_show_expected(stem: &str, policy: &ExportPolicy, expected: impl Fn(&str) -> String) {
     let (oracle, rust, scratch) = produce_feeder_show(stem);
     // Token compare in BOTH lanes — deliberately *not* `lane::compare_report`.
@@ -415,8 +411,7 @@ fn run_feeder_show_expected(stem: &str, policy: &ExportPolicy, expected: impl Fn
     // defect leaving the header's width at 4 while the bus rows below it get 12
     // (diagnosed at `report::show::max_bus_name_length`). Both predate F.4 — the
     // pre-F.4 writer builds that header with the identical
-    // `format::pad("Bus", mbnl)` — and both are why this family has tokenized
-    // since PHASE8_PLAN §2.3.
+    // `format::pad("Bus", mbnl)` — and both are why this family is tokenized.
     //
     // So `Show` layout has no byte contract in either lane. What carries it
     // instead: the structural layout pins
@@ -491,7 +486,7 @@ fn run_feeder_show_exact(stem: &str) {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
-/// Drive one **deck-based** `Show` report (PHASE8_PLAN §WP8.4): the deck twin of
+/// Drive one **deck-based** `Show` report: the deck twin of
 /// [`run_feeder_show`] (a self-contained `New`-circuit deck, no master compile) —
 /// analogous to [`run_deck_export`], but reading the produced file by its fixed
 /// `<CaseName_><suffix>` name in the datapath (`Show` sets no `GlobalResult`).
@@ -541,7 +536,7 @@ fn produce_deck_show(stem: &str) -> (String, String, PathBuf) {
     (oracle, rust, scratch)
 }
 
-/// Drive one deck-based `Dump` report (PHASE8_PLAN §WP8.5): replay the deck, route
+/// Drive one deck-based `Dump` report: replay the deck, route
 /// output into a scratch dir, issue `Dump <report>`, and byte-compare the produced
 /// `<case>_PropertyDump.txt` against the oracle golden. Unlike `Show`, `Dump` sets
 /// `GlobalResult` to the produced path, so the file is read via
@@ -549,21 +544,21 @@ fn produce_deck_show(stem: &str) -> (String, String, PathBuf) {
 /// dump is pure DSS script text (no padded columns), so the oracle bytes are
 /// reproducible in full.
 ///
-/// Stage F: the dump renders its property values through the F-FMT seam
-/// (`report::format`), so the default lane compares the SAME golden through
-/// [`dump_script_policy`] — every `Key=Value` token key-verbatim and every value
-/// bit-identical, only the spelling free (Part IV.2 drift model).
+/// The dump renders its property values through `report::format`, so the
+/// default lane compares the same golden through [`dump_script_policy`]: every
+/// `Key=Value` token key-verbatim and every value bit-identical, only the
+/// spelling free.
 fn run_deck_dump_exact(stem: &str) {
     run_deck_dump_exact_expected(stem, |oracle| oracle.to_string());
 }
 
 /// [`run_deck_dump_exact`] with an **expected-value transform** on the oracle
-/// text (`DE_PASCALIZE_PLAN.md` IV.2 "deliberate divergences"): the committed
+/// text: the committed
 /// golden stays the source of truth, and `expected` states — as code,
 /// enumerated — every edit a row makes to it.
 ///
 /// Two kinds of edit compose here, and they differ in lane scope. A **precision**
-/// row (F-FMT's `%g` re-rounding, [`lane::expected_rerounded`]) is a default-lane
+/// row (the `%g` re-rounding, [`lane::expected_rerounded`]) is a default-lane
 /// re-spelling and is the identity in the parity lane. A **torn-down bug** row
 /// (the Fault `MinAmps` reprint, [`fault_dump_expected`]) is a divergence from
 /// the oracles that both lanes now carry, so its edit applies in both.
@@ -660,7 +655,7 @@ fn run_deck_dump_exact_masked_expected(
 /// Like [`run_deck_dump_exact`], but drops whole `[Header]…` blocks from the Rust
 /// dump before the byte compare — a `Dump commands` section is `[Class]` then its
 /// numbered property lines (indistinguishable by prefix from any other class), so
-/// a class the pinned 0.14.5 oracle lacks (WP-U1.8 `[WindGen]`, a 0.15.x class)
+/// a class the pinned 0.14.5 engine lacks (`[WindGen]`, a 0.15.x class)
 /// is removed as a contiguous `[WindGen]`→next-`[` block. WindGen's command
 /// surface is gated against `capi015` live + the props round-trip, not this
 /// 0.14.5 golden.
@@ -700,7 +695,7 @@ fn run_deck_dump_exact_block_masked(
     let rust = std::fs::read_to_string(produced)
         .unwrap_or_else(|e| panic!("{stem}: read produced {produced}: {e}"));
 
-    // WP-U1.9: the 0.15.x ExecOptions the pinned 0.14.5 oracle lacks (the PCE
+    // The 0.15.x ExecOptions the pinned 0.14.5 engine lacks (the PCE
     // force hooks + the NCIM options they share an enum tail with). They dump as
     // single `<ord>, "<Name>", "<help>"` lines after the last 0.14.5 option
     // (NUMANodes, 128) and before the first class block; drop them before the
@@ -814,7 +809,7 @@ fn binsave_matches_oracle() {
         dss.command(c);
     }
     dss.command(&format!("set datapath=\"{}\"", scratch.display()));
-    // Per-action `GlobalResult` (audit settlement): `<tag>=[<ftag>=<path>]`,
+    // Per-action `GlobalResult`: `<tag>=[<ftag>=<path>]`,
     // with the LoadShape Q clause joined by `AppendGlobalResult`'s `', '` plus
     // the clause's own leading space — `],  Qmult=[` (comma + TWO spaces),
     // oracle-probed (`DSSGlobals.pas:452-459`).
@@ -1025,7 +1020,7 @@ fn run_shared_exports(reports: &[(&str, ExportPolicy)]) {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
-// Tolerance discipline (WP8 exactness audit, 2026-07-04): every golden here is
+// Tolerance discipline: every golden here is
 // pinned at **exact equality** (`rel = 0`, `abs = 0`) — the produced report
 // parses value-identical to the oracle capture — unless a divergence is
 // *observed on this golden* and traced to a proven class: a last-printed-digit
@@ -1034,7 +1029,7 @@ fn run_shared_exports(reports: &[(&str, ExportPolicy)]) {
 // floor, or a genuinely unpinnable cell (`Mask`). Preemptive "printing floor"
 // tolerances on byte-identical columns are not kept — if a straddle ever fires,
 // prove it by decomposition first (both engines' f64 bracketing the print
-// boundary), then add the floor. See `tests/TOLERANCE_NOTES.md`.
+// boundary), then add the floor.
 
 /// `Export Voltages` (Pascal `ExportVoltages`) on solved IEEE13: per-bus node
 /// magnitude/angle/pu, zero-filled to the max node count. Byte-identical
@@ -1061,7 +1056,7 @@ fn export_buscoords_matches_oracle() {
 }
 
 /// `Interpolate` (Pascal `DoInterpolateCmd` → `InterpolateCoordinates` +
-/// `CalcBusCoordinates`, WP8.6), gated via `Export BusCoords`: the fixture
+/// `CalcBusCoordinates`), gated via `Export BusCoords`: the fixture
 /// deck (`tools/golden/report_decks/interp.dss`, replayed from the meta) gives
 /// only the anchors src/b1/b5/c2 coordinates via `SetBusXY`; `interpolate`
 /// must fill b2/b3/b4/c1 by walking each zone end to the two nearest
@@ -1112,14 +1107,13 @@ fn export_ynodelist_matches_oracle() {
     run_feeder_export("export_ynodelist", &policy);
 }
 
-// --- WP8.2 sub-step 2a: the real-power element exports ----------------------
+// --- The real-power element exports ------------------------------------------
 // These walk the Sources/PDElements/Faults/PCElements lists calling the mutating
 // terminal getters (`Power`/`GetLosses`/`ComputeVterminal`/`ComputeIterminal`).
 // All columns are real (kW/kvar/W) — no angle/sequence columns — so the floors
 // are the plain fixed-decimal / `%g` printing floors, NOT a physics relaxation:
 // the engine's V/I/P physics is pinned to 1e-8 by `corpus_live.rs`; here we gate
 // the report layout (header, column set, element order, scaling).
-// (tests/TOLERANCE_NOTES.md)
 
 /// `Export Powers` (Pascal `ExportPowers`): per-terminal kW/kvar of every PD then
 /// PC element, plus each PD's terminal-1 normal/emergency excess kVA. Every value
@@ -1140,7 +1134,7 @@ fn export_powers_matches_oracle() {
 /// faer-vs-KLU noise-vs-noise (observed up to `1.72e-9` vs `1.275e-8` W). The
 /// golden's noise cells top out at 1.28e-8 W while the smallest **real** loss is
 /// 9.05e-3 W — a 6-order gap, so `1e-7` (8× over the largest noise cell) can
-/// never mask a real loss. (tests/TOLERANCE_NOTES.md)
+/// never mask a real loss.
 const LOSSES_REL: f64 = 1e-6;
 #[test]
 fn export_losses_matches_oracle() {
@@ -1166,7 +1160,7 @@ fn export_losses_matches_oracle() {
 /// `−1342.213`. So like the `Powers` `%11.1f` floor the whole policy is `rel = 0`
 /// / `abs = 0.0011`: no multiplicative band (a per-conductor scale drift ≥ ~0.01%
 /// is caught, not masked — mutation-confirmed), the integer NumTerminals/
-/// NumConductors/NumPhases columns exact within abs. (tests/TOLERANCE_NOTES.md)
+/// NumConductors/NumPhases columns exact within abs.
 #[test]
 fn export_p_byphase_matches_oracle() {
     let policy = ExportPolicy {
@@ -1180,7 +1174,7 @@ fn export_p_byphase_matches_oracle() {
     run_feeder_export("export_p_byphase", &policy);
 }
 
-// --- WP8.4 Show reports -----------------------------------------------------
+// --- Show reports -----------------------------------------------------------
 // `Show` emits Pascal fixed-width text tables (space-padded columns, the odd
 // glued trailing comma), not CSV — so these policies use `sep: ' '` (the
 // harness whitespace+comma tokenizer) and `header_lines: 0`: every non-blank
@@ -1189,7 +1183,6 @@ fn export_p_byphase_matches_oracle() {
 // That pins the report **structure** (line count, per-line token count/order)
 // on top of the numeric layout. The electrical physics itself is pinned to
 // 1e-8 by `corpus_live.rs`; these are report-layout / printing-floor checks.
-// (tests/TOLERANCE_NOTES.md)
 
 /// `Show Buses` (Pascal `ShowBuses`): every bus's base kV / `(x,y)` / keep / node
 /// list. All columns are **input** data (base kV = `kVBase·√3` `%7.3f`, coords
@@ -1300,7 +1293,6 @@ fn show_voltages_matches_oracle() {
 /// whose `%I2/I1 = 1.76` IS checked): an 8-order gap with nothing in between, so
 /// `1e-6` can never gate a physical current (a coarser `1e-3` would wrongly skip
 /// the real `5.8e-4` row). Current physics is pinned to 1e-8 by `corpus_live.rs`.
-/// (tests/TOLERANCE_NOTES.md)
 #[test]
 fn show_currents_matches_oracle() {
     let pctcol = |i: usize, gate: Option<GateSpec>| ColTol {
@@ -1619,14 +1611,9 @@ fn show_mismatch_matches_oracle() {
     run_feeder_show("show_mismatch", &policy);
 }
 
-/// The AutoTrans special cases of the element-form `Show` reports (WP8.8 exit
-/// sweep; Pascal `ShowResults.pas` — `WriteTerminalCurrents:604`, `ShowPowers`
-/// case 1 `:1190`, `ShowNodeCurrentSum:3636`): `Ntimes = Nphases` rows per
-/// terminal instead of `NConds`, the per-terminal `Inc(k, Ntimes)` block-skip in
-/// currents/mismatch, and the DEAD post-loop `Inc` in `ShowPowers` (terminal 2
-/// re-reads the first conductor block — reproduced). A well-conditioned
-/// physical-source snapshot deck (the WPG.15 `autotrans_reg.dss` model minus the
-/// control arm), so the digits pin exactly; policies mirror the feeder twins.
+/// The AutoTrans special cases of the element-form `Show` reports: `Nphases`
+/// rows per terminal instead of `NConds`, pinned exactly on a well-conditioned
+/// AutoTrans snapshot deck.
 #[test]
 fn show_powers_elem_autotrans_matches_oracle() {
     let policy = ExportPolicy {
@@ -1652,10 +1639,9 @@ fn show_powers_elem_autotrans_matches_oracle() {
         &policy,
         "show_powers_elem_autotrans",
     );
-    // The per-family whitespace layouts (WP8.8: Sources `%s %4d` one-space
+    // The per-family whitespace layouts (Sources `%s %4d` one-space
     // rows, PC width-6 rows + `kW   +j  kvar` header + `'  TERMINAL TOTAL '`
-    // label — `ShowResults.pas:1128/1162/1240/1264/1297/1302`), pinned
-    // BYTE-EXACT against the oracle golden (audit-tests follow-up): the
+    // label), pinned byte-exact against the golden: the
     // tokenizing comparator above deliberately collapses whitespace, so the
     // layout-bearing lines are compared verbatim here. (Same production as
     // the numeric compare — a second `produce_deck_show` in a sibling test
@@ -1665,10 +1651,9 @@ fn show_powers_elem_autotrans_matches_oracle() {
     // those rows are numerically pinned by the tokenizing twin (0.0 == -0.0)
     // and excluded from the byte compare here (the layout is amply pinned by
     // the non-degenerate rows).
-    // Stage F: this is a *layout* pin (column widths and pad glyphs), which is
-    // exactly what F-FMT re-renders in the default lane — so it runs in the
-    // PARITY lane only. The numeric content above is lane-independent, and the
-    // default lane's layout is covered by the F.5 differential job.
+    // This is a layout pin (column widths and pad glyphs), which the default
+    // lane re-renders, so it runs in the parity lane only. The numeric content
+    // above is lane-independent.
     let degenerate = |l: &str| l.split_whitespace().rev().nth(1) == Some("0.0");
     let select = move |s: &str, pred: fn(&str) -> bool| -> Vec<String> {
         s.lines()
@@ -1907,7 +1892,7 @@ fn show_meters_matches_oracle() {
 /// enabled-filter is exercised: g3 must NOT appear). Same `%10.0f` integer
 /// registers as `export_generators` → **exact equality** (`rel = 0`, `abs = 0`).
 ///
-/// Note (WP8.4 step-8 audit F1): g1/g2's `$` register is **exactly 7.5**, sitting on
+/// Note: g1/g2's `$` register is **exactly 7.5**, sitting on
 /// the `%10.0f` rounding half-boundary → rendered `8`. This is stable, not a
 /// knife's-edge: the `$` register derives from the **stiff, clean** `kWh = 300`
 /// (a `model=1` generator holds P = 100 kW, so ∫P dt = 300 exactly, bit-identical on
@@ -2000,7 +1985,7 @@ fn show_unserved_ue_matches_oracle() {
     run_deck_show("show_unserved_ue", &policy);
 }
 
-/// `Show Overloads` niche-branch coverage (audit-tests step-9 follow-up): a
+/// `Show Overloads` niche-branch coverage: a
 /// dedicated deck with a **1-phase** overloaded line (`normamps=5`, `emergamps=0`)
 /// and a small overloaded shunt **capacitor**. Exercises the three `show_overloads`
 /// branches `ovl`/`ovl2` miss: the `Nphases < 3` symmetrical-component fallback
@@ -2021,8 +2006,7 @@ fn show_overloads_1ph_matches_oracle() {
     run_deck_show("show_overloads_1ph", &policy);
 }
 
-/// `Show Unserved` **normal** criterion, exclusion coverage (audit-tests step-9
-/// follow-up): run on the `uns2` deck — the deep-sag `ld1` is over its normal
+/// `Show Unserved` **normal** criterion, exclusion coverage: run on the `uns2` deck — the deep-sag `ld1` is over its normal
 /// criterion (`ExceedsNormal`, a nonzero `EEN_Factor`) while the healthy `ld2` is
 /// **excluded**. `show_unserved` (deck `uns`) has a single load, so only the UE path
 /// pinned an exclusion; this pins the **normal** path's exclusion (a distinct
@@ -2046,7 +2030,7 @@ fn show_unserved_normal_matches_oracle() {
 /// (L-L fault via a `GFault` scratch inversion) — **exact equality** (`rel = 0`,
 /// `abs = 0`).
 ///
-/// Provenance of the numbers (audit-tests WP8.4 step 10): the *aggregate* fault
+/// Provenance of the numbers: the *aggregate* fault
 /// currents / sequence Z are independently pinned by `export_faultstudy`
 /// (3-Phase/1-Phase/L-L per bus, `%.2f`, exact) and `export_seqz`, over this same
 /// `solve mode=faultstudy` fixture. The **per-node** amps, the `X/R` column and the
@@ -2056,7 +2040,7 @@ fn show_unserved_normal_matches_oracle() {
 /// from unit-injection re-solves of the factored Y — not a bit-exact assembly), so
 /// exact equality holds because on this feeder no printed cell lands within that
 /// floor of a `%.Nf` rounding boundary (a feeder property, not a guarantee); a
-/// future straddle is an investigation, never a mask (CLAUDE.md). `corpus_live.rs`
+/// future straddle is an investigation, never a mask. `corpus_live.rs`
 /// does **not** cover this — it snapshot-solves and never enters faultstudy mode.
 /// The degenerate cold-solve path (unallocated `Zsc`, which access-violates the
 /// oracle) is pinned safe by the `fault_study::tests::fault_study_cold_solve_is_safe`
@@ -2074,7 +2058,7 @@ fn show_faultstudy_matches_oracle() {
     run_feeder_show("show_faultstudy", &policy);
 }
 
-/// `Show Faults` on an **unbased** circuit (WP8.4 step-10 audit-tests follow-up):
+/// `Show Faults` on an **unbased** circuit:
 /// a deck with no `Set Voltagebases` / `CalcVoltageBases`, so every bus keeps
 /// `kVBase = 0` and sections 2 & 3 render the `%10.1f` "L-N Volts if no base"
 /// branch (raw volts) instead of the `%10.3f` per-unit form the based IEEE13 golden
@@ -2117,7 +2101,7 @@ fn show_yprim_matches_oracle() {
     run_feeder_show("show_yprim", &policy);
 }
 
-/// `Show Meters` with **two** EnergyMeters (audit F2 coverage): em1 on the feeder
+/// `Show Meters` with **two** EnergyMeters: em1 on the feeder
 /// head + em2 on the 632-645 lateral. The zones **partition** (em1 stops at em2), so
 /// the two data rows carry distinct per-zone registers — pinning that the legend is
 /// emitted **once** from the FIRST meter (`meters[0]`) while each row uses its own
@@ -2138,7 +2122,7 @@ fn show_meters_multi_matches_oracle() {
 }
 
 /// `Show Meters` / `Show Generators` on a solved IEEE13 with **no** meters /
-/// generators (audit F2 coverage): pins the empty-list banner branches —
+/// generators: pins the empty-list banner branches —
 /// `ShowMeters` emits the `No Energymeter Elements Defined.` line, `ShowGenMeters`
 /// emits its two-line banner only. Fixed text (no numbers), diffed exact against the
 /// oracle bytes.
@@ -2183,7 +2167,7 @@ fn show_loops_matches_oracle() {
 /// `Show Zone <meter>` (Pascal `ShowMeterZone`) on the radial metered IEEE13 (em1 on
 /// Line.650632): the full zone as an indented branch/shunt tree — every PD branch,
 /// its shunt loads/caps/transformers, and the meter-as-`SensorObj` annotation
-/// (`(Sensor: EnergyMeter.em1)`, set by the WP6.4 zone build). A 32-line tree,
+/// (`(Sensor: EnergyMeter.em1)`, set by the zone build). A 32-line tree,
 /// compared **byte-exact**: pins the `First`/`GoForward` walk order, the shunt-object
 /// attachment per branch, the per-level `TABCHAR` indentation, and the `_<meter>.txt`
 /// filename (glob `*_ZoneOut_em1.txt`).
@@ -2212,7 +2196,7 @@ fn show_zone_mesh_matches_oracle() {
     run_deck_show_exact("show_zone_mesh");
 }
 
-/// `Show Loops` on a **two-meter** deck (audit-tests step-12 follow-up): zone A (m1)
+/// `Show Loops` on a **two-meter** deck: zone A (m1)
 /// loops, zone B (m2) has a parallel line, so **both** meters emit rows. Exercises the
 /// multi-meter outer `for &mr in &ckt.energy_meters` loop the single-meter goldens
 /// don't — a regression that broke after the first meter, duplicated the header, or
@@ -2234,17 +2218,17 @@ fn show_controlled_matches_oracle() {
     run_feeder_show_exact("show_controlled");
 }
 
-/// `Show Controlled` **multi-control** coverage (audit follow-up, step 13): a
+/// `Show Controlled` **multi-control** coverage: a
 /// synthesized deck where `Line.l1` carries a Recloser **then** a Relay, `Line.l2`
 /// two SwtControls, `Line.l3` a Fuse, and `Capacitor.cap1` a CapControl. Pins the
 /// repeated-control `, %s , %s ` loop AND its creation-order ordering (`ckt.controls`
 /// order) — which the single-control-per-PD feeder golden never exercises — plus all
 /// FIVE PD-targeting `controlled_element()` overrides the feeder golden misses
 /// (`swt_control`/`recloser`/`relay`/`fuse`/`cap_control`; only `reg_control` is hit
-/// there). The **fuse** line is the audit-code Major regression guard: Fuse was the
-/// one `TControlElem` subclass whose override was initially omitted (it lives under
+/// there). The **fuse** line is a regression guard: Fuse is the
+/// one `TControlElem` subclass whose override is easy to omit (it lives under
 /// `elements/pd/fuse/`, not `elements/control/`), so a fuse-switched line silently
-/// vanished from the report. Byte-exact.
+/// vanishes from the report. Byte-exact.
 #[test]
 fn show_controlled_multi_matches_oracle() {
     run_deck_show_exact("show_controlled_multi");
@@ -2256,10 +2240,10 @@ fn show_controlled_multi_matches_oracle() {
 /// LineCode script (no `<case>_` prefix, read directly from the scratch dir, golden
 /// `<stem>_code.txt`). Byte-exact in the parity lane.
 ///
-/// Stage F: both files are dense float text rendered through the F-FMT seam (the
+/// Both files are dense float text rendered through `report::format` (the
 /// R/X/C matrices, and the `LineCode` script's `Rmatrix=(…)` values), so the
 /// default lane compares the same two goldens value-exact (`rel = abs = 0`) with
-/// the rendering free — Part IV.2 drift model.
+/// the rendering free.
 fn run_lineconstants_show(stem: &str) {
     let (oracle_main, rust_main, scratch) = produce_deck_show(stem);
     let policy = lane::exact_value_policy(' ');
@@ -2328,8 +2312,7 @@ fn busflow_elem_policy() -> ExportPolicy {
 /// terminal number is glued to the closing quote (`"Capacitor.cap1"1`) and at
 /// the honest width it becomes its own column. The tokenizer sees one field
 /// where the engine produces two, so the *oracle* expectation is split at
-/// exactly that seam; no golden byte moves. `GOLDEN_REBASE_PLAN.md` G2.6 tore
-/// the lane split down, which is why this rule no longer has a parity arm.
+/// exactly that seam; no golden byte moves. The rule applies in both lanes.
 ///
 /// The rule is deliberately narrow: a closing `"` **immediately** followed by an
 /// ASCII digit, nowhere else. The seq-currents rows of the same report already
@@ -2476,10 +2459,9 @@ fn show_busflow_matches_oracle() {
 /// golden really carries glued rows, the transform splits exactly those rows and
 /// no others, and the rule leaves an already-separated row alone.
 ///
-/// The capture-reading assert is deliberately kept after G2.6 made the transform
-/// unconditional: it reads the *committed oracle capture*, whose glue is a fact
-/// about dss_capi 0.14.5 rather than about our lane, so it stays valid in both
-/// builds. It dies at G3.3b, when the self-snapshot no longer carries glue.
+/// The capture-reading assert reads the committed dss_capi capture, whose glue
+/// is a fact about dss_capi 0.14.5 rather than about our lane, so it holds in
+/// both lanes.
 #[test]
 fn busflow_glue_transform_is_the_terminal_column() {
     // The rule, at the character level.
@@ -2532,7 +2514,7 @@ fn busflow_glue_transform_is_the_terminal_column() {
     }
 }
 
-/// `Show busflow 675 m` (MVA form, audit-tests step-15 follow-up): the `×0.001`
+/// `Show busflow 675 m` (MVA form): the `×0.001`
 /// scaling + `MW/Mvar/MVA` headers — the only MVA coverage in the whole `Show` power
 /// path. Same seq policy (fully exact); the MVA kW is ~3.6e-18 but the seq form has no
 /// near-zero cells here.
@@ -2548,7 +2530,7 @@ fn show_busflow_mva_elem_matches_oracle() {
     run_feeder_show("show_busflow_mva_elem", &busflow_elem_policy());
 }
 
-/// `Show busflow 611` (1-phase bus, audit-tests follow-up): the `<3`-phase seq path —
+/// `Show busflow 611` (1-phase bus): the `<3`-phase seq path —
 /// `WriteSeqVoltages` (<3 nodes → `V2/V0 = 0`), `GetI0I1I2`/`WriteTerminalPowerSeq`
 /// (`Nphases < 3` / `S1`). Bus 611 has a 1-phase load + `Capacitor.Cap2`; the
 /// `<3`-phase cells are exact zeros → fully exact.
@@ -2564,8 +2546,7 @@ fn show_busflow_1ph_elem_matches_oracle() {
     run_feeder_show("show_busflow_1ph_elem", &busflow_elem_policy());
 }
 
-/// `Show busflow <unknown bus>` (Pascal `#219 'Bus "%s" not found.'`, audit-tests
-/// step-15 follow-up): the negative path is golden-uncoverable (it pushes an error and
+/// `Show busflow <unknown bus>` (error `#219 'Bus "%s" not found.'`): the negative path is golden-uncoverable (it pushes an error and
 /// writes no file), so pin it by unit test — a solved circuit + a nonexistent bus
 /// yields exactly the uppercase-name #219 message and no report file.
 #[test]
@@ -2588,11 +2569,8 @@ fn show_busflow_unknown_bus_errors() {
     );
 }
 
-/// The WP8.4-finalize dispatch tail: an **unknown** `Show` keyword now errors
-/// (`#24700`, `ShowOptions.pas:119-124`), while the deferred keywords `autoadded`
-/// (arm 1), `QueryLog` (arm 32) and `deltaV` (arm 31) stay **silent** headless no-ops
-/// (Pascal's `FireOffEditor` / the deferred `ShowDeltaV`). Pins that porting every
-/// real keyword did not turn the deferrals into errors, and that a genuine typo does.
+/// An unknown `Show` keyword errors, while `autoadded`, `QueryLog` and `deltaV`
+/// stay silent headless no-ops, as the documented `Show` options require.
 #[test]
 fn show_unknown_and_deferred_keywords() {
     let mut dss = Dss::new();
@@ -2702,7 +2680,7 @@ fn show_isolated_iso_matches_oracle() {
     run_deck_show_exact("show_isolated_iso");
 }
 
-/// `Show Isolated` orphan coverage (audit-tests step-16 follow-up): an orphan Load +
+/// `Show Isolated` orphan coverage: an orphan Load +
 /// Generator on PD-less, source-disconnected buses, so the two `ShowIsolated` sections
 /// the IEEE13 + mesh goldens leave empty are non-empty here — the "ENABLED ELEMENTS
 /// ARE ISOLATED" list (`"Load.orphan"  Buses:  "orphanbus"`, pinning the `  Buses:`
@@ -2713,7 +2691,7 @@ fn show_isolated_orphan_matches_oracle() {
     run_deck_show_exact("show_isolated_orphan");
 }
 
-/// `Show Isolated` with a **disabled** PD element (audit-code step-16 follow-up): a
+/// `Show Isolated` with a **disabled** PD element: a
 /// `line.dead enabled=no` must NOT emit a `*** START SUBAREA ***` block — the sub-area
 /// selection is gated on `Enabled` (a disabled PD element is in `ckt_elements` but not
 /// the adjacency lists). Without the guard the port would print a spurious subarea.
@@ -2723,8 +2701,7 @@ fn show_isolated_disabled_matches_oracle() {
     run_deck_show_exact("show_isolated_disabled");
 }
 
-/// `Show Isolated` on a compiled-but-**unsolved** circuit (audit-code step-16
-/// follow-up): no `calcvoltagebases`/`solve`, so terminal `bus_ref`s are unresolved
+/// `Show Isolated` on a compiled-but-**unsolved** circuit: no `calcvoltagebases`/`solve`, so terminal `bus_ref`s are unresolved
 /// (`None`) until `ShowIsolated`'s own `ReprocessBusDefs` runs. Pins that the
 /// reprocess makes the connected tree correct (Vsource → Line.la → Load.ld) — without
 /// it the port would give a degenerate one-source tree. Byte-exact.
@@ -2753,7 +2730,7 @@ fn show_topology_mesh_matches_oracle() {
 /// exercises the R/jX/susceptance/L/C matrices AND the equivalent symmetrical-
 /// component summary (Z1/Z0, C1/C0, surge impedance, propagation velocity); `g1`
 /// (1-conductor, order 1) the non-order-3 branch (no seq block). The Carson recompute
-/// reuses the WP7.1 `LineGeometryObj` engine (bit-exact to the oracle bar a proven
+/// reuses the `LineGeometryObj` engine (bit-exact to the OpenDSS engines bar a proven
 /// transcendental libm floor), and every `%.6g` cell lands byte-identical (no 6-sig
 /// straddle on this geometry). Both files byte-exact.
 #[test]
@@ -2761,7 +2738,7 @@ fn show_lineconstants_matches_oracle() {
     run_lineconstants_show("show_lineconstants");
 }
 
-/// `Show LineConstants 60 mi 250` (audit-recommended non-default coverage): pins the
+/// `Show LineConstants 60 mi 250`: pins the
 /// `freq`/`units`/`rho` arg-parse arms AND that `rho=250` (earth-return) + `units=mi`
 /// propagate into the Carson recompute — the matrix values, the `ohms per mi` labels,
 /// and the `To_per_Meter(mi)` velocity all differ from the default case. Guards the
@@ -2772,7 +2749,7 @@ fn show_lineconstants_mi250_matches_oracle() {
     run_lineconstants_show("show_lineconstants_mi250");
 }
 
-/// `Show LineConstants 50` (audit-code follow-up): a **non-default frequency**
+/// `Show LineConstants 50`: a **non-default frequency**
 /// (freq=50 ≠ DefaultBaseFreq=60), units/rho defaulting. Pins that the freq value
 /// propagates into the Carson recompute (the freq-parse arm itself is also hit by
 /// `mi250`'s non-empty `60`, but its value there equals the default). Both files
@@ -2783,7 +2760,7 @@ fn show_lineconstants_f50_matches_oracle() {
 }
 
 /// `Show LineConstants` on a **geometry-less** deck (circuit + WireData, no
-/// `LineGeometry`): both files are header-only (audit-tests step-14 follow-up). Pins
+/// `LineGeometry`): both files are header-only. Pins
 /// the empty-geometry-list path — the `LineConstants.txt` `LINE CONSTANTS`/Frequency/
 /// Earth-Model header + trailing blank line, and the `LineConstantsCode.dss` three
 /// `!---` header lines — with no per-geometry body. Byte-exact on both files.
@@ -2893,7 +2870,7 @@ fn export_p_byphase_mva_matches_oracle() {
     run_feeder_export("export_p_byphase_mva", &policy);
 }
 
-// --- WP8.2 sub-step 2b: the symmetrical-component family ---------------------
+// --- The symmetrical-component family ---------------------------------------
 // `Phase2SymComp` + `PctNemaUnbalance` + PD ratings. Magnitude columns are `%g`
 // (V1/V2/V0/Vresidual, I1/I2/I0/Iresidual = 6 sig); the ratio/unbalance columns
 // (`%V2/V1`, `%V0/V1`, `%NEMA`, `%Normal`, `%Emergency`, `%I2/I1`, `%I0/I1`) are
@@ -2903,7 +2880,7 @@ fn export_p_byphase_mva_matches_oracle() {
 // ~phase_scale·1e-8 while their relative error is unbounded — hence a tiny `abs`
 // floor on the magnitude columns and a denominator gate on the ratio cells whose
 // I1 is itself residual noise. The physics is gated by `corpus_live` (node V /
-// Iterminal to 1e-8). (tests/TOLERANCE_NOTES.md)
+// Iterminal to 1e-8).
 
 /// `Export SeqVoltages` (Pascal `ExportSeqVoltages`): per-bus V1/pu/baseKV/V2/
 /// %V2V1/V0/%V0V1/Vresidual/%NEMA. Every column byte-identical except the
@@ -2940,7 +2917,7 @@ fn export_seqvoltages_matches_oracle() {
 /// healthy-denominator form (`%I0/I1` of a residual I0 over a loaded I1,
 /// **observed** `7.63e-11` vs `1.04e-10`; historically measured ≤ 1.2e-10) —
 /// far below any real printed ratio. `%Normal`/`%Emergency` divide by NormAmps
-/// (never near-zero) and stay at the default. (tests/TOLERANCE_NOTES.md)
+/// (never near-zero) and stay at the default.
 #[test]
 fn export_seqcurrents_matches_oracle() {
     let i1_gated = |prefix: &str| ColTol {
@@ -2978,7 +2955,7 @@ fn export_seqcurrents_matches_oracle() {
         // (`%I2/I1`, `%I0/I1`) or are a same-noise form of the phase currents
         // (`%NEMA`); `%Normal`/`%Emergency` divide by NormAmps (never near-zero)
         // and fall through to the exact default, so a regression there stays
-        // checked even on the one gated noise row (audit follow-up).
+        // checked even on the one gated noise row.
         col_tol,
     };
     run_feeder_export("export_seqcurrents", &policy);
@@ -2996,8 +2973,7 @@ fn export_seqcurrents_matches_oracle() {
 /// applies to its symmetric components — so every terminal row repeats terminal
 /// 1's residual. On IEEE13's `Line.671680` that is oracle-proven: the true
 /// terminal-2 residual is ~1e-11 A, the export prints terminal 1's 2.83e-5 A.
-/// Both gating oracles carry it; since `GOLDEN_REBASE_PLAN.md` G2.2a neither
-/// lane does.
+/// Both gating oracles carry it. Neither lane does.
 ///
 /// Rather than a captured literal, the expectation is *derived* from an
 /// independent report: `Export Currents` writes a per-terminal `Iresid<j>`
@@ -3112,7 +3088,7 @@ fn export_seqpowers_matches_oracle() {
     run_feeder_export("export_seqpowers", &policy);
 }
 
-// --- WP8.2 sub-step 2c: the per-terminal/per-conductor element exports -------
+// --- The per-terminal/per-conductor element exports --------------------------
 // `Currents`/`ElemCurrents`/`ElemVoltages` are magnitude (`%10.6g`, 6 sig) +
 // angle (`%8.2f`, 2 decimals) reports over Sources→PD→Faults→PC; `ElemPowers`
 // prints per-conductor kW/kvar (`%10.6g`); `NodeOrder` is integer node numbers;
@@ -3123,7 +3099,7 @@ fn export_seqpowers_matches_oracle() {
 // the paired magnitude (`GateSpec::PrevCol`): skipped only where that magnitude
 // is a nonzero sub-threshold residual, keeping every exactly-zero row's
 // `0.00 == 0.00` check and every real-magnitude row's angle. A proven
-// cancellation floor, not a relaxation. (tests/TOLERANCE_NOTES.md)
+// cancellation floor, not a relaxation.
 
 /// `Export Currents` (Pascal `ExportCurrents` + `CalcAndWriteCurrents`):
 /// per-terminal, per-conductor `|I|`/angle over the widest element, plus a
@@ -3227,7 +3203,7 @@ fn export_taps_matches_oracle() {
     run_feeder_export("export_taps", &policy);
 }
 
-// --- WP8.2 sub-step 3: the matrix/summary exports ----------------------------
+// --- The matrix/summary exports ----------------------------------------------
 // `Y`/`Yprims` serialize the assembled/per-element admittance matrices (already
 // pinned entry-by-entry by the checkpoint + live full-Y gates); `SeqZ` reads the
 // per-bus short-circuit impedances; `Summary` is a one-row status line; `Result`
@@ -3295,8 +3271,8 @@ fn export_seqz_matches_oracle() {
 /// `Export Faultstudy` (Pascal `ExportFaultStudy`) on the FaultStudy-solved
 /// IEEE13 feeder: per-bus 3-phase / 1-phase / L-L prospective fault currents.
 /// The 3-phase column reads the precomputed `BusCurrent`; the 1-phase/L-L columns
-/// are local per-bus `YFault` scratch inversions over the same precomputed `Ysc`
-/// (PHASE8_PLAN §2.1). All three are `%10f` (2 decimals); the faultstudy
+/// are local per-bus `YFault` scratch inversions over the same precomputed `Ysc`.
+/// All three are `%10f` (2 decimals); the faultstudy
 /// `Zsc`/`Ysc` are pinned to 1e-9·mag by `exec/tests/fault_study.rs` and the
 /// `YFault` inversions run the same bit-faithful `CMatrix::invert` on both
 /// engines, so the rendered currents are byte-identical (no 0.005-boundary
@@ -3337,7 +3313,7 @@ fn export_yprims_matches_oracle() {
     run_feeder_export("export_yprims", &export_policies::yprims_policy());
 }
 
-// --- WP8.2 follow-up: the remaining solution-family exports ------------------
+// --- Other solution-family exports ------------------------------------------
 // `VoltagesElements` (per-element terminal voltages — the by-element companion to
 // `Voltages`) and the raw Y-ordered node vectors `YVoltages` (NodeV) / `YCurrents`
 // (Solution.Currents). Read-only; the engine physics (node V / node currents) is
@@ -3398,8 +3374,8 @@ fn export_ycurrents_matches_oracle() {
     run_feeder_export("export_ycurrents", &policy);
 }
 
-// --- WP8.2 completion gate: the bus/summary exports at scale (IEEE 8500) ------
-// PHASE8_PLAN §WP8.2 step 4: `Voltages`/`Summary`/`Counts` on the solved IEEE
+// --- The bus/summary exports at scale (IEEE 8500) ----------------------------
+// `Voltages`/`Summary`/`Counts` on the solved IEEE
 // 8500-Node feeder (8531 nodes, 6103 devices), completing the export-diff over
 // 13/34/37/123/8500. The per-element/matrix dumps are omitted as enormous (the
 // established 8500-golden discipline — `golden_ieee8500.rs`). All three share the
@@ -3459,8 +3435,8 @@ fn export8500_reports_match_oracle() {
             .iter()
             .map(|s| s.to_string())
             .collect(),
-            // WindGen (WP-U1.8): a 0.15.x class absent from the pinned 0.14.5
-            // oracle; skip its (zero-instance) count row here.
+            // WindGen is a 0.15.x class absent from the pinned 0.14.5
+            // engine, so its (zero-instance) count row is skipped here.
             allow_extra: vec!["windgen".to_string()],
         },
         rel: 0.0,
@@ -3474,10 +3450,10 @@ fn export8500_reports_match_oracle() {
     ]);
 }
 
-// --- PORTING_PLAN §6: export-diff on IEEE 34/37/123 --------------------------
-// §6's literal acceptance requires the export-diff suite green on IEEE
-// 13/34/37/123/8500. IEEE13 is pinned by the full export family above and 8500 by
-// `export8500_reports_match_oracle`; these three complete the letter with the
+// --- Export-diff on IEEE 34/37/123 -------------------------------------------
+// The export-diff suite covers IEEE 13/34/37/123/8500. IEEE13 is pinned by the
+// full export family above and 8500 by `export8500_reports_match_oracle`; these
+// three complete it with the
 // core solution exports — Voltages / Currents / Powers — mirroring the IEEE13
 // policies exactly (`export_voltages`/`export_currents`/`export_powers`). Each
 // feeder shares one compile+solve via `run_shared_exports`. The V/I/P physics is
@@ -3608,7 +3584,7 @@ fn export_ieee123_reports_match_oracle() {
     ]);
 }
 
-// --- WP8.3 step 1: Export Monitors (Monitor.TranslateToCSV) -------------------
+// --- Export Monitors (Monitor.TranslateToCSV) --------------------------------
 // `Export Monitors <name>` writes each monitor's in-memory f32 sample buffer to
 // its own CSV (`<case>_Mon_<name>_1.csv`; the `_1` is the PM-build primary-context
 // `DSS._Name`). Three monitors cover the distinct CSV shapes on one daily-solved
@@ -3642,12 +3618,12 @@ fn export_monitors_match_oracle() {
     ]);
 }
 
-// --- WP8.3 step 2: the register/load dumps -----------------------------------
+// --- The register/load dumps -------------------------------------------------
 // `Export Meters`/`Generators`/`PVSystem_Meters`/`Storage_Meters` dump each enabled
 // element's registers (`Year, LDCurve, Hour, <Name>` + `%10.0f` per register) under
 // a `"quoted"` register-name header; `Export Loads` dumps the present allocation
-// view. No corpus deck uses these keywords, so the fixtures are synthesized
-// (PHASE8_PLAN §1). The header line is compared **verbatim** (the register-name
+// view. No corpus deck uses these keywords, so the fixtures are synthesized.
+// The header line is compared **verbatim** (the register-name
 // set/quoting is the report's contract); the register values are `%10.0f`
 // integers, byte-identical on these fixtures (no last-integer rounding straddle)
 // → exact equality. Two fixtures keep every value tightly oracle-pinned (no
@@ -3855,8 +3831,7 @@ fn export_meters_append_accumulates() {
 /// the file does not yet exist and otherwise **appends** (`:2242`), so a
 /// PVSystem and a Storage sharing a name (legal — names are unique per class)
 /// interleave their rows under whichever class's header was written first.
-/// Both gating oracles carry it; neither lane reproduces it
-/// (`GOLDEN_REBASE_PLAN.md` G2.1f; `issue-20`).
+/// Both gating oracles carry it. Neither lane reproduces it (`issue-20`).
 ///
 /// That the fixed prefix is `EXP_STORAGE_` and not some third spelling is not a
 /// choice: the *same command's* single-file mode already writes
@@ -3906,7 +3881,7 @@ fn export_storage_multifile_uses_the_storage_prefix() {
     );
 }
 
-// --- WP8.3 step 3a: the event/error-log dumps ------------------------------
+// --- The event/error-log dumps -----------------------------------------------
 // `Export EventLog` / `Export ErrorLog` (Pascal `ExportEventLog`/`ExportErrorLog`)
 // are `TStringList.SaveToFile` dumps of `DSS.EventStrings` / `DSS.ErrorStrings`.
 // The event-log lines are `Hour=…, Sec=…, Iteration=…, …` records: the stamps and
@@ -3993,8 +3968,8 @@ fn run_log_export(stem: &str) {
 /// (18 `CHANGED n TAPS TO <pu>` lines — the non-integer tap values exercise the
 /// numeric-tolerance compare, not just the integer stamps). Pins the export
 /// **and** that our engine emits every LogThisEvent call site + every tap-change
-/// action line-for-line vs the oracle (the Circuit-build markers landed in WP8.3
-/// step 3a; the tap logic is the same the timeseries_controls `daily_ieee13` gate pins).
+/// action line-for-line vs the golden (the tap logic is the same the
+/// timeseries_controls `daily_ieee13` gate pins).
 #[test]
 fn export_eventlog_matches_oracle() {
     run_log_export("export_eventlog");
@@ -4046,13 +4021,13 @@ fn export_errorlog_captures_errors() {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
-// --- WP8.3 step 3c: the reliability + capacity exports -----------------------
+// --- The reliability + capacity exports --------------------------------------
 // `Export BusReliability`/`BranchReliability` (Pascal `ExportBusReliability`/
 // `ExportBranchReliability`) dump the per-bus / per-branch reliability indices a
 // prior `RelCalc` populated; `Export Capacity` (`ExportCapacity` +
 // `CalcAndWriteMaxCurrents`) dumps each PDElement's max phase current vs its
 // rating + branch customer counts. No corpus deck exports these, so the fixture is
-// synthesized (PHASE8_PLAN §1) as a self-contained deck: a two-section radial
+// synthesized as a self-contained deck: a two-section radial
 // feeder + per-line fault data + a recloser (the OCP device `RelCalc` needs) +
 // loads with `numcust` + an EnergyMeter, `solve`d then `relcalc`'d. High recloser
 // pickups keep the snapshot from tripping so `Capacity` sees real currents. This
@@ -4133,8 +4108,7 @@ fn export_busreliability_multimeter_matches_oracle() {
 /// ids (1 and 2, written by `m1`) against **its own** `FeederSections` and
 /// overwrites them with `l3`'s and `l4`'s repair times — `B1 → 6`, `B2 → 9`,
 /// i.e. the C-feeder's numbers on the B-feeder's buses, and the whole column
-/// then depends on meter order. Since `GOLDEN_REBASE_PLAN.md` G2.2a neither
-/// lane does that.
+/// then depends on meter order. Neither lane does that.
 ///
 /// The expectations are literals, one per bus, so the fix cannot silently
 /// become a no-op: `B1`/`B2` would read 6/9 the moment the loop leaves the
@@ -4224,9 +4198,9 @@ fn export_capacity_matches_oracle() {
 #[test]
 fn export_gicmvars_matches_oracle() {
     // LANE-EXCLUSION(GIC_TRANSFORMER_G2_SCALES_OFF_PCT_R1): the fixture's `tg3`
-    // is the `%R`-specified Auto transformer, and since GOLDEN_REBASE G2.5 both
-    // lanes derive its second-winding conductance from `%R2` where both gating
-    // oracles derive it from `%R1`. In `type=Auto` the `G1` and `G2` blocks sit
+    // is the `%R`-specified Auto transformer, and both lanes derive its
+    // second-winding conductance from `%R2` where both OpenDSS engines derive
+    // it from `%R1`. In `type=Auto` the `G1` and `G2` blocks sit
     // in series on the H→X→neutral path, so that changes the element
     // admittance, the assembled Y and the whole quasi-DC solve: **every** row's
     // Mvar and GIC magnitude moves (measured 8.8e-4 relative on `b1`, the row
@@ -4359,9 +4333,9 @@ fn export_gicmvars_matches_the_equivalent_ohms_spec() {
     for (i, (got, want)) in upstream_ohms.iter().zip(&oracle).enumerate() {
         assert!(
             close(got.0, want.0) && close(got.1, want.1),
-            "row {i}: `R2=0.12696` (upstream's effective winding-2 resistance) must \
+            "row {i}: `R2=0.12696` (OpenDSS's effective winding-2 resistance) must \
              reproduce the captured report {want:?}, got {got:?} — the GICMvars path \
-             itself moved, which is not what G2.5 changed"
+             itself moved, not the winding-2 conductance"
         );
     }
     // …and the live `%R` spec is the honest ohms twin, to f64 round-off (the two
@@ -4396,7 +4370,7 @@ fn csv_rows(content: &str) -> Vec<Vec<String>> {
         .collect()
 }
 
-/// The **degenerate no-`RelCalc`** path (audit-tests follow-up): `Export
+/// The **degenerate no-`RelCalc`** path: `Export
 /// BusReliability`/`BranchReliability` without a prior `RelCalc` must emit the
 /// same all-zero reliability columns the oracle produces (the `Bus*`/`Branch*`
 /// fields are their zero defaults). A Rust-only structural guard (no oracle — the
@@ -4468,7 +4442,7 @@ fn export_reliability_without_relcalc_is_zeroed() {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
-/// The **enabled-only** PDElement filter (audit-tests follow-up): a disabled PD
+/// The **enabled-only** PDElement filter: a disabled PD
 /// element must not appear in `Export Capacity` / `BranchReliability` (Pascal's
 /// `if pElem.Enabled` guard — `for_each_enabled_elem` for Capacity, the explicit
 /// `cd.enabled` skip in `export_branch_reliability`). The shared oracle fixture
@@ -4511,9 +4485,9 @@ fn export_capacity_reliability_skip_disabled_pd() {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
-// --- WP8.3 step 3c part 2: Overloads / Unserved / AllocationFactors ----------
+// --- Overloads / Unserved / AllocationFactors --------------------------------
 // No corpus deck exports these, so each is a synthesized deck fixture
-// (PHASE8_PLAN §1) tailored to make the report non-empty: an under-rated
+// tailored to make the report non-empty: an under-rated
 // overloaded line (Overloads), a voltage-sagged feeder (Unserved), and
 // allocation-spec loads (AllocationFactors). `gen_reports.py` captures the oracle
 // output; the Rust golden replays the same deck.
@@ -4554,8 +4528,7 @@ fn export_overloads_unbal_matches_oracle() {
     run_deck_export("export_overloads_unbal", &overloads_policy());
 }
 
-/// `Export Estimation` (Pascal `ExportResults.pas:1652` `ExportEstimation`,
-/// export verb 5; ORPHANED_GAPS §1.10). The two-section report layout: the
+/// `Export Estimation` (export verb 5). The two-section report layout: the
 /// `"Energy Meters"` block (header lines 1-2, compared verbatim) then — as data
 /// rows, since blank lines are dropped — the `"Sensors"` label, its own column
 /// header, and one row per enabled Sensor. `sep: ','`, `rel/abs = 0.0`: every
@@ -4599,7 +4572,7 @@ fn export_estimation_matches_oracle() {
 /// `Meters.AllNames` but omits from the report (probed on the pinned 0.14.5
 /// engine). Dropping the port's `if !em.med.cd.enabled { continue }` adds an
 /// `"Energymeter.MDIS"` row → row-count failure. (est8 cannot carry one: the
-/// 0.14.5 `allocateloads` access-violates on a disabled meter, DIVERGENCES §D9.)
+/// 0.14.5 `allocateloads` access-violates on a disabled meter.)
 #[test]
 fn export_estimation_noalloc_matches_oracle() {
     run_deck_export("export_estimation_noalloc", &estimation_policy());
@@ -4610,7 +4583,7 @@ fn export_estimation_noalloc_matches_oracle() {
 /// separator Pascal writes between the "Energy Meters" and "Sensors" blocks
 /// (`ExportResults.pas:1711`, r4133 `:1652`). This test closes that hole: replay
 /// each estimation deck and require the produced file's blank-line positions and
-/// total line count to match the captured oracle file exactly (audit-code D).
+/// total line count to match the captured oracle file exactly.
 #[test]
 fn export_estimation_blank_line_layout_matches_oracle() {
     for stem in [
@@ -4746,20 +4719,10 @@ fn estimate_command_runs_allocation_then_exports_estimation() {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
-/// WP-U1.5 E2 (dss_capi 0.15.x `55400a29`): seasonal ratings, gated on
-/// **capi015** (`.meta.json` `"oracle": "capi015"`). Three overloaded PDElements
-/// — an overhead Line, a Transformer, and a CN cable Line — each with
-/// `Seasons=4 Ratings=[...]`; `SeasonRating=yes`/`SeasonSignal=season`/`hour=13`
-/// -> `SeasonalRatingIdx = trunc(GetYValue(13)) = 2`, so `Export Overloads`
-/// applies `AmpRatings[2]` (via `TPDElement.GetRatings`) to **every** PDElement,
-/// not just lines (0.14.5's `DI_Overloads` restriction). Revision-SENSITIVE: the
-/// default 0.14.5 oracle reports base ratings (`%Normal=134.5` for L1), capi015
-/// reports the seasonal ones (`%Normal=336.3`); a broken/missing seasonal
-/// override diverges by >200 percentage points. The golden was regenerated with
-/// `DSS_ORACLE_ENGINE=capi015`; capi015 == oddie:r4133 bit-identical (§1.7).
-/// Exact `0.0/0.0` policy: the Rust render matches the capi015 golden
-/// byte-for-byte (the CN-cable sparse solve agrees to render precision), so the
-/// sibling non-seasonal `overloads_policy` exactness applies here too.
+/// `Export Overloads` applies the active seasonal rating to every PDElement
+/// (Line, Transformer, CN cable), not only to lines, as the `SeasonRating`
+/// option documents. Gated exactly on the capi015 golden (`.meta.json`
+/// `"oracle": "capi015"`).
 #[test]
 fn export_overloads_seasonal_matches_capi015() {
     let policy = ExportPolicy {
@@ -4773,7 +4736,7 @@ fn export_overloads_seasonal_matches_capi015() {
     run_deck_export("export_overloads_seasonal", &policy);
 }
 
-/// WP-U1.5 E2: the `Export Capacity` twin of the seasonal overload golden — the
+/// The `Export Capacity` twin of the seasonal overload golden: the
 /// same fixture, exercising `export_capacity`'s `GetRatings` wiring (the
 /// `%normal`/`%emergency` columns use the seasonal `AmpRatings[2]`). Gated on
 /// capi015 (`.meta.json` `"oracle": "capi015"`).
@@ -4790,13 +4753,9 @@ fn export_capacity_seasonal_matches_capi015() {
     run_deck_export("export_capacity_seasonal", &policy);
 }
 
-/// WP-U1.5 E2 audit (finding 1): `Set Hour`/`SeasonRating`/`SeasonSignal` each
-/// re-sync the global `seasonal_rating_idx` (Pascal `55400a29`
-/// `SyncSeasonalRatingIdx` at ExecOptions params 3/114/115 + CAPI Set_Hour), so a
-/// `solve; set hour=X; export overloads` reads the NEW index, not the stale
-/// solve-time one. Verified on capi015: `solve@hour0; set hour=18; export` reports
-/// `AmpRatings[3]`, not `AmpRatings[0]`. Feature-sensitive — without the
-/// set-command sync the index would latch at its solve-time (or `-1`) value.
+/// `Set Hour`, `SeasonRating` and `SeasonSignal` each re-sync the circuit's
+/// `seasonal_rating_idx`, so a report after `set hour=X` reads the rating of
+/// hour X, not the stale solve-time one.
 #[test]
 fn set_commands_resync_seasonal_rating_idx() {
     let mut dss = Dss::new();
@@ -4824,7 +4783,7 @@ fn set_commands_resync_seasonal_rating_idx() {
     dss.command("set seasonrating=yes");
     assert_eq!(dss.circuit().unwrap().seasonal_rating_idx, 3);
 
-    // The finding-1 case: solve at hour 0, then move the hour WITHOUT re-solving —
+    // Solve at hour 0, then move the hour WITHOUT re-solving —
     // the Set Hour sync advances the index (0 → 2 for hour=12).
     dss.command("set mode=snap");
     dss.command("set hour=0");
@@ -4835,16 +4794,10 @@ fn set_commands_resync_seasonal_rating_idx() {
     assert_eq!(dss.circuit().unwrap().seasonal_rating_idx, 2);
 }
 
-/// WP-U1.5 E2 audit (finding 4): the `DI_Overloads` demand-interval path
-/// (`write_overload_report`) applies the seasonal rating too — Pascal `55400a29`
-/// `EnergyMeter.pas::WriteOverloadReport` keeps the BASE `NormAmps`/`EmergAmps`
-/// entry gate but uses `AmpRatings[SeasonalRatingIdx]` (guard `0 <= idx <
-/// NumAmpRatings`) for the overload test AND the reported `Normal Amps`/`Emerg
-/// Amps` columns. Feature-sensitive & solve-independent: `Normal Amps` is a deck
-/// constant (`AmpRatings[2]`), so it pins the seasonal wiring, not the numeric
-/// solve. A constant `SeasonSignal` (`yarray=[2 2 2 2]`) fixes the index at 2 for
-/// every daily step, so `Line.L1` reports `AmpRatings[2] = 40` (NOT the base
-/// linecode `NormAmps = 100`); a regression to base ratings flips it to 100.
+/// The `DI_Overloads` demand-interval report (`write_overload_report`) tests and
+/// reports against the active seasonal rating, not the base `NormAmps`. A
+/// constant season signal fixes the rating index, so the reported `Normal Amps`
+/// is a deck constant and pins the seasonal wiring independent of the solve.
 #[test]
 fn di_overloads_applies_seasonal_rating() {
     let scratch = scratch_dir("di_overloads_seasonal");
@@ -4968,13 +4921,13 @@ fn export_allocationfactors_matches_oracle() {
     run_deck_export("export_allocationfactors", &policy);
 }
 
-// --- WP8.3 step 3c part 3: Sections / Profile --------------------------------
+// --- Sections / Profile ------------------------------------------------------
 // `Export Sections` (Pascal `ExportSections`) dumps the per-feeder-section
 // reliability data a prior `RelCalc` persisted on each meter (`SectionCount` +
 // `FeederSections` — the persistence this step added); `Export Profile` (Pascal
 // `ExportProfile` + `WriteNewLine`) is the per-meter branch-list voltage
 // profile over the zone-build `DistFromMeter`. No corpus deck exports either,
-// so both fixtures are synthesized (PHASE8_PLAN §1).
+// so both fixtures are synthesized.
 
 /// The `Export Sections` tolerance policy: the aggregate columns
 /// (AvgRepairHrs/SectFaultRate/Sum*) are `%-.6g` over `RelCalc` arithmetic that
@@ -5092,7 +5045,7 @@ fn export_profile_variants_match_oracle() {
     ]);
 }
 
-// --- WP8.3 step 4: TSystemMeter + the demand-interval (DI_) files ------------
+// --- TSystemMeter + the demand-interval (DI_) files --------------------------
 // The DI files are written DURING the time-series solve (opened by SolveDaily,
 // one row per SampleAll, closed by its finally) — not by an Export command — so
 // the runner sets the datapath BEFORE replaying the post commands and reads the
@@ -5117,7 +5070,7 @@ struct DiMeta {
 
 /// All DI values are `%-g` (15 sig) doubles computed by the same meter/solve
 /// arithmetic `corpus_live.rs` pins to ~1e-8 on this exact IEEE13 daily path —
-/// the **only** WP8 golden family with a genuine (non-print) Rust↔oracle
+/// the **only** report golden family with a genuine (non-print) Rust↔oracle
 /// residual: the per-step faer-vs-KLU voltage difference integrates across the
 /// 24 daily solves into the registers (**measured** max 1.5e-8 rel, on the
 /// `di_totals` Load EEN register). `rel = 5e-8` = ~3× that measured accumulation
@@ -5515,7 +5468,7 @@ fn di_overloads_single_phase_mapping_matches_oracle() {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
-// --- WP8.5 step 1: Dump (single-object forms) ---
+// --- Dump (single-object forms) ----------------------------------------------
 
 /// `Dump reactor.*` (base) — the `TReactorObj.DumpProperties` override: the
 /// `New "…"` header, `! ENABLED`, the property loop with the reactor's custom
@@ -5537,8 +5490,8 @@ fn dump_reactor_debug_matches_oracle() {
 
 /// `Dump reactor.rk debug` — a **symmetrical-components** (`SpecType=4`) reactor
 /// (the corpus `KerstingMotor` shape): pins the NON-zero `Z1/Z2/Z0` `%-.8g`
-/// complex path (audit-tests #1) that the r1/rz fixtures never exercised, and the
-/// **single-object** (non-glob) dispatch form (audit-tests #5).
+/// complex path that the r1/rz fixtures never exercised, and the
+/// **single-object** (non-glob) dispatch form.
 #[test]
 fn dump_reactor_symcomp_matches_oracle() {
     run_deck_dump_exact("dump_reactor_symcomp");
@@ -5546,8 +5499,7 @@ fn dump_reactor_symcomp_matches_oracle() {
 
 /// `Dump reactor.* debug` with a **disabled** reactor: pins `! DISABLED`,
 /// `NodeRef = "nil"`, and `Terminal Bus Ref: [-1 …]` — the Pascal `BusRef = -1`
-/// "not set" value for an unresolved terminal (audit-code Finding 1: the port
-/// previously printed `0`; audit-tests #4).
+/// "not set" value for an unresolved terminal.
 #[test]
 fn dump_reactor_disabled_matches_oracle() {
     run_deck_dump_exact("dump_reactor_disabled");
@@ -5556,13 +5508,13 @@ fn dump_reactor_disabled_matches_oracle() {
 /// `Dump loadshape.ls1` — the **generic base** plain-`TDSSObject` path (no
 /// override, no `! ENABLED`): header + `~ prop=value` loop. LoadShape's port
 /// property names already carry the oracle display case, so this pins the
-/// generic plain-object dump for free (audit-tests #2).
+/// generic plain-object dump for free.
 #[test]
 fn dump_loadshape_matches_oracle() {
     run_deck_dump_exact("dump_loadshape");
 }
 
-// --- WP8.5 step 2: per-winding / matrix DumpProperties overrides ---
+// --- Per-winding / matrix DumpProperties overrides ---------------------------
 
 /// `Dump transformer.t1 debug` (2-winding) — the `TTransfObj.DumpProperties`
 /// per-winding block + `XHL…X23`/`Xscmatrix`/thermal scalars + the generic tail,
@@ -5582,17 +5534,17 @@ fn dump_transformer3_matches_oracle() {
 
 /// `Dump transformer.t1` on a **disabled** (post-solve `enabled=no`) transformer:
 /// NodeRef stays populated, so `WdgCurrents` reaches `0` only via the `not
-/// Enabled` guard (Pascal `Transformer.pas:1530`; audit-code follow-up).
+/// Enabled` guard.
 #[test]
 fn dump_transformer_disabled_matches_oracle() {
     run_deck_dump_exact("dump_transformer_disabled");
 }
 
-/// `Dump autotrans.t1` (WPG.15 Stage A) — the AutoTrans `DumpProperties`
+/// `Dump autotrans.t1` — the AutoTrans `DumpProperties`
 /// per-winding block (`conn=Series`, the winding scalars as `%.7g`),
 /// `XHX`/`XHT`/`XXT` (no `X12`/`X13`/`X23`), the flat `Xscmatrix` and the
 /// generic tail. Bare (non-`debug`) + on buses isolated from the source, so the
-/// dump is solve-independent (the auto YPrim/solve path is Stage B).
+/// dump is solve-independent.
 #[test]
 fn dump_autotrans_matches_oracle() {
     run_deck_dump_exact_expected("dump_autotrans", |o| {
@@ -5600,7 +5552,7 @@ fn dump_autotrans_matches_oracle() {
     });
 }
 
-/// The one F-FMT `%g` re-rounding cell of `dump_autotrans` (see
+/// The one `%g` re-rounding cell of `dump_autotrans` (see
 /// [`lane::expected_rerounded`]): winding 2's `RdcOhms` is
 /// `kVLL²/(kVA/1000)·Rdcpu` = 34.5²/40 · 0.001/0.1414… , whose value sits just
 /// **below** the 7-significant-digit half-boundary `0.0084309375`. `dump.rs`
@@ -5628,7 +5580,7 @@ fn dump_line_sym_matches_oracle() {
 
 /// `Dump line.lg` — a **geometry**-driven line: `length` is embedded in `Z`/`Yc`,
 /// so the matrix cells divide by `LengthMult = Len` (≠1) to recover per-unit
-/// length (the branch the sym/linecode decks never hit; audit-tests follow-up #1).
+/// length (the branch the sym/linecode decks never hit).
 #[test]
 fn dump_line_geo_matches_oracle() {
     run_deck_dump_exact_expected("dump_line_geo", |o| {
@@ -5636,7 +5588,7 @@ fn dump_line_geo_matches_oracle() {
     });
 }
 
-/// `Dump line.sw` — a **switch** line pins `Switch=Yes` (audit-tests follow-up #2).
+/// `Dump line.sw` — a **switch** line pins `Switch=Yes`.
 #[test]
 fn dump_line_switch_matches_oracle() {
     run_deck_dump_exact("dump_line_switch");
@@ -5680,7 +5632,7 @@ fn dump_xfmrcode_matches_oracle() {
     run_deck_dump_exact("dump_xfmrcode");
 }
 
-// --- WP8.5 step 3a: the 8 remaining leaf `DumpProperties` overrides ---
+// --- The leaf `DumpProperties` overrides -------------------------------------
 
 /// `Dump vsource.source debug` — `TVsourceObj.DumpProperties`: generic props,
 /// then Complete's `BaseFrequency`/`VMag`/base-frequency series `Z Matrix`
@@ -5756,7 +5708,7 @@ fn dump_spectrum_matches_oracle() {
 /// which every sibling class with that loop avoids by starting at
 /// `NumPropsThisClass + 1`. Both gating oracles carry the reprint and the
 /// goldens are their capture; the engine starts the tail at `NormAmps` in both
-/// lanes since `GOLDEN_REBASE_PLAN.md` G2.2c, so the excluded line is stated
+/// lanes, so the excluded line is stated
 /// here — as code, positionally — rather than by recapturing a golden.
 ///
 /// Positional, like the `b0ch` transform in `golden_cim`: it removes the second
@@ -5787,8 +5739,7 @@ fn fault_dump_expected(oracle: &str) -> String {
 /// Non-vacuity of [`fault_dump_expected`] and the expected-value pin of the
 /// Fault dump tail, over **every** golden the transform is applied to.
 ///
-/// Three things at once, all lane-independent since `GOLDEN_REBASE_PLAN.md`
-/// G2.2c:
+/// Three things at once, all lane-independent:
 ///
 /// 1. **Non-vacuity of the oracle side** — each committed golden really does
 ///    carry the double print, one pair per Fault in its fixture. If a golden is
@@ -5856,7 +5807,7 @@ fn fault_dump_goldens_carry_the_double_print() {
     }
 }
 
-/// Non-vacuity of the F-FMT `%g` re-rounding cells, in both lanes and over
+/// Non-vacuity of the `%g` re-rounding cells, in both lanes and over
 /// every golden they are applied to.
 ///
 /// Each committed oracle golden really carries the FPC spelling exactly once,
@@ -5987,7 +5938,7 @@ fn dump_capacitor_steps_matches_oracle() {
     );
 }
 
-// --- WPG.14: Isource ---
+// --- Isource -----------------------------------------------------------------
 
 /// `Dump isource.*` — Isource has no Pascal `DumpProperties` override, so it
 /// falls through to the ancestor `TPCElement.DumpProperties` ordering; pins
@@ -6005,7 +5956,7 @@ fn dump_isource_debug_matches_oracle() {
     run_deck_dump_exact("dump_isource_debug");
 }
 
-// --- WPG.16: the GIC family DumpProperties ---
+// --- The GIC family DumpProperties -------------------------------------------
 
 /// `Dump gicline.gl2` — GICLine's Pascal `DumpProperties` override on the
 /// geodesy unit (the generic `~ name=value` property loop; the VE/VN/Z-Matrix
@@ -6063,11 +6014,11 @@ fn dump_gicsource_debug_matches_oracle() {
     run_deck_dump_exact("dump_gicsource_debug");
 }
 
-// --- WP8.5 step 4: the `Save` forms (Pascal `DoSaveCmd`) ---
+// --- The `Save` forms ------------------------------------------------------
 
 /// Replay the `save_forms` deck **fresh** (Pascal `Flg.HasBeenSaved` persists
 /// across `save` commands within a session — a second `save load` writes 0
-/// records and deletes the file, probe-proven 2026-07-07, so each golden is a
+/// records and deletes the file, so each golden is a
 /// first-save capture), issue the meta's full `save …` command, and return
 /// `(oracle golden, Rust produced text, engine, scratch dir)`. Unlike `Dump`,
 /// the produced file is read by its probe-proven fixed name (`meta.suffix`):
@@ -6111,7 +6062,7 @@ fn produce_deck_save(stem: &str) -> (String, String, Dss, PathBuf) {
 /// register lines. Byte-exact in the parity lane; `GlobalResult`/`LastResultFile`
 /// = the RELATIVE CSV name (`EnergyMeter.pas:1249-1251`, probe-proven).
 ///
-/// Stage F: the register values render through the F-FMT seam, so the default
+/// The register values render through `report::format`, so the default
 /// lane compares the same golden value-exact (`rel = abs = 0`) on CSV fields.
 #[test]
 fn save_meters_mtr_matches_oracle_exact() {
@@ -6163,7 +6114,7 @@ fn save_voltages_matches_oracle() {
 /// (`compare_export` whitespace tokenization, `rel = 0` — every `Name=value`
 /// token must match verbatim). Also pins the `Flg.HasBeenSaved` persistence:
 /// a second `save load` in the same session writes 0 records and DELETES the
-/// file (`Utilities.pas:1191-1198`, probe-proven 2026-07-07).
+/// file.
 #[test]
 fn save_class_load_matches_oracle() {
     let (oracle, rust, mut dss, scratch) = produce_deck_save("save_class_load");
@@ -6198,10 +6149,8 @@ fn save_class_load_matches_oracle() {
 /// A **disabled** load saves as `… Enabled=No ENABLED=NO` — BOTH forms: the
 /// `Enabled` property is explicitly set (so `SaveWrite` prints it in set order)
 /// AND `WriteDSSObject` appends its own ` ENABLED=NO` for any disabled
-/// CktElement (`Utilities.pas:1229-1231`). Also pins `PF=0.88`: setting `kW`
-/// marks `PF` as set via the load-spec side effects, so the never-typed default
-/// PF is serialized too. The pinned string is the oracle's exact bytes
-/// (probe 2026-07-07, `save load` over these four loads).
+/// CktElement. Also pins `PF=0.88`: setting `kW` marks `PF` as set via the
+/// load-spec side effects, so the never-typed default PF is serialized too.
 #[test]
 fn save_class_disabled_load_writes_enabled_no() {
     let deck = [
@@ -6340,7 +6289,7 @@ fn ckt_model_render_round_trips() {
 /// An explicit `dir=` is the raw parameter (single — `sub1\load`) and the file
 /// lands under the mkdir'd subdir. An unknown class silently writes nothing but
 /// still runs the tail: `GlobalResult`/`LastResultFile` = the raw `file=` value
-/// or empty. All four forms oracle-probed 2026-07-07.
+/// or empty.
 ///
 /// The *file on disk* is asserted at the normalized location too — that has
 /// always been where both engines write it; only the reported string moved.
@@ -6473,7 +6422,7 @@ fn save_voltages_and_meterless_save_leave_last_result_file() {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
-/// Bare `Dump` on the `dump3.dss` fixture (WP8.5 step 3b) — the whole-circuit
+/// Bare `Dump` on the `dump3.dss` fixture — the whole-circuit
 /// form: every CktElement in creation order, then every general DSSObj
 /// (defaults + user objects, `DSS.DSSObjs` order), then
 /// `Solution.DumpProperties(Leaf=TRUE)`. Byte-exact; pins the property display
@@ -6483,13 +6432,13 @@ fn save_voltages_and_meterless_save_leave_last_result_file() {
 fn dump3_bare_matches_oracle() {
     // Two Fault objects in the fixture, so two `~ MinAmps=` pairs — the same
     // torn-down row as `dump_fault`, see [`fault_dump_expected`] — plus the one
-    // F-FMT `%g` cell, [`LOADSHAPE_MEAN_REROUND`].
+    // `%g` re-rounding cell, [`LOADSHAPE_MEAN_REROUND`].
     run_deck_dump_exact_expected("dump3_bare", dump3_expected);
 }
 
 /// `dump3_*`'s three rows composed: the Fault `MinAmps` double-print, dropped in
 /// both lanes (`fault_dump_expected`), the two Faults' ratings that are not set
-/// (`not_set_rating_dump_expected`), and the F-FMT `%g` re-rounding of the
+/// (`not_set_rating_dump_expected`), and the `%g` re-rounding of the
 /// default LoadShape's computed `Mean`, a default-lane re-spelling
 /// ([`LOADSHAPE_MEAN_REROUND`]).
 fn dump3_expected(oracle: &str) -> String {
@@ -6522,8 +6471,8 @@ const NOT_SET_RATINGS_GEO1: NotSetRatingLine = (
     "~ Ratings=[ none]",
 );
 
-/// The oracle `Dump` text as both lanes expect it where a rating is not set
-/// (user decision 2026-10-04): each listed line of each listed object is
+/// The golden `Dump` text as both lanes expect it where a rating is not set:
+/// each listed line of each listed object is
 /// rewritten from the oracle's number to the engine's `none`, and each rewrite
 /// must apply **exactly once**, so a recaptured golden or a moved object fails
 /// here instead of turning the rewrite into a no-op or a wider one. The
@@ -6561,7 +6510,7 @@ fn not_set_rating_dump_expected(oracle: &str, rows: &[NotSetRatingLine], stem: &
     out
 }
 
-/// The one F-FMT `%g` re-rounding cell of the `dump3_*` goldens (see
+/// The one `%g` re-rounding cell of the `dump3_*` goldens (see
 /// [`lane::expected_rerounded`]): `loadshape.default`'s **computed** `Mean`.
 ///
 /// This is the exact value the parity kernel's own documentation names — the
@@ -6610,27 +6559,24 @@ fn dump3_devicelist_matches_oracle() {
 /// `Dump commands` — `DumpAllDSSCommands`: `[execcommands]`/`[execoptions]`
 /// over the executive name tables and one `[<Class>]` section per registered
 /// class in `DSSClassList` order, each line's help from the gettext catalog
-/// (`report/help_catalog.rs`, generated from the pinned wheel). Since
-/// WPG.14/15/16 every registered class has its section in the golden
+/// (`report/help_catalog.rs`, generated from the pinned wheel). Every
+/// registered class has its section in the golden
 /// (`gen_reports.py::DUMP_COMMANDS_UNPORTED_SECTIONS` is empty); the whole
 /// report is byte-exact, pinning command/option/property names and help text.
 #[test]
 fn dump3_commands_matches_oracle() {
-    // `[WindGen]` (WP-U1.8) is a 0.15.x class the pinned 0.14.5 oracle lacks; drop
-    // its block before the exact compare (gated live vs capi015 + props instead).
+    // `[WindGen]` is a 0.15.x class the pinned 0.14.5 engine lacks, so its
+    // block is dropped before the exact compare (gated live vs capi015 + props instead).
     //
-    // The four protection classes (`[Relay]`/`[Recloser]`/`[Fuse]`/`[SwtControl]`,
-    // WP-U2.1..U2.5) are on their **r4133** property surfaces, so their blocks in
+    // The four protection classes (`[Relay]`/`[Recloser]`/`[Fuse]`/`[SwtControl]`)
+    // are on their **r4133** property surfaces, so their blocks in
     // this golden are r4133-shaped and pinned **self-referentially** against our
     // own render — the r4133 help text lives in `help_catalog.rs` (from the
     // `r4133_help.py` supplement, sourced verbatim from the oddie:r4133 engine's
-    // own `Dump commands`), and no byte-exact-vs-Delphi help gate exists
-    // (UPGRADE_PLAN.md §1.3-2). The property NAMES/VALUES are gated live against
+    // own `Dump commands`), and no byte-exact-vs-Delphi help gate exists.
+    // The property NAMES/VALUES are gated live against
     // oddie:r4133 by the `oracle:"r4133"` controls decks + the `props/*.json`
-    // round-trips. WP-U2.3 masked `[Relay]` here pending this regeneration; U2.5
-    // unmasks it (the other three never needed masking — Recloser regenerated in
-    // U2.2, Fuse/SwtControl kept 0.14.5-shaped names with the new props hidden
-    // until U2.5 dropped the HIDE flags for the full r4133 surface).
+    // round-trips.
     //
     // Provenance: those four blocks, and the hand-landed 0.15.x property lines of
     // `[CNData]`/`[LineSpacing]`/`[Transformer]`/`[AutoTrans]`/`[RegControl]`, are
@@ -6827,7 +6773,7 @@ fn dump3_alloc_matches_oracle() {
 }
 
 /// `? transformer.t1.wdgcurrents` after a solve must equal the oracle's live
-/// recompute — pins the `do_query_cmd` Vterminal refresh (audit-code follow-up).
+/// recompute — pins the `do_query_cmd` Vterminal refresh.
 /// Pascal `GetAllWindingCurrents` reloads Vterminal from the solution internally;
 /// the Rust `&self` getter reads the cached buffer, so the query path (like Dump/
 /// Export) must refresh it first. Before the fix this returned all-zeros. The
@@ -6857,7 +6803,7 @@ fn query_wdgcurrents_refreshes_vterminal() {
     );
 }
 
-// --- WP8.6 step 5: the Distribute command ---
+// --- The Distribute command --------------------------------------------------
 
 /// Meta for a `Distribute` golden: the exact command line, the produced bare
 /// filename (`GlobalResult`), and the fixture deck.
@@ -6868,7 +6814,7 @@ struct DistribMeta {
     deck: Vec<String>,
 }
 
-/// Drive one `Distribute` golden (PHASE8_PLAN §WP8.6 step 5): replay the deck,
+/// Drive one `Distribute` golden: replay the deck,
 /// route output into a scratch dir (`Distribute` writes its script relative to
 /// the engine cwd), issue the command, and compare the produced DSS script
 /// against the oracle capture with the **numeric-token** `compare_export`
@@ -6973,7 +6919,7 @@ fn distrib_mw_matches_oracle() {
     run_deck_distribute("distrib_mw");
 }
 
-// --- WP8.6 step 6: Uuids + `Export Uuids` ---
+// --- Uuids + `Export Uuids` --------------------------------------------------
 
 /// The absolute `tools/golden/report_decks` dir — the `@FIXTURES@` token in a
 /// golden meta deck resolves to it on both engines (`gen_reports.py` resolves
@@ -7044,28 +6990,11 @@ fn export_uuids_matches_oracle() {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
-// RP3.8 EXPECTED-VALUE PIN [INDMACH012_PF_RENDERS_LIVE]: `? indmach012.m1.pf` on a
-// solved circuit renders r4133's live power factor, in both lanes.
-/// `? indmach012.m1.pf` AFTER a solve renders the live power factor — r4133
-/// `'0.908343'` on this very deck (RP3.8 P0 probe through `epri-worker`).
-///
-/// This test used to assert `""`, the dss_capi 0.14.5 answer: 0.14.5 registers
-/// `pf` as `[SilentReadOnly, ReadByFunction]` but never assigns its
-/// `PropertyOffset` (stays `-1`), so `GetObjPropertyValue`'s outer guard
-/// (`DSSObjectHelper.pas:2203-2204`) short-circuits before
-/// `PowerFactorProperty` ever runs — solved or not. EPRI r4133, the behavioral
-/// authority (CLAUDE.md, 2026-08-02), instead renders
-/// `Format('%.6g', [PowerFactor(Power[1, ActiveActor])])`
-/// (`Version8/Source/PCElements/IndMach012.pas:1790`), so RP3.8 retired the
-/// suppression for the text render (`PropFlags::RENDERS_LIVE_RESULT`) and the
-/// query now refreshes the machine's render cache at the executive's choke
-/// point. The capi channel keeps answering `''` and is excluded per-case.
-///
-/// The port renders full precision (`float_to_str_ex`) like every other double
-/// property; r4133's own six digits are checked through `fmt_g(v, 6)`. The unit
-/// pins for the same deck live in
-/// `elements::pc::ind_mach012::tests` (`pf_renders_the_live_power_factor`,
-/// `pf_is_a_pure_read`).
+// EXPECTED-VALUE PIN [INDMACH012_PF_RENDERS_LIVE]: `? indmach012.m1.pf` on a
+// solved circuit renders the live power factor, in both lanes.
+/// `? indmach012.m1.pf` after a solve renders the machine's live power factor,
+/// the quantity the solved terminal power defines. It is checked to r4133's six
+/// digits, and dss_capi 0.14.5, which answers `''`, is excluded per case.
 #[test]
 fn query_indmach012_pf_renders_the_live_power_factor() {
     let deck = [
@@ -7207,28 +7136,10 @@ fn export_seqcurrents_prints_zero_for_an_undefined_rating() {
 // the magnitude in both lanes.
 /// `Export SeqCurrents` on the gated corpus deck
 /// `modes/makeposseq/makeposseq_xfmr.dss` prints the loading of `AutoTrans.at`
-/// against the magnitude of its ratings. Its winding 1 (series, 4.16 kV) sits
-/// below its winding 2 (common, 12.47 kV), so the series voltage base, and with
-/// it `normamps` and `emergamps`, come out below zero. A negative current is
-/// still a current: the element stays rated and its ratings stay as stored.
-///
-/// The expected cells derive from the terminal-1 row and the read-back ratings:
-/// `I1 = 44.0011`, `%Normal = I1 / 152.848446716868 · 100 = 28.79` and
-/// `%Emergency = I1 / 208.429700068457 · 100 = 21.11` at the report's four
-/// significant digits.
-///
-/// Both gating oracles print the rating itself in those cells (2026-10-01, the
-/// deck compiled verbatim and then `Export SeqCurrents`, on the pinned
-/// dss-python and on the r4133 DLL through `epri-worker`): `-152.8` and
-/// `-208.4` in the terminal-1 row, with `normamps`/`emergamps` read back as
-/// `-152.848446716868`/`-208.429700068457` (dss-python) and `-152.85`/`-208.43`
-/// (r4133). No gating channel compares `Export SeqCurrents` text and the case
-/// compares no run file, so no golden byte and no `ledger.json` entry carries
-/// the divergence: this test is its pin.
-///
-/// The r4133 DLL prints `0` for that `I1` (2026-10-02, the same recipe): its
-/// positive-sequence branch takes the magnitude of a phase-current array it
-/// never loads, so its `0` is an undefined value and is not pinned.
+/// against the magnitude of its ratings, whose series voltage base comes out below
+/// zero. A negative current is still a current: the element stays rated, its
+/// ratings stay as stored, and no golden or ledger entry carries this divergence,
+/// so this test is its pin.
 #[test]
 fn export_seqcurrents_negative_autotrans_rating_loads_against_its_magnitude() {
     use harness::scratch;
@@ -7330,22 +7241,14 @@ fn show_row(text: &str, quoted: &str) -> Option<Vec<String>> {
 /// `Transformer.tx` (3-phase, 500 kVA, 12.47/0.48 kV wye-wye, `xhl=6`) feeds a
 /// 900 kW load under `EnergyMeter.m`, and `normhkva`/`emerghkva` are set after
 /// the windings, since a winding-1 `kva=` resets both. At `(-550, -750)` the
-/// ratings derive as `normamps` −25.4645267084438 and `emergamps`
-/// −34.7243546024234, the negation of what the defaults `(550, 750)` give, and
-/// the solve is the same: a rating does not enter the admittance. So the port
-/// loads the negative deck exactly as its positive twin, and the twin's oracle
-/// reading is the expected value of every pin below.
+/// ratings derive as the negation of what the defaults `(550, 750)` give, and
+/// the solve is the same: a rating does not enter the admittance. So this
+/// engine loads the negative deck exactly as its positive twin, and the twin's
+/// report is the expected value of every pin below.
 ///
-/// Measured 2026-10-03 on both gating oracles (this deck, then each report, on
-/// the pinned dss-python and on the r4133 DLL through `epri-worker`): both
-/// accept the negative `normhkva`/`emerghkva`, read the ratings back as
-/// −25.4645267084438/−34.7243546024234 (dss-python) and −25.465/−34.724
-/// (r4133), and print the same loading at every site, quoted by each pin. A
-/// negative winding 1 `kV` derives the same negative pair on r4133 but is
-/// refused by the pinned dss-python and by the port (`Transformer.tx.kV: Value
-/// (-12.47) cannot be negative.`), so these decks reach the negative rating
-/// through `normhkva`
-/// ([`negative_winding_kv_is_refused_and_the_rating_stays_positive`]).
+/// A negative winding 1 `kV` is refused
+/// ([`negative_winding_kv_is_refused_and_the_rating_stays_positive`]), so these
+/// decks reach the negative rating through `normhkva`.
 fn rated_transformer_deck(norm_hkva: f64, emerg_hkva: f64) -> Vec<String> {
     transformer_deck("12.47", 900.0, norm_hkva, emerg_hkva)
 }
@@ -7414,13 +7317,6 @@ fn deck_report(tag: &str, deck: &[String], cmds: &[&str], needle: &str) -> Strin
 /// `Export SeqCurrents` prints the loading of a Transformer with a negative
 /// derived rating against its magnitude, `I1 / |rating| · 100`, and a zero
 /// rating stays unrated.
-///
-/// On [`rated_transformer_deck`] at `(-550, -750)` the terminal-1 row of
-/// `Transformer.tx` prints `I1 = 46.1115`, `%Normal = 181.1` and
-/// `%Emergency = 132.8`, byte for byte the report of the positive twin, which
-/// is what both gating oracles print for that twin. On the negative deck both
-/// oracles print the rating itself, `-25.46` and `-34.72`. At `(0, 0)` both
-/// oracles and the port print `0` and `0`.
 #[test]
 fn export_seqcurrents_negative_transformer_rating_loads_against_its_magnitude() {
     let report = |tag: &str, norm: f64, emerg: f64| {
@@ -7451,11 +7347,6 @@ fn export_seqcurrents_negative_transformer_rating_loads_against_its_magnitude() 
 
 /// `Show Currents` prints the `%Normal`/`%Emergency` of a Transformer with a
 /// negative derived rating against its magnitude, `Cmax / |rating| · 100`.
-///
-/// On [`rated_transformer_deck`] at `(-550, -750)` the `Transformer.tx` row
-/// ends in `181.08 132.79`, the report of the positive twin, which is what both
-/// gating oracles print for that twin. On the negative deck both oracles print
-/// `0.00 0.00`, their reading for an unrated element.
 #[test]
 fn show_currents_negative_transformer_rating_loads_against_its_magnitude() {
     let report = |tag: &str, norm: f64, emerg: f64| {
@@ -7479,12 +7370,6 @@ fn show_currents_negative_transformer_rating_loads_against_its_magnitude() {
 
 /// `Export Capacity` prints the `%normal`/`%emergency` of a Transformer with a
 /// negative derived rating against its magnitude, `Imax / |rating| · 100`.
-///
-/// On [`rated_transformer_deck`] at `(-550, -750)` the `Transformer.tx` row
-/// prints `Imax = 46.1115`, `181.08` and `132.79`, the report of the positive
-/// twin, which is what both gating oracles print for that twin. On the negative
-/// deck both oracles divide by the signed rating and print `-181.08` and
-/// `-132.79`.
 #[test]
 fn export_capacity_negative_transformer_rating_loads_against_its_magnitude() {
     let report = |tag: &str, norm: f64, emerg: f64| {
@@ -7507,13 +7392,6 @@ fn export_capacity_negative_transformer_rating_loads_against_its_magnitude() {
 
 /// `Export Overloads` reports a Transformer with a negative derived rating
 /// that its current exceeds, measured against the rating magnitude.
-///
-/// On [`rated_transformer_deck`] at `(-550, -750)` the report carries the row
-/// `"Transformer.TX", 1, 46.11, 20.65, 807.50, 181.1, 132.8, 0.0, 0.0, 0.0, 0.0`
-/// (I1, amps and kVA over the normal rating, `%Normal`, `%Emergency`), the
-/// report of the positive twin, which is what both gating oracles print for
-/// that twin. On the negative deck both oracles find no positive rating and
-/// write the header alone.
 #[test]
 fn export_overloads_negative_transformer_rating_reports_the_overload() {
     let report = |tag: &str, norm: f64, emerg: f64| {
@@ -7536,12 +7414,6 @@ fn export_overloads_negative_transformer_rating_reports_the_overload() {
 
 /// `Show Overloads` reports a Transformer with a negative derived rating that
 /// its current exceeds, measured against the rating magnitude.
-///
-/// On [`rated_transformer_deck`] at `(-550, -750)` the report carries the
-/// `Transformer.tx` row `1 46.1 20.65 181.1 132.8` (terminal, I1, IOver,
-/// `%Normal`, `%Emerg`), the report of the positive twin, which is what both
-/// gating oracles print for that twin. On the negative deck both oracles find
-/// no positive rating and write the header alone.
 #[test]
 fn show_overloads_negative_transformer_rating_reports_the_overload() {
     let report = |tag: &str, norm: f64, emerg: f64| {
@@ -7567,12 +7439,6 @@ fn show_overloads_negative_transformer_rating_reports_the_overload() {
 /// against its magnitude, as `Export Powers` shows in its `P_Normal`..
 /// `Q_Emergency` columns (the one excess computation behind `Show Powers`,
 /// `Export SeqPowers` and the EnergyMeter overload registers).
-///
-/// On [`rated_transformer_deck`] at `(-550, -750)` the terminal-1
-/// `Transformer.tx` row prints `405.6, 185.4, 223.7, 102.3`, the report of the
-/// positive twin, which is what both gating oracles print for that twin. On
-/// the negative deck both oracles find the overload factor negative and print
-/// `0.0` four times.
 #[test]
 fn export_powers_negative_transformer_rating_carries_the_excess_kva() {
     let report = |tag: &str, norm: f64, emerg: f64| {
@@ -7597,20 +7463,7 @@ fn export_powers_negative_transformer_rating_carries_the_excess_kva() {
 /// negative derived rating measure the overload against its magnitude, and the
 /// zone's loads take the overload as their EEN/UE factor.
 ///
-/// On [`rated_transformer_deck`] at `(-550, -750)`, one daily 1 h step, the
-/// registers of `EnergyMeter.m` equal those of the positive twin: `Overload
-/// kWh Normal` 405.5516011426772, `Overload kWh Emerg` 223.66795966164958,
-/// `Load EEN` 727.9412801382721 and `Load UE` 294.4119473585959, the pinned
-/// dss-python's reading of that twin (r4133 prints 406, 224, 728 and 294 in
-/// `Export Meters`). On the negative deck both oracles register no overload:
-/// `0` and `0`, and the voltage-only `Load EEN` 19.78442521279244 (dss-python,
-/// r4133 prints 20) with `Load UE` 0.
-///
-/// The port's four registers sit within 4.1e-15 relative of those dss-python
-/// readings (measured 2026-10-03, the largest on `Overload kWh Emerg`), the
-/// faer-vs-KLU last-ulp class. The band is the `micro` tier of
-/// `tests/TOLERANCE_NOTES.md` for element powers, 1e-9 relative: one 1 h step
-/// integrates each register once from the element and load powers.
+/// The band is the last-ulp solver difference over one integration step.
 #[test]
 fn energymeter_negative_transformer_rating_registers_the_overload() {
     let registers = |norm: f64, emerg: f64| {
@@ -7657,14 +7510,6 @@ fn energymeter_negative_transformer_rating_registers_the_overload() {
 /// `DI_Overloads` reports a Transformer with a negative derived rating that its
 /// current exceeds: the rating columns print the rating as stored, and the
 /// percentages measure the current against its magnitude.
-///
-/// On [`rated_transformer_deck`] at `(-550, -750)`, one daily 1 h step with
-/// `overloadreport`, the `Transformer.tx` row prints `Normal Amps`
-/// −25.4645267084438, `Emerg Amps` −34.7243546024234, `% Normal`
-/// 181.081128740108 and `% Emerg` 132.792827742746. Both gating oracles print
-/// the percentages for the positive twin, where `Normal Amps`/`Emerg Amps` read
-/// 25.4645267084438/34.7243546024234. On the negative deck both oracles find
-/// no positive rating and write the header alone.
 #[test]
 fn di_overloads_negative_transformer_rating_reports_the_overload() {
     let neg = di_overloads_row(&di_overloads(
@@ -7729,15 +7574,6 @@ fn di_overloads_row(text: &str) -> Option<Vec<String>> {
 
 /// One negative Transformer rating beside a zero one opens the `DI_Overloads`
 /// entry gate by its magnitude, and the row loads against that magnitude.
-///
-/// On [`rated_transformer_deck`] at `(-550, 0)` the `Transformer.tx` row prints
-/// `Normal Amps` −25.4645267084438, `Emerg Amps` 0, `% Normal`
-/// 181.081128740108 and `% Emerg` 0, and at `(0, -750)` it prints 0,
-/// −34.7243546024234, 0 and 132.792827742746. Both gating oracles print the
-/// same rows for the positive twins `(550, 0)` and `(0, 750)`, with the rating
-/// positive, and on the two negative decks find no positive rating and write
-/// the header alone (2026-10-03, these decks then the daily step, on the pinned
-/// dss-python and on the r4133 DLL through `epri-worker`).
 #[test]
 fn di_overloads_one_negative_transformer_rating_opens_the_entry_gate() {
     for (neg_rating, pos_rating, want) in [
@@ -7774,14 +7610,7 @@ fn di_overloads_one_negative_transformer_rating_opens_the_entry_gate() {
 
 /// A Transformer with a negative derived rating whose current stays under the
 /// rating magnitude is no overload: `Export Overloads`, `Show Overloads` and
-/// `DI_Overloads` write no row for it.
-///
-/// [`transformer_deck`] with a 100 kW load carries `I1 = 4.8973` A on terminal
-/// 1, under the 25.46 A magnitude of the `(-550, -750)` rating. Each report
-/// equals that of the positive twin byte for byte, the header alone, which is
-/// what both gating oracles write for either deck (2026-10-03, these decks then
-/// each report, on the pinned dss-python and on the r4133 DLL through
-/// `epri-worker`).
+/// `DI_Overloads` write no row for it, exactly as for the positive twin.
 #[test]
 fn negative_transformer_rating_under_its_magnitude_reports_no_overload() {
     let light = |norm: f64, emerg: f64| transformer_deck("12.47", 100.0, norm, emerg);
@@ -7838,18 +7667,8 @@ fn one_kv_transformer_deck(norm_hkva: f64, emerg_hkva: f64) -> Vec<String> {
 }
 
 /// A Transformer current rating derived as exactly `-1` A is a negative rating
-/// like any other: the kVA ratings have no not-set state, so the magnitude
-/// rule holds at every value, `-1` included.
-///
-/// On [`one_kv_transformer_deck`] at `(-1, -1)` the `Dump` reads the derived
-/// rating back as `-1`, and `Export Capacity`, `Export Overloads` and
-/// `Show Overloads` equal the reports of the positive twin at `(1, 1)` byte for
-/// byte: both `Export Capacity` columns print `Imax` over the 1 A magnitude
-/// (`10.0081` A at `1000.81`) and both overload reports carry a row. The
-/// `(-1.01, -1.01)` deck equals its twin likewise (`990.90`). Both gating
-/// oracles dump `-1`, divide by the signed rating in `Export Capacity`
-/// (`-1000.81` and `-990.90`) and write no overload row (2026-10-09, these
-/// decks on the pinned dss-python and on the r4133 DLL through `epri-worker`).
+/// like any other: the kVA ratings have no not-set state, so the magnitude rule
+/// holds at every value, `-1` included.
 #[test]
 fn a_transformer_rating_derived_as_minus_one_ampere_loads_by_its_magnitude() {
     let dump = deck_report(
@@ -7924,15 +7743,7 @@ fn a_transformer_rating_derived_as_minus_one_ampere_loads_by_its_magnitude() {
 /// The EnergyMeter sample hands each zone load the overload factor of the
 /// branch that feeds it
 /// ([`energymeter_negative_transformer_rating_registers_the_overload`]), and a
-/// load with a positive factor is unserved. On [`rated_transformer_deck`] at
-/// `(-550, -750)`, one daily 1 h step, both reports in both forms list `ld` at
-/// `lv` with 900 kW, `EEN_Factor` 0.811 and `UE_Factor` 0.328, byte for byte
-/// the reports of the positive twin, which is what both gating oracles print
-/// for that twin in both forms. On the negative deck both oracles find no
-/// overload: the default form lists `ld` with the voltage-only `EEN_Factor`
-/// 0.022 and `UE_Factor` 0.000, and the `UEonly` form writes the header alone
-/// (2026-10-03, this deck then each report, on the pinned dss-python and on the
-/// r4133 DLL through `epri-worker`).
+/// load with a positive factor is unserved.
 #[test]
 fn unserved_negative_transformer_rating_flags_the_overloaded_load() {
     for (i, (cmd, needle)) in [
@@ -7981,21 +7792,7 @@ fn unserved_negative_transformer_rating_flags_the_overloaded_load() {
 /// `UEregs` (`Overload kWh Emerg` by default), so a metered Transformer with a
 /// negative derived rating counts its overload against the magnitude there too.
 ///
-/// On [`rated_transformer_deck`] at `(-550, -750)`, `addtype=generator
-/// genkw=300 genpf=1.0` and `solve mode=autoadd` write the AutoAddLog of the
-/// positive twin byte for byte: the `src` row carries `kW UE`
-/// 223.672400411608, and `lv` wins with the weighted total 0.758933540057766,
-/// which is what both gating oracles write for that twin. On the negative deck
-/// both oracles score no overload: `kW UE` 0 in both rows, and `lv` wins with
-/// 0.0133736745189343, its loss improvement alone (2026-10-03, this deck then
-/// the solve, on the pinned dss-python and on the r4133 DLL through
-/// `epri-worker`).
-///
-/// The port prints the same `kW UE` to all 15 digits and a weighted total
-/// 4.0e-15 relative off (0.758933540057769, measured 2026-10-03), the
-/// faer-vs-KLU last-ulp class. The band on the weighted total is the `micro`
-/// tier of `tests/TOLERANCE_NOTES.md` for element powers, 1e-9 relative, the
-/// powers its loss and overload registers integrate.
+/// The band is the last-ulp solver difference over one integration step.
 #[test]
 fn autoadd_negative_transformer_rating_scores_the_overload() {
     let run = |tag: &str, norm: f64, emerg: f64| -> (String, String) {
@@ -8041,30 +7838,10 @@ fn autoadd_negative_transformer_rating_scores_the_overload() {
     );
 }
 
-/// The port refuses a negative winding `kV` on the Transformer and on the
+/// This engine refuses a negative winding `kV` on the Transformer and on the
 /// AutoTrans, so the winding keeps its previous `kV`, the derived rating stays
-/// positive, and the deck loads as the twin that never set it.
-///
-/// `Transformer.tx` of [`transformer_deck`] with winding 1 at −12.47 kV reports
-/// `Transformer.tx.kV: Value (-12.47) cannot be negative.`, keeps `kVs`
-/// `[12.47, 0.48, ]` and `normamps` 25.4645267084438, and prints the `Export
-/// SeqCurrents` of the deck at 12.47 kV byte for byte (`I1 = 46.1115` at 181.1
-/// and 132.8 %). `AutoTrans.at` with winding 1 at −4.16 kV under winding 2 at
-/// 12.47 kV reports `AutoTrans.at.kV: Value (-4.16) cannot be negative.`,
-/// keeps its default 115 kV (`kVs` `[115, 12.47, ]`, `normamps`
-/// 12.3882823780082) and prints the report of the twin that sets no winding 1
-/// `kV` (`I1 = 197.935` at 1598 and 1172 %).
-///
-/// Measured 2026-10-03 (these decks then each report, on the pinned dss-python
-/// and on the r4133 DLL through `epri-worker`). The pinned dss-python refuses
-/// both values the same way (error #2020032, the same text) and reads back the
-/// same `kVs`, ratings and reports. The r4133 DLL accepts both:
-/// `Transformer.tx` reads `kVs` `[-12.47, 0.48, ]`, `normamps` −25.465 and
-/// `emergamps` −34.724, solves to the same `I1 = 46.1115` and prints −25.46
-/// and −34.72 in `Export SeqCurrents`, and `AutoTrans.at` reads `[-4.16,
-/// 12.47, ]`, −76.378 and −104.15, solves to `I1 = 298.786` and prints −76.38
-/// and −104.2. The port refuses by decision: a winding voltage entered with a
-/// minus sign is an input error.
+/// positive, and the deck loads as the twin that never set it. A winding voltage
+/// entered with a minus sign is an input error.
 #[test]
 fn negative_winding_kv_is_refused_and_the_rating_stays_positive() {
     let autotrans_deck = |kv1: Option<&str>| -> Vec<String> {

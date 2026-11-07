@@ -1,7 +1,5 @@
 #![forbid(unsafe_code)]
-//! DSS script tokenizer and inline RPN calculator, port of the Pascal
-//! `src/Parser` directory (`ParserDel.pas`, `RPN.pas`) from
-//! `.inputs/dss_capi`. See PORTING_PLAN.md at the repository root.
+//! DSS script tokenizer and inline RPN calculator.
 
 pub mod compat;
 pub mod parser;

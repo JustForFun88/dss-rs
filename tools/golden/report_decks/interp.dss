@@ -1,9 +1,9 @@
-// PHASE8_PLAN WP8.6 Interpolate fixture: an EnergyMeter zone where only
+// Interpolate fixture: an EnergyMeter zone where only
 // the anchor buses carry coordinates (SetBusXY); `interpolate` must fill
 // b2/b3/b4 evenly between b1 and b5, and c1 between b3 and c2
 // (TEnergyMeterObj.InterpolateCoordinates, EnergyMeter.pas:2298 +
 // CalcBusCoordinates:2371). Gated by `export buscoords` after the
-// interpolation (the WP8.2 exporter).
+// interpolation.
 clear
 Set DefaultBaseFrequency=60
 

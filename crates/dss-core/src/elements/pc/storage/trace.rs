@@ -20,7 +20,7 @@
 //!   (`:2410`/`:2429`). capi instead keeps a `TBufferedFileStream` open for the
 //!   life of the object (`:872`, freed only at `:871`/`:1199`), which makes its
 //!   own corpus guard's `os.remove` fail and leaks the file into the next
-//!   producer's pre-run snapshot (measured, GOLDEN_REBASE G1.10a F4). The port
+//!   producer's pre-run snapshot (measured). This engine
 //!   follows r4133: no handle is ever held open, so the file can always be
 //!   deleted by the run-file guards.
 //! * **The file is created by the executive**, not by the property hook: the hook
@@ -29,7 +29,7 @@
 //!   with the phase/variable counts as they stand at that instant (r4133 builds
 //!   it inside the `CASE` arm) and the executive drains it through
 //!   [`crate::obj::base::DssObject::open_debug_traces`] before `end_edit`.
-//! * **`InShowResults` is honoured** (GOLDEN_REBASE G1.10b F0): r4133 skips the
+//! * **`InShowResults` is honoured**: r4133 skips the
 //!   record while a report command is assembling its file (`:2408`, inside
 //!   `WriteTraceRecord`'s `Try`), so a `Show`/`Export` that reads element
 //!   currents does not grow the trace. The flag is the DSS-instance global
@@ -79,10 +79,8 @@ use super::Storage;
 /// measured through `epri-worker` on a clean scratch copy, renders `250` (not
 /// `2.5E2`), `9999` (not `1E4`), `8000` (not `8E3`) and `5.45` (not `5.5`). The
 /// port keeps the FPC reading, which is the one every other port writer's number
-/// goes through ([`crate::util::fmt_g`], the goldens' contract); the trace file's
-/// *contents* are not oracle-compared by the G1.10a run-file surface (names only),
-/// and the divergence is recorded for the G1.10b contents surface, which has to
-/// normalize or exclude it whichever spelling the port picks.
+/// goes through ([`crate::util::fmt_g`], the goldens' contract). The corpus gate's
+/// run-file contents comparison declines these `%-.g` columns in its column map.
 const TRACE_G_SIG: usize = 0;
 
 /// The `DebugTrace` file of one Storage element.
@@ -122,7 +120,7 @@ impl Storage {
         // argument, whose contract is 1-based
         // ([`crate::elements::traits::CktElement::variable_name`]) — is the
         // 1-based *user-API boundary*, the only place a 1-based index is
-        // allowed (DE_PASCALIZE P14).
+        // allowed.
         for i in 0..nphases {
             header.push_str(&format!(", |Iinj{}|", i + 1));
         }

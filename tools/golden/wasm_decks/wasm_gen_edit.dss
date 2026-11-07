@@ -1,4 +1,4 @@
-! WASM_USERMODELS WM.3 — Generator GenModel=6 mid-script `UserData=` RE-EDIT gate.
+! WASM user model — Generator GenModel=6 mid-script `UserData=` RE-EDIT gate.
 ! Same induction machine as wasm_gen_pflow; after the first snapshot solve the
 ! deck re-edits `UserData=` in place (rotor resistance Rr 0.007 -> 0.014), which
 ! reaches the loaded model through the `edit` call site (Pascal

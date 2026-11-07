@@ -1,5 +1,5 @@
-// Reduce coverage (PHASE8_PLAN WP8.7): the `Remove` command
-// (DoRemoveBranches, ReduceAlgs.pas:374): disable the named PD branch and
+// Reduce coverage: the `Remove` command
+// (DoRemoveBranches): disable the named PD branch and
 // everything downstream of it; with KeepLoad=Yes (default) an equivalent
 // load `Eq_<elem>_<bus>` is created at the FROM bus carrying the branch's
 // metered power (Format at :405/:418). The l2 sub-tree (b3, b4 and their

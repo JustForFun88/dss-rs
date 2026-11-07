@@ -66,8 +66,8 @@ impl CktElement for Generator {
     /// `PropertyValue`/`PrpSequence` by `AddProperty`'s `CmdMapIndex`, not by
     /// display position. The port has one index space (display order) and
     /// addresses it through `prop::`, so nothing here needs translating — but do
-    /// not read `26` as a port ordinal: R4133_PROPS RP1.1 inserted
-    /// `Rneut`/`Xneut` at display 16/17, which moved the port's `KVA` to 25.
+    /// not read `26` as an ordinal of this engine: its `Rneut`/`Xneut` sit at
+    /// display 16/17, so its `KVA` is 25.
     fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
         // Make sure voltage is line-neutral.
         let v = if self.cd.nphases > 1 || self.connection != Connection::Wye {
@@ -355,8 +355,8 @@ impl CktElement for Generator {
         }
         // Surface any user-model trap / missing Model=6 diagnostic through the
         // solution ErrorLog — never a silent fallback on a trapping `.wasm`
-        // (WASM_USERMODELS plan §2.9-5). An `abort`-flagged fault (the missing
-        // dynamics model, `generator.pas:1944`) lifts `SolutionAbort` so the solve
+        // (`docs/wasm/USERMODEL_ABI.md` §6). An `abort`-flagged fault (the missing
+        // dynamics model) lifts `SolutionAbort` so the solve
         // stops instead of iterating on a best-effort stale terminal current.
         for d in errors.into_vec() {
             if d.abort {
@@ -391,9 +391,7 @@ impl CktElement for Generator {
         // the declared `kvar` its `varBase`/`YQFixed` still carry: on
         // `tests/corpus/modes/ncim/ncim_pv_pq.dss` r4133 reports
         // `Generator.G1 = (-800.0 kW, -1500.0 kvar)`, `|I| = 78.5593 A ∠117.52°`
-        // and KCL closes at `genbus`, where this port reported the declared
-        // `(-800.0, -431.8)` / `42.0103 A ∠151.09°` and missed KCL by 1068.2 kvar
-        // (own measurement 2026-09-03, RP3.13).
+        // and KCL closes at `genbus`.
         //
         // r4133 copies only conductors `1..NPhases` and leaves the rest of the
         // caller's buffer untouched — visible as the shared-`cBuffer` leftovers
@@ -404,7 +402,7 @@ impl CktElement for Generator {
         // hands `ITerminal` itself in as `Curr`, so where Pascal leaves the
         // neutral conductor as it was, this zeroes it. Measured harmless (r4133's
         // own API read returns the same zero and it is what every gate channel and
-        // `Export Currents` cell compares); recorded, RP3.13 audit note AC-5.
+        // `Export Currents` cell compares).
         //
         // `sys.ncim` is r4133's **global** `Algorithm`, not a per-solve flag, so
         // this arm — and its precedence over the `LastSolutionWasDirect` shortcut
@@ -416,7 +414,7 @@ impl CktElement for Generator {
         // `(-783.9 kW, -1504.8 kvar)`, KCL at `genbus` off by
         // `(1216.1, -704.8)`) — and unreachable from any gated case; whether the
         // port should leave r4133 here (a stamp marker like
-        // `VSource::ncim_swing_stamped_at`) is RP3.13's open item, STATUS §RP3.13.
+        // `VSource::ncim_swing_stamped_at`) is an open question.
         if sys.ncim {
             curr.fill(Complex64::ZERO);
             let n = self.cd.nphases.min(curr.len()).min(self.cd.iterminal.len());
@@ -433,7 +431,7 @@ impl CktElement for Generator {
         }
         // Pascal `TGeneratorObj.GetTerminalCurrents` (@ 0.15.0b4): `and (not
         // (Flg.ForceInjCurrents in Flags))` — skip the model recompute when the
-        // currents are forced from the DSS language (WP-U1.9).
+        // currents are forced from the DSS language.
         if !self.cd.iterminal_solved_for(sys.solution_count)
             && !self.gen_switch_open
             && !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS)
@@ -441,7 +439,7 @@ impl CktElement for Generator {
             // `GetTerminalCurrents` has no solve-context error channel, so a
             // user-model trap / missing Model=6 diagnostic recomputed here is
             // queued on the element's deferred-error log (drained by the executive)
-            // rather than dropped — never a silent fallback on trap (§2.9-5). The
+            // rather than dropped — never a silent fallback on trap. The
             // loud path is `inj_currents` during the solve; this query recompute is
             // the fallback surfacing.
             let mut errors = crate::diag::ErrorLog::new();
@@ -541,9 +539,8 @@ impl Generator {
         // `…_finit`, `…_fintegrate`, `get_all_user_model_vars`) guards on
         // `exists()` — so the copy echoed `UserModel=<path>`, reported only the
         // built-in variables and injected nothing, with no diagnostic at all
-        // (measured: 20 variables on the donor, 6 on the copy). RP1.3 fixed the
-        // WindGen twin; this is the same fix for both Generator slots (audit
-        // settlement, 2026-08-23). The queued load is drained by the executive
+        // (measured: 20 variables on the donor, 6 on the copy). WindGen does the
+        // same for its slot. The queued load is drained by the executive
         // before `end_edit`, in time for `RecalcElementData`'s `FUpdateModel`.
         self.user_model_name = other.user_model_name.clone();
         self.user_data = other.user_data.clone();
@@ -727,7 +724,7 @@ impl DssObject for Generator {
         match idx {
             // UserModel/UserData/ShaftModel/ShaftData store the value here; the
             // per-property side effect (below) queues the deferred WASM (re)load
-            // per WASM_USERMODELS §2.4 — never a parse error. (DynamicEq is an
+            // (`docs/wasm/USERMODEL_ABI.md` §5) — never a parse error. (DynamicEq is an
             // object ref → set_object_ref; DynOut is a string list →
             // set_string_list.)
             USERMODEL => self.user_model_name = value,
@@ -874,12 +871,11 @@ impl DssObject for Generator {
                 }
             }
             KVA | MVA => self.kva_not_set = false,
-            // WASM_USERMODELS WM.3 — the `EndEdit` dispatch order
-            // (`generator.pas:767-775`): `UserModel.Name` (load) before
+            // The `EndEdit` dispatch order: `UserModel.Name` (load) before
             // `UserData` (edit), `ShaftModel.Name` before `ShaftData`. The
             // filesystem/current-dir are unreachable from the property hook, so
             // each records a deferred request the executive resolves before
-            // `end_edit` (§2.4 activation rule).
+            // `end_edit` (activation rule, `docs/wasm/USERMODEL_ABI.md` §5).
             USERMODEL => {
                 self.queue_user_model_load(UserModelSlot::User, self.user_model_name.clone())
             }
@@ -914,8 +910,8 @@ impl DssObject for Generator {
 
     /// Drain the deferred user-model load/edit requests queued by the
     /// `UserModel=`/`UserData=`/`ShaftModel=`/`ShaftData=` side effects (the
-    /// executive resolves each path against `current_dir` — WASM_USERMODELS
-    /// WM.3, §2.4).
+    /// executive resolves each path against `current_dir`,
+    /// `docs/wasm/USERMODEL_ABI.md` §5).
     fn take_user_model_loads(&mut self) -> Vec<UserModelLoad> {
         std::mem::take(&mut self.pending_user_model_loads)
     }

@@ -1,8 +1,10 @@
 //! Safe-ish wrapper over the raw [`crate::ffi`] DLL: command execution, error
 //! polling, the V-protocol decode, and the individual accessors used to build a
 //! `CaseResult`. Everything here mirrors what dss-python's `IOddieDSS` returns
-//! for the *same* engine memory, so the captures are byte-for-byte comparable
-//! (verified by `tools/opendss/xcheck_bridge.py` before its Phase E retirement).
+//! for the *same* engine memory, so the captures are byte-for-byte comparable.
+//!
+//! Knob: `DSS_EPRI_ACTOR_TIMEOUT_SECS`, the seconds a solve actor may run
+//! before the case fails with an error (default 300).
 //!
 //! # SAFETY
 //! All FFI calls go through `self.dll`'s function pointers, whose validity is
@@ -54,7 +56,7 @@ pub type Pcl = (Vec<f64>, Vec<f64>, Vec<f64>);
 /// or refuses whole, because one guard verdict decides both arms.
 pub type BusVllPair = (Vec<f64>, Vec<f64>);
 
-/// What the executive `RelCalc` did (GOLDEN_REBASE G1.6(i)) — an *observable*
+/// What the executive `RelCalc` did — an *observable*
 /// of the reliability surface, not a bridge detail: a zone with no overcurrent
 /// device aborts the calculation on every engine, and the gate compares the
 /// abort (and its text) across the three of them.
@@ -70,13 +72,13 @@ pub struct RelCalcResult {
 
 /// `CurrentsMagAng`, `Residuals`, `VoltagesMagAng` (each the flat
 /// `[mag, ang, ...]` array the DDLL writes, angles in degrees on the
-/// `(-180, 180]` branch cut) for one **enabled** element — the GOLDEN_REBASE
-/// G1.3a derived capture ([`Engine::element_polar`]).
+/// `(-180, 180]` branch cut) for one **enabled** element — the derived
+/// capture ([`Engine::element_polar`]).
 pub type Polar3 = (Vec<f64>, Vec<f64>, Vec<f64>);
 
 /// `SeqPowers` (flat complex `[re, im, …]`, kW + j·kvar), `SeqCurrents` and
 /// `SeqVoltages` (magnitudes only, A and V) for one **enabled** element — the
-/// GOLDEN_REBASE G1.3b sequence capture ([`Engine::element_seq`]), in that
+/// sequence capture ([`Engine::element_seq`]), in that
 /// read order. All three are `3 * NTerms` values long (the powers therefore
 /// `6 * NTerms` doubles on the wire), or `0` for a 0-terminal element.
 pub type Seq3 = (Vec<f64>, Vec<f64>, Vec<f64>);
@@ -84,13 +86,13 @@ pub type Seq3 = (Vec<f64>, Vec<f64>, Vec<f64>);
 /// `CplxSeqCurrents` and `CplxSeqVoltages` — the un-`Cabs`'d output of the very
 /// helpers [`Seq3`]'s two magnitude arms take the modulus of, each flat complex
 /// `[re, im, …]` and `3 * NTerms` values long (so `6 * NTerms` doubles on the
-/// wire), for one **enabled** element — the GOLDEN_REBASE G1.3c complex
+/// wire), for one **enabled** element — the complex
 /// sequence capture ([`Engine::element_cplx_seq`]), in that read order.
 pub type CplxSeq2 = (Vec<f64>, Vec<f64>);
 
-/// The nine unconditional discrete per-element scalars of the GOLDEN_REBASE
-/// G1.3d capture ([`Engine::element_extras`]): the four shape/name reads of
-/// part (i) and the five control-derived reads of part (ii). A named struct
+/// The nine unconditional discrete per-element scalars of the extras
+/// capture ([`Engine::element_extras`]): the four shape/name reads and the
+/// five control-derived reads. A named struct
 /// rather than a nine-tuple — at that width a positional read is a bug waiting
 /// for the next field.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -161,9 +163,8 @@ const TOLERATED_COMPILE: &[i32] = &[250];
 /// User-written-model errnos (`oracle_server._USER_MODEL_ERRNOS`), tolerated at
 /// compile + every solve/read only when the case opts in via `warn_and_continue`.
 ///
-/// The **one** Rust-side definition: [`crate::capture`] carried a hand-synced
-/// twin from G1.9 until the 2026-09-05 lane merge folded it away (that
-/// handoff's "dedup at merge"), so a change here now reaches both readers.
+/// The **one** Rust-side definition, so a change here reaches both readers
+/// ([`crate::capture`] imports it).
 pub(crate) const USER_MODEL: &[i32] = &[567, 570, 1570];
 /// The **only** errno the executive `RelCalc` may raise without failing the case
 /// (`oracle_server._RELCALC_TOLERATED_ERRNOS`, the same narrow scope on the capi
@@ -222,14 +223,14 @@ impl Drop for Engine {
 
 impl Engine {
     /// Load the r4133 DLL (leaking its `Library` handle — see [`Engine`]) and run
-    /// the init sequence (`UNIFIED_GATE_PLAN.md` §2.2, extended by D13/D25/D39):
-    /// `DSSI(8,0)` disable forms → read Version → `Set RegistryUpdate=No` →
-    /// `Set AllowForms=No` → `new circuit.dssrs_bridge_init` →
+    /// the init sequence: `DSSI(8,0)` disable forms → read Version →
+    /// `Set RegistryUpdate=No` → `Set AllowForms=No` →
+    /// `new circuit.dssrs_bridge_init` →
     /// `Set ShowReports=No` → `Set ShowExport=No` → `clear` →
     /// `Set Editor=rundll32.exe` → `Set DefaultBaseFrequency=60`. All subsequent
     /// DLL calls happen on this same thread.
     ///
-    /// # No report is suppressed — only the viewer launch (D39)
+    /// # No report is suppressed — only the viewer launch
     ///
     /// Every `Show`/`Export`/`Dump` still writes its file, byte for byte, with
     /// the switches on: each writer closes the file and *then* consults the
@@ -240,7 +241,7 @@ impl Engine {
     /// `Meters/Monitor.pas:1770-1776`) — and `Export` sets `LastResultFile` and
     /// `@lastexportfile` *before* its guard
     /// (`Executive/ExportOptions.pas:514-517`). So the compared surface — the
-    /// created-file set (GOLDEN_REBASE G1.10a), the file contents (G1.10b/c),
+    /// created-file set, the file contents,
     /// the `Show`/`Export` goldens, `GlobalResult` — does not move; only the
     /// external viewer launch stops, exactly what `AllowEditor = False` does on
     /// the capi channel (`tools/oracle/oracle_server.py:1974`).
@@ -257,7 +258,7 @@ impl Engine {
     /// `%result%` (`Common/Utilities.pas:690`; measured 0 corpus `.dss` files,
     /// 2026-09-11).
     ///
-    /// # `Set RegistryUpdate=No` — the process-global registry channel (D13)
+    /// # `Set RegistryUpdate=No` — the process-global registry channel
     ///
     /// r4133 keeps `DefaultBaseFreq` in `HKCU\Software\OpenDSS`, section
     /// `MainSect`, value `BaseFrequency`: the key is
@@ -283,7 +284,7 @@ impl Engine {
     /// `Set DefaultBaseFrequency=37` and exits leaves `BaseFrequency = 37` in the
     /// key; with this command issued first the key does not move.
     ///
-    /// # The three layers (D39, user decision 2026-09-06)
+    /// # The three layers
     ///
     /// r4133 has no `AllowEditor` — that knob is a DSS-Extensions addition
     /// (`.inputs/dss_capi/src/Common/DSSGlobals.pas:784`,
@@ -312,12 +313,12 @@ impl Engine {
     ///    runs first, no in-worker observation can separate the two: layer 1 is
     ///    redundant **by construction**, and the protocol test's
     ///    `Get AllowForms` = `No` is an *invariant* assertion, not a drive of
-    ///    this command: deleting the command alone leaves it green (measured
-    ///    2026-09-11, audit settlement), and deleting `DSSI(8, 0)` too does not
+    ///    this command: deleting the command alone leaves it green, and
+    ///    deleting `DSSI(8, 0)` too does not
     ///    make it answer `Yes` — the bare worker then never answered
     ///    `Get AllowForms` at all and had to be killed, which is the modal hang
     ///    this layer exists to prevent. The drive was taken once and not
-    ///    repeated (D38: no probe may fire an OS dialog).
+    ///    repeated: no probe may fire an OS dialog.
     /// 2. **`Set ShowReports=No`** (option 138, `:182`; setter `:975`, getter
     ///    `:1361`) clears `AutoDisplayShowReport`, which gates **34** sites: the
     ///    31 `Common/ShowResults.pas` writers (`:403`, `:717`, `:1116` …
@@ -341,8 +342,8 @@ impl Engine {
     ///    `report_switches_survive_a_compile_and_gag_every_guarded_editor_site`
     ///    reads them back `No` after a later `Compile`. What they do **not**
     ///    survive is a deck of the corpus setting `ShowExport` itself, so
-    ///    [`Engine::clear`] re-asserts both per case (audit settlement
-    ///    2026-09-11 — the deck list and the mechanism are there).
+    ///    [`Engine::clear`] re-asserts both per case (its doc names the decks
+    ///    and the mechanism).
     /// 3. **`Set Editor=rundll32.exe`** (option 15, `:570` with no circuit,
     ///    `:722` with one) is the safety net for the **12** sites no switch
     ///    guards: `Executive/ExecHelper.pas:1249` (`Dump alloc` — the sibling of
@@ -374,11 +375,10 @@ impl Engine {
     /// encloseQuotes(FileNm), nil, SW_SHOW)` under `If FileExists(FileNm)`
     /// (`Common/Utilities.pas:298-320`, `:302`, `:304`): asynchronous, so an
     /// unsuppressed sweep does not hang the worker — it *accumulates* one OS
-    /// process per report (~900 orphaned notepads across the lanes before D25).
+    /// process per report.
     /// `rundll32.exe` is the target because it exits immediately on a non-DLL
     /// argument, leaving no process and no window — `where.exe`, `cmd.exe` and
-    /// `PING.EXE` each leave one lingering process (measured 2026-09-05,
-    /// GOLDEN_REBASE G1.10a F0). A missing editor is not silent either:
+    /// `PING.EXE` each leave one lingering process. A missing editor is not silent either:
     /// `ShellExecute` returning `ERROR_FILE_NOT_FOUND` raises `DSS error #702`
     /// (`Common/Utilities.pas:310`), which is how the protocol tests prove a
     /// site fires at all.
@@ -390,7 +390,7 @@ impl Engine {
     /// `:1015`, from `TExecutive.Destroy` → the unit `Finalization`), so no path
     /// can carry `rundll32.exe` into the user's `HKCU\Software\OpenDSS` (pinned
     /// by `init_overrides_the_os_editor_and_never_writes_it_back`). It follows
-    /// the `clear` only to keep the D39 order readable — option 15 is served
+    /// the `clear` only to keep the layer order readable — option 15 is served
     /// with or without a circuit.
     ///
     /// What no switch can cover, and the safety net therefore must: `Estimate`
@@ -407,7 +407,7 @@ impl Engine {
     /// already sets `d.AllowForms = False` (`:1968`) and `d.AllowEditor = False`
     /// (`:1974` → `CAPI/CAPI_DSS.pas:102`).
     ///
-    /// # `Set DefaultBaseFrequency=60` — the init reset (D13)
+    /// # `Set DefaultBaseFrequency=60` — the init reset
     ///
     /// `Set RegistryUpdate=No` stops this process from *writing* the key; it
     /// cannot undo the *read*, which has already happened. `ReadDSS_Registry`
@@ -454,18 +454,18 @@ impl Engine {
         };
         // Clear any stray error from the setup commands.
         let _ = eng.poll_error();
-        // D13: stop this process from persisting `DefaultBaseFreq` (and
+        // Stop this process from persisting `DefaultBaseFreq` (and
         // `LastFile`/`DataPath`) into `HKCU\Software\OpenDSS` on exit — see the
         // fn doc. Strict: a DLL that does not accept the option must fail loudly,
         // never leave the registry channel open.
         eng.command_strict("Set RegistryUpdate=No", "init")?;
-        // D39 layer 1: restate the `DSSI(8, 0)` above through the executive
+        // Layer 1: restate the `DSSI(8, 0)` above through the executive
         // (`Executive/ExecOptions.pas:639-641`, served with no circuit) — see
         // the fn doc. Keeps `Get AllowForms` honest and keeps a modal
         // `DoSimpleMsg` dialog (`Common/DSSGlobals.pas:651-660`) from ever
         // hanging this headless worker.
         eng.command_strict("Set AllowForms=No", "init")?;
-        // D39 layer 2: options 138/71 are not served by `DoSetCmd_NoCircuit`
+        // Layer 2: options 138/71 are not served by `DoSetCmd_NoCircuit`
         // (`Executive/ExecOptions.pas:645-649` raises #301), so a throwaway
         // circuit carries them and the `clear` drops it again; neither flag is
         // touched by `clear` (`Executive/Executive.pas:234-276`), so both hold
@@ -480,14 +480,14 @@ impl Engine {
         eng.command_strict("Set ShowReports=No", "init")?;
         eng.command_strict("Set ShowExport=No", "init")?;
         eng.command_strict("clear", "init")?;
-        // D25 + D39 layer 3 (the safety net): the 12 `FireOffEditor` sites no
+        // Layer 3 (the safety net): the 12 `FireOffEditor` sites no
         // switch guards would ShellExecute the machine's editor once per report
         // (`Common/Utilities.pas:304`) — see the fn doc. Issued AFTER
         // `Set RegistryUpdate=No` so this value never reaches the user's
         // registry. Strict: a DLL that does not accept the option must fail
         // loudly, never leave the editor channel open.
         eng.command_strict("Set Editor=rundll32.exe", "init")?;
-        // D13: the registry read already happened at DLL load
+        // The registry read already happened at DLL load
         // (`Common/DSSGlobals.pas:1005`), so start this session from the port's
         // own default (`crates/dss-core/src/exec/construct.rs:173`, 60 Hz)
         // instead of whatever the key held — a bare probe session that never
@@ -606,8 +606,8 @@ impl Engine {
 
     // ---- compile / solve --------------------------------------------------
 
-    /// `clear` + the per-case `DefaultBaseFreq` reset (D13) and report-switch
-    /// re-assertion (D39; audit settlement 2026-09-11).
+    /// `clear` + the per-case `DefaultBaseFreq` reset and report-switch
+    /// re-assertion.
     ///
     /// r4133's `clear` (`Executive/ExecHelper.pas:987-995` → `TExecutive.Clear`,
     /// `Executive/Executive.pas:234-275`) resets `DefaultEarthModel`,
@@ -631,7 +631,7 @@ impl Engine {
     /// same starting point after every `clear`. A deck that wants 50 Hz still
     /// gets it: the reset precedes the `Compile`.
     ///
-    /// # The report switches, per case (D39)
+    /// # The report switches, per case
     ///
     /// `AutoDisplayShowReport` / `AutoShowExport` are unit globals no `clear`
     /// and no circuit touches — which is why [`Engine::new`] can set them once —
@@ -643,7 +643,7 @@ impl Engine {
     /// this re-assertion that flag leaks into every later case of a pooled
     /// worker and only the layer-3 safety net still gags
     /// `Executive/ExportOptions.pas:517` — the same cross-case leak shape as
-    /// D13's `DefaultBaseFreq`, and the reason layer 2's lifetime claim is
+    /// `DefaultBaseFreq`, and the reason layer 2's lifetime claim is
     /// stated per case rather than per process. Options 138/71 are not served
     /// without a circuit (`Executive/ExecOptions.pas:645-649` → `#301`), so the
     /// throwaway `circuit.dssrs_bridge_init` carries them here exactly as in
@@ -659,7 +659,7 @@ impl Engine {
         self.command_strict("Set ShowExport=No", "clear")?;
         self.command_strict("clear", "clear")?;
         // Last: the throwaway circuit above does not move `DefaultBaseFreq`, but
-        // keeping the D13 reset at the tail makes the two resets one order.
+        // keeping the `DefaultBaseFreq` reset at the tail makes the two resets one order.
         self.command_strict("Set DefaultBaseFrequency=60", "clear")?;
         Ok(())
     }
@@ -709,7 +709,7 @@ impl Engine {
     }
 
     /// Run the executive `RelCalc` — the reliability half of the model
-    /// (GOLDEN_REBASE G1.6(i); the capi transport issues the same command at the
+    /// (the capi transport issues the same command at the
     /// same point of the step, `oracle_server.run_case`).
     ///
     /// `RelCalc` is `ExecCommand[100]` -> `DoLambdaCalcs`
@@ -918,19 +918,19 @@ impl Engine {
     }
 
     /// Terminal currents, flat `[re, im, ...]`. See
-    /// [`modes::CKT_ELEMENT_CURRENTS`] — D3 capture group **B**.
+    /// [`modes::CKT_ELEMENT_CURRENTS`] — capture group **B**.
     pub fn element_currents(&self) -> Vec<f64> {
         self.v_f64s(self.dll.ckt_element_v, modes::CKT_ELEMENT_CURRENTS.mode)
     }
 
     /// Per-conductor powers, flat `[kW, kvar, ...]`. See
-    /// [`modes::CKT_ELEMENT_POWERS`] — D3 capture group **A**.
+    /// [`modes::CKT_ELEMENT_POWERS`] — capture group **A**.
     pub fn element_powers(&self) -> Vec<f64> {
         self.v_f64s(self.dll.ckt_element_v, modes::CKT_ELEMENT_POWERS.mode)
     }
 
     /// Total losses `[re, im]` in W/var (`CktElement.Losses`, one complex). See
-    /// [`modes::CKT_ELEMENT_LOSSES`] — D3 capture group **A**.
+    /// [`modes::CKT_ELEMENT_LOSSES`] — capture group **A**.
     pub fn element_losses(&self) -> Vec<f64> {
         self.v_f64s(self.dll.ckt_element_v, modes::CKT_ELEMENT_LOSSES.mode)
     }
@@ -942,8 +942,8 @@ impl Engine {
     /// The active DSS object's `ParentClass.AllPropertyNames`, in property-index
     /// order (`DSSElementV` mode 0 — `DDSSElement.pas`). Read after activating the
     /// object with `? name.Like`; empty class ⇒ `["None"]` (Pascal placeholder).
-    /// Backs [`crate::capture`]'s all-properties enumeration (§2.2), which gates
-    /// the r4133 property compare since R4133_PROPS RP4.1 (2026-09-03).
+    /// Backs [`crate::capture`]'s all-properties enumeration, which gates the
+    /// r4133 property compare.
     pub fn element_all_property_names(&self) -> Vec<String> {
         self.v_strings(self.dll.dss_element_v, 0)
     }
@@ -953,14 +953,14 @@ impl Engine {
     }
 
     /// Read `PhaseLosses` on the active element — the **first** read of the
-    /// GOLDEN_REBASE G1.3d(ii) element capture, ahead of
+    /// extras element capture, ahead of
     /// [`Engine::element_pcl`]'s own group-A pair.
     ///
     /// `CktElementV(6)` (`DDLL/DCktElement.pas:637-658`) is
     /// `TDSSCktElement.GetPhaseLosses` (`Common/CktElement.pas:1075-1116`),
     /// whose first act on an enabled element is `ComputeIterminal` (`:1090`):
     /// a cache-aware **group-A** read ([`modes::CKT_ELEMENT_PHASE_LOSSES`]), so
-    /// the §1.1(a)/D3 order puts it before every read that fills a scratch
+    /// the capture order puts it before every read that fills a scratch
     /// buffer through `GetCurrents`.
     ///
     /// Returned flat `[re, im, …]`, `NPhases` complex, in **kW/kvar**: the arm
@@ -995,15 +995,14 @@ impl Engine {
     }
 
     /// Read **Losses, then Powers, then Currents** on the active element — the
-    /// §1.1(a)/D3 capture order (`GOLDEN_REBASE_PLAN.md`, coordinator decision
-    /// D3): both cache-aware group-A reads run before the group-B `Currents`,
-    /// which fills a *scratch* buffer while still stamping the element's
-    /// `IterminalSolutionCount` (`PCElements/PCElement.pas:247-266`) and can
-    /// therefore starve a cache-aware read that follows it. The name and the
-    /// returned tuple keep their `(powers, currents, losses)` shape — only the
-    /// read order moved (GOLDEN_REBASE G1.3a; both reordered reads are group A,
-    /// so no captured value can change, proven byte-for-byte on IEEE13, two
-    /// harmonics decks and the two user-model decks).
+    /// capture order: both cache-aware group-A reads run before the group-B
+    /// `Currents`, which fills a *scratch* buffer while still stamping the
+    /// element's `IterminalSolutionCount` (`PCElements/PCElement.pas:247-266`)
+    /// and can therefore starve a cache-aware read that follows it. The name
+    /// and the returned tuple keep their `(powers, currents, losses)` shape —
+    /// only the read order moved (both reordered reads are group A, so no
+    /// captured value can change, proven byte-for-byte on IEEE13, two harmonics
+    /// decks and the two user-model decks).
     ///
     /// One user-model retry (`oracle_server.capture_all_elements`'s `_read`): a
     /// Generator model=6 fires #567 on the first current recompute after a
@@ -1032,7 +1031,7 @@ impl Engine {
     }
 
     /// Read `CurrentsMagAng`, `Residuals` and `VoltagesMagAng` on the active
-    /// element — the GOLDEN_REBASE G1.3a derived capture, in D3 order (the two
+    /// element — the derived capture, in capture order (the two
     /// group-B reads first; `VoltagesMagAng` is group C, reading
     /// `NodeV[NodeRef[i]]` only) and with the same single user-model retry as
     /// [`Engine::element_pcl`], so an errno is attributed to its own element.
@@ -1070,7 +1069,7 @@ impl Engine {
     }
 
     /// Read `SeqPowers`, `SeqCurrents` and `SeqVoltages` on the active element
-    /// — the GOLDEN_REBASE G1.3b sequence capture, in D3 order (`SeqPowers`
+    /// — the sequence capture, in capture order (`SeqPowers`
     /// and `SeqCurrents` both call `GetCurrents` into a scratch buffer and are
     /// group **B** — [`modes::CKT_ELEMENT_SEQ_POWERS`] `:739`,
     /// [`modes::CKT_ELEMENT_SEQ_CURRENTS`] `:700`; `SeqVoltages` reads
@@ -1127,7 +1126,7 @@ impl Engine {
         unreachable!()
     }
 
-    /// Read `TotalPowers` on the active element — the GOLDEN_REBASE G1.3c
+    /// Read `TotalPowers` on the active element — the
     /// per-terminal power totals — with the same single user-model retry as
     /// [`Engine::element_pcl`], so an errno is attributed to its own element.
     ///
@@ -1159,7 +1158,7 @@ impl Engine {
     /// `[0.0, 0.0]` of its `NodeRef = NIL` early exit
     /// (`CAPI/CAPI_Alt.pas:1119-1123`). Reading enabled elements only removes
     /// that asymmetry instead of normalizing it — the rule the `derived` flag
-    /// has carried since G1.3a.
+    /// carries.
     ///
     /// The one shape gap the rule does **not** close is the 0-terminal element
     /// (`UPFCControl` never assigns `Nterms` —
@@ -1189,7 +1188,7 @@ impl Engine {
     }
 
     /// Read `CplxSeqCurrents` then `CplxSeqVoltages` on the active element —
-    /// the GOLDEN_REBASE G1.3c complex sequence capture, in D3 order
+    /// the complex sequence capture, in capture order
     /// (`CplxSeqCurrents` runs `GetCurrents` into a scratch buffer and is group
     /// **B** — [`modes::CKT_ELEMENT_CPLX_SEQ_CURRENTS`] `:931`, via
     /// `CalcSeqCurrents` `DDLL/DCktElement.pas:56`; `CplxSeqVoltages` reads
@@ -1254,17 +1253,17 @@ impl Engine {
         unreachable!()
     }
 
-    /// Read the nine unconditional discrete scalars of the GOLDEN_REBASE
-    /// G1.3d capture on the active element: `NumTerminals`, `NumConductors`,
-    /// `NumPhases` and `EnergyMeter` (part (i) — `CktElementI(0)`/`(1)`/`(2)`
+    /// Read the nine unconditional discrete scalars of the extras
+    /// capture on the active element: `NumTerminals`, `NumConductors`,
+    /// `NumPhases` and `EnergyMeter` (`CktElementI(0)`/`(1)`/`(2)`
     /// at `DDLL/DCktElement.pas:139`/`:144`/`:149`, `CktElementS(4)` at `:442`;
     /// capi `CAPI/CAPI_CktElement.pas:182-211` and `:672-687`), then
     /// `NumControls`, `OCPDevIndex`, `OCPDevType`, `HasVoltControl` and
-    /// `HasSwitchControl` (part (ii) — `CktElementI(9)`/`(10)`/`(11)`/`(8)`/`(7)`
+    /// `HasSwitchControl` (`CktElementI(9)`/`(10)`/`(11)`/`(8)`/`(7)`
     /// at `:237`/`:242`/`:259`/`:222`/`:207`; capi
     /// `CAPI/CAPI_CktElement.pas:939`/`:951`/`:978`/`:689`/`:713`).
     ///
-    /// The five part-(ii) reads all answer from the element's
+    /// The five control-derived reads all answer from the element's
     /// `ControlElementList` (`Common/CktElement.pas:100`), which
     /// `TControlElem.Set_ControlledElement` maintains
     /// (`Controls/ControlElem.pas:113-131`), and none of them touches
@@ -1768,7 +1767,7 @@ impl Engine {
         }
     }
 
-    // ---- typed WP-G1 mode accessors (G1.0 rails) --------------------------
+    // ---- typed mode accessors ----------------------------------------------
     //
     // One thin `pub fn` per [`modes::WP_G1_MODES`] row: the mode *number* lives
     // only in that table, and each accessor takes its row by reference, so a
@@ -1776,14 +1775,12 @@ impl Engine {
     // funnels through [`Engine::read_mode`], which refuses a do-not-call mode
     // before any FFI and checks the reply's shape against the row.
     //
-    // Each accessor starts life as a **rail**: G1.0 bound the whole table
-    // before any gate path used one, and each WP-G1 surface sub-step then wires
-    // the rows it needs into `crate::capture` and compares them against the capi
-    // channel on a gated `both` case (`GOLDEN_REBASE_PLAN.md` WP-G1, coordinator
-    // decision D2). So a row no capture calls yet is normal, and a row a capture
-    // does call names its sub-step in that `capture_*` function's doc.
+    // Each accessor is a **rail**: the whole table is bound whether or not a
+    // gate path uses a row, and a capture wires the rows it needs into
+    // `crate::capture` and compares them against the capi channel on a gated
+    // `both` case. So a row no capture calls yet is normal.
 
-    /// Read one WP-G1 mode ([`modes::ModeSpec`]) generically — the path every
+    /// Read one table mode ([`modes::ModeSpec`]) generically — the path every
     /// typed accessor below shares, and the one a table-driven test walks.
     ///
     /// Refuses **before any FFI** a mode on [`modes::DO_NOT_CALL`], and rejects
@@ -2210,7 +2207,7 @@ impl Engine {
     /// `BUSV(11)` **and** `BUSV(12)` for the active bus, behind the
     /// state-dependent do-not-call guard: `Ok(Some((vll, pu_vll)))` when the
     /// pairing loop is bounded on this bus, `Ok(None)` when it is not and the
-    /// bridge therefore **never dispatches either mode** (G1.4c).
+    /// bridge therefore **never dispatches either mode**.
     ///
     /// r4133 pairs phases with two unbounded `repeat` loops that probe `jj`
     /// *before* wrapping it (`DDLL/DBus.pas:575-584`, `:631-640`), so a bus
@@ -2269,7 +2266,7 @@ impl Engine {
         self.read_mode_strings(&modes::BUS_ALL_PDE_AT_BUS)
     }
 
-    // -- Bus reliability columns (GOLDEN_REBASE G1.6(ii)) ---------------------
+    // -- Bus reliability columns ----------------------------------------------
     // The eight per-bus columns of fastdss' `IBus._columns`
     // (`DSS-Python@origin/fastdss` `dss/IBus.py:19-53`) that the EnergyMeter
     // `RelCalc` sweep writes. Every read answers for the **active bus**, so a
@@ -2580,7 +2577,7 @@ impl Engine {
     }
 
     // The four flat-incidence rows, read in this order by
-    // `crate::capture::capture_inc_matrix` (G1.8) after it issues
+    // `crate::capture::capture_inc_matrix` after it issues
     // `CalcIncMatrix` + `CalcLaplacian`. `SolutionV(2)` `Solution.BusLevels` is
     // deliberately not bound — it is on [`modes::DO_NOT_CALL`]
     // (`DSolution.pas:578-582`, a one-element heap overflow) — and the capture

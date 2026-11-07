@@ -1,22 +1,27 @@
-//! A-Diakoptics circuit-tearing gates (WP-AD.2 Stage B,
-//! `DIAKOPTICS_PSTCALC_PLAN.md` §3). Rust-only (plan D8 — Part II has no oracle
-//! leg by design, §0.2). These drive committed radial **3-phase** fixture feeders
-//! (`tests/data/adiakoptics/{midi,macro}.dss`, reused by WP-AD.3/AD.4) through the
+//! A-Diakoptics circuit-tearing gates. Rust-only: no OpenDSS engine is
+//! compared here. These drive committed radial **3-phase** fixture feeders
+//! (`tests/data/adiakoptics/{midi,macro}.dss`) through the
 //! script interface — `set Num_SubCircuits=N; Tear_Circuit` — and assert the
 //! tearing + torn-file-emission invariants:
-//!  - the sub-circuit count and `GlobalResult` (Diakoptics.pas:526);
+//!  - the sub-circuit count and `GlobalResult`;
 //!  - the link branches are **real 3-phase `Line` elements** (resolved through the
 //!    engine, not a name-prefix guess);
 //!  - the emitted `.part.N` partition is balanced, has N zones, and every zone is
 //!    **connected** (recomputed from the `.graph` adjacency + `.part.N` labels);
 //!  - the emitted `Torn_Circuit/` tree matches a committed byte-stable golden
-//!    (`Format_SubCircuits` + the D2 partitioner) and every sub-project
+//!    (the sub-circuit writer + the METIS partitioner) and every sub-project
 //!    (interconnected + per-zone) **compiles and solves**;
 //!  - honest errors: tearing before a solve, and a non-`Line` manual link.
 //!
-//! Every deck fixes `Num_SubCircuits` explicitly (plan D6 — no test depends on
+//! Every deck fixes `Num_SubCircuits` explicitly (no test depends on
 //! `available_parallelism`). Torn artifacts land in per-test temp dirs (never the
-//! source tree). Regenerate the golden with `DSS_REGEN_AD_GOLDEN=1`.
+//! source tree).
+//!
+//! Knobs:
+//! - `DSS_REGEN_AD_GOLDEN`: set to any value, rewrites the committed torn-tree
+//!   golden instead of comparing it. Unset by default.
+//! - `DSS_EXPENSIVE_TESTS`: set to any value, runs the ckt24 yearly A-Diakoptics
+//!   variant for 168 steps instead of 24. Unset by default.
 
 use dss_core::exec::Dss;
 use std::collections::VecDeque;
@@ -143,7 +148,7 @@ fn graph_adjacency(scratch: &Path, name: &str, n_cols: usize) -> Vec<Vec<usize>>
 }
 
 /// Assert every zone in a `.part.N` labeling is a **connected** subgraph of the
-/// `.graph` adjacency (the plan's "zones connected" tearing-validity invariant).
+/// `.graph` adjacency (the "zones connected" tearing-validity invariant).
 fn assert_zones_connected(scratch: &Path, name: &str, k: i32) {
     let labels = read_part(scratch, name, k);
     let n = labels.len();
@@ -291,13 +296,9 @@ fn tear_macro_two_zones() {
     assert_zones_connected(&scratch, &name, 2);
 }
 
-/// The manual-links branch: `set LinkBranches=[...] UseMyLinkBranches=True` drives
-/// the cut count. Each user link is a cut, so N link branches yield N+1
-/// sub-circuits — the official setter reserves an empty index-0 reference
-/// placeholder (ExecOptions.pas:842–844) and `Tear_Circuit` returns
-/// `length(Locations) = N+1`. Empirically pinned against the r3723 binary (Oddie
-/// bridge): `[line.main10]` → "Sub-Circuits Created: 2", `[line.main5,
-/// line.main10]` → 3; `get LinkBranches` drops the placeholder.
+/// With `UseMyLinkBranches=True` each user link is a cut, so N link branches
+/// yield N+1 sub-circuits, and `get LinkBranches` drops the reserved index-0
+/// placeholder.
 #[test]
 fn tear_manual_link_branches_use_requested_cuts() {
     {
@@ -353,10 +354,8 @@ fn one_zone_request_is_handled() {
     assert!(part.iter().all(|&l| l == 0), "1-zone: all labels zero");
 }
 
-/// `Create_MeTIS_graph` edge weighting + parallel-branch dedup (Circuit.pas:1213).
-/// Exercises the two branches the all-Line radial fixtures never hit: the
-/// **Transformer-weight-1** rule and the **parallel-branch dedup** loop. Inline
-/// (a special topology, not a radial fixture).
+/// The METIS graph gives a Transformer edge weight one and dedups parallel
+/// branches, the two rules the all-Line radial fixtures never reach.
 #[test]
 fn metis_graph_transformer_weight1_and_parallel_dedup() {
     let scratch = scratch_dir("graph");
@@ -415,9 +414,9 @@ fn set_get_ad_options_roundtrip() {
     dss.command("get Num_SubCircuits");
     assert_eq!(dss.result(), "4");
 
-    // Official `get Coverage` (ExecOptions.pas:1086) reports Actual_Coverage
-    // (`%-g`), NOT the requested value; it is -1 until the coverage-path
-    // algorithm has run (WP-AD.5), so a bare `set Coverage=` then `get` reads -1.
+    // `get Coverage` reports Actual_Coverage (`%-g`), NOT the requested value;
+    // it is -1 until the coverage-path algorithm has run, so a bare
+    // `set Coverage=` then `get` reads -1.
     dss.command("set Coverage=0.75");
     dss.command("get Coverage");
     assert_eq!(dss.result(), "-1");
@@ -433,8 +432,8 @@ fn set_get_ad_options_roundtrip() {
 }
 
 /// `Tear_Circuit` reads `Solution.NodeV` at each point of connection, so it
-/// requires a prior successful solve (ckt24 header + spec). Without one, the port
-/// errors honestly rather than emitting zero-volt zone sources.
+/// requires a prior successful solve. Without one, it errors rather than
+/// emitting zero-volt zone sources.
 #[test]
 fn tear_without_prior_solve_errors() {
     let scratch = scratch_dir("nosolve");
@@ -455,13 +454,10 @@ fn tear_without_prior_solve_errors() {
     assert_eq!(dss.result(), "There was an error when tearing the circuit ");
 }
 
-/// Negative path: a manual link naming a **Transformer** (non-`Line`). Official
-/// `get_Line_Bus` (Circuit.pas:1167) searches only the Lines list, so a non-Line
-/// link is reported "Line ... Not Found" (error 5008) and gets no
-/// point-of-connection bus — the honest behavior (the ZLL 3-phase-Line cut
-/// constraint is otherwise enforced downstream at AD init, D5). The tear itself
-/// does not hard-fail at this level (matching upstream — the graph weights bias
-/// auto-tear against transformer cuts, but manual mode trusts the user).
+/// A manual link naming a non-`Line` element is reported "Line ... Not Found"
+/// and gets no point-of-connection bus, since link resolution searches only the
+/// Lines list. The tear itself does not fail here: the 3-phase-Line cut
+/// constraint is enforced at A-Diakoptics init.
 #[test]
 fn manual_transformer_link_reports_line_not_found() {
     let scratch = scratch_dir("xflink");
@@ -550,18 +546,11 @@ fn serialize_tree(root: &Path) -> String {
     s
 }
 
-/// Committed byte-stable golden of the emitted `Torn_Circuit/` tree for the midi
-/// feeder (2 zones, fixed partition, deterministic `%.8g`-class formatting). This
-/// self-golden pins the D2 partitioner + `Format_SubCircuits` (the
-/// `Master_Interconnected.dss` filtering rules, per-zone `Master.dss`, and per-zone
-/// `VSource.dss` measured values). Regenerate with `DSS_REGEN_AD_GOLDEN=1`.
-///
-/// TODO(WP-AD.3): this pins the tree structurally against our own emission (a
-/// self-golden). Cross-checking the two deliberate `Format_SubCircuits`
-/// deviations (case-insensitive filter, `New Circuit`-anchored zone cut) against
-/// the vendored first-party `Examples/ADiakoptics/ckt24/Torn_Circuit/**`
-/// reference is the D9(b) reference-fixture harvest, scheduled for WP-AD.3. The
-/// PConn numbers are independently validated by `pconn_sources_match_solved_nodev`.
+/// The emitted `Torn_Circuit/` tree of the midi feeder matches its committed
+/// self-golden, which pins the METIS partitioner and the sub-circuit writer.
+// TODO: cross-check the writer's two deliberate deviations (case-insensitive
+// filter, `New Circuit`-anchored zone cut) against the vendored
+// `Examples/ADiakoptics/ckt24/Torn_Circuit/**` reference.
 #[test]
 fn torn_tree_matches_golden() {
     let scratch = scratch_dir("golden");
@@ -611,12 +600,10 @@ fn parse_vsource_phase1(path: &Path) -> (f64, f64) {
     (grab("basekv="), grab("angle="))
 }
 
-/// **Independent numeric cross-check of the PConn boundary sources** (not the
-/// self-golden). For every zone, re-derive the point-of-connection bus from the
-/// link `Line`'s bus-2 and the boundary voltage from the *solved* `NodeV` (public
-/// bus API), then assert the **emitted** `VSource.dss` `basekv`/`angle` match.
-/// This catches a wrong-terminal, wrong-bus, angle-sign, or `/1000`-scale error
-/// in the PConn capture that the byte-golden alone would freeze in forever.
+/// Every zone's emitted `VSource.dss` `basekv`/`angle` equals the solved voltage
+/// at the link line's bus 2, re-derived through the public bus API. This
+/// catches a wrong-terminal, wrong-bus, angle-sign or scale error the byte
+/// golden alone would freeze in.
 #[test]
 fn pconn_sources_match_solved_nodev() {
     use dss_core::support::complexutil::c_to_polar_deg;
@@ -698,13 +685,9 @@ fn pconn_sources_match_solved_nodev() {
     }
 }
 
-/// Round trip: each emitted sub-project compiles and solves on our own engine —
-/// the interconnected model (full circuit) and every per-zone standalone model.
-///
-/// TODO(WP-AD.3): this is a *solvability* smoke check (converged + a >1 kV node);
-/// full numeric AD↔normal equivalence at the §AD tolerance tier is deferred to
-/// WP-AD.3/D7. The boundary-source values themselves are numerically pinned by
-/// `pconn_sources_match_solved_nodev` above.
+/// Each emitted sub-project, the interconnected model and every per-zone model,
+/// compiles and solves on this engine. The numeric AD↔normal equivalence lives
+/// in `ad_solve_gate`.
 #[test]
 fn torn_tree_roundtrip_solves() {
     let scratch = scratch_dir("roundtrip");
@@ -761,11 +744,9 @@ fn torn_tree_roundtrip_solves() {
     }
 }
 
-/// Diagnostic (non-gating): build our `ckt24` `.graph` and diff it against the
-/// vendored `ckt24_.graph` (official OpenDSS output). Expected to differ (METIS
-/// 4.0 kmetis vs our 5.2.1 port, different incidence lineage — plan D2 / the
-/// `.graph` writer note); the report is inventory input only. `#[ignore]`d — run
-/// with `cargo test -- --ignored ckt24_graph_diagnostic --nocapture`.
+/// Non-gating diagnostic: reports the vendored `ckt24_.graph` (OpenDSS output),
+/// which is expected to differ from ours (METIS 4.0 kmetis vs the vendored
+/// 5.2.1). Run with `cargo test -- --ignored ckt24_graph_diagnostic --nocapture`.
 #[test]
 #[ignore = "diagnostic: reports the ckt24 .graph delta vs the vendored artifact"]
 fn ckt24_graph_diagnostic() {
@@ -798,23 +779,23 @@ fn ckt24_graph_diagnostic() {
         "vendored line count: {}",
         vtext.lines().filter(|l| !l.trim().is_empty()).count()
     );
-    // TODO(WP-AD.5): build our ckt24 `.graph` and diff it against the vendored
-    // artifact here. That needs the ckt24 master-prefix compile driver, which
-    // lands in WP-AD.5; today this diagnostic only records the vendored side.
+    // TODO: build our ckt24 `.graph` and diff it against the vendored artifact
+    // here. That needs a ckt24 master-prefix compile driver; this diagnostic only
+    // records the vendored side.
     eprintln!(
-        "NOTE: a full our-vs-vendored .graph diff requires compiling the ckt24 master \
-         (WP-AD.5 driver territory); this diagnostic records the vendored artifact shape. \
-         Divergence is expected (D2: METIS 4.0 kmetis vs the 5.2.1 port)."
+        "NOTE: a full our-vs-vendored .graph diff requires compiling the ckt24 master; \
+         this diagnostic records the vendored artifact shape. Divergence is expected \
+         (METIS 4.0 kmetis vs the vendored 5.2.1)."
     );
 }
 
 // ===========================================================================
-// WP-AD.3 Stage 2 — `ADiakopticsInit` state machine (init + matrices + options
-// + get_Statistics). Rust-only (plan D8). The per-iteration AD solve is Stage 2b
-// (see `exec/diakoptics/solve.rs`); these gates validate the init machine
-// end-to-end: ClearAll + recompile the interconnected coordinator + build the
-// child zones + open link branches + Contours/ZLL/ZCC/Y4 on the REAL torn
-// coordinator, with the D1 invariants recomputed in-test.
+// `ADiakopticsInit` state machine (init + matrices + options + get_Statistics).
+// Rust-only. The per-iteration AD solve lives in `exec/diakoptics/solve.rs`;
+// these gates validate the init machine end-to-end: ClearAll + recompile the
+// interconnected coordinator + build the child zones + open link branches +
+// Contours/ZLL/ZCC/Y4 on the REAL torn coordinator, with the matrix invariants
+// recomputed in-test.
 // ===========================================================================
 
 use num_complex::Complex64;
@@ -933,7 +914,7 @@ fn adiakoptics_init_y4_inverts_zcc() {
     assert!(ckt.ad.zct.nzero() > 0, "ZCT populated by the torn-Y solve");
     assert_eq!(ckt.ad.zcc.nzero(), 9, "ZCC is a full 3×3");
 
-    // D1 invariant (a) on the REAL init pipeline (not just the unit fixture):
+    // The ZCC invariant on the REAL init pipeline (not just the unit fixture):
     // ZCC re-derived INDEPENDENTLY of the builder's transpose/multiply/add as a
     // dense `Contoursᵀ·ZCT + ZLL`. A wrong link resolution, a wrong post-close
     // rebuild ZLL, or a bad ZCT coupling here breaks this even though the shape
@@ -1023,7 +1004,7 @@ fn adiakoptics_init_y4_inverts_zcc() {
         }
     }
     for cd in &ckt.ad.y4.cdata {
-        assert_ne!(cd.value.re, 0.0, "Y4 stores only nonzero-real entries (D5)");
+        assert_ne!(cd.value.re, 0.0, "Y4 stores only nonzero-real entries");
     }
 }
 
@@ -1042,14 +1023,14 @@ fn adiakoptics_get_flag_and_stats_deterministic() {
     let stats2 = summary_stats(&dss2);
     assert_eq!(stats1, stats2, "statistics deterministic across runs");
 
-    // Value golden (plan gate 5): the fixed 2-zone midi partition yields fixed
-    // node counts → fixed reduction/imbalance numbers with `floattostrf(ffgeneral,
-    // 4)` (via `fmt_g`) formatting. Part II has no oracle (§0.2), so this pins the
-    // engine's own deterministic 1:1 output as a committed characterization
+    // Value golden: the fixed 2-zone midi partition yields fixed node counts →
+    // fixed reduction/imbalance numbers with `floattostrf(ffgeneral, 4)` (via
+    // `fmt_g`) formatting. No OpenDSS engine is compared here, so this pins the
+    // engine's own deterministic output as a committed characterization
     // constant — a regression in the get_Statistics computation OR the number
-    // formatting now fails here, where the run-to-run determinism check alone
-    // (both runs regress identically) would pass. Machine-independent given ≥4
-    // cores (D6): the in-process METIS partition is deterministic.
+    // formatting fails here, where the run-to-run determinism check alone (both
+    // runs regress identically) would pass. The in-process METIS partition is
+    // deterministic, so the value is machine-independent.
     assert_eq!(
         stats1,
         "Circuit reduction    (%): 46.34\n\
@@ -1106,7 +1087,7 @@ fn summary_stats(dss: &Dss) -> String {
 }
 
 // ===========================================================================
-// WP-AD.3 Stage 3 — AD matrix exports 58-61 (ExportResults.pas:3541-3627).
+// AD matrix exports 58-61.
 // Silent no-op unless Solution.ADiakoptics; format = compressed-coordinate CSV.
 // ===========================================================================
 
@@ -1250,7 +1231,7 @@ fn export_ad_matrices_write_no_file_but_set_lastfile_without_init() {
 }
 
 // ---------------------------------------------------------------------------
-// WP-AD.3 Stage 2b/Stage 4 — the A-Diakoptics solve + D7 equivalence gate.
+// The A-Diakoptics solve + the AD-vs-normal equivalence gate.
 // ---------------------------------------------------------------------------
 mod ad_solve_gate {
     use super::*;
@@ -1406,21 +1387,10 @@ mod ad_solve_gate {
         )
     }
 
-    /// WP-AD.4 `full`-disposition proof: a zone-local RegControl (head LTC) is
-    /// solved normally and under A-Diakoptics with controls ACTIVE. This is the
-    /// one gate that drives the child `DO_CTRL_ACTIONS` fan-out's active path
-    /// (`ad_check_controls` -> child `sample_do_control_actions` + Y-rebuild ->
-    /// `ControlActionsDone` AND-fold), plus the `GETCTRLMODE` propagation that
-    /// re-arms the deck's control mode on the children.
-    ///
-    /// The proof is a controlled experiment. The AD tear re-seeds each zone from
-    /// the transformer's *declared* tap (1.0), discarding the base-solve tap — so
-    /// the controls-OFF AD arm lands ~4 % off the normal solve (one tap ratio).
-    /// The controls-STATIC AD arm re-establishes the regulator **inside the child
-    /// zone** (its tap events live in the child eventlog, not the coordinator's),
-    /// so it matches the normal solve at the D7 tier. That AD-static clean /
-    /// AD-off diverged split is only possible if the child fan-out actually ran
-    /// and operated the zone control.
+    /// A zone-local RegControl under A-Diakoptics with controls active matches
+    /// the normal solve, while the controls-off AD arm, re-seeded from the
+    /// declared tap, stays one tap ratio off. That split is only possible if the
+    /// child control fan-out ran and operated the zone control.
     #[test]
     fn full_zone_local_regcontrol_matches_normal() {
         let (vn, va_static, va_off, elog) = solve_full_arms("adreg", 1e-8);
@@ -1444,7 +1414,7 @@ mod ad_solve_gate {
         );
         assert!(
             gap < 1.3e-4,
-            "AD-static (child fan-out) node-V gap {gap:.3e} @ {node} exceeds the D7 tier"
+            "AD-static (child fan-out) node-V gap {gap:.3e} @ {node} exceeds the AD tier"
         );
     }
 
@@ -1455,15 +1425,15 @@ mod ad_solve_gate {
         let va = solve_ad("midi", 3, 1e-4);
         let (gap, node) = max_rel_gap(&vn, &va);
         println!("midi 3-zone AD-vs-normal gap = {gap:.4e} @ {node}");
-        // Floor 3.21e-5; D7 tier = 4× ≈ 1.3e-4.
+        // The AD tier is four times the stitch's method floor.
         assert!(gap < 1.3e-4, "midi 3-zone gap {gap:.3e} @ {node}");
         assert!(gap > 1.0e-7, "3-zone gap {gap:.3e} suspiciously small");
     }
 
     #[test]
     fn macro_snapshot_matches_normal() {
-        // ~200-bus feeder; method floor 1.319e-4 (r3723 oracle, same main92 cut:
-        // 1.318e-4); D7 tier = 4× ≈ 5.3e-4.
+        // ~200-bus feeder; the AD tier is four times the stitch's method floor,
+        // which r3723 shares on the same main92 cut.
         let vn = solve_normal("macro", 1e-4);
         let va = solve_ad("macro", 2, 1e-4);
         let (gap, node) = max_rel_gap(&vn, &va);
@@ -1478,7 +1448,7 @@ mod ad_solve_gate {
         // reference-free zone): pin the tolerance-stability on macro too.
         let g_loose = max_rel_gap(&solve_normal("macro", 1e-4), &solve_ad("macro", 2, 1e-4)).0;
         let g_tight = max_rel_gap(&solve_normal("macro", 1e-10), &solve_ad("macro", 2, 1e-10)).0;
-        println!("macro D7 tighten: loose={g_loose:.4e} tight={g_tight:.4e}");
+        println!("macro AD tighten: loose={g_loose:.4e} tight={g_tight:.4e}");
         let ratio = g_tight / g_loose;
         assert!(
             (0.5..2.0).contains(&ratio),
@@ -1498,10 +1468,10 @@ mod ad_solve_gate {
     // the Newton path (which never touches the children or the re-seed) must agree
     // with the fixed-point AD path (which does) to f64 ulp. It proves (a) the
     // Newton dispatch is wired and produces a valid full-system solve, and (b) the
-    // child re-seed recovers the exact interconnected answer (WP-AD.3 audit finding
-    // #2 — the re-seed's correctness rests on this decomposition, not a tol sweep).
+    // child re-seed recovers the exact interconnected answer (the re-seed's
+    // correctness rests on this decomposition, not a tol sweep).
     //
-    // NB the AD-vs-normal "floor" (3.25e-5 midi / 1.32e-4 macro) is the
+    // NB the AD-vs-normal "floor" is the
     // interconnected-coordinator-vs-original-deck difference — SHARED by the
     // fixed-point AND Newton AD paths (both reproduce the coordinator solve) — not
     // a child-solve approximation, so a Newton-vs-normal comparison would sit at
@@ -1560,14 +1530,14 @@ mod ad_solve_gate {
         );
     }
 
-    // --- Time-series D7 equivalence (plan §WP-AD.3 tests: midi daily-24, macro
+    // --- Time-series AD-vs-normal equivalence (midi daily-24, macro
     // yearly-168) --------------------------------------------------------------
     //
     // These exercise `ad_solve_time_series` (the coordinator clock-step loop +
     // per-step monitor/meter sampling + end-of-step cleanup) which the snapshot
     // gates never reach. The fixtures carry no load shapes (constant loads), so
     // every step is a snapshot and the AD-vs-normal gap stays at the snapshot
-    // method floor. We assert BOTH that the final voltages match at the D7 tier
+    // method floor. We assert BOTH that the final voltages match at the AD tier
     // AND that the clock actually advanced the full horizon (proving the step
     // loop ran, not a single-solve short-circuit).
 
@@ -1618,13 +1588,13 @@ mod ad_solve_gate {
     }
 }
 
-/// ckt24 real-corpus macro gate (`DIAKOPTICS_PSTCALC_PLAN.md` WP-AD.5): drive the
+/// ckt24 real-corpus macro gate: drive the
 /// vendored `Examples/ADiakoptics/ckt24/master_ckt24.dss` — a full EPRI feeder —
 /// through the deck's OWN manual-partition cases (`set LinkBranches=[…]` +
-/// `UseMyLinkBranches=True` for 2 and 4 zones, in scope per D10) and compare the
-/// A-Diakoptics solve against the normal solve per D7 (controls off = the
-/// physics-only leg). An auto-tear variant (`Num_SubCircuits=2`, D2 partitioner)
-/// rides alongside. Rust-vs-rust (Part II has no pinned oracle, §0.2).
+/// `UseMyLinkBranches=True` for 2 and 4 zones) and compare the A-Diakoptics
+/// solve against the normal solve (controls off = the physics-only leg). An
+/// auto-tear variant (`Num_SubCircuits=2`, METIS partitioner) rides alongside.
+/// Rust-vs-rust: no OpenDSS engine is compared here.
 mod ckt24_driver {
     use super::*;
     use num_complex::Complex64;
@@ -1718,12 +1688,12 @@ mod ckt24_driver {
         (worst, wn, matched)
     }
 
-    /// The AD-leg node-V tier for ckt24 (rust-vs-rust). This gates the **D7 AD
+    /// The AD-leg node-V tier for ckt24 (rust-vs-rust). This gates the **AD
     /// leg proper** — the AD solve vs the saved-interconnected model solved
     /// normally (both share the reloaded network, so this isolates the AD stitch
-    /// from the save round-trip). ckt24's AD leg is clean to ~1e-5 (decomposition
-    /// probe 2026-07-12); the tier is that ×4-ish headroom. NEVER widened to admit
-    /// a failing compare (§5): a gap here is a real AD port bug.
+    /// from the save round-trip). The tier keeps a few times headroom above the
+    /// clean AD leg's floor and is NEVER widened to admit a failing compare: a gap
+    /// here is a real A-Diakoptics bug.
     const CKT24_AD_TIER: f64 = 2.0e-3;
 
     /// Solve ckt24 normally (controls off) into a fresh scratch. Returns the Dss.
@@ -1741,7 +1711,7 @@ mod ckt24_driver {
 
     /// Apply an A-Diakoptics preamble to ckt24 and solve into `scratch` (so the
     /// emitted `Torn_Circuit/Master_Interconnected.dss` can be read back for the
-    /// D7 AD-leg comparison). `links` is `None` for auto-tear (`Num_SubCircuits`),
+    /// AD-leg comparison). `links` is `None` for auto-tear (`Num_SubCircuits`),
     /// else the manual `LinkBranches`. Returns `Err` if AD init refused.
     fn solve_ad(
         scratch: &Path,
@@ -1783,7 +1753,7 @@ mod ckt24_driver {
     }
 
     /// Solve the saved interconnected model (the AD `save circuit` product)
-    /// normally — the D7 AD-leg reference (shares the reloaded network with the AD
+    /// normally — the AD-leg reference (shares the reloaded network with the AD
     /// coordinator, so AD-vs-this isolates the stitch from the save round-trip).
     fn solve_interconnected(ad_scratch: &Path, solve_cmd: &str) -> Dss {
         let inter = ad_scratch
@@ -1798,14 +1768,11 @@ mod ckt24_driver {
         dss
     }
 
-    /// D7 two-leg comparison. Gate = the **AD leg** (AD solve vs saved-
+    /// Two-leg comparison. Gate = the **AD leg** (AD solve vs saved-
     /// interconnected normal solve). The **save round-trip leg** (orig normal vs
-    /// saved-interconnected normal) is measured and PRINTED but NOT gated here:
-    /// ckt24's ~1.8e-2 leg-1 gap at secondary-service nodes is a `save circuit`
-    /// fidelity defect (the WP-AD.4 `off:save-roundtrip-*` class), tracked
-    /// separately in STATUS — fixing it is a save-circuit concern, not AD's (D7
-    /// says "fix there, not in AD"). Decomposition proves the AD engine itself is
-    /// clean (leg-2 ~1e-5).
+    /// saved-interconnected normal) is PRINTED but NOT gated here: its gap at
+    /// ckt24's secondary-service nodes is an open `save circuit` fidelity defect,
+    /// fixed in the save path, not in A-Diakoptics.
     fn assert_ad_matches(links: Option<&str>, num_sub: i32, label: &str, solve_cmd: &str) {
         let norm_scratch = scratch_dir("ckt24norm");
         let ad_scratch = scratch_dir("ckt24ad");
@@ -1831,7 +1798,7 @@ mod ckt24_driver {
         assert!(
             leg2 < CKT24_AD_TIER,
             "ckt24 {label}: AD-leg node-V gap {leg2:.3e} @ {n2} exceeds \
-             the tier {CKT24_AD_TIER:.1e} — a real AD port bug, do not widen (§5)"
+             the tier {CKT24_AD_TIER:.1e} — a real A-Diakoptics bug, do not widen"
         );
     }
 
@@ -1858,18 +1825,10 @@ mod ckt24_driver {
         );
     }
 
-    /// The deck's own scenario: manual 2-zone AD-solve `mode=yearly number=24`.
-    /// Exercises the full time-series AD path (init + per-step coordinator solve)
-    /// end-to-end and confirms it converges and advances the clock 24 hours. The
-    /// numeric AD-leg gap is measured and PRINTED but NOT gated: unlike the clean
-    /// snapshot leg (~7.6e-6), the yearly AD leg diverges ~1.1e-1 from the
-    /// saved-interconnected normal yearly solve at both secondary AND primary
-    /// nodes (base>500 V, so not a small-base artifact — decomposition probe
-    /// 2026-07-12). That is a **time-series AD-engine divergence** (WP-AD.3), not a
-    /// save round-trip and not this WP's coverage/aggregate scope; it is filed as
-    /// an open item in STATUS. Per §5 the gap is NOT tolerance-widened to hide it —
-    /// it is left ungated and documented until the AD time-series path is fixed.
-    /// The 168-step variant is behind `DSS_EXPENSIVE_TESTS=1`.
+    /// The deck's own yearly scenario runs the full time-series AD path to
+    /// convergence and advances the clock. Its AD-leg gap is printed but not
+    /// gated: the yearly AD leg diverges from the normal yearly solve, an open
+    /// time-series A-Diakoptics defect that no tolerance may hide.
     #[test]
     fn manual_2zone_yearly_runs_and_advances() {
         let steps = if std::env::var("DSS_EXPENSIVE_TESTS").is_ok() {
@@ -1891,8 +1850,8 @@ mod ckt24_driver {
         let vi = node_voltages(&solve_interconnected(&ad_scratch, &solve_cmd));
         let (leg2, n2, _) = max_rel_gap(&vi, &va);
         println!(
-            "ckt24 yearly-{steps}: AD-leg gap {leg2:.3e} @ {n2} (OPEN: time-series AD \
-             divergence, ungated — see STATUS)"
+            "ckt24 yearly-{steps}: AD-leg gap {leg2:.3e} @ {n2} (open time-series AD \
+             divergence, ungated)"
         );
     }
 }

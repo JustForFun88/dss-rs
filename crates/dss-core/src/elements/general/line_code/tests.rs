@@ -91,7 +91,7 @@ fn default_sym_matrices_match_oracle() {
 
 #[test]
 fn incomplete_sym_matrix_rejected_keeps_default() {
-    // WP-U1.1 item 2 (DIVERGENCES.md §ParseAsSymMatrix): EPRI r4133 rejects a
+    // r4133 rejects a
     // symmetric matrix supplying fewer rows than NPhases — the property keeps
     // its prior (default) value and a DoSimpleMsg-and-continue error is logged.
     // The FPC line (0.14.5/0.15.x) silently zero-fills the missing row instead.

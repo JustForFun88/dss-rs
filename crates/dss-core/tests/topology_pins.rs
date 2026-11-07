@@ -1,26 +1,21 @@
-//! **GOLDEN_REBASE G1.7 — the two expected-value pins behind the topology
-//! settlements** (coordinator decisions **D15** and **D16**,
-//! `tmp/g1/BRIEF_COMMON.md`).
+//! **The two expected-value pins behind the topology comparison.**
 //!
-//! Both settlements write **zero** `tests/corpus/ledger.json` rows: instead of
-//! excluding a field they state upstream's mechanism and make the live gate
-//! assert it (`crates/dss-test-harness/src/harness/topology.rs`). CLAUDE.md's
-//! discipline still applies — every divergence from an oracle channel is pinned
-//! by an expected-value test naming BOTH numbers — and these two are those
-//! tests.
+//! Both divergences write **zero** `tests/corpus/ledger.json` rows: instead of
+//! excluding a field, the gate models the OpenDSS mechanism and asserts it
+//! (`crates/dss-test-harness/src/harness/topology.rs`). Every divergence from
+//! an OpenDSS channel is still pinned by an expected-value test naming both
+//! numbers, and these two are those tests.
 //!
 //! They live in their own binary rather than in the engine's `#[cfg(test)]`
 //! tree because each one drives the **gate-side** code that carries the
-//! settlement: `harness::topology::compare_topology` against a capture built
-//! from the measured oracle reply, and `harness::topology::window_dedup`, the
-//! gate's model of upstream's dedup. The engine-side twins (`Dss::topology_view`
-//! itself, the port's per-pair rule, the `IsShuntElement` tree routing) are
-//! pinned in `dss_core::exec::tests::topology`.
+//! comparison: `harness::topology::compare_topology` against a capture built
+//! from the measured OpenDSS reply, and `harness::topology::window_dedup`, the
+//! gate's model of the OpenDSS dedup. The engine-side twins
+//! (`Dss::topology_view` itself, this engine's per-pair rule, the
+//! `IsShuntElement` tree routing) are pinned in `dss_core::exec::tests::topology`.
 //!
-//! Every oracle number below was measured on the channel named at the pin: the
-//! vendored EPRI r4133 DLL through `crates/dss-epri`
-//! (`tmp/g17/r4133_topo.json`, `tmp/g17/stale_r4133.json`) and the pinned
-//! dss-python 0.15.7 (`tmp/g17/capi_topo_merged.json`), both read after a forced
+//! The OpenDSS replies below were read on the vendored EPRI r4133 DLL through
+//! `crates/dss-epri` and on the pinned dss-python, after a forced
 //! `FreeTopology` where a fresh tree was wanted.
 
 use dss_test_harness::harness;
@@ -31,7 +26,7 @@ use std::path::PathBuf;
 use dss_core::exec::Dss;
 use harness::topology::{IsolationSnapshot, TopologyCap, compare_topology, window_dedup};
 
-/// Compile a vendored corpus deck (never `.inputs/`, CLAUDE.md) exactly as the
+/// Compile a vendored corpus deck (never `.inputs/`) exactly as the
 /// corpus gate does (`corpus_gate/runner.rs::run_rust_capture`: `clear`, then
 /// `compile`, then a `solve` per checkpoint).
 ///
@@ -90,34 +85,11 @@ fn panic_message(f: impl FnOnce()) -> String {
     }
 }
 
-/// **D15 pin — the port answers from a freshly built tree; the oracle answers
-/// from the one it memoized at step 0, and the gate asserts exactly that.**
-///
-/// Deck: `controls:recloser/recloser_perm.dss` (`engines: "r4133"`, 24 steps) —
-/// a 3-phase permanent fault drives FAST trip → reclose → SLOW trip → reclose →
-/// lockout, so the recloser opens `Line.feed` terminal 1 and strands the lateral
-/// and its load.
-///
-/// **Both numbers, measured (`tmp/g17/stale_r4133.json`, one fresh compile per
-/// step, and `tmp/g17/r4133_topo.json` for the live reply):**
-///
-/// * the **oracle**, at every one of the 24 steps: `NumIsolatedBranches = 0`,
-///   `NumIsolatedLoads = 0`, both name lists the `NONE` sentinel (`[]` after the
-///   transports' S1 decode) — the answer its `Branch_List` computed at step 0,
-///   which nothing invalidates on an open/close (r4133
-///   `Common/Circuit.pas:2932-2950`, freed only in `Destroy` `:703` and
-///   `DoResetMeterZones` `:2308`; capi identical);
-/// * the **port**, from step 3 on (and again at 4-7, 9-18, 20-23 — 19 of the 24
-///   steps): `NumIsolatedBranches = 2` (`Line.feed`, `Line.lat`) and
-///   `NumIsolatedLoads = 1` (`Load.l`), because `Dss::topology_view` rebuilds
-///   the tree on every call (CLAUDE.md: an upstream defect is never reproduced
-///   in any lane).
-///
-/// The settlement (D15) is that the gate does not exclude those steps: it
-/// asserts `oracle(k) == port(step 0)`, the memoization contract itself. This
-/// pin drives the real comparator over all 24 steps against the measured
-/// capture, then shows both ways it can still fail — an oracle that does not
-/// answer the step-0 topology, and the same capture compared fresh.
+/// This engine answers the isolated branches and loads of a recloser lockout
+/// from a freshly built tree, while OpenDSS answers from the tree it memoized at
+/// step 0, an OpenDSS bug never reproduced. The gate asserts
+/// `opendss(k) == this_engine(step 0)`, and the pin shows both ways that check
+/// still fails.
 #[test]
 fn topology_reads_a_freshly_built_tree() {
     const CASE: &str = "controls:recloser/recloser_perm.dss";
@@ -245,33 +217,10 @@ fn topology_reads_a_freshly_built_tree() {
     assert_eq!(stale.num_loops, 0);
 }
 
-/// **D16 pin — the oracles' `AllLoopedPairs` is the *window scan* of the port's
-/// own candidate sequence, and that scan drops real pairs.**
-///
-/// Upstream reduces its candidate sequence by scanning the flat name buffer in
-/// overlapping windows (`i := i + 1` over `(TStr[i-1], TStr[i])`; r4133
-/// `Version8/Source/DDLL/DTopology.pas:286-296`, capi 0.14.5
-/// `CAPI_Topology.pas:180-190`) while the comment two lines above says "see if
-/// we already found this pair" — so a genuinely new candidate that happens to
-/// equal a *straddling* window `(b_j, a_{j+1})` is dropped. Intent contradicts
-/// behaviour ⇒ upstream defect (coordinator D4/D16); the port keeps the correct
-/// per-pair dedup and the live gate asserts `oracle.looped_pairs ==
-/// window_dedup(port candidates)`.
-///
-/// **Both numbers, measured on the gating channels:**
-///
-/// * `controls:combo/midi_protection.dss` (`engines: "r4133"`) — 7 candidates,
-///   port **5** pairs, r4133 **4**; the lost pair is
-///   `(Transformer.rbank2, Line.rb_bb11)`, the window `(TStr[3], TStr[4])` at
-///   the moment of its check (`tmp/g17/r4133_topo.json`).
-/// * `solvable_now:…/LVTestCaseNorthAmerican/Master.dss` (`engines: "both"`) —
-///   1105 candidates, port **1025** pairs, capi and r4133 **968** each, byte
-///   identical to one another (`tmp/g17/capi_topo_merged.json`,
-///   `tmp/g17/r4133_topo.json`); `NumLoops` 552 on all three.
-///
-/// In both cases the window scan applied to the port's own candidates returns
-/// the oracle's list exactly — so the whole divergence is that one defect and
-/// nothing else in the walk (order, `IsLoopedHere`, `LoopLineObj`) differs.
+/// The OpenDSS engines' `AllLoopedPairs` is a window scan of this engine's own
+/// candidate sequence, which drops a new pair equal to a straddling window (an
+/// OpenDSS bug). The window scan of this engine's candidates reproduces the
+/// OpenDSS list exactly, so that bug is the whole divergence.
 #[test]
 fn looped_pairs_lose_the_straddling_window() {
     const CASE: &str = "controls:combo/midi_protection.dss";

@@ -8,20 +8,15 @@
 //! current; its single terminal attaches to the switched element's terminal bus
 //! (`RecalcElementData`).
 //!
-//! **Per-phase state model (RP3.7, EPRI r4133 authority).** r4133 keeps the
-//! switch state per phase — `FPresentState`/`FNormalState : pStateArray`
-//! (`Version8/Source/Controls/SwtControl.pas:37-38`, `StateArray =
-//! Array[1..SWTCONTROLMAXDIM=6] of EControlAction`, `:14-19`), settable
-//! phase-by-phase from a quoted list or ganged from a bare token
-//! (`InterpretSwitchState`, `:410-482`), each phase driving its own conductor
-//! (`set_States` `:532-549`, `RecalcElementData` `:347-355`), and rendered one
-//! token per controlled-element phase (`:573-623`). The port held one scalar
-//! per field until RP3.7 A1 replaced it with these arrays; A2 flipped the
-//! property surface to the r4133 per-phase render (`Normal`/`State` are
-//! `MappedStringEnumArray`s looping the LIVE controlled-element phase count)
-//! and to the r4133 name-based lock rule (a locked `normal=` write applies,
-//! locked `state=`/`action=` do not — probe transcript `tmp/rp37/probe.md`
-//! §10 is the implementation input).
+//! **Per-phase state model.** The switch state is kept per phase
+//! (`FPresentState`/`FNormalState`, `StateArray =
+//! Array[1..SWTCONTROLMAXDIM=6] of EControlAction`), settable phase-by-phase
+//! from a quoted list or ganged from a bare token (`InterpretSwitchState`), each
+//! phase driving its own conductor, and rendered one token per
+//! controlled-element phase. `Normal`/`State` are `MappedStringEnumArray`s
+//! looping the LIVE controlled-element phase count, and the lock rule is
+//! name-based: a locked `normal=` write applies, locked `state=`/`action=` do
+//! not.
 //!
 //! **The write seam.** `Normal`/`State` take the RAW value through
 //! [`DssObject::set_enum_array_raw`](crate::obj::base::DssObject::set_enum_array_raw)
@@ -36,16 +31,15 @@
 //! `was_quoted` false and the class reconstructs the quoted case from the value
 //! itself ([`SwtControl::value_implies_quoted`]).
 //!
-//! **Bound decision (probe §10):** r4133's `Create` allocates `FNPhases` (=3)
-//! entries (`:299-305`) yet reads/writes up to 6 — a latent upstream heap OOB
-//! absorbed by FastMM (measured live on a 4-phase controlled element, probe
-//! P2(iv-b)). The port keeps all six slots in-bounds and initialized all-CLOSED
-//! like `Create`'s initialized slots: observables (render token count = the
-//! controlled element's `NPhases`, per-phase drive of each conductor, ganged
-//! drive) stay r4133-exact, the OOB is not reproduced. The 5-token per-phase
-//! parse cap matches r4133 too, but it is r4133's `:461` off-by-one (upstream
-//! report 75), still reproduced until RETRO_FIXES RF-D01-01 AC3-1 fixes it
-//! with the ordinal twin `set_enum_array`. The render count holds up to six
+//! **Bound.** r4133's `Create` allocates `FNPhases` (=3) entries yet
+//! reads/writes up to 6, a latent OpenDSS heap OOB. This engine keeps all six
+//! slots in-bounds and initialized all-CLOSED like `Create`'s initialized slots:
+//! observables (render token count = the controlled element's `NPhases`,
+//! per-phase drive of each conductor, ganged drive) stay r4133-exact, the OOB is
+//! not reproduced. The 5-token per-phase parse cap matches r4133 too, but it is
+//! an r4133 off-by-one (OpenDSS report 75) that this engine still reproduces, a
+//! known defect to fix together with the ordinal twin `set_enum_array`. The
+//! render count holds up to six
 //! phases only: past six,
 //! r4133's uncapped getters read beyond the six-slot `StateArray` itself, which
 //! is not reproduced either ([`SwtControl::state_size`] clips at six).
@@ -60,14 +54,14 @@
 //! after the edit — equivalent because nothing reads the target in between and
 //! the end-of-Edit drive is the last one in both engines.
 //!
-//! That equivalence has **one exception**, deliberately not reproduced (RP3.7
-//! FIX-A1, verify-A1 finding F6): a mid-edit `switchedobj=` re-point. r4133's
+//! That equivalence has **one exception**, deliberately not reproduced: a
+//! mid-edit `switchedobj=` re-point. r4133's
 //! `set_States` drives whatever `ControlledElement` currently is, and
 //! `RecalcElementData` re-points it only at the END of `Edit` (`:234`), so
 //! `edit swtcontrol.x switchedobj=line.b state=open` opens line.**a** (the
 //! element it no longer controls, left open) *and* line.b. The port resolves
 //! `switchedobj=` first and drives only the new target. Operating an element
-//! you have just stopped controlling is an upstream bug, not a semantic — no
+//! you have just stopped controlling is an OpenDSS bug, not a semantic — no
 //! corpus deck writes both properties in one edit.
 //!
 //! Concern split mirrors the other controls: this file holds the property
@@ -102,7 +96,7 @@ pub mod prop {
     pub const NORMAL: usize = 6;
     pub const STATE: usize = 7;
     pub const RESET: usize = 8;
-    /// r4133 informational continuous rating (WP-U2.4). Not used in power flow or
+    /// r4133 informational continuous rating. Not used in power flow or
     /// reporting; hidden from the 0.14.5-pinned full-enumeration surfaces.
     pub const RATED_CURRENT: usize = 9;
     // TCktElementClass tail:
@@ -148,27 +142,24 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::mapped_string_enum("Action", enums.swt_control_action).flags(PropFlags::REDUNDANT),
         PropDef::boolean("Lock"),
         PropDef::double("Delay").flags(PropFlags::UNITS_S),
-        // Normal/State: the r4133 per-phase state arrays (RP3.7). The render
-        // loops the controlled-element phase count as r4133 does
-        // (`GetPropertyValue` `:589-599/:600-610`), read off the `ctrl_snap`
-        // snapshot (staleness: `ORPHANED_GAPS.md` §1.13), up to six phases (the
-        // `state_size` clip past six); the write takes the raw
-        // value through `set_enum_array_raw` → `interpret_switch_state`
-        // (ganged-vs-per-phase keyed on WasQuoted, first-char token match,
-        // 5-token per-phase cap — `:410-482`; the cap is r4133's `:461`
-        // off-by-one, upstream report 75, still reproduced until RETRO_FIXES
-        // RF-D01-01 AC3-1).
+        // Normal/State: the per-phase state arrays. The render loops the
+        // controlled-element phase count, read off the `ctrl_snap` snapshot
+        // (stale after a later phase-count edit), up to six phases (the
+        // `state_size` clip past six). The write takes the raw value through
+        // `set_enum_array_raw` → `interpret_switch_state` (ganged-vs-per-phase
+        // keyed on WasQuoted, first-char token match, 5-token per-phase cap,
+        // an r4133 off-by-one this engine still reproduces).
         PropDef::mapped_string_enum_array("Normal", enums.swt_control_state)
             .flags(PropFlags::DYNAMIC_DEFAULT),
         PropDef::mapped_string_enum_array("State", enums.swt_control_state)
             .flags(PropFlags::NO_DEFAULT),
         // Pascal BooleanActionProperty (DoReset); the getter is always 0.
         PropDef::boolean("Reset"),
-        // r4133 `RatedCurrent` (SwtControl.pas props 8->9): informational
-        // continuous rating, default 0.0, "Not used internally for either power
-        // flow or reporting." WP-U2.5 brought the SwtControl `Dump commands` block
-        // to its full r4133 9-prop shape (self-referential golden), so it no longer
-        // hides from the full-enum surface; `compare_all_properties` still excludes
+        // r4133 `RatedCurrent`: informational continuous rating, default 0.0,
+        // "Not used internally for either power flow or reporting." The
+        // SwtControl `Dump commands` block has the full r4133 9-prop shape
+        // (self-referential golden), so it does not hide from the full-enum
+        // surface. `compare_all_properties` still excludes
         // it from the 0.14.5 property-table walk via the name-based PROPS_015X row.
         PropDef::double("RatedCurrent").flags(PropFlags::FINITE_RATING),
         // TCktElementClass tail:
@@ -228,7 +219,7 @@ pub struct SwtControl {
     /// capi-lane `swtcontrol_lock.dss`) still reads. r4133 has no such field
     /// (its Sample body is commented out, `:484-507`); the port syncs it as the
     /// *ganged view* of the per-phase arrays so the queue branch stays inert
-    /// after `State`/`Action` writes (the D6 invariant the corpus decks pin).
+    /// after `State`/`Action` writes (an invariant the corpus decks pin).
     current_action: ControlAction,
     /// `LockCommand` (CTRL_NONE / CTRL_LOCK / CTRL_UNLOCK) — queued on `Sample`.
     lock_command: ControlAction,
@@ -283,8 +274,7 @@ impl SwtControl {
     /// corpus deck writes ganged (all slots equal), so the view is exact there;
     /// it feeds the 0.14.5 queue machinery (`sample`) and the scalar `Action`
     /// readback glue only. On a per-phase (heterogeneous) state it is not
-    /// exact, and the queue then ganged-rewrites every slot: `ORPHANED_GAPS.md`
-    /// §1.16.
+    /// exact, and the queue then ganged-rewrites every slot.
     fn ganged_view(arr: &[ControlAction; ARR]) -> ControlAction {
         arr[1]
     }
@@ -300,31 +290,24 @@ impl SwtControl {
 
     /// The render/drive bound: the **live** controlled-element phase count.
     ///
-    /// r4133 renders one token per `ControlledElement.NPhases`
-    /// (`GetPropertyValue` `:591` Normal / `:602` State) and drives / resets
-    /// `1 .. Min(SWTCONTROLMAXDIM, ControlledElement.Nphases)`
-    /// (`RecalcElementData` `:346`, `Reset` `:633`); with `ControlledElement =
-    /// NIL` both getters return the bare `'[]'` (`:589`/`:600`, measured on the
-    /// orphan control — `tmp/rp37/out_nil_controlled.txt`). The port reads the
-    /// count off the controlled-element snapshot `ctrl_snap`, which only
+    /// r4133 renders one token per `ControlledElement.NPhases` and drives /
+    /// resets `1 .. Min(SWTCONTROLMAXDIM, ControlledElement.Nphases)`. With
+    /// `ControlledElement = NIL` both getters return the bare `'[]'`. This engine
+    /// reads the count off the controlled-element snapshot `ctrl_snap`, which only
     /// `set_object_ref` (`accessors.rs`, each `switchedobj=` resolution)
     /// writes, `make_like` copies and `make_pos_sequence` refreshes from the
-    /// live `PosSeqCtx` — so after `makeposseq` the render follows the
-    /// now-1-phase element exactly as r4133's live loop does
-    /// (`tmp/rp37/probe.md` §6/§11.4). [`SwtControl::recalc`] only reads it:
-    /// a later phase-count edit of the switched element is not seen until the
-    /// ref is re-resolved (`ORPHANED_GAPS.md` §1.13).
+    /// live `PosSeqCtx`, so after `makeposseq` the render follows the
+    /// now-1-phase element exactly as r4133's live loop does.
+    /// [`SwtControl::recalc`] only reads it: a later phase-count edit of the
+    /// switched element is not seen until the ref is re-resolved.
     ///
-    /// The `min(SW_MAX)` clip is the module-doc bound decision. Up to six
-    /// phases it is invisible: r4133 loops the element's raw `NPhases` past its
-    /// 3-entry allocation (probe P2(iv-b) renders four tokens off a 4-phase
-    /// element) and the port answers the same count from its own six
-    /// initialized slots. Past six it is a recorded divergence: r4133's 7th
-    /// token reads `FPresentState^[7]` beyond `StateArray =
-    /// Array[1..SWTCONTROLMAXDIM]` itself (`:14`/`:19`), an out-of-bounds read
-    /// never reproduced (2026-08-02 policy), so the port renders six tokens
-    /// where r4133 renders `NPhases` (seven, with warning #384 from `:334` on
-    /// every edit, on a 7-phase line: RF-D01-01 probe (b)). Pinned by
+    /// The `min(SW_MAX)` clip is the module-doc bound. Up to six phases it is
+    /// invisible: r4133 loops the element's raw `NPhases` past its 3-entry
+    /// allocation and this engine answers the same count from its own six
+    /// initialized slots. Past six, r4133's 7th token reads beyond `StateArray =
+    /// Array[1..SWTCONTROLMAXDIM]` itself, an out-of-bounds read never
+    /// reproduced, so this engine renders six tokens where r4133 renders
+    /// `NPhases`. Pinned by
     /// `tests::a_seven_phase_controlled_element_renders_six_tokens`.
     pub(crate) fn state_size(&self) -> usize {
         if self.ccd.controlled_element.is_none() {
@@ -346,9 +329,8 @@ impl SwtControl {
     /// bracket/quote (nothing strips it on these seams), or one that holds more
     /// than one token. A single bare token is the only genuinely ambiguous
     /// case, and it is resolved as *ganged* — the r4133 spelling every corpus
-    /// deck writes (`normal=closed`, `action=o`, probe §7 sweep). The
-    /// distinction that ambiguity loses (`state=(open)` writes phase 1 only —
-    /// measured on the r4133 DLL, `tmp/rp37/out_a2a.txt` A2a(1)) is carried
+    /// deck writes (`normal=closed`, `action=o`). The
+    /// distinction that ambiguity loses (`state=(open)` writes phase 1 only) is carried
     /// faithfully wherever the outer parser runs, i.e. every DSS script.
     fn value_implies_quoted(value: &str) -> bool {
         let v = value.trim_start();
@@ -369,26 +351,23 @@ impl SwtControl {
     /// (`Version8/Source/Controls/SwtControl.pas:410-482`), the r4133 write
     /// mechanics for all three state properties:
     ///
-    /// - lock guard (`:416-417`): while `Locked`, a write whose property name
+    /// - lock guard: while `Locked`, a write whose property name
     ///   starts with `a` (Action) or `s` (State) exits without touching
     ///   anything; `Normal` (starts with `n`) still applies — "Only allowed to
-    ///   change normal state if locked" (probe P3 confirmed it verbatim on the
-    ///   r4133 DLL; RP3.7 A2 made this the observable property rule in BOTH
-    ///   lanes — 0.14.5's `ConditionalReadOnly` refuses all three, a deliberate
-    ///   lane divergence with zero corpus exposure, probe §7 sweep).
+    ///   change normal state if locked". This is the property rule in BOTH
+    ///   lanes, where 0.14.5's `ConditionalReadOnly` refuses all three: a
+    ///   deliberate lane divergence with zero corpus exposure.
     /// - `Action` is ALWAYS ganged (`:419-429`), quoted or not, matching the
     ///   whole param's first character.
-    /// - `State`/`Normal`: ganged when the value was NOT quoted (`:433-451`,
-    ///   slots 1..6); quoted values go phase-by-phase through the AuxParser
-    ///   (`:453-480`) — at most FIVE tokens honored (loop bound
-    ///   `i < SWTCONTROLMAXDIM`, `:461`: an r4133 off-by-one, upstream report
-    ///   75, still reproduced until RETRO_FIXES RF-D01-01 AC3-1), unlisted
-    ///   slots unchanged.
+    /// - `State`/`Normal`: ganged when the value was NOT quoted (slots 1..6);
+    ///   quoted values go phase-by-phase through the AuxParser — at most FIVE
+    ///   tokens honored (loop bound `i < SWTCONTROLMAXDIM`, an r4133
+    ///   off-by-one, OpenDSS report 75, that this engine still reproduces, a
+    ///   known defect), unlisted slots unchanged.
     /// - tokens match on the first character only via [`match_state_token`];
     ///   a non-matching token leaves its slot unchanged (no else arm).
     ///
-    /// **Two r4133 defects are deliberately NOT reproduced** (2026-08-02
-    /// policy; both recorded by RP3.7 FIX-A1, verify-A1 findings F4/F5):
+    /// **Two r4133 defects are deliberately NOT reproduced:**
     ///
     /// 1. *The `Else`-without-`Begin` fall-through* (`:452-455`). Only
     ///    `AuxParser.CmdString := param` is under the `Else // process phase by
@@ -458,13 +437,12 @@ impl SwtControl {
                     parser.next_param(&vars); // name slot — ignored, Pascal `:457`
                     let mut token = parser.make_string(&vars);
                     let mut i = 1usize;
-                    // `:461` `While (Length(DataStr2)>0) and (i<SWTCONTROLMAXDIM)`
-                    // — a 6th token is silently dropped (probe §11.2). That
-                    // bound is an r4133 off-by-one (upstream report 75: the
-                    // ganged arm `:435` and the type `:19` span six slots),
-                    // still reproduced here and in the ordinal twin
-                    // `set_enum_array` until RETRO_FIXES RF-D01-01 AC3-1 fixes
-                    // both together.
+                    // `While (Length(DataStr2)>0) and (i<SWTCONTROLMAXDIM)`: a
+                    // 6th token is silently dropped. That bound is an r4133
+                    // off-by-one (OpenDSS report 75: the ganged arm and the
+                    // state array span six slots). This engine still
+                    // reproduces it here and in the ordinal twin
+                    // `set_enum_array`, a known defect to fix in both together.
                     while !token.is_empty() && i < SW_MAX {
                         if let Some(state) = match_state_token(&token) {
                             if prop == SwtStateProp::State {
@@ -497,7 +475,7 @@ impl SwtControl {
         }
     }
 
-    /// Queue the per-phase `RecalcElementData` Closed[i] drive
+    /// Queue the per-phase `RecalcElementData` `Closed[i]` drive
     /// (`SwtControl.pas:347-355`): one entry per controlled-element phase,
     /// `closed = FPresentState^[i] <> CTRL_OPEN` (the Pascal `else` branch
     /// closes for every non-OPEN ordinal). Deferred as a [`RefAction`] — the
@@ -524,51 +502,28 @@ impl SwtControl {
     /// (if any) and the pending switch action onto the control queue at the current
     /// time delay. Reads only the control's own state — no monitored quantity.
     ///
-    /// NOTE (r4133-fidelity gap, out of the r4088→r4133 delta): the Delphi engine
-    /// (r4088 *and* r4133) comments out this ENTIRE body — "Removing because action
-    /// (redirects to state) and lock are instantaneous" — so on r4133 `Sample`
-    /// queues nothing. This port keeps the FPC 0.14.5 body because it is pinned by
-    /// the default (capi015 = FPC 0.14.5) oracle: `swtcontrol_lock.dss`
-    /// (`compare_ctrlqueue`) verifies the spurious `CTRL_LOCK` push and so cannot
-    /// flip to `oracle: "r4133"`. The D6 fix makes the action path inert on r4133's
-    /// action/state decks (`current_action` tracks the per-phase arrays' ganged
-    /// view after an immediate force ⇒ the action-queue branch is false), but the
-    /// LOCK branch still queues a `CTRL_LOCK` that r4133 does not — a latent gap
-    /// blocking future r4133 lock-path coverage, to be closed when this Sample body
-    /// is retired.
+    /// **Known defect.** r4133 comments this entire body out ("Removing because
+    /// action (redirects to state) and lock are instantaneous"), so on r4133
+    /// `Sample` queues nothing. This engine keeps the dss_capi 0.14.5 body
+    /// because `controls/swtcontrol/swtcontrol_lock.dss` is gated on
+    /// `capi_v0145` with `compare_ctrlqueue`, which pins its `CTRL_LOCK` push.
+    /// `current_action` tracks the per-phase arrays' ganged view, so the action
+    /// branch stays inert after `State`/`Action` writes, but the lock branch
+    /// queues a `CTRL_LOCK` that r4133 does not.
     ///
-    /// **A second, LIVE channel (RP3.7 FIX-A1, verify-A1 finding F2 — measured,
-    /// not latent):** 0.14.5 maps all three state properties onto the single
-    /// `CurrentAction` field, so the retained glue
+    /// The action branch also arms on a plain `normal=open`: the retained glue
     /// (`side_effects(NORMAL)` → `current_action = ganged_view(normal_state)`)
-    /// leaves `current_action = Open` while `present_state` is still `Close`
-    /// after a plain `normal=open` — exactly this method's arming condition.
-    /// The port then queues the action and **opens a switch r4133 never
-    /// touches**: on the `swtcontrol_lock`-shaped deck with `lock=no`,
-    /// `normal=open` + duty steps opens it three steps later with an
-    /// `Action=OPENED` event (`tmp/rp37/out_port_probe10.txt`), where the
-    /// r4133 DLL keeps `[closed, closed, closed, ]` for every step and logs
-    /// nothing (`tmp/rp37/out_fixa1.txt` §F2). So the "queue branch stays
-    /// inert" invariant holds for `State`/`Action` writes only. A **locked**
-    /// `normal=` arms it too, since RP3.7 (a2) applies that write per r4133
-    /// `:416-417` where the scalar era refused it — the switch stays shut
-    /// (`do_pending_action` is `!locked`-guarded) but the push happens.
-    ///
-    /// Corpus exposure is zero (every corpus `normal=` is a ganged
-    /// `normal=closed` over an all-closed present state — probe §7 sweep), which
-    /// is why this is recorded rather than fixed here. The one blocking channel
-    /// is `controls/swtcontrol/swtcontrol_lock.dss`: it is gated on
-    /// `capi_v0145` with `compare_ctrlqueue`, so the capi lane pins the spurious
-    /// `CTRL_LOCK` push this body makes, and retiring the body means re-gating
-    /// that deck onto `r4133` — giving up the only capi deck that both probes
-    /// and property-compares a SwtControl, and retiring one of the five ledger
-    /// entries RP3.7 landed. That is a channel decision, not a mechanical edit,
-    /// and RP3.7 chose not to take it. The capi015 props golden's `Action`
-    /// readback is **not** a second blocker: it reads `current_action`
-    /// (`accessors::get_i32(ACTION)`), which the property side effects
-    /// maintain and neither `sample` nor `do_pending_action` writes. Owner:
-    /// `ORPHANED_GAPS.md` §1.16. Tripwire:
-    /// `tests::sample_arms_on_a_normal_write_the_retained_capi_channel`.
+    /// leaves `current_action = Open` while `present_state` is still `Close`,
+    /// so this engine queues the action and **opens a switch r4133 never
+    /// touches**. A **locked** `normal=` arms it too. The switch then stays shut
+    /// (`do_pending_action` is `!locked`-guarded) but the push happens. No
+    /// corpus `normal=` reaches either case (every one is a ganged
+    /// `normal=closed` over an all-closed present state). Retiring the body
+    /// means re-gating `swtcontrol_lock.dss` onto `r4133`. The capi015 props
+    /// golden's `Action` readback is **not** a second blocker: it reads
+    /// `current_action` (`accessors::get_i32(ACTION)`), which the property side
+    /// effects maintain and neither `sample` nor `do_pending_action` writes.
+    /// Tripwire: `tests::sample_arms_on_a_normal_write_the_retained_capi_channel`.
     pub(crate) fn sample(&mut self, ctx: &mut CtrlCtx) {
         if self.lock_command != ControlAction::None {
             ctx.queue.push_delay(
@@ -679,7 +634,7 @@ impl SwtControl {
     /// ControlledElement.Nphases)`. Returns whether a force was applied (the
     /// caller raises `SystemYChanged`).
     ///
-    /// The force is **unconditional** when not locked — Pascal's `Closed[i] := …`
+    /// The force is **unconditional** when not locked — Pascal's `` Closed[i] := … ``
     /// raises `SystemYChanged` every time, and gating on an all-or-nothing change
     /// check (`terminal_all_phases_closed`) would miss a real change on a
     /// *partially*-open terminal (one phase closed, the rest open → "all closed"

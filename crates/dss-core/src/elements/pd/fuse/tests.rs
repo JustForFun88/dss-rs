@@ -163,7 +163,7 @@ fn default_is_3ph_closed_fuse() {
     assert_eq!(f.ccd.cd.nterms, 1);
     assert_eq!(f.ccd.element_terminal, 1);
     assert_eq!(f.monitored_element_terminal, 1);
-    // r4133 (WP-U2.1): default curve `none` (never blows), RatedCurrent 0,
+    // r4133: default curve `none` (never blows), RatedCurrent 0,
     // CurveMultiplier 1.0.
     assert_eq!(f.fuse_curve_name, "none");
     assert_eq!(f.rated_current, 0.0);
@@ -215,8 +215,8 @@ fn sample_disarms_when_current_drops_below_pickup() {
 
 #[test]
 fn sample_divides_current_by_curve_multiplier() {
-    // r4133 (WP-U2.1): the divisor is `CurveMultiplier`, NOT the (now
-    // informational) `RatedCurrent`. 5 A / CurveMultiplier 10 = 0.5 pu multiple —
+    // r4133: the divisor is `CurveMultiplier`, NOT the (informational)
+    // `RatedCurrent`. 5 A / CurveMultiplier 10 = 0.5 pu multiple —
     // below the first curve point (c[0] = 1) → no operation. A dropped or inverted
     // divisor would push the multiple ≥ 1 and (wrongly) arm. RatedCurrent is set
     // small here to prove it is NOT consulted (the old code divided by it → would
@@ -235,7 +235,7 @@ fn sample_divides_current_by_curve_multiplier() {
 
 #[test]
 fn default_fuse_never_blows() {
-    // r4133 breaking default (WP-U2.1): a default-constructed fuse has no curve
+    // r4133 default: a default-constructed fuse has no curve
     // (`none`) so `Sample` never arms, even under massive overcurrent.
     let mut f = Fuse::new("f1");
     f.ctrl_snap = Some(crate::elements::control::control_elem::RefSnapshot {
@@ -314,7 +314,7 @@ fn reset_with_restores_each_phase_to_normal() {
     assert!(f.ready_to_blow[..3].iter().all(|&b| !b));
 }
 
-/// Fail-on-regression guard for the WP7.2 step-2a dirty edge. The seed is chosen
+/// Fail-on-regression guard for the reset dirty edge. The seed is chosen
 /// so the all-or-nothing aggregate `terminal_all_phases_closed` reads **the same
 /// (false) before and after** the reset, yet real phases flip — exactly where a
 /// reintroduced `was_all_closed != want_all_closed` gate would compute
@@ -408,7 +408,7 @@ fn make_like_copies_fuse_state() {
     assert_eq!(f.ccd.element_terminal, 2);
     assert_eq!(f.monitored_element_terminal, 2);
     assert_eq!(f.rated_current, 25.0);
-    // r4133 (WP-U2.1): CurveMultiplier + InterruptingRating are copied.
+    // r4133: CurveMultiplier + InterruptingRating are copied.
     assert_eq!(f.curve_multiplier, 3.0);
     assert_eq!(f.interrupting_rating, 12000.0);
     // Pascal `TFuseObj.MakeLike` copies neither `DelayTime` — it stays at the
@@ -441,7 +441,7 @@ fn default_state_arrays_dump_per_phase() {
     };
     assert_eq!(dump(&mut dss, "Normal"), "[closed, closed, closed, ]");
     assert_eq!(dump(&mut dss, "State"), "[closed, closed, closed, ]");
-    // r4133 (WP-U2.1): the default fuse curve is `none` (never blows), rendered
+    // r4133: the default fuse curve is `none` (never blows), rendered
     // as the literal `none` (Pascal `if FuseCurve <> nil then Name else 'none'`).
     assert_eq!(dump(&mut dss, "FuseCurve"), "none");
     // SwitchedObj defaults to the monitored element.
@@ -502,7 +502,7 @@ fn fuse_blows_phases_on_overcurrent() {
         "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
         "new line.l1 bus1=src bus2=b phases=3 r1=0.3 x1=0.6 length=1",
         "new load.ld bus1=b phases=3 kv=12.47 kw=5000",
-        // r4133 (WP-U2.1): an explicit curve is now required to blow (default is
+        // r4133: an explicit curve is required to blow (default is
         // `none`); CurveMultiplier defaults to 1.0 → the full current hits the
         // tlink tail → trips.
         "new fuse.f1 monitoredobj=line.l1 fusecurve=tlink",

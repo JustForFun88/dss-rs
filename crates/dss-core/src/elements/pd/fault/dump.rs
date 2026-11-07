@@ -16,10 +16,10 @@
 //! (`Transformer.pas:1276`, `AutoTrans.pas:1307`, `XfmrCode.pas:663`) all write
 //! `NumPropsThisClass + 1`, and no class prints a property twice on purpose.
 //! Both gating oracles carry the reprint and both lanes now drop it
-//! (`GOLDEN_REBASE_PLAN.md` G2.2c; `issue-13`); `golden_reports`'
-//! `fault_dump_expected` removes the second line of each pair from the oracle
-//! goldens, so the `dump_fault`/`dump_fault_gmatrix`/`dump3_*` compares stay
-//! oracle-anchored in both lanes.
+//! (`issue-13`); `golden_reports`' `fault_dump_expected` removes the second
+//! line of each pair from the oracle goldens, so the
+//! `dump_fault`/`dump_fault_gmatrix`/`dump3_*` compares stay oracle-anchored in
+//! both lanes.
 
 use crate::report::format::fixed;
 use crate::report::save::dump::{self, DumpCtx};

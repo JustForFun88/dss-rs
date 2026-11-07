@@ -1,20 +1,14 @@
-//! WP-U1.4 (wt-u14cond) — the `Conductors` object-reference-array (Line prop 34,
-//! LineGeometry prop 20), the 3-class `(WireData|CNData|TSData)` list.
+//! The `Conductors` object-reference-array (Line prop 34, LineGeometry prop 20),
+//! the 3-class `(WireData|CNData|TSData)` list.
 //!
-//! Text `Conductors=` was reproduced as **upstream-broken** from dss_capi 0.15.x
-//! (whose `TProxyClass.GetDSSClass` compared the lowercased class token against
-//! the original-case `TargetClassNames`, so every class-prefixed item errored
-//! #10103 "Invalid class"). The 0.15.x-adoption sweep proved this is a
-//! capi015-ONLY breakage: EPRI r4133 has no `TProxyClass` — it parses
-//! `conductors=` NATIVELY with a **case-insensitive** `LowerCase(CondClass)`
-//! dispatch AND solves (own epri-worker probe: `Conductors=[WireData.w wiredata.w]`
-//! → converged, Line.l1 I1=(21.801759, 0.027069)). The port adopts r4133: a
-//! class-prefixed item now resolves + solves; a bare item still #10103s; a
-//! `Conductors=` before the spacing keeps the port's clean #402 (r4133 hits a
-//! #303 AV — UB, not reproduced); an all-`none` geometry keeps the port's clean
-//! reject (r4133 #303 AV — UB, own probe). See `parse_conductor_proxy`
-//! (`obj/props/class_props/parse.rs`) and DIVERGENCES.md §"Line/LineGeometry
-//! Conductors".
+//! dss_capi 0.15.x refuses every class-prefixed item ("Invalid class", a
+//! case-sensitive class match, an OpenDSS bug), while r4133 parses
+//! `conductors=` with a case-insensitive class dispatch and solves. This engine
+//! follows r4133: a class-prefixed item resolves and solves, a bare item is
+//! refused (#10103), a `Conductors=` before the spacing is refused cleanly
+//! (#402, where r4133 crashes), and an all-`none` geometry is refused cleanly
+//! (where r4133 crashes as well). See `parse_conductor_proxy`
+//! (`obj/props/class_props/parse.rs`).
 
 use dss_core::exec::Dss;
 use num_complex::Complex64;

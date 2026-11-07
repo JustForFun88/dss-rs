@@ -4,7 +4,7 @@
 //! terminal of a circuit element; it has **no** Yprim (`CalcYPrim` is empty) and
 //! its terminal currents are always zero.
 //!
-//! Phase 6 (WP6.7) ports the property surface, `RecalcElementData`/`RecalcVbase`/
+//! This module holds the property surface, `RecalcElementData`/`RecalcVbase`/
 //! `ClearSensor`/`UpdateCurrentVector`/`ZeroSensorArrays`, `RotatePhases`,
 //! `TakeSample` and the WLS error getters. The behaviorally load-bearing path is
 //! the inherited `CalcAllocationFactors` (`MeterElement.pas`, already ported)

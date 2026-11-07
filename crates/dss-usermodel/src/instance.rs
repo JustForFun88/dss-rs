@@ -2,17 +2,16 @@
 //! function interfaces) and [`CapControlInstance`] (the 7-function control
 //! interface), driving the record shuttle of ABI doc §2 over guest memory.
 //!
-//! Template: the typst `PluginInstance` (`.inputs/typst/crates/
-//! typst-library/src/foundations/plugin.rs:413-555`) — one `Store` + wasm
+//! Template: the typst `PluginInstance` (`typst-library`
+//! `foundations/plugin.rs`) — one `Store` + wasm
 //! instance per binding, marshalling through the guest's exported memory. On
 //! top of it: per-call fuel budgets, the store memory limiter, guest-owned
 //! `dss_alloc` buffers held for the instance's lifetime, and the unconditional
 //! record write-back (the Pascal contract lets the model mutate GenVars and
 //! DynaVars — ABI doc §2).
 //!
-//! Instances are per-element-owned (plan §2.7): no global registry, no shared
-//! `Store`; `wasmi::Store` is `Send`, so the MULTITHREADING M3
-//! disjoint-`&mut` pattern holds.
+//! Instances are per-element-owned: no global registry, no shared `Store`.
+//! `wasmi::Store` is `Send`, so the disjoint-`&mut` pattern holds.
 
 use num_complex::Complex64;
 use wasmi::{Store, TrapCode, TypedFunc};
@@ -40,7 +39,7 @@ pub struct Shuttle<'a> {
     pub gen_vars: Option<&'a mut GeneratorVars>,
     /// `TDynamicsRec` mirror — every 15/13-fn interface shares it.
     pub dyn_rec: &'a mut DynamicsRec,
-    /// The per-call context snapshot (plan §2.3 tier A; consumed by the call).
+    /// The per-call context snapshot (tier A; consumed by the call).
     pub ctx: Box<dyn Callbacks>,
 }
 
@@ -67,7 +66,7 @@ pub struct WindGenShuttle<'a> {
     pub wind_gen_vars: &'a mut WindGenVars,
     /// `TDynamicsRec` mirror.
     pub dyn_rec: &'a mut DynamicsRec,
-    /// The per-call context snapshot (plan §2.3 tier A; consumed by the call).
+    /// The per-call context snapshot (tier A; consumed by the call).
     pub ctx: Box<dyn Callbacks>,
 }
 
@@ -176,7 +175,7 @@ struct Sandbox {
 impl Sandbox {
     fn new(host: &UserModelHost) -> Result<Self, UserModelError> {
         let mut store = Store::new(&host.engine, CallData::new(host.config.memory_cap_bytes));
-        // The store limiter enforcing the linear-memory cap (plan §2.1;
+        // The store limiter enforcing the linear-memory cap (
         // `trap_on_grow_failure` makes a breach a deterministic trap
         // classified as `MemoryCapExceeded`).
         store.limiter(|data| &mut data.limits);
@@ -326,7 +325,7 @@ impl Sandbox {
         std::mem::take(&mut self.store.data_mut().effects)
     }
 
-    /// Enable the WP-WM.6 deferred DSS-command mechanism
+    /// Enable the deferred DSS-command mechanism
     /// (`do_dss_command`/`get_result_str`) — only a host that can run the
     /// drained commands through the executive should opt in (ABI §4 rows 7/32).
     fn enable_dss_commands(&mut self) {
@@ -609,12 +608,12 @@ impl UserModelInstance {
     }
 
     /// Drain the tier-B effects queued by guest calls since the last drain
-    /// (the engine applies them immediately after each call — plan §2.3).
+    /// (the engine applies them immediately after each call).
     pub fn drain_effects(&mut self) -> Vec<Effect> {
         self.sandbox.drain_effects()
     }
 
-    /// Opt into the WP-WM.6 deferred DSS-command mechanism
+    /// Opt into the deferred DSS-command mechanism
     /// (`do_dss_command`/`get_result_str`, ABI §4 rows 7/32). Only a host that
     /// can run [`Self::drain_dss_commands`] through the executive and feed the
     /// result back via [`Self::set_result_str`] before the next guest call
@@ -1021,7 +1020,7 @@ impl CapControlInstance {
         self.sandbox.drain_effects()
     }
 
-    /// Opt into the WP-WM.6 deferred DSS-command mechanism (see
+    /// Opt into the deferred DSS-command mechanism (see
     /// [`UserModelInstance::enable_dss_commands`]).
     pub fn enable_dss_commands(&mut self) {
         self.sandbox.enable_dss_commands();

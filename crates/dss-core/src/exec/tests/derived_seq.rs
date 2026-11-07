@@ -1,9 +1,9 @@
-//! The three sequence element surfaces of `GOLDEN_REBASE_PLAN.md` G1.3b —
+//! The three sequence element surfaces —
 //! `CktElement.SeqCurrents`, `CktElement.SeqVoltages` and
 //! `CktElement.SeqPowers` — as they come out of
 //! [`Dss::snapshot_elements`](crate::exec::Dss::snapshot_elements).
 //!
-//! These are the sub-step's expected-value pins. The live corpus gate compares
+//! These are the expected-value pins. The live corpus gate compares
 //! the three arrays against both oracle channels case by case, at a floor that
 //! carries an extra absolute term on the `r4133` channel (that build transforms
 //! with a different 012 matrix — `Shared/mathutil.pas:302-303` + `:562-564`,
@@ -46,7 +46,7 @@ use num_complex::Complex64;
 /// The `feeder` tolerance tier — `crates/dss-test-harness/src/harness/mod.rs::tol_for`
 /// (`"feeder"`), the tier IEEE13 is gated at, restated here because a `src` unit test cannot
 /// reach the integration harness. Every band below is that tier's *derived*
-/// image (`tests/TOLERANCE_NOTES.md`), never a fresh number.
+/// image, never a fresh number.
 const FEEDER_I_ABS: f64 = 1e-5;
 const FEEDER_I_REL: f64 = 1e-7;
 const FEEDER_V_ABS: f64 = 1e-6;
@@ -66,7 +66,7 @@ const IEEE13: &str = "electricdss-tst/Version8/Distrib/IEEETestCases/13Bus/IEEE1
 /// `asymmetric/line/line_posseq_phases_asym.dss` / `controls/fuse/midi_fuse.dss`
 /// / `modes/makeposseq/makeposseq_gic.dss` are in-repo synthetic decks that
 /// write no file, so no directory guard is needed. Never `.inputs/` — the
-/// corpus tree is the one the live gate reads (CLAUDE.md).
+/// corpus tree is the one the live gate reads.
 fn compile_corpus_deck(rel: &str) -> Dss {
     let deck = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/corpus")
@@ -92,8 +92,7 @@ fn elem<'a>(snaps: &'a [ElementSnapshot], name: &str) -> &'a ElementSnapshot {
 /// (dss-python 0.15.7 / dss_capi 0.14.5 and the EPRI r4133 DLL through
 /// `crates/dss-epri`, 2026-09-05). It is deliberately NOT a corpus case: the
 /// arm is already gated live on the `modes/makeposseq/*` decks that are
-/// `capi_v0145`-gated — the channel whose slot layout is right — and adding a
-/// corpus deck is another sub-step's business (the G1.2 precedent).
+/// `capi_v0145`-gated — the channel whose slot layout is right.
 fn posseq_fixture() -> Dss {
     let mut dss = Dss::new();
     for c in [
@@ -117,8 +116,8 @@ fn posseq_fixture() -> Dss {
 
 /// The `bS` band of one sequence slot: the image of that terminal's voltage and
 /// current bands under `S = V·conj(I)·0.003`, i.e.
-/// `0.003·(bV·(|I012| + bI) + |V012|·bI)` — the second-order term included
-/// (`tests/TOLERANCE_NOTES.md` §G1.3b). `bv`/`bi` are the terminal's already
+/// `0.003·(bV·(|I012| + bI) + |V012|·bI)` — the second-order term included.
+/// `bv`/`bi` are the terminal's already
 /// gated voltage/current bands; nothing new is introduced here.
 fn power_band(bv: f64, bi: f64, v012: f64, i012: f64) -> f64 {
     0.003 * (bv * (i012 + bi) + v012 * bi)
@@ -294,13 +293,11 @@ fn seq_powers_positive_sequence_lands_in_the_positive_slot_of_each_terminal() {
     }
 }
 
-// Expected-value pin — coordinator decision **D31** (2026-09-05), taken when
-// G1.3b landed on `update`: `modes/makeposseq/makeposseq_gic.dss` is the ONE
-// corpus case that puts the 1φ-positive-sequence arm on the `r4133` channel.
-// `update` had just split the GICTransformer coverage out of
-// `makeposseq_shunt.dss` into that r4133-gated deck (coordinator decisions
-// D12/D14 — the pinned capi 0.14.5 oracle is nondeterministic on any deck that
-// instantiates a `GICTransformer`), and the deck's `solve → makeposseq → solve`
+// Expected-value pin — `modes/makeposseq/makeposseq_gic.dss` is the ONE corpus
+// case that puts the 1φ-positive-sequence arm on the `r4133` channel. The
+// GICTransformer coverage lives in that r4133-gated deck because the pinned
+// capi 0.14.5 is nondeterministic on any deck that instantiates a
+// `GICTransformer`, and the deck's `solve → makeposseq → solve`
 // tail leaves all four of its elements 1-phase in a positive-sequence circuit.
 // So r4133 reports every one of their powers in slot `t+2`, which is the defect
 // the pin above states on a synthetic fixture — here it is stated on the gated
@@ -452,11 +449,10 @@ fn the_gic_posseq_deck_keeps_every_terminal_power_in_its_positive_slot() {
 // neither 3-phase nor 1-phase-in-a-positive-sequence-circuit gets a constant
 // sentinel instead of a computation. The two engines spell it differently —
 // r4133 `DCktElement.pas:772` `cmplx(-1.0, 0)`, dss_capi 0.14.5
-// `CAPI_Alt.pas:567` `cmplx(-1.0, -1.0)` — and r4133 is the behavioral
-// authority, so the port emits `(-1, 0)`. capi's spelling is a capture-boundary
-// shape normalized in the harness comparator under the structural
-// `SeqArm::NotAvailable` predicate (never on the value), documented in
-// `tests/TOLERANCE_NOTES.md` beside the `PROPS_NORM_R4133` precedent as *not* a
+// `CAPI_Alt.pas:567` `cmplx(-1.0, -1.0)` — and where the documentation is
+// silent this engine follows r4133, so it emits `(-1, 0)`. capi's spelling is a
+// capture-boundary shape normalized in the harness comparator under the
+// structural `SeqArm::NotAvailable` predicate (never on the value), *not* a
 // tolerance.
 /// The `SeqPowers` n/A sentinel is r4133's `(-1, 0)`, not capi 0.14.5's
 /// `(-1, -1)`.
@@ -549,13 +545,13 @@ fn seq_currents_are_the_012_magnitudes_of_the_terminals_own_conductors() {
     // Leg 2 — the oracle, at the derived `feeder` band. `|I012_k|` is banded
     // against the terminal's PHASE magnitudes, not against its own (possibly
     // tiny) modulus: `X012 = Ap2s·Xph` with every `|Ap2s[k][j]| = 1/3`, so
-    // `|ΔX012_k| ≤ x_abs + x_rel·mean_j|Xph_j|` (`tests/TOLERANCE_NOTES.md`
-    // §G1.3b). Oracle (dss-python 0.15.7) for the two terminals:
+    // `|ΔX012_k| ≤ x_abs + x_rel·mean_j|Xph_j|`. Oracle (dss-python 0.15.7) for
+    // the two terminals:
     //   T1 [47.99776531189091, 523.7904956826815, 64.17306942241835]
     //   T2 [47.997763570489255, 523.7910020882374, 64.17306969317711]
     // and r4133 reads 47.99776531189064 / 523.7904959165978 / 64.17306942448099
     // for T1 — the ~2.3e-7 A gap between the two oracles is exactly the
-    // truncated-matrix term this sub-step models.
+    // truncated-matrix term.
     const ORACLE_I012: [[f64; 3]; 2] = [
         [47.99776531189091, 523.7904956826815, 64.17306942241835],
         [47.997763570489255, 523.7910020882374, 64.17306969317711],
@@ -577,7 +573,7 @@ fn seq_currents_are_the_012_magnitudes_of_the_terminals_own_conductors() {
     }
     // The voltage side, at the same construction: the mean phase magnitude of
     // the terminal is recovered from `voltages_mag_ang`, itself an already
-    // gated channel (G1.3a).
+    // gated channel.
     for (t, chunk) in l
         .voltages_mag_ang
         .chunks(l.n_conds)
@@ -596,8 +592,8 @@ fn seq_currents_are_the_012_magnitudes_of_the_terminals_own_conductors() {
     }
 
     // Leg 3 — the two terminals really are different rows: a transform that
-    // repeated terminal 1 (the defect `Export SeqCurrents` carries for its
-    // `Iresidual` column, CLAUDE.md upstream bug 1) would make these equal.
+    // repeated terminal 1 (the OpenDSS bug `Export SeqCurrents` carries for its
+    // `Iresidual` column) would make these equal.
     assert!(
         (l.seq_voltages[1] - l.seq_voltages[4]).abs() > 8e1,
         "the two terminals' |V+| must differ: {:?}",

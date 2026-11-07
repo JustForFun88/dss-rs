@@ -1,4 +1,4 @@
-//! Per-kernel tests of the `dss-parser` half of the Stage F lane split. Both
+//! Per-kernel tests of the `dss-parser` half of the lane split. Both
 //! `*_impl`s are compiled in every build, so these pin the documented bounds in
 //! **both** lanes.
 

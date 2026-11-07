@@ -1,7 +1,7 @@
 """Extract the user-model boundary record declarations VERBATIM from the
 vendored dss_capi 0.14.5 Pascal source into `dss_capi_defs.inc`.
 
-WASM_USERMODELS WP-WM.0 (P2): the ABI doc offset tables must be frozen from
+Probe P2: the ABI doc offset tables must be frozen from
 FPC probe output over the *actual* vendored declarations, never from reading
 or memory.  This script mechanically copies the declaration text (no editing,
 no reflowing) so the probe (`abi_probe.pas`) and the P1 stub DLL

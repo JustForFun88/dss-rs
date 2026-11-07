@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""d2_finit_probe.py — D2 round 2. Read the oracle generator's terminal
+"""d2_finit_probe.py — read the dss_capi generator's terminal
 V/I (a) at the converged snapshot, (b) right after `Set mode=dynamics`
 (InitStateVars/FInit executed, no dynamics Solve yet), (c) after step 1.
 Reconstruct the positive-seq E1 = V012[1]-I012[1]*Zsp at each point to see
-what current FInit actually consumed. Usage: python d2_finit_probe.py <twin.dll>"""
+what current FInit actually consumed. Usage: python d2_finit_probe.py <twin.dll>
+Env: DECK (deck path, default tools/golden/wasm_decks/wasm_gen_dyn.dss),
+     H (dynamics step, default 1e-9)."""
 import os, sys, cmath
 from dss import dss
 

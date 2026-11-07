@@ -281,9 +281,8 @@ fn reset_command_resets_controls() {
 
 #[test]
 fn mode_change_resets_meter_registers() {
-    // Pascal `Set_Mode` tail (Solution.pas l.2134): `EnergyMeterClass.ResetAll`
-    // zeroes every meter's registers on a mode change, alongside the monitor
-    // reset (WP7.6 step 3). The daily run accumulated kWh; switching mode clears it.
+    // A mode change zeroes every meter's registers, alongside the monitor
+    // reset. The daily run accumulated kWh, and switching mode clears it.
     let mut dss = daily_meter_case(false);
     assert!(
         meter_reg(&dss, "m1", "kWh") > 1.0,

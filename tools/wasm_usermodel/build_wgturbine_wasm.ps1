@@ -1,12 +1,11 @@
 # build_wgturbine_wasm.ps1 — rebuild the committed golden-class fixture
-# tests/fixtures/wasm/wgturbine.wasm (WASM_USERMODELS_PLAN §2.6;
-# R4133_PROPS_PLAN RP1.3 — the WindGen `UserModel=` guest).
+# tests/fixtures/wasm/wgturbine.wasm (the WindGen `UserModel=` guest).
 #
 # MANUAL-ONLY regeneration with the toolchain pinned in
 # tools/wasm_usermodel/PIN.txt (stable rustc, wasm32-unknown-unknown, the locked
-# [profile.release] in the fixture crate). A WP never regenerates the fixture to
-# make itself pass (plan §2.9-4); after a deliberate rebuild, update the SHA-256
-# recorded in PIN.txt.
+# [profile.release] in the fixture crate). A change never regenerates the
+# fixture to make its own tests pass. After a deliberate rebuild, update the
+# SHA-256 recorded in PIN.txt.
 #
 # Usage:  pwsh tools/wasm_usermodel/build_wgturbine_wasm.ps1
 

@@ -1,12 +1,11 @@
 """Generate the DER / line-constants / harmonics command-replay goldens
-(historically the "Phase-7" bucket: WP7.1 line constants, WP7.3-7.5 DER +
-smart-inverter controls, WP7.6 harmonics) from the pinned oracle.
+(line constants, DER + smart-inverter controls, harmonics) from the pinned
+oracle.
 
 Command-replay like the feeders/metering goldens, but each scenario ALSO pins
 the **Line's YPrim block entry-by-entry** — for the line-constants family the
 Carson Z/Yc produced by the geometry/spacing/cable path is the math under test
-(PHASE7_PLAN §1 focused gate 1: "the Line YPrim from the geometry path matches
-entry-by-entry"). Unlike the live corpus gate, these goldens are committed, so
+(the Line YPrim from the geometry path matches entry-by-entry). Unlike the live corpus gate, these goldens are committed, so
 they guard the paths offline (no oracle install needed to catch a regression)
 and pin the exact numbers in git.
 
@@ -79,8 +78,7 @@ def family_dir(name: str) -> Path:
 LINE = "Line.l1"
 
 # A circuit + DERI earth; the line is created after `set earthmodel` so it
-# captures FEarthModel=Deri (Line.pas:998 — the WP7.1 step-4 `Set EarthModel`
-# path). Both engines default to Deri, but pinning it explicitly documents intent.
+# captures FEarthModel=Deri (the `Set EarthModel` path). Both engines default to Deri, but pinning it explicitly documents intent.
 HEAD = [
     "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
     "set earthmodel=deri",
@@ -118,8 +116,8 @@ def deck_line_geometry() -> list[str]:
     ]
 
 
-# UPGRADE_PLAN WP-U1.2 (B2/D1): the SimpleCarson earth-return De constant moved
-# 658.5 → 658.8530451057239 in dss_capi 0.15.x `LineConstants.GetZearth`. This
+# The SimpleCarson earth-return De constant is 658.5 in dss_capi 0.14.5 and
+# 658.8530451057239 in dss_capi 0.15.x. This
 # scenario is generated against the **capi015** engine
 # (`DSS_ORACLE_ENGINE=capi015 tools/opendss/.venv/Scripts/python.exe
 # tools/golden/gen_der_lines_harmonics.py line_geometry_carson`) so its Line
@@ -198,7 +196,7 @@ def deck_cable_ts() -> list[str]:
     ]
 
 
-# --- WP7.3 step 2: PVSystem (the inverter PC-element injection) --------------
+# --- PVSystem (the inverter PC-element injection) --------------
 # Source -> Line.l1 -> bus b; a PVSystem on b pushes power back to the source.
 # The gate is the PVSystem terminal currents/powers + the node voltages (the new
 # DoConstantPQPVsystemObj injection + the panel/inverter model); the Line.l1
@@ -233,7 +231,7 @@ def deck_pvsystem_curves() -> list[str]:
     ]
 
 
-# --- WP7.4 step 1: Storage (the battery PC element + SOC integration) -------
+# --- Storage (the battery PC element + SOC integration) -------
 # Source -> Line.l1 -> bus b; a Storage on b discharges into / charges from the
 # feeder. The gate is the Storage terminal currents/powers + node voltages (the
 # DoConstantPQStorageObj injection + the state machine) AND the integrated SOC
@@ -312,7 +310,7 @@ def deck_storage_daily_charge() -> list[str]:
     ]
 
 
-# --- WP7.4 step 2: StorageController (the fleet dispatch) -------------------
+# --- StorageController (the fleet dispatch) -------------------
 # Source -> Line.l1 -> bus b carrying a Load; a 2-battery Storage fleet on b is
 # dispatched by a StorageController watching the Line.l1 terminal power. The gate
 # is the controller-driven electrical model + SOC trajectory. The control loop
@@ -372,7 +370,7 @@ def deck_storagecontroller_daily() -> list[str]:
     ]
 
 
-# --- WP7.5 step 2b: InvControl VOLTVAR (the smart-inverter volt-var dispatch) -
+# --- InvControl VOLTVAR (the smart-inverter volt-var dispatch) -
 # Source -> Line.l1 (a deliberately weak line) -> bus b; a PVSystem on b injects
 # 500 kW, raising the bus voltage above 1.0 pu. An InvControl in VOLTVAR mode
 # (RefReactivePower=VARMAX, deltaQ_factor=0.2) reads the PVSystem terminal voltage
@@ -421,7 +419,7 @@ def deck_invcontrol_voltvar_avg() -> list[str]:
     ]
 
 
-# --- WP7.5 step 2c: InvControl VOLTWATT (the smart-inverter volt-watt dispatch) -
+# --- InvControl VOLTWATT (the smart-inverter volt-watt dispatch) -
 # Source -> a weak Line.l1 -> bus b; a 1000 kW PV (1200 kVA) on b pushes the bus
 # voltage well above 1.02 pu. An InvControl in VOLTWATT mode reads the volt-watt
 # curve (y=1 below 1.02, ramping to 0 at 1.1) and limits the PV kW via the
@@ -450,7 +448,7 @@ def deck_invcontrol_voltwatt() -> list[str]:
 # gate on the adaptive volt-watt path (the corpus cases all set DeltaP_factor).
 # The *daily* multi-step path is gated separately by `deck_invcontrol_voltwatt_daily`
 # below — it caught a real port bug the snapshot could not (a missing per-step
-# `FFlagVWOperates`/`FdeltaPFactor` reset that latched across time steps; see STATUS §1e).
+# `FFlagVWOperates`/`FdeltaPFactor` reset that latched across time steps).
 def deck_invcontrol_voltwatt_adaptive() -> list[str]:
     return [
         "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
@@ -492,7 +490,7 @@ def deck_invcontrol_voltwatt_daily() -> list[str]:
     ]
 
 
-# --- WP7.5 step 2c: InvControl VV_VW (the combined volt-var + volt-watt mode) --
+# --- InvControl VV_VW (the combined volt-var + volt-watt mode) --
 # The same weak line + 1000 kW PV; the InvControl runs CombiMode=VV_VW with both a
 # volt-var curve (absorb above nominal) and a volt-watt curve (limit kW above 1.02
 # pu). The DoPendingAction runs the P limit *and* the Q set-point in one action
@@ -517,7 +515,7 @@ def deck_invcontrol_vv_vw() -> list[str]:
     ]
 
 
-# --- WP7.5 step 2d: InvControl DRC (the dynamic-reactive-current mode) ---------
+# --- InvControl DRC (the dynamic-reactive-current mode) ---------
 # DRC has NO curve: it absorbs/injects vars proportional to the per-step voltage
 # *change* tracked by the DRC rolling-average window (deltaV = present pu - rolling
 # avg), so it only operates in a multi-step run (the window is fed in
@@ -545,7 +543,7 @@ def deck_invcontrol_drc() -> list[str]:
     ]
 
 
-# --- WP7.5 step 2d: InvControl VV_DRC (the combined volt-var + DRC mode) --------
+# --- InvControl VV_DRC (the combined volt-var + DRC mode) --------
 # The same weak line + daily irradiance; CombiMode=VV_DRC runs the volt-var curve Q
 # *summed* with the DRC dynamic-reactive-current Q in one CHANGEDRCVVARLEVEL action
 # (`CalcVVDRC_vars`). Pins the joint converged kvar of the PV over the daily run.
@@ -566,7 +564,7 @@ def deck_invcontrol_vv_drc() -> list[str]:
     ]
 
 
-# --- WP7.5 step 2e-i: InvControl WATTPF (the watt-pf smart-inverter mode) -------
+# --- InvControl WATTPF (the watt-pf smart-inverter mode) -------
 # Source -> Line.l1 -> bus b; a 1000 kW PV (1200 kVA) at full irradiance. The
 # watt-pf curve maps the PV's *power output* fraction (panel pu) to a power factor
 # (unity at low output, absorbing pf=-0.9 at full output). `CalcQWPcurve_desiredpu`
@@ -587,7 +585,7 @@ def deck_invcontrol_wattpf() -> list[str]:
     ]
 
 
-# --- WP7.5 step 2e-i: InvControl WATTVAR (the watt-var smart-inverter mode) ------
+# --- InvControl WATTVAR (the watt-var smart-inverter mode) ------
 # Source -> Line.l1 -> bus b; a 1000 kW PV (1000 kVA, so P alone fills the kVA
 # circle at full output). The watt-var curve maps panel pu to Q in pu of headroom
 # (0 at low output, absorbing -0.8 at full). `Calc_PQ_WV` then solves the
@@ -647,7 +645,7 @@ def deck_invcontrol_wattvar_qlim() -> list[str]:
     ]
 
 
-# --- WP7.5 step 2e-ii: InvControl AVR (active voltage regulation) ---------------
+# --- InvControl AVR (active voltage regulation) ---------------
 # AVR needs NO curve — it regulates the monitored voltage toward `Vsetpoint` via a
 # 3-stage DQDV process across control iterations (iter 1 seeds QHeadRoom/2, iter 2
 # estimates dQ/dV, iter 3+ runs the regulator law). The same weak line + 600 kVA PV
@@ -678,7 +676,7 @@ def deck_invcontrol_avr() -> list[str]:
 # exercises the EndOfTimeStepCleanup -> UpdateInvControl -> next-step restart path
 # and the fleet's persistence across steps. (The per-step DQDV/FAVROperation resets
 # in UpdateInvControl are faithful-to-Pascal but unobservable — DQDV is re-estimated
-# every step's iter-2 and FAVROperation is write-only until the mode-3 monitor, WP7.7
+# every step's iter-2 and FAVROperation is write-only until the mode-3 monitor
 # — so this golden pins the multi-step convergence broadly, not those exact resets.)
 def deck_invcontrol_avr_daily() -> list[str]:
     return [
@@ -714,7 +712,7 @@ def deck_invcontrol_avr_kvarlim() -> list[str]:
     ]
 
 
-# --- WP7.5 step 2e-ii: InvControl AVR/WATTPF/WATTVAR over a STORAGE DER ----------
+# --- InvControl AVR/WATTPF/WATTVAR over a STORAGE DER ----------
 # The Storage smart-inverter var modes (the AVR/WATTPF/WATTVAR `Varmode :=
 # VARMODEKVAR` Storage path). A discharging Storage on a weak line raises the bus
 # like a PV; the control regulates its reactive output the same way. These pin that
@@ -793,7 +791,7 @@ def deck_invcontrol_avr_storage_wattprio() -> list[str]:
     ]
 
 
-# --- WP7.5 step 2e-ii: 24-hour multi-step (daily) AVR/WATTPF/WATTVAR runs -----------
+# --- 24-hour multi-step (daily) AVR/WATTPF/WATTVAR runs -----------
 # A full 24-step hourly run for each smart-inverter var mode × DER type, exercising the
 # daily solve mode + EndOfTimeStepCleanup -> UpdateInvControl per step. Each golden pins
 # the final (hour-24) converged state + iteration count; the shapes END ACTIVE so the
@@ -961,7 +959,7 @@ def deck_invcontrol_voltvar_mixed_24h() -> list[str]:
     ]
 
 
-# --- WP7.5 step 2e-iii: InvControl LPF / Rise-Fall rate-of-change limiting -------
+# --- InvControl LPF / Rise-Fall rate-of-change limiting -------
 # `RateofChangeMode=LPF/RiseFall` smooths/ramps the desired var output against the
 # PRIOR time step's value (`CalcLPF`/`CalcRF`, the `FPrior*Optionpu` reference
 # refreshed once per step in `UpdateInvControl`), so it is a genuinely cross-step
@@ -1091,9 +1089,8 @@ def deck_invcontrol_voltvar_monbus() -> list[str]:
 
 
 def deck_pvsystem_clamps() -> list[str]:
-    # Pins the three discrete ComputeInverterPower states the plan calls out
-    # ("inverter control discrete state exact") via three PVSystems, oracle-pinned
-    # through their terminal powers:
+    # Pins the three discrete ComputeInverterPower states exactly via three
+    # PVSystems, oracle-pinned through their terminal powers:
     #  - pva: varMode=KVAR, kvar=400, kVA=500, no priority -> non-priority kVA
     #    back-off (kw_out := sqrt(kVA^2 - kvar^2) = 300; kvar_out stays 400).
     #  - pvb: irradiance 0.1 -> panel 50 kW < CutOutkW (20%*500=100) -> inverter
@@ -1113,7 +1110,7 @@ def deck_pvsystem_clamps() -> list[str]:
     ]
 
 
-# --- WP7.5 step 3: ExpControl (the adaptive-Vreg volt-var control) -------------
+# --- ExpControl (the adaptive-Vreg volt-var control) -------------
 # ExpControl's distinguishing behavior is the per-step Vreg slew: UpdateExpControl
 # (EndOfTimeStepCleanup) moves FVregs toward the present bus voltage by VregTau, and
 # the next DoPendingAction reads the slewed Vreg in the slope crossing; the Tresponse
@@ -1209,7 +1206,7 @@ def deck_expcontrol_24h() -> list[str]:
     ]
 
 
-# --- WP7.6 step 1: Harmonics mode (the current-source family) ---------------
+# --- Harmonics mode (the current-source family) ---------------
 # Source -> Line.l1 -> bus b carrying a nonlinear Load. After the fundamental
 # power flow, `set mode=harmonics` re-injects each PC element from its spectrum
 # and the sweep solves each harmonic on the frequency-scaled Y. These decks pin a
@@ -1289,7 +1286,7 @@ def deck_harmonics_load_motor_h5() -> list[str]:
     ]
 
 
-# --- WP7.6 step 2: the voltage-source-behind-reactance DER family ------------
+# --- the voltage-source-behind-reactance DER family ------------
 # Generator/PVSystem/Storage inject harmonics as a Thevenin source behind their
 # subtransient reactance (Generator: Xd"; PVSystem/Storage: %R/%X). The
 # fundamental power flow sets each one's harmonic reference (Vthevharm/ThetaHarm),

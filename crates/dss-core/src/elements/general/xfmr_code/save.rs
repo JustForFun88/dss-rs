@@ -8,11 +8,9 @@
 //! that answers the **active** winding only — so a 3-winding code saves as
 //! `… Wdg=3 Conn=wye kV=4.16 kVA=5000 %R=0.7 Tap=0.975` and re-compiles into a
 //! *different* code with windings 1 and 2 at their defaults. r4133 has the same
-//! defect (measured on `OpenDSSDirect.dll` 11.0.0.1 rev r4133, RP3.11
-//! settlement: `New "XfmrCode.xc" phases=3 windings=3 Xhl=7 Xht=9 Xlt=8 wdg=3
-//! conn=wye kV=4.16 kVA=5000 %R=0.7 tap=0.975`), and both re-compiles converge,
-//! so the wrong circuit is silent; 0.14.5 fixed it with this override and
-//! CLAUDE.md's 2026-08-02 policy forbids reproducing the r4133 side.
+//! defect, and both re-compiles converge, so the wrong circuit is silent.
+//! dss_capi 0.14.5 fixes it with this override, and this engine does not
+//! reproduce the r4133 bug.
 //!
 //! The rewrite is the [`Transformer`](crate::elements::pd::transformer) one
 //! minus `Buses`/`Bus`: any winding scalar that was ever set emits the **array**

@@ -1,4 +1,4 @@
-// UPGRADE_PLAN.md WP-U1.1 / ledger L2 — the EPRI r4133 `DblValueNZ` zero-kW
+// The EPRI r4133 `DblValueNZ` zero-kW
 // clamp. A Load `kW=0` and a Generator `kVA=0`/`kW=0` parse their essential
 // sizing props through the band-clamp `(-1e-8,1e-8) -> +1e-8`
 // (`ParserDel.pas:912 MakeDoubleNZ`), which the port adopts UNCONDITIONALLY as
@@ -8,7 +8,7 @@
 // while r4133 clamps by default (as the port does) and oddie matches. r4133 is
 // the only pinned oracle that both clamps and accepts this deck.
 //
-// Feature sensitivity (UPGRADE_PLAN §1.7-3): the clamp magnitude 1e-8 is below
+// Feature sensitivity: the clamp magnitude 1e-8 is below
 // the live-compare i_abs floor on the V/I/Y/S channels, so those alone cannot
 // tell a working clamp from a silent no-op. Load `zpf` (kW=0 AND kvar=0) adds an
 // AMPLIFIED channel: under the clamp its kW/kvar spec recomputes PF 0.9 -> 1
@@ -16,7 +16,7 @@
 // therefore diverges 0.9 vs 1 (|Δ|=0.1 » floor) the moment the clamp regresses.
 // The bit-exact per-class contract is the Rust unit tests
 // (`zero_kw_kva_clamp_dblvaluenz` on Load/Generator/Storage, `zero_kva...` on
-// PVSystem). Validated per §1.7 (two-process determinism on the r4133 engine).
+// PVSystem). Validated by two-process determinism on r4133.
 clear
 Set DefaultBaseFrequency=60
 
@@ -30,7 +30,7 @@ New load.z bus1=b1 phases=3 conn=wye model=1 kv=12.47 kw=0 kvar=5
 
 ! Zero-kW AND zero-kvar load: under the clamp kW=kVA=1e-8 so PF recomputes to 1;
 ! without the clamp kVA=0 leaves PF at 0.9. The `?pf` probe is the above-floor,
-! feature-sensitive witness of the clamp (UPGRADE_PLAN §1.7-3).
+! feature-sensitive witness of the clamp.
 New load.zpf bus1=b1 phases=3 conn=wye model=1 kv=12.47 kw=0 kvar=0 pf=0.9
 
 ! Generator with kVA=0 and kW=0 (both essential-sizing props clamp).

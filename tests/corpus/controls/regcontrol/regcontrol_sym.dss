@@ -1,4 +1,4 @@
-// RegControl symmetric scenario (CONTROL_COVERAGE_PLAN.md): a 3-phase LTC
+// RegControl symmetric scenario: a 3-phase LTC
 // (delta-wye substation transformer + RegControl on winding 2) under a daily
 // balanced load ramp that forces tap movement in both directions over 24
 // steps. Compared per step: full model + transformer taps + RegControl

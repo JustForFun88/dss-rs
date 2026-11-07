@@ -12,8 +12,8 @@ program mtwist_probe;
   with no dss_capi unit dependency (the verbatim copy was confirmed to produce
   bit-identical output to the real `Mathutil` unit).
 
-  The RNG output is nondeterministic in the engine (time-seeded per process,
-  GAPS_PLAN.md 2.1), so it is gated ONLY by the Rust fixed-seed unit tests in
+  The RNG output is nondeterministic in the engine (time-seeded per process),
+  so it is gated ONLY by the Rust fixed-seed unit tests in
   rng.rs. This probe reproduces those exact expected sequences from a fixed
   RandSeed.
 

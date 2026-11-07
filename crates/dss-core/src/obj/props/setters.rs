@@ -100,7 +100,7 @@ pub(super) fn set_obj_double(
 ) {
     let f = pd.flags;
     let ignore = f.contains(PropFlags::IGNORE_INVALID);
-    // EPRI r4133 `DblValueNZ` clamp (UPGRADE_PLAN ledger L2, WP-U1.1): a parsed
+    // EPRI r4133 `DblValueNZ` clamp: a parsed
     // value inside the open band (-1e-8, 1e-8) becomes +1e-8. This runs on the raw
     // (pre-scale) value, matching `TParser.MakeDoubleNZ` (`ParserDel.pas:912`) and
     // dss_capi 0.15.x's pre-scale `ReplaceZero`. Adopted unconditionally (EPRI
@@ -157,7 +157,7 @@ pub(super) fn set_obj_double(
     // `DoubleOnStructArrayProperty`); every array/matrix type falls through with
     // no write (`src/General/DSSObjectHelper.pas:2812-2834` — three arms, no
     // `else`). The string edit path only reaches here for `PropType::Double`,
-    // and since `GOLDEN_REBASE_PLAN.md` G2.5 no typed `MakePosSequence` setter
+    // and no typed `MakePosSequence` setter
     // aims a scalar `SetDouble` at an array property either (the one that did,
     // `TCapacitorObj.MakePosSequence`'s `Cuf`, was upstream's own slip and now
     // goes through the array setter). Keep mirroring the fall-through anyway —

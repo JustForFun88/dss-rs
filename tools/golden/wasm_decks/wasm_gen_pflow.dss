@@ -1,4 +1,4 @@
-! WASM_USERMODELS WM.3 — Generator Model=User (GenModel=6) power-flow gate deck.
+! WASM user model — Generator Model=User (GenModel=6) power-flow gate deck.
 ! Self-contained induction-machine deck: a stiff source, a short feeder line and
 ! a single delta-connected Generator running the IndMach012a machine model over
 ! the user-model interface. The `@FIXTURE@` token is substituted by the harness

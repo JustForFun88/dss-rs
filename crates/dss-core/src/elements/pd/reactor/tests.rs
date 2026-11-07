@@ -190,7 +190,7 @@ fn asymmetric_sym_components_reactor_unbalanced_solve() {
     }
 }
 
-// --- WPG.21 — TReactorObj.MakePosSequence (Reactor.pas:1052-1115) -------------
+// --- TReactorObj.MakePosSequence ----------------------------------------------
 
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, balance};
 use crate::util::EPSILON;
@@ -561,8 +561,8 @@ fn reduce4(rm: Vec<f64>, xm: Vec<f64>, parallel: bool, rp: Option<f64>) -> Vec<P
 }
 
 /// Above three conductors `rmatrix` and `xmatrix` each reduce to the mean of
-/// the diagonal minus the mean over all off-diagonal pairs (user ruling
-/// 2026-10-04, read literally on the two matrices). Balanced 4x4 gives
+/// the diagonal minus the mean over all off-diagonal pairs (read literally on
+/// the two matrices). Balanced 4x4 gives
 /// 0.8 / 9. The unbalanced matrices give 0.825 / 8.25, where the admittance
 /// rule would give about 0.79391 + j7.93912. A twin carrying `rp=500`, which
 /// the matrix stamp never reads, writes `rp` 0 as at three conductors.

@@ -4,7 +4,7 @@
 //! geometry via Carson's equations, with the earth-return term selected by the
 //! `EarthModel` (Carson / FullCarson / Deri). Frequency is a parameter of
 //! [`LineConstants::calc`]: power flow uses the base frequency; harmonics
-//! re-`calc` per harmonic (WP7.6).
+//! re-`calc` per harmonic.
 //!
 //! Indices are 0-based here (Pascal used 1..FNumConds); the ground-node
 //! convention is unaffected — these are conductor indices.
@@ -72,9 +72,8 @@ pub enum ConductorType {
 // `PI`). Goldens pin them; the clean fix (precise constants) is a re-baseline,
 // not a lane flip.
 //
-// **Stage F.3z measured both halves separately rather than escaping the pair as
-// one category** (`LineConstants.pas:128-129`; r4133 `:152-153`, so both gating
-// oracles carry them):
+// **Both halves are measured separately rather than escaping the pair as one
+// category** (both OpenDSS engines carry them):
 //
 // * `mu0 = 12.56637e-7` is **4.889e-8** relative below `4πe-7`, and it scales
 //   the whole series impedance. Flipping it fails **35 of the 520** gated
@@ -86,14 +85,14 @@ pub enum ConductorType {
 //   it alone fails **one** corpus case —
 //   `IEEETestCases/4Bus-YYD/YYD-Master-step1.DSS` on the r4133 channel, entry 12
 //   at |diff| 1.380e-4 against an allowed 1.338e-4, i.e. **1.031x** its floor,
-//   the same deck the dense-inverse row (F.3f) already found sitting on its
+//   the same deck the dense-inverse row finds sitting on its
 //   calibration boundary — plus the DERI bit pin. Still an oracle floor the
 //   default lane must meet, so it escapes; but it is 1.03x, not a category.
 //
 // The physically meaningful group is `mu0/twopi`, which the exact constants make
 // exactly `2e-7` (both truncated: 1.99999990e-7). So a correct fix flips **both**
-// and lands with `mu0`'s 35-case cost — an UPGRADE-rung re-baseline against a
-// re-captured oracle, which the parity lane may never do.
+// and lands with `mu0`'s 35-case cost — a re-baseline against re-captured
+// goldens, which the parity lane may never do.
 const E0: f64 = 8.854e-12; // dielectric constant F/m
 const MU0: f64 = 12.56637e-7; // hy/m
 #[allow(clippy::approx_constant)] // truncated upstream `Twopi`, not `TAU` — see above
@@ -108,14 +107,12 @@ fn cmplx(re: f64, im: f64) -> Complex64 {
 // Numerical-Recipes `csqrt`, the naive `sqrt(re²+im²)` modulus (`Cabs`/`cmod`,
 // NOT `hypot`), and `cln = ln(cmod) + j·arctan2`; `num_complex` uses `hypot`
 // for `.norm()`, `ln(norm) + j·arg` for `.ln()`, and the *polar* form
-// `from_polar(√r, θ/2)` for `.sqrt()`. The port originally carried all three
-// hand-rolled, on the assumption that each was a less-precise Pascal wart kept
-// only for bit-parity.
+// `from_polar(√r, θ/2)` for `.sqrt()`.
 //
-// **Stage F.3y measured that assumption against a 60-digit `mpmath` reference
-// (20 000 operands, |z| sweep 1e-150…1e150, the F.3e protocol), and it holds
-// for none of the three.** The row resolved with *no lane split at all* — two
-// of the primitives are the crate's, and the third is FPC's on merit:
+// **Measured against a 60-digit `mpmath` reference (20 000 operands, |z| sweep
+// 1e-150…1e150), none of the three is a less-precise Pascal wart kept only for
+// bit-parity.** The row has *no lane split at all* — two of the primitives are
+// the crate's, and the third is FPC's on merit:
 //
 // | kernel | mean ULP err | worst ULP err |
 // |---|---|---|
@@ -128,23 +125,22 @@ fn cmplx(re: f64, im: f64) -> Complex64 {
 //    Over the whole range where `re²+im²` is representable the naive modulus is
 //    **bit-for-bit** `f64::hypot` here (0 disagreements in 20 000 samples), and
 //    since `cln`'s imaginary part is literally `im.atan2(re)` — the same
-//    expression `Complex::arg` evaluates — `cln_fpc` was bit-identical to
+//    expression `Complex::arg` evaluates — the FPC `cln` is bit-identical to
 //    `.ln()` as well. What the two forms do *not* share is behaviour outside
 //    that range: `re²+im²` over/underflows, so the naive modulus collapses to
 //    `inf`/`0` (measured at `(1.5e154, 2.5e154)` and `(1e-170, 1e-170)`) where
 //    `hypot` stays exact. So the crate's forms are equal where anything is
 //    gated and strictly more robust where nothing is: they are used
-//    unconditionally, in **both** lanes, and the compat marker that stood
-//    here is closed.
+//    unconditionally, in **both** lanes.
 // 2. **`Csqrt` stays FPC's, and *not* for parity — the algebraic form is the
 //    better kernel.** `num_complex`'s polar `sqrt` routes through `atan2` and
 //    `cos`, which cancel as `θ → ±π` (near the negative real axis), costing it
 //    7× the mean error and **7000×** the worst-case error of the branch-split
 //    Numerical-Recipes form. Flipping it would make the *product* lane strictly
-//    less accurate for nothing — the exact verdict F.3e reached for
-//    `compat::cdiv` (Smith's division), and the same IV.1 principle: legitimate
-//    numerics stay shared by both lanes. `tests::csqrt_algebraic_beats_the_
-//    polar_form` pins it with literals so it cannot rot back into folklore.
+//    less accurate for nothing — the same verdict as for `compat::cdiv`
+//    (Smith's division): legitimate numerics stay shared by both lanes.
+//    `tests::csqrt_algebraic_beats_the_polar_form` pins it with literals so it
+//    cannot rot back into folklore.
 //
 // Proven bit-for-bit against the x86_64 FPC `ucomplex` RTL, which is why the
 // DERI/cable earth terms and `Line`'s `DoLongLine` all still route through
@@ -250,7 +246,7 @@ pub struct LineConstants {
     // dss_capi 0.15.x `TLineConstants` additions (SVN r3913-era line/conductor
     // rework, LineConstants.pas). Defaults preserve the 0.14.5 numerics:
     // `equivalent_spacing=false`, `eps_r_medium=1.0` (so `E0*1.0 == E0` exactly),
-    // `height_offset=0.0`. UPGRADE_PLAN.md WP-U1.4 rows B3/C1.
+    // `height_offset=0.0`.
     equivalent_spacing: bool,
     eps_r_medium: f64, // relative permittivity of the surrounding medium (unit-less)
     height_offset: f64, // stored in meters
@@ -559,7 +555,7 @@ impl LineConstants {
     /// asks for is what `Get_FheightOffset` (`:396-399`) returns, i.e.
     /// [`Self::height_offset`] read **before** the unit field moves — the fix is
     /// the getter this class already has, called one statement earlier
-    /// (`GOLDEN_REBASE_PLAN.md` G2.1h; `issue-28`).
+    /// (`issue-28`).
     ///
     /// The two readings coincide exactly when the **outgoing** unit is metres,
     /// and nothing gated ever leaves that case — by two separate mechanisms, not

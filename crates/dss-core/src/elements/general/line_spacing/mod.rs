@@ -33,7 +33,7 @@ define_properties! {
     5 UNITS   => PropDef::mapped_string_enum("Units", enums.units).unit_words(POSITION_WORDS);
     // dss_capi 0.15.x additions: the equivalent-spacing model.
     // `Detailed` (default true) selects per-conductor coordinates; when false the
-    // four equivalent distances replace them. UPGRADE_PLAN.md WP-U1.4 rows B3/C1.
+    // four equivalent distances replace them.
     6 DETAILED          => PropDef::boolean("Detailed");
     7 EQDISTPHPH        => PropDef::double("EqDistPhPh");
     8 EQDISTPHN         => PropDef::double("EqDistPhN");

@@ -60,14 +60,14 @@ pub struct Parser {
     auto_increment: bool,
     convert_error: bool,
     is_quoted_string: bool,
-    /// P5b span raw material: the byte range in the scanned buffer of the token
+    /// Span raw material: the byte range in the scanned buffer of the token
     /// [`get_token_at`](Self::get_token_at) most recently produced.
     tok_start: usize,
     tok_end: usize,
     /// The byte range of the current value token (`token_buffer`) in
     /// `cmd_buffer`, and of the parameter *name* token in a `name=value` pair —
     /// both recorded by [`next_param`](Self::next_param). Diagnostics attach
-    /// these to underline the offending token in the source line (P5b).
+    /// these to underline the offending token in the source line.
     value_span: Range<usize>,
     param_span: Range<usize>,
     rpn: RPNCalculator,
@@ -172,7 +172,7 @@ impl Parser {
     }
 
     /// Byte range of the current value token (`token`) in [`cmd_string`], for
-    /// underlining the offending value in a diagnostic (P5b). After a
+    /// underlining the offending value in a diagnostic. After a
     /// `name=value` [`next_param`] this is the *value*; after a bare token it is
     /// the token itself. `@variable` substitution changes `token` but not this
     /// span — it still points at the original source text (`@var`), which is
@@ -186,7 +186,7 @@ impl Parser {
 
     /// Byte range of the parameter *name* token in a `name=value` pair (Pascal
     /// `ParamName`) in [`cmd_string`], for underlining an unknown property /
-    /// parameter name. For a bare token this equals [`token_span`]. (P5b.)
+    /// parameter name. For a bare token this equals [`token_span`].
     ///
     /// [`cmd_string`]: Self::cmd_string
     /// [`token_span`]: Self::token_span
@@ -218,8 +218,7 @@ impl Parser {
     /// True when the token just read was wrapped in a quote pair (Pascal
     /// `IsQuotedString`). Exposed for property parsers that must distinguish a
     /// quoted composite value from a bare token — e.g. the per-phase protection
-    /// state arrays (`[closed closed open]`) WP-U2 will consume (WP-U1.1 item 3
-    /// "WasQuoted plumbing"; the parser already tracks the flag internally).
+    /// state arrays (`[closed closed open]`).
     pub fn is_quoted(&self) -> bool {
         self.is_quoted_string
     }

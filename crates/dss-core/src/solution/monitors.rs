@@ -1,6 +1,6 @@
 //! Monitor class-level sweeps — Pascal `TDSSMonitor.SampleAll` /
 //! `SampleAllMode5` / `ResetAll` (`Meters/Monitor.pas`). Implemented as free
-//! functions over the registry (the WP5.7 control-sweep pattern): each monitor
+//! functions over the registry (the control-sweep pattern): each monitor
 //! and its metered element are borrowed disjointly via
 //! [`TypedStore::typed_metered_pair_mut`].
 
@@ -70,7 +70,7 @@ pub(crate) fn sample_all_monitors(ckt: &mut Circuit, env: &mut SolveEnv, mode5_o
 /// (unlike `SampleAll`, which skips mode-5 monitors). Called by every ported
 /// ordinary solve mode at its natural end (`SolveDaily`/`SolveYearly`/
 /// `SolveDuty`/`SolveDynamic`/`SolveHarmonic`/`SolveHarmonicT`) — deliberately
-/// **not** called by `SolveGeneralTime` ("roll your own", WPG.2) or
+/// **not** called by `SolveGeneralTime` ("roll your own") or
 /// `SolveFaultStudy` (never samples monitors at all).
 pub(crate) fn save_all_monitors(ckt: &mut Circuit, env: &mut SolveEnv) {
     for &mon_ref in &ckt.monitors {

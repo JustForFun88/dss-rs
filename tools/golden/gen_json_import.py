@@ -1,7 +1,7 @@
 """Generate the AltDSS JSON-import round-trip byte goldens from dss-python.
 
 The import path (`Circuit_FromJSON`) is the inverse of the export
-(`Circuit_ToJSON`, ported in JSON_EXPORT). For each deck we:
+(`Circuit_ToJSON`). For each deck we:
 
   1. run the deck on the pinned oracle and export the whole circuit -> J0;
   2. feed J0 back through `Circuit_FromJSON` and re-export -> J1;

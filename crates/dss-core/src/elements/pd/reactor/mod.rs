@@ -10,7 +10,7 @@
 //!   3. `RMatrix`/`XMatrix` ohms (optionally in parallel).
 //!   4. symmetrical components `Z1`, `Z2`, `Z0` (`Z2`/`Z0` default to `Z1`).
 //!
-//! `RCurve`/`LCurve` reference an `XYcurve` (ported in PHASE5_PLAN WP5.1),
+//! `RCurve`/`LCurve` reference an `XYcurve`,
 //! snapshot-cloned at parse time like the PVSystem/VCCS curve refs. Their only
 //! consumer is the frequency-dependent `R(f)`/`L(f)` scaling in `CalcYPrim`'s
 //! `SpecType` 1/2 branch (Pascal `Reactor.pas` `CalcYPrim`): when assigned,
@@ -126,9 +126,9 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     // Property names carry the oracle's **display case** (Pascal `PropertyName[i]`),
     // which `Dump`/`Save` emit verbatim; matching stays case-insensitive
     // (`CommandList` lowercases both sides), so `bus1=`/`Bus1=` both parse. The
-    // canonical spelling is pinned by the `dump_reactor` golden (WP8.5 step 1).
+    // canonical spelling is pinned by the `dump_reactor` golden.
     let defs = vec![
-        // Pascal flags bus1 `Required` (inert here — not enforced in Phase 4).
+        // Pascal flags bus1 `Required` (enforced only by the JSON import).
         PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
         PropDef::bus("Bus2", 2),
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
@@ -158,7 +158,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
             .flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::NO_DEFAULT | PropFlags::UNITS_OHM),
         PropDef::complex("Z")
             .flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::NO_DEFAULT | PropFlags::UNITS_OHM),
-        // RCurve/LCurve reference XYcurve (ported WP5.1); see the module note
+        // RCurve/LCurve reference XYcurve; see the module note
         // for the harmonic-CalcYPrim consumer.
         PropDef::object_ref_class("XYcurve", "RCurve"),
         PropDef::object_ref_class("XYcurve", "LCurve"),

@@ -11,23 +11,13 @@ use crate::obj::base::{DssObjData, DssObject};
 
 use super::{ExpControl, prop};
 
-// TODO(compat): Pascal `FOpenTau := Tresponse / 2.3026` divides by the *truncated*
-// ln(10) literal (the full value is 2.302585092994046…); reproducing the exact bits
-// keeps the open-loop low-pass filter bit-identical to the oracle. The clean fix
-// (`std::f64::consts::LN_10`) lands in the post-port compat sweep (PORTING_PLAN §6).
-//
-// Stage F status (F.3x, argued from the source — NOT a lane split, and not only
-// for the usual floor reason). Both gating oracles carry the literal in both of
-// its places (dss_capi `Controls/ExpControl.pas:392` and
-// `Common/ExportCIMXML.pas:2523`; r4133 `:296`/`:380` and `:2164`), and r4133
-// states it in the **user-facing property help**: `Tresponse` "corresponds to a
-// low-pass filter having tau = Tresponse / 2.3026" (`ExpControl.pas:184`). So
-// `2.3026` is a *documented model constant*, not the kind of slip the
-// single-site membership rule (ii) admits — nothing in either source says
-// `LN_10` was meant. Replacing it would move `FOpenTau` by 6.47e-6 relative
-// and, through the open-loop filter, every gated ExpControl deck's trajectory,
-// i.e. it is an UPGRADE-rung re-baseline of a specified constant, not a
-// parity/default kernel. Escape-recorded.
+// TODO(compat): `FOpenTau := Tresponse / 2.3026` divides by the *truncated*
+// ln(10) literal (the full value is 2.302585092994046…), which keeps the open-loop
+// low-pass filter bit-identical to the OpenDSS engines. Both engines carry the
+// literal, and r4133's property help states it: `Tresponse` "corresponds to a
+// low-pass filter having tau = Tresponse / 2.3026". The clean fix
+// (`std::f64::consts::LN_10`) moves every ExpControl deck's trajectory, so it
+// re-baselines a documented model constant.
 #[allow(clippy::approx_constant)]
 const LN10_TRUNCATED: f64 = 2.3026;
 
@@ -90,15 +80,11 @@ impl CktElement for ExpControl {
         curr.fill(Complex64::ZERO);
     }
 
-    /// Pascal `TExpControlObj.MakePosSequence` (`Controls/ExpControl.pas:422`).
-    /// **NIL-deref hazard** (Access violation #303, probes `2`/`S2`,
-    /// `docs/wpg21_makeposseq_probes.md`): copied from InvControl — with an empty
-    /// PVSystem list Pascal's `Setbus(1, MonitoredElement.GetBus(..))`
-    /// dereferences the NIL `MonitoredElement`; dss-python 0.15.7 also faults in
-    /// the populated case. Per CLAUDE.md UB is never reproduced. We transcribe
-    /// the defined scalar resync (`FNphases := 3; Nconds := 3`) and safe-skip the
-    /// NIL-deref `Setbus` when no monitored element is resolved; when a monitored
-    /// PVSystem *is* resolved, adopt its `Firstbus` / phase count.
+    /// `MakePosSequence`. With an empty PVSystem list the OpenDSS body
+    /// dereferences the NIL `MonitoredElement` and crashes, which this engine does
+    /// not reproduce. It applies the defined scalar resync (`FNphases := 3; Nconds
+    /// := 3`), skips `Setbus` when no monitored element is resolved, and adopts the
+    /// `Firstbus` and phase count of a resolved monitored PVSystem.
     fn make_pos_sequence(&mut self, ctx: &PosSeqCtx) -> PosSeqPlan {
         // FNphases := 3; Nconds := 3 (defined; independent of the PVSystem list).
         self.ccd.cd.nphases = 3;

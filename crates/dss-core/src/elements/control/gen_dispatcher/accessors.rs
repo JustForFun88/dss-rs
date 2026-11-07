@@ -35,15 +35,10 @@ impl CktElement for GenDispatcher {
         curr.fill(Complex64::ZERO);
     }
 
-    /// Pascal `TGenDispatcherObj.MakePosSequence`
-    /// (`Controls/GenDispatcher.pas:263`). **NIL-deref hazard** (Access violation
-    /// #303, probes `3a`/`S4`, `docs/wpg21_makeposseq_probes.md`): this is a
-    /// *fleet* control acting on a list of generators, so `ControlledElement` is
-    /// **always** NIL, yet the upstream body guards on `MonitoredElement` and
-    /// then dereferences `ControlledElement.NPhases`. Whenever `element=` is set
-    /// (`MonitoredElement <> NIL`) the oracle crashes. Per CLAUDE.md UB is never
-    /// reproduced: when the deref target (`ctx.controlled`) is `None`, safe-skip
-    /// the whole block (mirroring the crash as a no-op).
+    /// `MakePosSequence`. A fleet control's `ControlledElement` is always unset,
+    /// yet the OpenDSS body guards on `MonitoredElement` and then dereferences
+    /// `ControlledElement.NPhases`, an access violation. This engine does not
+    /// crash: when `ctx.controlled` is `None`, it skips the whole block.
     fn make_pos_sequence(&mut self, ctx: &PosSeqCtx) -> PosSeqPlan {
         // Pascal guards on `MonitoredElement <> NIL` then derefs `ControlledElement`;
         // act only when BOTH are resolved.

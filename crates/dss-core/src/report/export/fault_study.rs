@@ -11,7 +11,7 @@ use crate::support::cmatrix::CMatrix;
 /// the worst node-to-node (L-L) fault.
 ///
 /// Reads the **precomputed** bus `Ysc`/`BusCurrent` a prior `Solve mode=faultstudy`
-/// (WP7.9) populated — "Isc has been previously computed" (PHASE8_PLAN §2.1). Each
+/// populated — "Isc has been previously computed". Each
 /// single-/L-L-phase current is a **local** per-bus scratch inversion: copy `Ysc`,
 /// stamp a large fault conductance `GFault = 10000` at the faulted node(s), invert
 /// that `NumNodesThisBus × NumNodesThisBus` matrix, and read the voltage the fault

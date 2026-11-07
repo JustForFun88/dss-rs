@@ -1,14 +1,14 @@
 //! `TShape` (TempShape) — per-hour temperature curve.
 //! Port of Pascal `General/TempShape.pas` (`TTShapeObj`; registered class name
 //! `TShape`). A `DSS_OBJECT` class consumed by temperature-dependent loads
-//! (Phase 7). The data storage and the hour lookup / mean-std-dev / CSV reader
+//! The data storage and the hour lookup / mean-std-dev / CSV reader
 //! live on the shared [`ScalarShapeCore`]; this file is the property table and
 //! the class-specific `PropertySideEffects` (TempShape has no `hour→interval`
 //! coupling — variable interval requires an explicit `interval=0`).
 //!
 //! `CSVFile`/`SngFile`/`DblFile` are all read via the deferred [`FileLoad`]
-//! path (like LoadShape; WPG.1 for the binary pair); `Action=DblSave/SngSave`
-//! (binary output) stays `NOT_PORTED`.
+//! path (like LoadShape). `Action=DblSave/SngSave` queues the binary write for
+//! the executive.
 
 #[cfg(test)]
 mod tests;

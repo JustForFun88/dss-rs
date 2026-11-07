@@ -201,7 +201,7 @@ mod pos_seq_tests {
     use crate::elements::pc::gic_line::prop;
     use crate::elements::pos_seq::PosSeqCtx;
 
-    /// GICLine → 1 phase, keeping Volts/Angle/R/X unchanged (WPG.21).
+    /// GICLine → 1 phase, keeping Volts/Angle/R/X unchanged.
     #[test]
     fn makeposseq_gicline_keeps_all() {
         let mut g = GicLine::new("g");

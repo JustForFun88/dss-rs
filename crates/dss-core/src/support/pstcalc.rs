@@ -8,7 +8,7 @@
 //! unit-level `var` globals; [`PstEngine`] owns them so a call is
 //! self-contained (no cross-call state leak). Everything is `f64` (Pascal
 //! `Double`) throughout — the `Single`/f32 `FlickerMeter` (lines 476-687, used
-//! by Monitor mode 4) is a separate port (WP-PF.2) and does **not** live here.
+//! by Monitor mode 4) lives in `support::flicker`, **not** here.
 //!
 //! # FPC `Math.power` for integer exponents (`Set_Filter_Coefficients`)
 //!

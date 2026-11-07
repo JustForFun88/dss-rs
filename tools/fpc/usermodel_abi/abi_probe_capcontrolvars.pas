@@ -1,5 +1,5 @@
 program abi_probe_capcontrolvars;
-// WASM_USERMODELS WP-WM.5 — layout of the r4133 engine's `TCapControlVars`
+// Probe P9 — layout of the r4133 engine's `TCapControlVars`
 // (the CapControl `PublicDataStruct := @ControlVars` record a user-written
 // CapControl model reads/writes via `GetPublicDataPtr`,
 // CapControl.pas:518-519). Compiles the REAL vendored r4133 unit
@@ -7,8 +7,8 @@ program abi_probe_capcontrolvars;
 // (`{$IFDEF USER_DLL}` → `uses ucomplex` + `{$INCLUDE ControlActionDefs.txt}`,
 // no ControlElem/engine closure) — the byte-identical record the engine's
 // non-USER_DLL path also assembles (same ControlActionDefs.txt enum, same
-// packing). This is the authoritative offset source for the WM.5 native twin
-// (which reads r4133's @ControlVars) and the ABI-doc §2.4 image — never from
+// packing). This is the authoritative offset source for the CapControl native twin
+// (which reads r4133's @ControlVars) and the ABI-doc §2.5 image — never from
 // reading the source (probe discipline). Output → docs/wasm/probes/
 // p9_offsets_capcontrolvars_r4133.txt.
 //

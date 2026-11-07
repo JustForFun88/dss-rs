@@ -64,7 +64,7 @@ impl Parser {
         let bytes = buf.as_bytes();
         let len = bytes.len();
         let mut result = String::new();
-        // P5b: default to a zero-width span at the cursor (an empty token at
+        // Default to a zero-width span at the cursor (an empty token at
         // end-of-line); overwritten below when a token is actually scanned.
         self.tok_start = *pos;
         self.tok_end = *pos;
@@ -89,7 +89,7 @@ impl Parser {
                     *pos += 1;
                 }
                 result = buf[start..*pos].to_string();
-                // P5b: the span covers the quoted content (between the quotes),
+                // The span covers the quoted content (between the quotes),
                 // recorded before we step past the closing quote.
                 self.tok_start = start;
                 self.tok_end = *pos;
@@ -103,7 +103,7 @@ impl Parser {
                     *pos += 1;
                 }
                 result = buf[start..*pos].to_string();
-                // P5b: span of the bare token content.
+                // Span of the bare token content.
                 self.tok_start = start;
                 self.tok_end = *pos;
             }

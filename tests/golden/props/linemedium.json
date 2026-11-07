@@ -3,7 +3,7 @@
  "oracle": {
   "engine_spec": "capi015",
   "engine": "DSS C-API Library version 0.15.0b4 revision e936d2101d745e0f0ea6872d7aa8545cb6bbd5ae based on OpenDSS SVN 4103",
-  "note": "WP-U1.4 Line-level EpsRMedium/HeightOffset/HeightUnit property surface (Line.pas:59-61, 375-431); values probed on capi015 2026-07-16 (probe_render.py). The pinned 0.14.5 default oracle cannot render these 0.15.x-only props, so this golden is capi015; the rendered strings must match on the Rust engine."
+  "note": "Line-level EpsRMedium/HeightOffset/HeightUnit property surface. Values probed on dss_capi 0.15.0b4 2026-07-16 (probe_render.py). dss_capi 0.14.5 cannot render these 0.15.x-only props, so this golden is 0.15.0b4, and the rendered strings must match on the Rust engine."
  },
  "class": "linemedium",
  "scenarios": [

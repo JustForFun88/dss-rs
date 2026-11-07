@@ -1,6 +1,5 @@
 //! The "flag set but the oracle returned nothing" guard — the one rail a
-//! flag-gated corpus comparator calls **before** it compares
-//! (`GOLDEN_REBASE_PLAN.md` WP-G1 sub-step G1.0, §2.A A4).
+//! flag-gated corpus comparator calls **before** it compares.
 //!
 //! # The failure mode it closes
 //!
@@ -18,10 +17,10 @@
 //! That turns several unrelated accidents into a silently green gate: a capture
 //! the transport did not honor (an unknown/unrequested key on the capi channel,
 //! an unserved mode on the r4133 bridge), one channel dropping a surface the
-//! other still sends, or a refactor that stops issuing the request. Plan
-//! §1.1(f)'s non-vacuity discipline proves the *comparator* rejects a corrupted
-//! **Rust** value; it says nothing about there being an **oracle** side to
-//! compare against at all. This module is that second half: it fails the case,
+//! other still sends, or a refactor that stops issuing the request. A
+//! comparator's non-vacuity test proves it rejects a corrupted value of this
+//! engine. It says nothing about there being an OpenDSS side to compare against
+//! at all. This module is that second half: it fails the case,
 //! never skips it.
 //!
 //! # What it is deliberately not
@@ -42,13 +41,10 @@
 //!
 //! # Why a shared helper instead of an `assert!` per call site
 //!
-//! Two ad-hoc versions existed (`corpus_gate/runner.rs`, the
-//! `compare_all_properties` and `compare_autoadd_log` sites) and neither named
-//! the **channel** — on a `both` case the message could not say which of the two
-//! oracles went silent. Every WP-G1 surface adds more flag-gated comparators
-//! (`compare_derived`, `compare_bus`, `compare_zsc`, …), so the rule is written
-//! once, tested once, and reused; the two migrated call sites keep it exercised
-//! by the live gate from day one.
+//! The message names the **channel**, so on a `both` case it says which of the
+//! two OpenDSS engines went silent. Every flag-gated comparator
+//! (`compare_derived`, `compare_bus`, `compare_zsc`, …) uses the rule, so it is
+//! written once and tested once, and the live gate exercises it on every case.
 
 /// Shape wording for a capture that arrived but carries no item.
 const EMPTY: &str = "empty (0 items)";
@@ -101,13 +97,13 @@ pub fn require_capture_opt<'a, T: ?Sized>(
 /// rule is then provable offline, without unwinding, and the message contract
 /// (it names the flag, the channel, the case context and which of the two
 /// shapes fired) is pinned directly by
-/// [`tests::the_message_names_the_flag_the_channel_the_context_and_the_shape`].
+/// `tests::the_message_names_the_flag_the_channel_the_context_and_the_shape`.
 fn missing_capture_msg(flag: &str, channel: &str, shape: &str, ctx: &str) -> String {
     format!(
         "{ctx}: manifest flag `{flag}` is ON, but the `{channel}` capture for that surface is \
          {shape}. A flag-gated comparator over an empty capture compares nothing and passes \
-         vacuously, so the case FAILS here instead (GOLDEN_REBASE_PLAN.md §1.1(f); the G1.0 \
-         rail). Either the capture request was not honored on this channel (capi_v0145: \
+         vacuously, so the case FAILS here instead. Either the capture request was not \
+         honored on this channel (capi_v0145: \
          `tools/oracle/oracle_server.py`; r4133: `crates/dss-epri/src/capture.rs`), or this \
          case must not carry `{flag}`."
     )

@@ -1,4 +1,4 @@
-// UPGRADE_PLAN.md WP-U0 pilot — proves the per-case target-rev oracle
+// Pilot: proves the per-case target-rev oracle
 // machinery end-to-end: this case live-compares against the OFFICIAL EPRI
 // OpenDSS r4133 (v11.0.0.1 "Charlottesville") binary via the Oddie bridge
 // instead of the pinned dss_capi oracle (manifest `oracle: "r4133"`), under

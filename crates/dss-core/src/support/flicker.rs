@@ -32,11 +32,10 @@
 //! close Monitor stream / Access violation", for every N incl. N=2 with zero
 //! percentile windows). The **official** Delphi engine keeps `Terminals` 1-based
 //! (`pTerminalList`, `Terminals^[1]`), so it does NOT crash — the vendored r3723
-//! EPRI binary produces a correct flicker CSV. Per CLAUDE.md's
-//! known-upstream-bugs rule this OOB is **not reproduced**: the port uses the
-//! metered terminal's bus (the official/correct behavior), and the flicker
-//! goldens are captured from the official r3723 binary (the D9 reference channel)
-//! because the pinned oracle cannot produce them.
+//! EPRI binary produces a correct flicker CSV. The OOB is an OpenDSS bug and is
+//! **not reproduced**: this engine uses the metered terminal's bus (the correct
+//! behavior), and the flicker goldens are captured from the official r3723
+//! binary because the pinned dss_capi cannot produce them.
 
 /// Pascal `Fhp` (`Pstcalc.pas:480`): first-order high-pass, `y[1]:=0` seed.
 /// `a := 0.5*Ts*whp`; recurrence `y[j] := (1/a0)·(x[j]-x[j-1]-a1·y[j-1])`.

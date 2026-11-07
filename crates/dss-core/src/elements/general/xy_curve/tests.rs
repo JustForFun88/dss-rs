@@ -122,8 +122,8 @@ fn set_points_splits_pairs() {
 
 #[test]
 fn file_props_queue_a_file_load() {
-    // WPG.17: CSVFile/SngFile/DblFile are ported (deferred FileLoad); csv is a
-    // text load, sng/dbl are binary loads.
+    // CSVFile/SngFile/DblFile queue a deferred FileLoad. csv is a text load,
+    // sng/dbl are binary loads.
     for (name, prop_idx, binary) in [
         ("csvfile", prop::CSVFILE, false),
         ("sngfile", prop::SNGFILE, true),
@@ -358,20 +358,9 @@ fn make_like_copies_curve() {
     assert_eq!(get(&cls, &obj, "yarray"), "[ 5 7]");
 }
 
-/// RP3.11 P3 — `TXYcurveObj.SaveWrite` (r4133
-/// `Version8/Source/General/XYcurve.pas:978-1003`) writes ` Npts=<NumPoints>`
-/// **outside** the property chain and then ignores index 1 in the walk, so the
-/// arrays it sizes are always allocated before they are re-read. Pascal's own
-/// header: *"Write Npts out first so that arrays get allocated properly"*.
-///
-/// Deck-order-independent, which is the whole point: `xy1` types `npts` first,
-/// `xy2` re-sets it last and used to save as
-/// `New "XYcurve.xy2" XArray=[ 0 1] YArray=[ 0 2] NPts=2` — a line that reloads
-/// both arrays as zeros. r4133 saves both as
-/// `New "XYcurve.xyN" Npts=2 Xarray=[0, 1, ] Yarray=[0, 2, ]` (epri-worker
-/// probe, OpenDSSDirect.dll 11.0.0.1 r4133, RP3.11 I1); the port writes the same
-/// tokens under its own property-name spelling and array rendering. The saved
-/// tree is then re-compiled and both curves read back whole.
+/// `Save` writes `Npts` before the arrays it sizes, whatever the deck order, so
+/// the saved deck reloads both curves whole (`xy1` types `npts` first, `xy2`
+/// re-sets it last). The saved tree is re-compiled and both curves read back.
 #[test]
 fn xycurve_save_write_puts_npts_first() {
     use crate::exec::Dss;

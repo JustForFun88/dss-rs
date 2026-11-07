@@ -1,8 +1,8 @@
-"""Generate tests/golden/autoadd_reduce.json from the pinned oracle (WP6.8 3/4 + 4/4).
+"""Generate tests/golden/autoadd_reduce.json from the pinned oracle.
 
 Pins the *observable* surface of the AutoAdd option object and the circuit-
 reduction option/command surface — i.e. every `Get` echo the dss-python COM API
-exposes, plus the error/edge behaviors that the WP6.8 audit hardened:
+exposes, plus the error/edge behaviors:
 
   - AutoAdd option `Get` formatting (floats via `%-g`, int-arrays via
     `IntArrayToString`, AddType as the lowercase device word);
@@ -103,7 +103,7 @@ SCENARIOS = [
         "gets": [],
         "error_contains": 'EnergyMeter "NOPE" not found.',
     },
-    # WP8.7: a metered feeder is solved, reduced (DEFAULT in-line series merge),
+    # A metered feeder is solved, reduced (DEFAULT in-line series merge),
     # then RE-SOLVED. The reduction collapses the un-loaded intermediate bus b2
     # (l1+l2 merge). The `probes` capture the post-reduce circuit-wide node count
     # and the surviving buses' node-1 voltage magnitudes — the observable proof

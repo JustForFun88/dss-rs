@@ -322,13 +322,12 @@ pub struct Load {
     pub spectrum: String,
 
     /// Resolved shape objects (Pascal `YearlyShapeObj` etc.). Like
-    /// `FetchLineCode`, the referenced object is snapshot-cloned at parse time
-    /// (PHASE4_PLAN §3.4): `set_nominal_load` then drives `GetMultAtHour` on the
+    /// `FetchLineCode`, the referenced object is snapshot-cloned at parse time:
+    /// `set_nominal_load` then drives `GetMultAtHour` on the
     /// owned copy, since the solve path only carries scalar `SysCtx`. Each
     /// `_ref` is the resolved object's stable [`Idx`] — typed, because each of
     /// these properties declares its target class (`object_ref_class`), so the
-    /// class is known statically (kept for parity with the §3.1 reference
-    /// pattern; the clone is self-sufficient for the lookup).
+    /// class is known statically (the clone alone suffices for the lookup).
     pub yearly_shape_obj: Option<LoadShapeObj>,
     pub daily_shape_obj: Option<LoadShapeObj>,
     pub duty_shape_obj: Option<LoadShapeObj>,

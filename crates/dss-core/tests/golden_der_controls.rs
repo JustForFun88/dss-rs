@@ -1,5 +1,4 @@
-//! DER + smart-inverter-controls golden gate (PHASE7_PLAN.md WP7.3–WP7.5; part
-//! of the former Phase-7 golden bucket): command-replay scenarios that pin
+//! DER + smart-inverter-controls golden gate: command-replay scenarios that pin
 //! PVSystem (panel/inverter model, curves, clamps), Storage (SOC trajectories,
 //! charge/discharge, clamps), StorageController dispatch, InvControl (volt-var,
 //! volt-watt, watt-pf, watt-var, DRC, AVR and combinations, over PVSystem and

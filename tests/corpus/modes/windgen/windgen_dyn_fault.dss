@@ -1,12 +1,12 @@
-! WP-U1.8 — WindGen WTG3 dynamics FAULT RIDE-THROUGH (LVPL/LVQL-sensitive). A
+! WindGen WTG3 dynamics FAULT RIDE-THROUGH (LVPL/LVQL-sensitive). A
 ! sustained 3-phase fault (Fault.f1, R=0.05) on the WindGen terminal depresses the
 ! voltage to ~0.90 pu through the whole dynamics run, so the low-voltage
 ! power-logic (LVPL curtailment) and low-voltage reactive-logic (LVQL Iq limit)
 ! engage: Qgen swings positive (reactive support) vs ~0 in the healthy deck, and
 ! dOmg goes negative. Probe-proven feature-sensitive (capi015: Vmag 0.898, Qgen
-! +0.071). Since R4133_PROPS_PLAN RP3.10 the snapshot solve this deck runs before
+! +0.071). The snapshot solve this deck runs before
 ! `Set mode=dynamic` dispatches the machine's kvarBase = 854.95263026673 kvar (r4133
-! dispatches 0 -- it has no QMode=0 arm, WindGen.pas:1320-1321), which carries into
+! dispatches 0 -- it has no QMode=0 arm), which carries into
 ! the dynamics run: the port lands at Qgen +0.0688589386657973 against r4133's
 ! +0.07121218770486548. Excluded per case in tests/corpus/ledger.json
 ! (windgen-qmode0-constant-q-dynfault-r4133) and pinned by the unit test

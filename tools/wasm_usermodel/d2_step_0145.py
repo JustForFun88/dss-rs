@@ -4,7 +4,9 @@ r3723 244B twin. Emits Slip/dSpeed/Is1u/Is1s/Freq after the snapshot (step 0)
 and after each of the first 5 dynamics steps (range(1, 6)), to find the first
 divergence vs the Rust engine — step 1 already exposes it, so a short run
 suffices; the full end-state is captured separately by d2_probe_0145.py.
-Usage: python d2_step_0145.py <twin.dll>"""
+Usage: python d2_step_0145.py <twin.dll>
+Env: D2TIGHT (any non-empty value: tolerance=1e-12 maxiterations=1000; default
+     the deck's own settings)."""
 import os
 import sys
 from dss import dss

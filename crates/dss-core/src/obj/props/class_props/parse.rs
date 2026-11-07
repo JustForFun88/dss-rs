@@ -233,7 +233,7 @@ impl ClassProps {
                 let order_found = eng
                     .parser
                     .parse_as_sym_matrix(eng.vars, &mut buf, order, 1, scale)?;
-                // EPRI r4133 (WP-U1.1 item 2): an incomplete matrix is rejected —
+                // EPRI r4133: an incomplete matrix is rejected —
                 // the property keeps its prior value — with a DoSimpleMsg-and-
                 // continue error, unlike the FPC line which silently zero-fills.
                 if order_found < order {
@@ -279,7 +279,7 @@ impl ClassProps {
                         // NOTE(upstream-quirk): `TPropertyFlag.AllowNone` on a
                         // single object ref (SVN r4119 / fd034bb0, meant to let a
                         // `none` value clear a Recloser/Fuse TCC_Curve ref) is
-                        // **observably a no-op in the Rung-1 oracle (capi015)**: its
+                        // **observably a no-op in capi015**: its
                         // AllowNone branch (`DSSObjectHelper.pas:862`) sets `otherObj
                         // := NIL`, but the *unconditional* `if otherObj = NIL then
                         // DoSimpleMsg(... 401)` two lines down fires the "not found"
@@ -288,10 +288,9 @@ impl ClassProps {
                         // not-found path below, which the port already reproduces.
                         // We therefore add NO AllowNone shortcut (a silent clear
                         // would *diverge* from capi015). r4133 diverges differently
-                        // (stores the literal `none` name, no #401) — a Rung-2 note,
-                        // see DIVERGENCES.md §AllowNone-single-ref. WP-U1.1 item 4.
+                        // (stores the literal `none` name, no #401).
                         //
-                        // EPRI r4133 `GetTccCurve('none')` (WP-U2.1, Fuse
+                        // EPRI r4133 `GetTccCurve('none')` (Fuse
                         // `FuseCurve` via `ALLOW_NONE_REF`): literal `none` resolves
                         // to NIL **silently** — no #401 — and renders `none`. Store
                         // the literal name so the executive re-resolve also misses
@@ -1011,7 +1010,7 @@ fn interpret_rating_array(
 /// EPRI r4133 `ParseAsSymMatrix` incomplete-matrix message (`ParserDel.pas`:
 /// "The matrix entered does not match with the expected order…"). Prefixed with
 /// the element/property like the other `DoSimpleMsg`-and-continue diagnostics so
-/// a bad deck is greppable in the error log. WP-U1.1 item 2 / DIVERGENCES.md.
+/// a bad deck is greppable in the error log.
 fn sym_matrix_order_error(full: &str, name: &str) -> String {
     format!(
         "{full}.{name}: The matrix entered does not match with the expected order, \

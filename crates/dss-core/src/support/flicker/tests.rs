@@ -80,7 +80,7 @@ fn percentile_interpolates() {
     assert_eq!(percentile(&list, 0, 4, 80.0), 20.0);
 }
 
-/// The `nhi = nlo+1` overrun (D5): at `pctExceeded=0.1` on a 5-wide window,
+/// The `nhi = nlo+1` overrun: at `pctExceeded=0.1` on a 5-wide window,
 /// `idx=4.995 -> nlo=4, nhi=5`. When the histogram has a zeroed tail slot
 /// (`list.len()>i_hi+1`) that slot (0.0) is read verbatim (FPC-deterministic);
 /// when `nhi==list.len()` it is a past-allocation UB read → clamped to the last

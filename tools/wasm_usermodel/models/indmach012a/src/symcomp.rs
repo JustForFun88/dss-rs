@@ -22,10 +22,10 @@ fn idx(i: usize, j: usize) -> usize {
 
 /// Pascal `mathutil.SetAMatrix` (`mathutil.pas:297-311`).
 ///
-/// TODO(compat): `a = (-0.5, 0.866025403)` reproduces upstream's truncated
-/// sqrt(3)/2 (= 0.8660254037844386...); the clean fix (full-precision
-/// constant) is deferred to the DE_PASCALIZE Stage F sweep together with the
-/// engine-side copies of the same constant.
+/// TODO(compat): `a = (-0.5, 0.866025403)` reproduces OpenDSS's truncated
+/// sqrt(3)/2 (= 0.8660254037844386...). Clean fix: the full-precision
+/// constant, with a rebuilt `.wasm` fixture (this crate is outside the lane
+/// switch).
 fn set_a_matrix(m: &mut Mat3) {
     let a = cmplx(-0.5, 0.866025403);
     let aa = cmplx(-0.5, -0.866025403);

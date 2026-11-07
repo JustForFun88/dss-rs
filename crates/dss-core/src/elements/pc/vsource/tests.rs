@@ -109,7 +109,7 @@ fn dynamics_loadshapeclass_scales_source_magnitude() {
     );
 }
 
-// --- MakePosSequence (WPG.21) --------------------------------------------
+// --- MakePosSequence -----------------------------------------------------
 
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
 use crate::elements::traits::CktElement;

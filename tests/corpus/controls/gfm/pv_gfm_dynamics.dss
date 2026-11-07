@@ -1,7 +1,7 @@
-! GFM audit settlement (WPG.17): a PVSystem in grid-forming inverter mode
+! A PVSystem in grid-forming inverter mode
 ! (ControlMode=GFM) BLACK-STARTING an ISLANDED section in DYNAMICS mode — the
-! PVSystem twin of gfm_dynamics.dss (the auditors flagged that the PV GFM
-! dynamics path had only a last-sample unit pin, no full-trajectory live gate).
+! PVSystem twin of gfm_dynamics.dss (the live full-trajectory gate of the PV GFM
+! dynamics path, beside its last-sample unit pin).
 !
 ! Topology: sourcebus --feeder--> mainbus --sw1(OPEN)--> islbus. Opening sw1
 ! islands {islbus, pvbus}; the only source left is the GFM PVSystem (balanced

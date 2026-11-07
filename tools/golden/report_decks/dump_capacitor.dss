@@ -1,12 +1,12 @@
-// PHASE8_PLAN WP8.5 Dump step 3 fixture: the Capacitor DumpProperties
-// override, isolated because of a proven upstream bug: this dss_capi
-// version's TCapacitorObj.DumpProperties (Capacitor.pas:751) renders
+// Dump fixture: the Capacitor DumpProperties
+// override, isolated because of a proven OpenDSS bug: this dss_capi
+// version's TCapacitorObj.DumpProperties renders
 // ASLR-dependent garbage (uninitialized-memory denormals, different in
 // every oracle process) in exactly three lines - `~ CMatrix=(...)`,
 // `~ FaultRate=`, `~ pctPerm=` - for EVERY capacitor, matrix-spec or not
-// (probe-proven 2026-07-05, two-process diff). Per the known-upstream-bug
-// rule (CLAUDE.md): a nondeterministic garbage read is NOT reproduced -
-// the Rust port renders the correct property values; the golden for this
+// (probe-proven 2026-07-05, two-process diff). OpenDSS bugs are never
+// reproduced, and a nondeterministic garbage read is one -
+// this engine renders the correct property values; the golden for this
 // deck is captured and compared with those three lines DROPPED on both
 // sides, and the divergence is documented in investigations/.
 clear

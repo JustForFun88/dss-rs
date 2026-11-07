@@ -1,7 +1,7 @@
 //! `Show Faults` (Pascal `ShowResults.pas` `ShowFaultStudy` (:1848)): the
 //! FaultStudy report — three per-bus sections over the **precomputed** short-circuit
-//! state (`Zsc`/`Ysc`/`VBus`/`BusCurrent`) a prior `Solve mode=faultstudy` (WP7.9)
-//! populated. Read-only (PHASE8_PLAN §2.1): the adjacent-node-node section does
+//! state (`Zsc`/`Ysc`/`VBus`/`BusCurrent`) a prior `Solve mode=faultstudy`
+//! populated. Read-only: the adjacent-node-node section does
 //! local per-bus `YFault` scratch inversions (the same math as
 //! `export_fault_study`), never a global re-solve or hidden mutation.
 //!
@@ -204,9 +204,9 @@ mod tests {
     /// matrices are never allocated, and `ShowFaultStudy` still reads them
     /// (`ZFault.CopyFrom(nil)`, `ShowResults.pas:1927`) → **UB** (empirically
     /// reproduced against the pinned engine: the exact deck below, minus the guard
-    /// our engine has, faults the oracle process). Per CLAUDE.md an *undefined-
-    /// behavior* upstream bug is **not reproduced** — it is documented and gated
-    /// around, so there is nothing to compare against and no golden.
+    /// our engine has, faults the oracle process). An *undefined-behavior*
+    /// OpenDSS bug is **not reproduced** — it is documented and gated around, so
+    /// there is nothing to compare against and no golden.
     ///
     /// The safe-Rust engine (`#![forbid(unsafe_code)]`) instead handles the same
     /// sequence cleanly: `solve mode=faultstudy` requires a prior non-dynamic solve

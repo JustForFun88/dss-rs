@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Re-derive the evidence behind the Stage F **complex-division** no-split row.
+"""Re-derive the evidence behind the shared (not lane-split) **complex-division**
+kernel.
 
-`DE_PASCALIZE_PLAN.md` Part IV.2 resolves `cdiv` to a single shared kernel
+`cdiv` resolves to a single shared kernel
 (FPC/Smith) rather than a lane split, on the grounds that the naive
 `(a*conj(b))/|b|^2` form is the *less* accurate and less robust of the two. That
 verdict is asserted in-tree by `crates/dss-core/src/compat/tests.rs`
 (`cdiv_shared_kernel_is_the_more_accurate_one`,
 `naive_division_collapses_where_smith_stays_exact`), but the measurement behind
-its reference table lived only in prose. This script is that measurement, so the
-row can be re-run instead of believed.
+its reference table is this script, so the measurement can be re-run instead
+of believed.
 
 Two outputs:
 
@@ -17,13 +18,12 @@ Two outputs:
   **Derived from the operands' exact binary values** (`Fraction(float)`), not
   from their decimal spellings: `Decimal('0.002321729484')` is not the double
   the kernel receives, and that conversion's own half-ULP slip is the same order
-  as the quantity being measured. Deriving them the wrong way is what put three
-  of the six rows 1 ULP off — every error in the kept kernel's favour, scoring
-  the table 1 vs 14 ULP where the truth is 5 vs 12 (found in the wave-4
-  settlement, 2026-08-01).
+  as the quantity being measured. Deriving them the wrong way puts three of the
+  six rows 1 ULP off — every error in the kept kernel's favour, scoring the
+  table 1 vs 14 ULP where the truth is 5 vs 12 (measured 2026-08-01).
 
 * ``sweep`` — an **unfiltered** random sweep, which is what actually settles the
-  row. The committed table is a disagreement sample filtered to Smith wins, so
+  question. The committed table is a disagreement sample filtered to Smith wins, so
   "Smith is at least as close on every row" is a property of that table and not
   of the kernels: over 20 000 uniform pairs Smith is strictly *worse* on ~25%.
   What holds is the aggregate (mean and worst relative error) plus the

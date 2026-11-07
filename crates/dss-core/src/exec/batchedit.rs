@@ -3,7 +3,7 @@
 //! Port of EPRI `Executive/ExecHelper.pas` r4133 `DoBatchEditCmd` (non-FPC
 //! branch) + `DoCheckConditionals` / `DoEvalConditionals` / `DoLocalizeOp_Index`,
 //! and the E1 result `GlobalResult := 'Elements edited: N'`
-//! (`ExecCommands.pas` cmd 95). WP-U2.4.
+//! (`ExecCommands.pas` cmd 95).
 //!
 //! `batchedit class.pattern editstring [where cond [and|or|xor cond]...]`
 //! replays `editstring` against every object of `class` whose NAME matches

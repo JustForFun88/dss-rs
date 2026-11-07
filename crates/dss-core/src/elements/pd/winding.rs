@@ -1,6 +1,6 @@
 //! `TWinding` — one transformer/xfmrcode winding's electrical + tap data.
 //! Port of the Pascal `TWinding` record (`PDElements/Transformer.pas`, l.162),
-//! shared verbatim by `TTransfObj` (WP4.4) and `TXfmrCodeObj` (WP4.3). It is
+//! shared verbatim by `TTransfObj` and `TXfmrCodeObj`. It is
 //! pure data plus the two small helpers `Init` and `ComputeAntiFloatAdder`; all
 //! winding *behavior* (term-ref mapping, YPrim) lives in the transformer.
 

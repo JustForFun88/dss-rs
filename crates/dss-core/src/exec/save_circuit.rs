@@ -6,11 +6,12 @@
 //!
 //! Re-emits the whole circuit as a re-compilable DSS script tree
 //! (`Master.dss` + one file per class + one subdir per meter zone). The
-//! serializer used for each object is the WP8.5-step-4 `Save` pair
-//! ([`write_dss_object`]/[`save_write`] via [`class_file_text`]) — **only the
+//! serializer used for each object is the `Save` pair
+//! ([`write_dss_object`]/[`save_write`](crate::report::save::save::save_write)
+//! via [`class_file_text`]) — **only the
 //! explicitly-set properties**, not the `Dump` all-property form. Faithfulness
 //! is verified by *round-trip* (recompile + re-solve on our own engine), never
-//! by byte-matching the oracle's Save output (PHASE8_PLAN §2.4).
+//! by byte-matching the oracle's Save output.
 //!
 //! **One layout.** `Save circuit` writes a file per class, a subdirectory per
 //! enabled meter zone, no solution options, and a `BusVoltageBases.dss` that
@@ -80,7 +81,7 @@ impl Dss {
         // Resolve `dir` relative to the current DSS dir when not absolute
         // (Pascal `Dir := SaveDir + Dir` in the non-`ALLOW_CHANGE_DIR` path —
         // the C-API-portable choice that keeps the process cwd fixed).
-        // Deliberate narrowing (recorded by audit): Pascal `:2481-2508`
+        // Deliberate narrowing: Pascal `:2481-2508`
         // additionally drive-prefixes a bare-root `\foo`/`/foo` with
         // `ExtractFileDrive(SaveDir)` and keeps a drive-relative `C:foo`
         // literal; `Path::is_absolute()` treats all three as relative and
@@ -526,22 +527,15 @@ impl Dss {
     /// flag in sight; its per-bus `SetkVBase` block is commented out in the
     /// Pascal (`:2727-2729`) and not written here either.
     ///
-    /// **Why not 0.14.5's commented form (RP3.11 P1).** dss_capi 0.14.5 is the
-    /// only engine that ever comments the second line
-    /// (`.inputs/dss_capi/src/Common/Circuit.pas:2708-2731`), and even there its
-    /// own `DSS_CAPI_NOCOMPATFLAGS` branch writes `CalcVoltageBases`
+    /// **Why not 0.14.5's commented form.** dss_capi 0.14.5 is the only engine
+    /// that ever comments the second line, and even there its own
+    /// `DSS_CAPI_NOCOMPATFLAGS` branch writes `CalcVoltageBases`
     /// **un**commented: `! CalcVoltageBases` is the compat-flag side of a flag
-    /// this port hard-codes to the ON side. RP3.11 measured what that comment
-    /// costs — every circuit the port saved re-compiled with `kVBase = 0` on
-    /// **every** bus (`bus_kvbase(genbus)` **0.0**, against 7.199557856794634
-    /// from r4133's own save of `modes/ncim/ncim_pv_pq.dss`), so the ncim tree
-    /// came back NOT CONVERGED at 15 iterations and the `expcontrol` PV moved
-    /// from -0.0060 kvar / 14 iterations to +307.94 kvar / 53: per-unit-driven
-    /// controls (ExpControl/InvControl/RegControl) read those bases. The claim
-    /// this doc comment used to carry — "the base-kV list only affects per-unit
-    /// reporting, not the absolute-volt re-solve" — is measurably false and is
-    /// retracted. Pinned by
-    /// [`crate::exec::tests::report`]`::save_writes_calcvoltagebases_like_r4133`.
+    /// this engine hard-codes to the ON side. The commented form re-compiles a
+    /// saved circuit with `kVBase = 0` on **every** bus, and per-unit-driven
+    /// controls (ExpControl/InvControl/RegControl) read those bases, so the
+    /// re-solve changes. Pinned by
+    /// `exec::tests::report::save_writes_calcvoltagebases_like_r4133`.
     fn save_voltage_bases(&mut self, dir: &Path) {
         let Some(ckt) = self.circuit.as_ref() else {
             return;

@@ -235,21 +235,12 @@ fn makeposseq_indmach012_is_no_base_and_empty() {
 }
 
 // ===========================================================================
-// RP3.8 P1b — the LIVE read-only `pf` render
+// The LIVE read-only `pf` render
 //
-// r4133 renders it from the live solution:
-// `5: Result := Format('%.6g', [PowerFactor(Power[1, ActiveActor])])`
-// (`Version8/Source/PCElements/IndMach012.pas:1790`); `PowerFactor` is
-// `Common/Utilities.pas:1821-1831` and `Power[1]` is
-// `TDSSCktElement.Get_Power(1)` (`CktElement.pas:666-703`). The port answered
-// the empty string only because dss_capi 0.14.5 flags the property
-// `[SilentReadOnly, ReadByFunction]` and leaves its `PropertyOffset` at -1, so
-// `GetObjPropertyValue`'s outer guard (`DSSObjectHelper.pas:2203-2204`)
-// short-circuits before the read function runs. Every expected byte below was
-// measured on the vendored EPRI r4133 DLL through `epri-worker` (RP3.8 P0
-// probe, `tmp/rp38/out_r4133*.txt`); the capi oracle answers `''` on every one
-// of them, which is why these pins exist and why the capi channel excludes the
-// pair per-case.
+// r4133 renders `pf` from the live solution as the power factor of terminal 1.
+// dss_capi 0.14.5 flags the property `[SilentReadOnly, ReadByFunction]` and
+// answers `''` on every read, which is why these pins exist and why the capi
+// channel excludes the pair per-case.
 // ===========================================================================
 
 /// The P0 pin deck — also the deck of the `golden_reports` query pin, and the
@@ -297,7 +288,7 @@ fn query(dss: &mut crate::exec::Dss, what: &str) -> String {
     dss.result().to_string()
 }
 
-// RP3.8 EXPECTED-VALUE PIN [INDMACH012_PF_RENDERS_LIVE]: `pf` renders the live power
+// EXPECTED-VALUE PIN [INDMACH012_PF_RENDERS_LIVE]: `pf` renders the live power
 // factor of terminal 1, in both lanes. A revert to the dss_capi 0.14.5
 // empty-string suppression (dropping `RENDERS_LIVE_RESULT`, or re-widening the
 // `SILENT_READ_ONLY` gate in `class_props/value.rs`) fails every assertion here
@@ -346,7 +337,7 @@ fn pf_renders_the_live_power_factor() {
     assert!((q - 552.8301).abs() < 1e-3, "terminal-1 Q {q}");
 }
 
-// RP3.8 EXPECTED-VALUE PIN [INDMACH012_PF_IS_A_PURE_READ]: reading `pf` changes
+// EXPECTED-VALUE PIN [INDMACH012_PF_IS_A_PURE_READ]: reading `pf` changes
 // nothing observable, in both lanes.
 /// **Reading `pf` is a pure read of the model.**
 ///
@@ -371,10 +362,10 @@ fn pf_is_a_pure_read() {
         "0.02",
         "the deck's own slip, before any power read"
     );
-    // The port's own value on this deck (r4133 was not run on this exact
+    // This engine's own value on this deck (r4133 was not run on this exact
     // preamble); its `%.6g` is `0.909167`, which is what r4133 renders on the
     // corpus twin `asymmetric/indmach/indmach_asym.dss` — the same machine and
-    // circuit head, also read after `calcv` alone (RP3.8 P0 probe). It is
+    // circuit head, also read after `calcv` alone. It is
     // asserted here only to prove the recompute really ran.
     let pf = query(&mut dss, "indmach012.m1.pf");
     assert_eq!(pf, "0.909167177168331", "the recompute did not run");
@@ -424,8 +415,8 @@ fn pf_is_a_pure_read() {
     assert_eq!(before, after, "a `pf` read moved a rendered property");
 }
 
-// RP3.8 EXPECTED-VALUE PIN [INDMACH012_PF_WITHOUT_POWER_IS_UNITY]: a machine that
-// carries no power renders `1`, in both lanes — and never the upstream crash
+// EXPECTED-VALUE PIN [INDMACH012_PF_WITHOUT_POWER_IS_UNITY]: a machine that
+// carries no power renders `1`, in both lanes — and never the OpenDSS crash
 // this query raises before the node references are assigned.
 /// `PowerFactor(S = 0)` is `1.0` (`Utilities.pas:1821-1831`, the
 /// `Else Result := 1.0` arm), so an unconnected, unsolved or disabled machine
@@ -469,11 +460,10 @@ fn pf_of_a_machine_without_power_is_unity() {
     assert_eq!(query(&mut dss, "indmach012.m1.pf"), "1", "disabled");
 }
 
-/// The three JSON/schema surfaces the 0.14.5 `SilentReadOnly` convention still
-/// governs are **unchanged** by RP3.8 — the text render is the only one r4133
-/// disagrees with. Nothing here may move a JSON golden
-/// (`tests/golden/json/spectrum_refs.json` pins the same omission for this very
-/// class, and `schema_full_oracle.json` is the capi schema).
+/// The three JSON/schema surfaces the 0.14.5 `SilentReadOnly` convention
+/// governs stay unchanged, since the text render is the only one r4133
+/// disagrees with. No JSON golden may move (`tests/golden/json/spectrum_refs.json`
+/// pins the same omission for this class, `schema_full_oracle.json` is the capi schema).
 #[test]
 fn pf_stays_out_of_the_json_surfaces() {
     use crate::report::export::json::JsonOpts;
@@ -553,7 +543,7 @@ fn pf_is_ignored_by_a_json_load() {
     // …and the walk never even MARKED it set. This is the leg that actually
     // discriminates the flag: `PF` has no `set_f64` arm, so "nothing was stored"
     // holds with or without `SILENT_READ_ONLY` and the two assertions above pass
-    // either way (RP3.8 audit-tests finding 1). Without the flag the key reaches
+    // either way. Without the flag the key reaches
     // `set_json_value` → `edit_property`, whose applier VM stamps `PrpSequence`
     // (Pascal `SetAsNextSeq`) — and a marked property is one `Save` emits, so
     // the load would leak into the saved deck. The writable sibling proves the
@@ -573,8 +563,8 @@ fn pf_is_ignored_by_a_json_load() {
 }
 
 /// The flag pair is carried by exactly `PF`, and the property table's shape
-/// (names, order, count) is untouched — RP3.8 changes what a render *says*,
-/// never the property list the oracle compares against.
+/// (names, order, count) is untouched: the flag changes what a render *says*,
+/// never the property list compared with the OpenDSS engines.
 #[test]
 fn only_pf_renders_live() {
     use crate::obj::props::PropFlags;

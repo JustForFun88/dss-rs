@@ -1,4 +1,4 @@
-//! GOLDEN_REBASE G1.6b — expected-value pins for the `PDElements` walk
+//! Expected-value pins for the `PDElements` walk
 //! ([`Dss::pd_elements`] / [`crate::exec::view::PdElementView`]).
 //!
 //! The live gate compares the walk against both oracle channels; these pins fix
@@ -15,8 +15,7 @@ use crate::exec::*;
 /// definition — no `export`/`show`/`save`/`plot`/`buscoords` — so it writes
 /// nothing and needs no directory guard; the meter and `MaxControlIter` line
 /// are the two commands `Run_IEEE123Bus.DSS`'s first script adds around it.
-/// Never `.inputs/`: the vendored corpus tree is the one the live gate reads
-/// (CLAUDE.md).
+/// Never `.inputs/`: the vendored corpus tree is the one the live gate reads.
 fn ieee123() -> Dss {
     let deck = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(
         "../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/123Bus/IEEE123Master.dss",
@@ -54,7 +53,7 @@ fn membership_feeder() -> Dss {
     dss
 }
 
-/// **Pin (G1.6b-3).** The walk is the circuit's `PDElements` pointer list in
+/// **Pin.** The walk is the circuit's `PDElements` pointer list in
 /// `AddCktElement` creation order, enabled members only.
 ///
 /// Membership is `DSSObjType and BaseClassMask = PD_ELEMENT`
@@ -148,7 +147,7 @@ fn pd_elements_walk_is_the_enabled_pd_list_in_creation_order() {
     );
 }
 
-/// **Pin (G1.6b-4).** `from_terminal` is reported **1-based**, the way both
+/// **Pin.** `from_terminal` is reported **1-based**, the way both
 /// oracles read `TPDElement.FromTerminal` (capi `CAPI_PDElements.pas:284-292`,
 /// r4133 `PDElementsI:7`), while the port stores it 0-based
 /// (`elements/ckt.rs:148-149`). Pascal's constructor default is
@@ -208,7 +207,7 @@ fn pd_elements_from_terminal_is_one_based() {
     );
 }
 
-/// **Pin (G1.6b-5).** `parent_class_index` is the upline branch's Pascal
+/// **Pin.** `parent_class_index` is the upline branch's Pascal
 /// `ClassIndex` — the **1-based, per-class** creation index that
 /// `AddObjectToList` stamps (`General/DSSObject.pas:43`) — and
 /// `parent_name` is that same element's FullName. A branch with no upline
@@ -293,7 +292,7 @@ fn pd_elements_parent_is_the_upline_branch_by_name_and_class_index() {
     );
 }
 
-/// **Pin (G1.6b-6).** `section_id`, `total_miles`, `lambda` and `accumulated_l`
+/// **Pin.** `section_id`, `total_miles`, `lambda` and `accumulated_l`
 /// are the four fields the EnergyMeter *reliability sweep* writes
 /// (`solution/meters/reliability.rs:147-149,214`; Pascal `CalcFltRate`'s only
 /// caller is `EnergyMeter.pas:2479` inside `CalcReliabilityIndices`, and
@@ -309,10 +308,9 @@ fn pd_elements_parent_is_the_upline_branch_by_name_and_class_index() {
 /// **that** as `Lambda` would manufacture a divergence on every metered deck.
 ///
 /// This pin is the *zero* half of the coverage: it asserts the port does not
-/// populate the four fields prematurely. The multi-valued half was owed by
-/// G1.6(i) and is discharged — the gate drives the executive `RelCalc` on its
-/// flagged cases and the four fields become oracle-compared accumulated sums
-/// there (`crates/dss-core/tests/reliability_pins.rs`,
+/// populate the four fields prematurely. The multi-valued half is in the gate:
+/// it drives the executive `RelCalc` on its flagged cases and compares the four
+/// fields there as accumulated sums against the OpenDSS engines (`crates/dss-core/tests/reliability_pins.rs`,
 /// `pd_elements_relcalc_fields_are_live_after_relcalc`).
 #[test]
 fn pd_elements_relcalc_fields_are_zero_without_relcalc() {
@@ -361,7 +359,7 @@ fn pd_elements_relcalc_fields_are_zero_without_relcalc() {
     );
 }
 
-/// **Pin (G1.6b audit settlement).** `in_meter_zone` is the port's
+/// **Pin.** `in_meter_zone` is the port's
 /// `TPDElement.MeterObj <> nil`, and together with `is_shunt` it is the
 /// predicate `harness::pd_skip_applies` uses to scope `PD_SKIP_FIELDS` to the
 /// elements the oracles' zone build corrupts.

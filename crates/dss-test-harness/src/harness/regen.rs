@@ -1,14 +1,15 @@
 //! Self-golden regeneration rails — the `DSS_UPDATE_GOLDENS` plumbing and the
-//! two write guards of `GOLDEN_REBASE_PLAN.md` §1.2 (sub-step G0.2).
+//! two write guards.
+//!
+//! Knob: `DSS_UPDATE_GOLDENS` ([`UPDATE_ENV`]), when set, arms the write rails
+//! [`snapshot_text`] / [`snapshot_bytes`]. Unset by default, so the rails are
+//! inert.
 //!
 //! # Why a guarded writer at all
 //!
-//! WP-G3 converts most golden families into **self-snapshots** of our own
-//! engine, and WP-G4 regenerates them again when the FPC print-emulation
-//! kernels die. That gives the project a capability the old "never regenerate"
-//! rule made impossible — rewriting a golden — together with the failure mode
-//! it made impossible: a red gate quietly silenced by re-baselining the very
-//! bytes that were supposed to catch it.
+//! A golden family that is a **self-snapshot** of this engine can be rewritten.
+//! That brings a failure mode: a red gate quietly silenced by re-baselining the
+//! very bytes that were supposed to catch it.
 //!
 //! The rails make that impossible to do *by accident*. Every write goes through
 //! [`snapshot_text`] / [`snapshot_bytes`], which:
@@ -21,17 +22,16 @@
 //!    `fpc_3.2.2`) is somebody else's capture, and de-anchoring it is a reviewed
 //!    edit to the `DEANCHORED` register in `golden_lock.rs`, never a side effect
 //!    of pressing a regen button;
-//! 3. **refuse a write from the non-producing lane** — §1.2: until WP-G4 the two
-//!    lanes render different report/JSON bytes, so each self-anchored family
+//! 3. **refuse a write from the non-producing lane** — the two lanes render
+//!    different report/JSON bytes, so each self-anchored family
 //!    records in the lock (`produced_by`) which lane may (re)produce it. A
 //!    parity-produced family regenerated from the default lane would silently
 //!    re-baseline the parity byte contract onto default-lane rendering.
 //!
 //! The refusals are *skips*, not panics: a family regen legitimately sweeps
-//! artifacts it must not touch (G3.3a snapshots 144 of `reports/export*`'s 146
-//! files — the two `capi015` `.meta.json` sidecars are refused; G3.5 refuses the
-//! six `capi015` `props/` scenarios). Every refusal is announced on stderr with
-//! its remedy, and the artifact is left byte-identical.
+//! artifacts it must not touch (the `capi015` `.meta.json` sidecars among the
+//! `reports/export*` files, the `capi015` `props/` scenarios). Every refusal is
+//! announced on stderr with its remedy, and the artifact is left byte-identical.
 //!
 //! # The announcements need `-- --nocapture`
 //!
@@ -62,14 +62,14 @@
 //! which is the reviewed event the whole design exists to force. The rails print
 //! that command once per regen run.
 //!
-//! # Regeneration rules (TESTING.md §Procedures, R1–R4)
+//! # Regeneration rules
 //!
-//! R1 clean tree only; R2 **never** to fix a red gate (fix → pin the intended
+//! R1 clean tree only. R2 **never** to fix a red gate (fix → pin the intended
 //! new value with an expected-value test → regen → the diff moves ONLY the
-//! predicted cells); R3 per-family only; R4 the lock digest diff is the review
+//! predicted cells). R3 per-family only. R4 the lock digest diff is the review
 //! artifact and the commit body names every moved artifact and its cause.
 //!
-//! No golden driver calls these helpers yet — wiring them is WP-G3.
+//! No golden driver calls these helpers yet.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -142,7 +142,7 @@ pub enum ProducedBy {
     /// the print-emulation kernels live).
     #[serde(rename = "parity")]
     Parity,
-    /// Measured identical in both lanes by a cross-lane regen (WP-G4 outcome).
+    /// Measured identical in both lanes by a cross-lane regen.
     #[serde(rename = "lane-invariant")]
     LaneInvariant,
 }
@@ -160,7 +160,7 @@ impl ProducedBy {
         match self {
             ProducedBy::Parity => lane == Lane::Parity,
             // Only ever set after a cross-lane regen *measured* the invariance
-            // (§1.2 — never assumed), so either lane reproduces the bytes.
+            // (never assumed), so either lane reproduces the bytes.
             ProducedBy::LaneInvariant => true,
         }
     }
@@ -210,9 +210,9 @@ pub enum Refusal {
     /// unfingerprinted artifact into the corpus — the exact hole the lock
     /// exists to close.
     Unlocked,
-    /// The artifact's truth comes from somewhere else (§1.2 guard 1).
+    /// The artifact's truth comes from somewhere else (guard 1).
     ExternallyAnchored(Anchor),
-    /// The running build is not the family's producing lane (§1.2 guard 2).
+    /// The running build is not the family's producing lane (guard 2).
     WrongLane { producer: ProducedBy, running: Lane },
     /// `anchor: "self"` with no `produced_by`. `golden_lock.rs` asserts the
     /// equivalence, so this can only be a hand-edited lock — refuse rather than
@@ -236,7 +236,7 @@ impl Refusal {
                 a.as_str()
             ),
             Refusal::WrongLane { producer, running } => format!(
-                "{rel} is produced by the `{}` lane, but this build is `{}`. Until WP-G4 the lanes \
+                "{rel} is produced by the `{}` lane, but this build is `{}`. The lanes \
                  render different bytes, so regenerate it with `{}` — writing it from here would \
                  re-baseline the strict lane's byte contract onto the other lane's rendering.",
                 producer.as_str(),
@@ -317,7 +317,7 @@ struct LockDoc {
 /// separate test binary, so both copies are tied to the same third source of
 /// truth — the `.gitattributes` declaration — its own copy by
 /// `assert_binary_classification_matches_gitattributes`, this one by
-/// [`the_binary_classifier_matches_gitattributes`]. A future binary family with
+/// `the_binary_classifier_matches_gitattributes`. A future binary family with
 /// another extension therefore reds *both* files instead of drifting past this
 /// one.
 fn is_binary_artifact(rel: &str) -> bool {
@@ -331,7 +331,7 @@ fn is_binary_artifact(rel: &str) -> bool {
 #[cfg(test)]
 const GITATTRIBUTES_BINARY_PATHSPECS: &[&str] = &["tests/golden/reports/*.bin"];
 
-/// The §1.2 lock scope, as path prefixes: a `.gitattributes` declaration
+/// The lock scope, as path prefixes: a `.gitattributes` declaration
 /// outside it cannot classify an artifact these rails may write.
 #[cfg(test)]
 const LOCK_SCOPE_PREFIXES: &[&str] = &[
@@ -402,7 +402,7 @@ impl Rails {
     }
 
     /// The whole guard, as a pure decision over the lock row — the acceptance
-    /// surface of §1.2 (`Ok` = writable; `Err` = one of the refusals).
+    /// surface of the rails (`Ok` = writable, `Err` = one of the refusals).
     pub fn decide(&self, rel: &str) -> Result<(), Refusal> {
         let Some(row) = self.rows.get(rel) else {
             return Err(Refusal::Unlocked);
@@ -674,7 +674,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// A `lane-invariant` family — the WP-G4 end state, only ever set after a
+    /// A `lane-invariant` family — only ever set after a
     /// cross-lane regen measured it — is writable from either lane.
     #[test]
     fn a_lane_invariant_family_accepts_both_lanes() {
@@ -952,7 +952,7 @@ mod tests {
                 let pattern = f.next()?;
                 let binary = f.any(|a| a == "binary" || a == "-text");
                 // Only declarations that can classify a locked artifact: the
-                // §1.2 lock scope (tests/golden/** plus the registered
+                // lock scope (tests/golden/** plus the registered
                 // out-of-tree r3723 witness). The vendored corpus's `-text`
                 // pathspecs classify nothing this module can write.
                 let in_scope = LOCK_SCOPE_PREFIXES.iter().any(|r| pattern.starts_with(r));

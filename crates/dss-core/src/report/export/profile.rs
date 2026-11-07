@@ -91,7 +91,7 @@ pub(crate) fn export_profile(classes: &[DssClass], ckt: &Circuit, phases_to_plot
     // L-L pu voltage between phases `ph`/`ph2`: `CABS(V1 − V2) / kVBase / 1732`
     // upstream. `kVBase` is line-to-neutral, so the correct divisor is the
     // `1000·√3` the L-N arm above spells `1000.0`; the parity lane keeps the
-    // truncated literal (`compat::profile_ll_pu_divisor`, F.3z).
+    // truncated literal (`compat::profile_ll_pu_divisor`).
     let ll_divisor = compat::profile_ll_pu_divisor();
     let pu_ll = |bus: &Bus, ph: i32, ph2: i32| {
         (node_v[vref(bus, ph)] - node_v[vref(bus, ph2)]).norm() / bus.kv_base / ll_divisor

@@ -1,6 +1,5 @@
 //! Pascal `TCIMExporter.ExportCDPSM` (`Common/ExportCIMXML.pas:3203-4707`) — the
-//! CIM100 XML export control flow, ported top-to-bottom (GAPS_PLAN WPG.18
-//! decision 7): the scaffolding (regions/substation/feeder/location, the six
+//! CIM100 XML export control flow, ported top-to-bottom: the scaffolding (regions/substation/feeder/location, the six
 //! `OperationalLimitType`s, the `BaseVoltage`+op-limit-set sweep over
 //! `LegalVoltageBases`, the bus → `TopologicalNode`/`ConnectivityNode` sweep, the
 //! swing-bus `TopologicalIsland`, the fixed `LoadResponseCharacteristic` catalog,
@@ -1823,14 +1822,11 @@ fn write_line_code_catalog(
 /// `FLineCodeSpecified := FALSE` (it is written by `FetchLineCode`,
 /// `PDElements/Line.pas:387`, and cleared only by the constructor, `:825`), so
 /// a line whose code was superseded by an impedance/matrix/geometry/spacing/
-/// cable override — or a `switch=` (RP3.6(a)) — still donates its units here.
+/// cable override — or a `switch=` — still donates its units here.
 /// dss_capi 0.14.5 differs: it has no `CondCode` and matches the live object
 /// instead (`if (pLine.LineCodeObj <> NIL) and (pLine.LineCodeObj.Name =
 /// pLnCd.LocalName)`, `src/Common/ExportCIMXML.pas:4501`), so it skips exactly
-/// those lines. r4133 is the behavioral authority (CLAUDE.md 2026-08-02);
-/// measured live, an overridden `linecode=lcnone units=kft length=2 r1=0.301`
-/// makes r4133 write `PerLengthSequenceImpedance.r = 0.301/304.8 =
-/// 0.00098753281` where 0.14.5 writes `0.301` (RP3.5/RP3.6 probes).
+/// those lines. This engine follows r4133.
 ///
 /// Case-insensitive because both engines compare two already-lowercased strings
 /// (`CondCode := LowerCase(Code)`; a `TDSSObject`'s `Name` is lowercased at
@@ -2147,7 +2143,7 @@ pub(crate) fn export_cdpsm(
     // `StartBankList`/`StartECPList`/`StartOpLimitList` (`ExportCIMXML.pas:3308-
     // 3310`): always-fresh, always-freed-at-the-end *local* scratch state (no
     // "if not assigned" guard, unlike UuidList) — modeled as plain Rust locals
-    // (`op_limits`/`op_limit_idx` below); Bank/ECP lists arrive with Stage E/B.
+    // (`op_limits`/`op_limit_idx` below).
 
     // `FD_Create` (`ExportCIMXML.pas:4729`): open the writer + emit the
     // per-file `StartCIMFile` preamble(s). `combined = true` → one FUN buffer
@@ -2591,14 +2587,14 @@ pub(crate) fn export_cdpsm(
     // `ECPList`/`ECPHash`, started at `3308-3310`, freed at `4698-4700`): the
     // per-(norm,emerg) `OperationalLimitSet`s that `write_reference_terminals`
     // creates on the fly, and the per-shape/spectrum `EnergyConnectionProfile`s
-    // that `add_load_ecp` (and, from Stage F, the DER ECP helpers) accumulate.
+    // that `add_load_ecp` (and the DER ECP helpers) accumulate.
     // Threaded through every per-object sweep and flushed by the two closing
     // sweeps below.
     let mut op_limits: Vec<OpLimit> = Vec::new();
     let mut op_limit_idx: HashMap<String, usize> = HashMap::new();
     let mut ecps = EcpList::default();
 
-    // Generators -> SynchronousMachine (`3503-3522`) — Stage F.
+    // Generators -> SynchronousMachine (`3503-3522`).
     for &r in &ckt.generators.clone() {
         struct GenSnap {
             enabled: bool,
@@ -3233,10 +3229,10 @@ pub(crate) fn export_cdpsm(
         );
     }
 
-    // IEEE1547 (InvControl + ExpControl) -> DERIEEEType1 (`3614-3634`) — Stage F.
+    // IEEE1547 (InvControl + ExpControl) -> DERIEEEType1 (`3614-3634`).
     super::ieee1547::write_ieee1547_controllers(&mut buf, classes, ckt, cim);
 
-    // EnergySource sweep (`3636-3682`) — Stage A.
+    // EnergySource sweep (`3636-3682`).
     for &r in &ckt.sources.clone() {
         let (
             enabled,
@@ -3340,7 +3336,7 @@ pub(crate) fn export_cdpsm(
 
         // `WriteTerminals(pVsrc, geoUUID, crsUUID)` — EnergySource has no
         // rating, so this never creates an `OperationalLimitSet`;
-        // the shared `op_limits` is threaded through for the Stage C+ producers.
+        // the shared `op_limits` is threaded through for the PD-element producers.
         write_terminals(
             &mut buf,
             ckt,
@@ -3361,8 +3357,7 @@ pub(crate) fn export_cdpsm(
         );
     }
 
-    // ShuntCapacitors (`3684-3731`) -> LinearShuntCompensator (+ AttachCapPhases) —
-    // Stage D.
+    // ShuntCapacitors (`3684-3731`) -> LinearShuntCompensator (+ AttachCapPhases).
     for &r in &ckt.shunt_capacitors.clone() {
         struct CapSnap {
             enabled: bool,
@@ -3599,7 +3594,7 @@ pub(crate) fn export_cdpsm(
         );
     }
 
-    // CapControls -> RegulatingControl (`3733-3781`) — Stage D.
+    // CapControls -> RegulatingControl (`3733-3781`).
     for &cr in &ckt.controls.clone() {
         struct CcSnap {
             cc_name: String,
@@ -3668,7 +3663,7 @@ pub(crate) fn export_cdpsm(
         let Some(mon_obj_type) = snap.mon_obj_type else {
             errors.push(
                 "Export CIM100: CapControl monitored-element class has no DSSObjType \
-                 mapping yet (GAPS_PLAN WPG.18 — extend cktelem_dss_obj_type)."
+                 mapping in cktelem_dss_obj_type."
                     .to_string(),
             );
             continue;
@@ -3792,7 +3787,7 @@ pub(crate) fn export_cdpsm(
         writer::end_instance(&mut buf, ProfileChoice::Fun, "RegulatingControl");
     }
 
-    // Transformers + AutoTransformers + their banks (`3785-4197`) — Stage E.
+    // Transformers + AutoTransformers + their banks (`3785-4197`).
     super::power_xfmr::write_transformers(
         &mut buf,
         classes,
@@ -3805,10 +3800,10 @@ pub(crate) fn export_cdpsm(
         sqrt3,
     );
 
-    // RegControls -> RatioTapChanger/TapChangerControl (`4198-4273`) — Stage E.
+    // RegControls -> RatioTapChanger/TapChangerControl (`4198-4273`).
     super::power_xfmr::write_reg_controls(&mut buf, classes, ckt, cim);
 
-    // Series reactors -> SeriesCompensator (`4274-4292`) — Stage D.
+    // Series reactors -> SeriesCompensator (`4274-4292`).
     for &r in &ckt.reactors.clone() {
         struct ReacSnap {
             enabled: bool,
@@ -3916,7 +3911,7 @@ pub(crate) fn export_cdpsm(
     }
 
     // Lines/switches -> ACLineSegment/LoadBreakSwitch/Fuse/Breaker/Recloser
-    // (`4294-4409`) — Stage C.
+    // (`4294-4409`).
     for &r in &ckt.lines.clone() {
         let snap = {
             let Some(line) = classes[r.class_ord()].arena.get::<Line>(r.index()) else {
@@ -4187,9 +4182,9 @@ pub(crate) fn export_cdpsm(
                 // sibling of the same procedure (`:4521-4522`; r4133
                 // `:3895-3896`, ported at `write_line_code_catalog`) both spell
                 // the quartet `bch, gch, b0ch, g0ch`. Both gating oracles carry
-                // the duplicate; both lanes now name it `g0ch`
-                // (`GOLDEN_REBASE_PLAN.md` G2.2c; `issue-25`). Only the element
-                // name moves — the value stays `0.0`, the order is untouched.
+                // the duplicate; both lanes now name it `g0ch` (`issue-25`).
+                // Only the element name moves — the value stays `0.0`, the order
+                // is untouched.
                 writer::double_node(&mut buf, ProfileChoice::Ep, "ACLineSegment.g0ch", 0.0);
             } else {
                 bval = true;
@@ -4314,7 +4309,7 @@ pub(crate) fn export_cdpsm(
         );
     }
 
-    // The 7 fixed DSS-like load models (`4410-4447`) — Stage A, unconditional.
+    // The 7 fixed DSS-like load models (`4410-4447`), unconditional.
     let id1_const_kva = cim.get_dev_uuid(UuidChoice::LoadResp, "ConstkVA", 1);
     let id2_const_z = cim.get_dev_uuid(UuidChoice::LoadResp, "ConstZ", 1);
     let id3_const_p_quad_q = cim.get_dev_uuid(UuidChoice::LoadResp, "ConstPQuadQ", 1);
@@ -4415,7 +4410,7 @@ pub(crate) fn export_cdpsm(
         0.0,
     );
 
-    // EnergyConsumer sweep (`4448-4491`) — Stage B.
+    // EnergyConsumer sweep (`4448-4491`).
     for &r in &ckt.loads.clone() {
         struct LoadSnap {
             enabled: bool,
@@ -4629,7 +4624,7 @@ pub(crate) fn export_cdpsm(
         );
     }
 
-    // Conductor/cable/geometry catalogs (`4493-4627`) — Stage C.
+    // Conductor/cable/geometry catalogs (`4493-4627`).
     write_line_code_catalog(&mut buf, classes, cim, ckt);
     write_wire_data_catalog(&mut buf, classes);
     write_ts_data_catalog(&mut buf, classes);
@@ -4637,9 +4632,9 @@ pub(crate) fn export_cdpsm(
     write_line_geometry_catalog(&mut buf, classes, cim);
     write_line_spacing_catalog(&mut buf, classes, cim);
 
-    // EnergyConnectionProfile sweep (`4628-4656`) — Stage B: one instance per
+    // EnergyConnectionProfile sweep (`4628-4656`): one instance per
     // distinct DSS shape/spectrum profile, populated by `add_load_ecp` above
-    // (and, from Stage F, the DER ECP helpers). Each `if pECP.<f> <> ''` guard
+    // (and the DER ECP helpers). Each `if pECP.<f> <> ''` guard
     // is a "write only when non-empty" node.
     for ecp in &ecps.list {
         writer::start_instance(
@@ -4692,7 +4687,7 @@ pub(crate) fn export_cdpsm(
 
     // Closing OperationalLimitSet/CurrentLimit sweep (`4658-4680`): flush the
     // per-(norm,emerg) limits that `write_reference_terminals` created on the
-    // fly (Stage C/D/E PD-element terminals are the producers via the
+    // fly (PD-element terminals are the producers via the
     // `norm > 0.0` branch; EnergySource/EnergyConsumer pass 0.0).
     for limit in &op_limits {
         writer::start_instance(

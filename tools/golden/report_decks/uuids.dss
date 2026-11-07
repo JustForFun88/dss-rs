@@ -1,4 +1,4 @@
-// PHASE8_PLAN WP8.6 Uuids fixture: preloads a UUID for the circuit, EVERY
+// Uuids fixture: preloads a UUID for the circuit, EVERY
 // bus, EVERY ckt element, the library linecode AND the three hashed keys
 // the CIM exporter auto-creates (Station=Station=1, GeoRgn=GeoRgn=1,
 // SubGeoRgn=SubGeoRgn=1) - any object left out gets a RANDOM v4 at export

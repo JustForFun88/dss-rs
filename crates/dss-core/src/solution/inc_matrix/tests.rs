@@ -49,15 +49,15 @@ fn get_inc_matrix_col_returns_link_columns() {
     assert_eq!(ac0, [1, 1]);
 }
 
-// --- The reactor row cursor (GOLDEN_REBASE G1.8, settlement S-INC) -----------
+// --- The reactor row cursor --------------------------------------------------
 //
 // r4133 `Version8/Source/Common/Solution.pas:3039` (dss_capi 0.14.5
 // `Common/Solution.pas:1501`) advances `ActiveIncCell[0]` for **every** reactor,
 // outside the `if BusdotIdx = 0` guard, so a shunt reactor consumes a matrix row
 // index without appending a name to `Inc_Mat_Rows`; the three sibling walks
-// advance only on an emitted row (`:2885` / `:2938` / `:2986`). The port emits
-// dense rows (CLAUDE.md: no upstream bug is reproduced in any lane); the corpus
-// gate re-derives upstream's index positively instead of excluding it.
+// advance only on an emitted row (`:2885` / `:2938` / `:2986`). This engine
+// emits dense rows (OpenDSS bugs are never reproduced). The corpus gate
+// re-derives the OpenDSS index positively instead of excluding it.
 
 /// The deck the two order tests share: three buses in a line plus a shunt reactor
 /// at the far end. `series_first` only swaps the declaration order of the two

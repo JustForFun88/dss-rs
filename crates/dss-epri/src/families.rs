@@ -53,8 +53,8 @@ impl Family {
 /// The families whose `F` export takes **two** doubles rather than one:
 /// `CircuitF(mode; arg1, arg2: double)` (`DCircuit.pas:27`, impl `:193`) and
 /// `CmathLibF(mode; arg1, arg2: double)` (`DCmathLib.pas:5`, impl `:12`). An
-/// exhaustive sweep of the vendored DDLL `interface` sections (G1.0, 2026-09-04)
-/// found no third one, and every `XxxI`/`XxxS`/`XxxV` uniform. [`FamilyTable::load`]
+/// exhaustive sweep of the vendored DDLL `interface` sections finds no third
+/// one, and every `XxxI`/`XxxS`/`XxxV` uniform. [`FamilyTable::load`]
 /// binds these two through [`FnF2`] and leaves [`Family::f`] `None`; the
 /// mismatch was live-measured before the fix (see [`FnF2`]).
 pub const TWO_DOUBLE_F: [&str; 2] = ["Circuit", "CmathLib"];

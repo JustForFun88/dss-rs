@@ -1,4 +1,4 @@
-"""Generate tests/golden/gendispatcher.json from the pinned oracle (WP6.8).
+"""Generate tests/golden/gendispatcher.json from the pinned oracle.
 
 For each scenario the oracle builds a small circuit with a GenDispatcher, runs a
 snapshot solve (which iterates the control loop to convergence), and records the

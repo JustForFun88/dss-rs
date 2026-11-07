@@ -1,4 +1,4 @@
-! WASM_USERMODELS WM.3 — Generator GenModel=6 STATE-VARIABLE surface gate.
+! WASM user model — Generator GenModel=6 STATE-VARIABLE surface gate.
 ! Same induction machine as wasm_gen_pflow, at a second operating point (a small
 ! resistive load on the generator bus shifts the machine slip), so the captured
 ! state-variable surface (num_vars / get_all_vars / get_var_name, plus the

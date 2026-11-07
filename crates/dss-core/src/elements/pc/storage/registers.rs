@@ -128,7 +128,7 @@ impl Storage {
         // Pascal: `if IsDynamicModel and IsUserModel then Exit` (Storage.pas:2502).
         // `IsUserModel` = `UserModel.Exists or DynaModel.Exists` (`:854`/`:862`);
         // in dynamics mode with a loaded user model the model owns the state, so
-        // the built-in SOC update is skipped (WASM_USERMODELS WM.4).
+        // the built-in SOC update is skipped.
         if sys.is_dynamic_model && (self.user_model_exists() || self.dyna_model_exists()) {
             return;
         }
@@ -139,7 +139,7 @@ impl Storage {
                 // then UpdateSt := CheckIfDelivering()`. A GFM inverter that is
                 // actually *absorbing* (not delivering) recharges instead of
                 // discharging (the `else` branch, capped at `kWhRating`) — the
-                // dynamics-mode GFM black-start (WPG.17) can pass through this.
+                // dynamics-mode GFM black-start can pass through this.
                 let update_st = if self.base.gfm_mode {
                     self.check_if_delivering(sys, node_v)
                 } else {

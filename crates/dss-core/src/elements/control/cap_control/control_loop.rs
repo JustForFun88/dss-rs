@@ -145,7 +145,7 @@ impl CapControl {
         // First, voltage override (skipped for VOLTAGECONTROL).
         if self.voverride && self.control_type != CapControlType::Voltage {
             // VoverrideBusSpecified is always reverted at parse (the bus list
-            // does not yet exist — PHASE4 §WP4.7), so the GetBusVoltages variant
+            // does not yet exist), so the GetBusVoltages variant
             // is unreachable here; sense the monitored terminal instead.
             mon.get_term_voltages(element_terminal, ctx.node_v, &mut cbuffer);
             let vtest = self.get_control_voltage(&cbuffer, mon_nphases, cap.connection());
@@ -367,7 +367,7 @@ impl CapControl {
                     // so it schedules its decision through `control_queue_push`
                     // directly (a plain queue push). `should_switch` therefore
                     // stays FALSE here, so the shared arm/disarm tail below is
-                    // inert for USERCONTROL — the model owns the timing (WM5-3).
+                    // inert for USERCONTROL — the model owns the timing.
                     if self.sample_user_control(cap, mon, ctx, cond_offset, mon_nphases) {
                         return true; // a wasm trap aborts (ABI §6), skipping the tail
                     }
@@ -433,7 +433,7 @@ impl CapControl {
     /// Pascal `Sample`'s `USERCONTROL` arm (`CapControl.pas:1024-1041`): load the
     /// monitored `Sample` context into the `@ControlVars` image, run the guest
     /// `sample()`, and drain its scheduled control-queue pushes into the real
-    /// control queue (a plain push — the guest owns the timing, WM5-3). Returns
+    /// control queue (a plain push — the guest owns the timing). Returns
     /// `true` iff the guest trapped/faulted, which aborts the solve (ABI §6 hard
     /// error — never a silent mid-run fallback).
     #[must_use]
@@ -487,9 +487,9 @@ impl CapControl {
             ));
             abort = true;
         }
-        // Drain the tier-B effects: a scheduled action goes onto the real control
-        // queue (plain `ControlQueue.Push`, `DSSCallBackRoutines.pas:444`); a
-        // message routes into the error sink (WM.3 no-silent-fallback).
+        // Drain the tier-B effects. A scheduled action goes onto the real control
+        // queue (plain `ControlQueue.Push`). A message routes into the error
+        // sink, never a silent drop.
         for eff in um.drain_effects() {
             match eff {
                 Effect::ControlQueuePush {

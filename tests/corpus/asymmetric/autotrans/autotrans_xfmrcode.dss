@@ -1,6 +1,6 @@
-! R4133_PROPS RP1.2 deck: AutoTrans configured from an XfmrCode library entry —
-! AutoTrans property 39 `XfmrCode` (`Version8/Source/PDElements/AutoTrans.pas:329`,
-! Edit arm `:520`, `TAutoTransObj.FetchXfmrCode` `:2339-2396`). The property is
+! r4133 deck: AutoTrans configured from an XfmrCode library entry —
+! AutoTrans property 39 `XfmrCode` (r4133 only,
+! read by `TAutoTransObj.FetchXfmrCode`). The property is
 ! r4133-only: dss_capi 0.14.5 deleted it outright
 ! (`.inputs/dss_capi/src/PDElements/AutoTrans.pas:76,125` — `//XfmrCode=39, //
 ! removed, unused`), so this deck gates on the `r4133` channel alone.

@@ -1,6 +1,6 @@
 //! `UserData=` string scanner — a minimal hand-rolled port of the parser
-//! subset the vendored DLL actually uses (plan §2.6 sanctions a minimal
-//! scanner, no dss-parser dependency). Sources: the DLL-private
+//! subset the vendored DLL actually uses (a minimal scanner, no dss-parser
+//! dependency). Sources: the DLL-private
 //! `IndMach012a/ParserDel.pas` (`TParser`: `SetCmdString`, `GetToken`,
 //! `GetNextParam`, `MakeString`, `MakeDouble`) and `Shared/Command.pas` +
 //! `Shared/HashList.pas` (`TCommandList.GetCommand`: case-insensitive exact

@@ -93,7 +93,7 @@ fn recalc_without_transformer_records_error_124() {
     assert!(errs[0].contains("Transformer Element is not set"));
 }
 
-// --- Sample / DoPendingAction (WP5.5) ---
+// --- Sample / DoPendingAction ---
 
 use crate::elements::pd::transformer::ControlledTransformer;
 use crate::solution::{ControlMode, ControlQueue, EventLog};
@@ -368,7 +368,7 @@ fn maxtapchange_zero_zeroes_pending_and_exits() {
     assert!(sc.queue.is_empty());
 }
 
-// --- C5 (r4086, 8a898cba): signed thresholds + idle zones ---
+// --- Signed thresholds + idle zones ---
 
 #[test]
 fn defaults_are_signed_thresholds() {
@@ -380,12 +380,10 @@ fn defaults_are_signed_thresholds() {
 
 #[test]
 fn rev_only_edit_fallback_is_sign_preserving() {
-    // EPRI r4133 RegControl.pas:499-507: a rev-only edit falls back to the band
-    // around 0 kW with `Fwd := Rev; Rev := -Rev` — SIGN-PRESERVING (no abs).
-    // A NEGATIVE revThreshold=-500 kW must give Fwd=-500 kW, Rev=+500 kW (the
-    // inverted band both gating oracles produce). dss_capi 0.15.x `8a898cba`'s
-    // `abs` would instead give Fwd=+500 kW, Rev=-500 kW — the D14 divergence the
-    // 0.15.x-adoption sweep fixed (DIVERGENCES C5).
+    // A rev-only edit falls back to the band around 0 kW with `Fwd := Rev;
+    // Rev := -Rev`, SIGN-PRESERVING (no abs), as r4133 does. A NEGATIVE
+    // revThreshold=-500 kW must give Fwd=-500 kW, Rev=+500 kW. An `abs` would
+    // instead give Fwd=+500 kW, Rev=-500 kW.
     let mut rc = RegControl::new("r1");
     rc.rev_power_threshold = -500_000.0; // -500 kW (scale already applied)
     rc.ccd.cd.obj.set_as_next_seq(prop::REVTHRESHOLD); // edited this edit; Fwd not
@@ -565,36 +563,9 @@ fn reg_control_action_pins_queue_codes() {
     assert_eq!(RegControlAction::from_ordinal(2), None);
 }
 
-/// RP3.11 P4 — `TRegcontrolObj.SaveWrite` (r4133
-/// `Version8/Source/Controls/RegControl.pas:1399-1421`) writes `transformer=`
-/// **first**, outside the property chain, and then skips index 1 in the walk.
-/// Pascal's own reason: *"Write Transformer name out first so that it is set for
-/// later operations"*. The one such operation is `tapnum=`: it positions the
-/// controlled transformer's tap as it is parsed, so ahead of `transformer=` it
-/// finds no transformer (error 124) and the tap is lost. `winding=`, `vreg=` and
-/// `ptratio=` are plain values and reload the same in any order.
-///
-/// Measured before this override, on a deck typing `transformer=` last, the port
-/// wrote `New "RegControl.rc1" Winding=2 VReg=122 Band=3 PTRatio=20
-/// Transformer=t1`; r4133 writes `New "RegControl.rc1" transformer=t1 winding=2
-/// tapwinding=2 vreg=122 band=3 ptratio=20` (epri-worker probe,
-/// OpenDSSDirect.dll 11.0.0.1 r4133, RP3.11 I1). The `tapwinding` in r4133's
-/// line is a separate *sequence* divergence, decided in RP3.11 §3.3 and pinned
-/// there: r4133 stamps it as a side effect of `winding=`
-/// (`RegControl.pas:480-483`), dss_capi 0.14.5 dropped that stamp
-/// (`CAPI:Controls/RegControl.pas:417`, *"not really required"*) and this port
-/// followed — round-trip-safe, since re-parsing `Winding=2` re-fires the same
-/// `TapWinding := winding` side effect.
-///
-/// A second control, `rc2`, types `tapnum=4` after `transformer=` and then
-/// re-sets `transformer=`, which moves the transformer's sequence stamp behind
-/// `TapNum=`: in chain order its line would read `Winding=2 TapNum=4
-/// Transformer=t2` and reload with error 124 and `TapNum=0`. r4133 saves it as
-/// `New "RegControl.rc2" transformer=t2 winding=2 tapwinding=2 TapNum=4` and
-/// rejects the chain-order line the same way, with error 124 and `TapNum` 0
-/// (epri-worker probe, OpenDSSDirect.dll 11.0.0.1 r4133, 2026-10-04). The
-/// saved tree is re-compiled and both controls read back their transformer,
-/// winding and settings, `rc2` its tap position.
+/// `Save` writes `transformer=` first, outside the property chain, so a saved
+/// `tapnum=` finds its transformer when the deck is re-compiled. The saved tree
+/// reloads both controls' transformer, winding and settings, and `rc2`'s tap.
 #[test]
 fn regcontrol_save_write_puts_the_transformer_first() {
     use crate::exec::Dss;

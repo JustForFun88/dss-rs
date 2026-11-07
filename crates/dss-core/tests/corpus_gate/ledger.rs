@@ -1,10 +1,9 @@
-//! Divergence ledger for the unified corpus gate (UNIFIED_GATE_PLAN §1.3 / §4
-//! Phase D). Replaces the report-only `known_diffs.json` with a **gating** input:
+//! Divergence ledger for the unified corpus gate, a **gating** input:
 //! `tests/corpus/ledger.json`. Both channels gate commits; each entry pins WHERE
 //! and HOW MUCH a case is allowed to diverge on a channel, and FAILS the gate
-//! when stale (§5 R3 — the ledger must never become a soft-tolerance backdoor).
+//! when stale, so the ledger never becomes a soft-tolerance backdoor.
 //!
-//! Three entry kinds (§1.3):
+//! Three entry kinds:
 //! * `divergence` — the case runs and is fully compared; the `match` scopes are
 //!   *expected to diverge* and re-asserted inside their pinned envelope. Gate
 //!   asserts (a) selected values differ ≤ envelope; (b) unselected values meet
@@ -12,12 +11,12 @@
 //!   least one selected value *exceeds* the tier floor — else the entry is stale.
 //! * `skip` — the case is not sent to that channel at all (hard-crash decks);
 //!   the OTHER channel still gates the case.
-//! * `exclusion` — a proven upstream bug poisons specific comparison scopes on a
+//! * `exclusion` — a proven OpenDSS bug poisons specific comparison scopes on a
 //!   channel; those scopes are skipped, everything else compared.
 //!
 //! Tier floors in `harness` are UNREACHABLE from here and unchanged: envelopes
 //! are per-case, per-channel, per-scope MEASURED facts with a mandatory
-//! cause+source, visible in the population lock (§1.4). This module wraps
+//! cause+source, visible in the population lock. This module wraps
 //! comparator **call sites** in `runner.rs`; it never touches a `harness`
 //! comparator.
 
@@ -160,9 +159,9 @@ struct Scope {
     /// scope: bit `i` is set once `channels[i]` was measured diverging beyond
     /// its tier floor. The entry-level `exceeded_floor` is an OR over every
     /// channel, so a widened scope whose new sub-channel masks nothing would
-    /// ride along on a sibling channel's divergence for ever — the sub-channel
-    /// twin of the `variables` staleness hole (G1.3a audit settlement,
-    /// 2026-09-04). Policed by `assert_all_hit` for `divergence` entries, which
+    /// ride along on a sibling channel's divergence for ever, the sub-channel
+    /// twin of the `variables` staleness hole. Policed by `assert_all_hit` for
+    /// `divergence` entries, which
     /// are the ones that measure at all (see [`LedgerView::excluded`] on why an
     /// `exclusion` carries no verdict).
     channels_exceeded: AtomicU32,
@@ -198,7 +197,7 @@ impl Scope {
     }
 }
 
-/// Measurement aid (§5-R3 "every envelope is a per-case MEASURED fact"): when
+/// Measurement aid (every envelope is a per-case MEASURED fact): when
 /// `DSS_LEDGER_MEASURE` is set, each numeric handler prints the live divergence it
 /// observes for its scope, so an envelope can be sized to the measured max and the
 /// `measured.max_*_seen` provenance recorded. Pure stderr side-effect gated on the
@@ -266,8 +265,8 @@ impl LedgerRuntime {
 
     /// Parse ([`parse_ledger`]) and compile ledger text. Panics with a precise
     /// message naming `origin` on any malformed entry (unknown key, a scope
-    /// refused by [`check_scope`], regex / channel / kind) — the structural test
-    /// asserts the richer cross-manifest rules oracle-free. Pinned by
+    /// refused by [`check_scope`], regex / channel / kind). The structural test
+    /// asserts the richer cross-manifest rules without an engine. Pinned by
     /// `the_loader_refuses_every_shape_parse_ledger_refuses`.
     fn from_text(text: &str, origin: &str) -> LedgerRuntime {
         let raw = parse_ledger(text).unwrap_or_else(|e| panic!("parse {origin}: {e}"));
@@ -362,8 +361,7 @@ impl LedgerRuntime {
     /// Assert every entry was hit at least once and no divergence entry is stale
     /// (applied but nothing exceeded the tier floor), and that an `exclusion`
     /// carrying a measurable scope still masks something. The gate fails loudly
-    /// with a prune instruction otherwise (§1.3 runtime rule / §5 R3
-    /// fail-on-stale).
+    /// with a prune instruction otherwise (fail-on-stale).
     pub(crate) fn assert_all_hit(&self) -> Result<(), String> {
         let mut problems = Vec::new();
         for e in &self.entries {
@@ -422,26 +420,15 @@ impl LedgerRuntime {
             // [`LedgerView::excluded`]), so its sub-channels stay backed by the
             // measured provenance recorded in the entry itself.
             //
-            // Deliberate, not an omission (G1.3d(ii) audit settlement,
-            // 2026-09-05, which widened `exclusion` scopes onto `phase_losses`
-            // -- ten on the lane, eight after the merge into `update`): an
-            // `exclusion` is what a cause gets when its channel cannot be
-            // measured *reliably*. The worked case is the one that settlement
-            // met -- two of its widenings sat on GICTransformer decks whose capi
-            // 0.14.5 oracle disagrees with ITSELF across processes (coordinator
-            // decision D12), so a "did this mask anything on THIS run" verdict
-            // would be a coin flip and a STALE report a flaky gate. (Those two
-            // capi entries are gone here, D12/D14 having moved their decks to
-            // r4133; the reason stays because it is the general rule, and the
-            // structural half above holds on every channel.) What stands behind
-            // an exclusion is instead the measured first failure recorded in the
-            // entry (`measured.*` + `source`), and TESTING.md states the rule.
-            // Kept visible rather than quietly inherited (G1.3c audit
-            // settlement, 2026-09-06): the exempt surface is now **114**
-            // `element` sub-channel names, 103 of them on `exclusion` entries --
-            // G1.3c widened 25 of those onto nine entries at this landing -- so
-            // the measured-provenance requirement above is the whole of their
-            // liveness proof.
+            // Deliberate, not an omission: an `exclusion` is what a cause gets
+            // when its channel cannot be measured *reliably*. On a deck where
+            // an engine disagrees with ITSELF across processes (dss_capi 0.14.5
+            // on a GICTransformer deck), a "did this mask anything on THIS run"
+            // verdict would be a coin flip and a STALE report a flaky gate. What
+            // stands behind an exclusion is instead the measured first failure
+            // recorded in the entry (`measured.*` + `source`), and that
+            // provenance is the whole of the liveness proof of its `element`
+            // sub-channel names.
             for sc in e.scopes.iter().filter(|sc| !sc.channels.is_empty()) {
                 if e.kind != Kind::Divergence {
                     continue;
@@ -489,7 +476,7 @@ impl LedgerRuntime {
         } else {
             Err(format!(
                 "divergence ledger has {} stale/unhit entry(ies) — the ledger fails \
-                 the gate when stale (§5 R3):\n{}",
+                 the gate when stale:\n{}",
                 problems.len(),
                 problems.join("\n")
             ))
@@ -517,8 +504,8 @@ impl LedgerRuntime {
     }
 
     /// The (case, entry, channel) triples on which the bus comparator suppressed
-    /// its three continuous per-bus arrays this run — the visibility half of
-    /// coordinator decision **D11(2)** (`GOLDEN_REBASE_PLAN.md` §G1.4, G1.4a).
+    /// its three continuous per-bus arrays this run: the visibility half of the
+    /// bus-array suppression.
     ///
     /// `harness::compare_bus` bands `puVoltages`/`VMagAngle`/`puVmagAngle` as
     /// exact images of the node-voltage band over the SAME `Solution.NodeV`, so
@@ -577,18 +564,14 @@ impl LedgerRuntime {
     }
 }
 
-/// **The D11(2) bus-array suppression population**: every `(case, ledger
+/// **The bus-array suppression population**: every `(case, ledger
 /// entry, channel)` on which [`LedgerView::bus_arrays_suppressed`] dropped the
 /// three continuous per-bus arrays during a full gate run, sorted by case.
 ///
-/// Measured 2026-10-01 on an unfiltered run of the `corpus_gate` test binary
-/// (`cargo test -p dss-core --test corpus_gate -- --nocapture`, the lines under
-/// `corpus_gate bus arrays suppressed (D11(2))`): the eight deck-wide
-/// `voltages` exclusions of `tests/corpus/ledger.json`, each fired on its own
-/// case. Nine since 2026-10-17: `makeposseq-repeat-capi` excludes every node
-/// voltage of `modes:makeposseq/makeposseq_pc_repeat.dss`, whose second
-/// `makeposseq` reduces the circuit again on the oracle and changes nothing in
-/// the port. The normalization is one structural rule rather than a ledger row per
+/// One row per deck-wide `voltages` exclusion of `tests/corpus/ledger.json`,
+/// each fired on its own case (an unfiltered run of the `corpus_gate` test
+/// binary prints them under `corpus_gate bus arrays suppressed`). The
+/// normalization is one structural rule rather than a ledger row per
 /// case, so nothing else notices it move: a new deck-wide `voltages` exclusion
 /// silences that case's bus arrays too, and a removed one stops silencing them.
 /// [`LedgerRuntime::assert_bus_array_suppressions_are_pinned`] re-derives the
@@ -665,7 +648,7 @@ fn check_bus_array_suppressions(
     let grew: Vec<_> = run.iter().filter(|t| !pin.contains(t)).collect();
     let shrank: Vec<_> = pin.iter().filter(|t| !run.contains(t)).collect();
     Err(format!(
-        "the D11(2) bus-array suppression population moved: {} (case, entry, channel) \
+        "the bus-array suppression population moved: {} (case, entry, channel) \
          triple(s) suppressed this run, {} pinned in `BUS_ARRAY_SUPPRESSIONS`.\n  \
          suppressed, not pinned (the normalization grew): {grew:?}\n  \
          pinned, not suppressed (it shrank): {shrank:?}\n\
@@ -677,23 +660,23 @@ fn check_bus_array_suppressions(
     ))
 }
 
-/// Scope fields with a live runtime handler in [`LedgerView`]. The §1.3 schema
-/// also names `global_result`, but NO handler exists for it yet — a scope naming
+/// Scope fields with a live runtime handler in [`LedgerView`]. The ledger schema
+/// also names `global_result`, but NO handler exists for it yet: a scope naming
 /// it (or a typo'd field) would silently never apply, so loading rejects
-/// anything outside this list loudly (pre-E/F audit UGA-T4).
+/// anything outside this list loudly.
 ///
 /// The last ten — `y`, `y_fingerprint`, `yprim`, `meter`, `variables`,
 /// `reliability`, `distance`, `run_files`, `di`, `voc` — are
 /// **exclusion-only** ([`EXCLUSION_ONLY_FIELDS`]). The first four name a whole
 /// compared artifact rather than a value with a natural envelope, so the only
 /// thing the ledger can say about them is "this (case, channel) does not
-/// compare it"; `GOLDEN_REBASE_PLAN.md` G2.5 added them, because an engine fix
-/// that declines an upstream bug moves the assembled admittance of the affected
+/// compare it". They exist because an engine fix
+/// that declines an OpenDSS bug moves the assembled admittance of the affected
 /// deck and nothing else in this file could express that.
 ///
-/// `variables` (`R4133_PROPS_PLAN.md` RP3.10, the WindGen `QMode=0` fix) is the
+/// `variables` (the WindGen `QMode=0` fix) is the
 /// odd one out: a state variable IS a scalar with the natural
-/// `i_abs + i_rel*|oracle|` envelope, but no handler re-asserts one, so
+/// `i_abs + i_rel*|OpenDSS|` envelope, but no handler re-asserts one, so
 /// whitelisting it for `divergence` too would let an entry promise a
 /// measurement the runtime never makes. It is selected **per variable**
 /// (`name_re` over the lowercased `element:variable` key) precisely so the
@@ -702,23 +685,21 @@ fn check_bus_array_suppressions(
 /// manifest's `variables` list, which masks the other 19 — and the population
 /// lock counts that as a rigor shrink.
 ///
-/// `reliability` (`GOLDEN_REBASE_PLAN.md` G1.6(i)) is the same per-VALUE shape
+/// `reliability` is the same per-VALUE shape
 /// one level up: the key is the lowercased `<meter>:<field>` pair (`em:saidi`,
 /// `em:sum_branch_flt_rates`) plus the bare `totals` for the circuit-level
 /// `Meters.Totals` array. `compare_reliability` compares every reliability
 /// value EXACTLY; the three cells that are not reliability arithmetic are
-/// banded at the tier of what they are made of — `Meters.Totals` at the energy
-/// tier (coordinator decision D17a), `Meters.CalcCurrent` /
-/// `Meters.AllocFactors` at the current tier
-/// (`harness::reliability_array_band`, `tests/TOLERANCE_NOTES.md`
-/// §"The `Meters` reliability surface (G1.6(i))"). The field stays
+/// banded at the tier of what they are made of: `Meters.Totals` at the energy
+/// tier, `Meters.CalcCurrent` / `Meters.AllocFactors` at the current tier
+/// (`harness::reliability_array_band`). The field stays
 /// exclusion-only by a conservative choice: no `divergence` handler re-asserts
 /// an envelope on those three cells, so an entry could promise a measurement
 /// the runtime never makes. Its COUNTS (meter walk length, section count, array
 /// lengths) stay unconditional whatever the ledger says, so an exclusion can
 /// only ever drop a value compare, never hide a missing meter.
 ///
-/// G1.6(ii) put the per-BUS half of that payload under the same field, in its
+/// The per-BUS half of that payload sits under the same field, in its
 /// own key namespace: `bus:<busname>:<field>` (`bus:mid:int_duration`) — three
 /// colon-separated segments behind a reserved `bus:` prefix, built by
 /// `harness::bus_rel_key`. It cannot collide with a meter key (one colon, or the
@@ -728,21 +709,20 @@ fn check_bus_array_suppressions(
 /// walk length, name sequence) stay unconditional for the same reason. No entry
 /// of either shape exists today.
 ///
-/// `distance` (`GOLDEN_REBASE_PLAN.md` G1.4b, coordinator decision D29 step 3)
-/// is the third of that per-VALUE shape: the key is the BUS name, and
+/// `distance` is the third of that per-VALUE shape: the key is the BUS name, and
 /// `harness::compare_bus_distances` compares `Bus.Distance` EXACTLY
 /// (`rel = abs = 0` — the zone walk is the same `len · ConvertLineUnits` sum on
 /// all three engines and never touches the solver), so there is no envelope a
 /// `divergence` could re-assert. Every other assertion of that surface stays
 /// unconditional on an excluded bus — the bus count, the name sequence, the
-/// three array lengths, the port-internal identity
-/// `AllBusDistances[i] == Bus.Distance == AllNodeDistances[k]` and the
-/// oracle-internal one — so an exclusion drops one bus's port↔oracle equality
-/// and nothing else. It is consulted only AFTER that equality has failed, which
+/// three array lengths, this engine's internal identity
+/// `AllBusDistances[i] == Bus.Distance == AllNodeDistances[k]` and the OpenDSS
+/// one, so an exclusion drops one bus's equality between the engines and
+/// nothing else. It is consulted only AFTER that equality has failed, which
 /// is what makes its per-scope `hit` mean "masked something" rather than
 /// "matched a name" (see [`PER_VALUE_EXCLUSION_FIELDS`]).
 ///
-/// `run_files` (`GOLDEN_REBASE_PLAN.md` G1.10a) is the fourth per-VALUE field:
+/// `run_files` is the fourth per-VALUE field:
 /// the key is one member of the run's created-file SET — a `/`-joined,
 /// ASCII-case-folded, case-dir-relative name, a trailing `/` marking a created
 /// directory (`harness::run_files::compare_run_files`). The set is discrete and
@@ -750,11 +730,11 @@ fn check_bus_array_suppressions(
 /// is no envelope a `divergence` could re-assert; and because the exclusion
 /// removes the matched name from BOTH sides, it can never hide a second
 /// divergence on the same case. Everything the comparator asserts around the
-/// set (the presence rail, the ASCII refusal, the D25/Q2 symmetric
+/// set (the presence rail, the ASCII refusal, the symmetric
 /// engine-scratch split and its census) stays unconditional whatever the ledger
 /// says.
 ///
-/// `di` (`GOLDEN_REBASE_PLAN.md` G1.10c) is the fifth per-VALUE field and the
+/// `di` is the fifth per-VALUE field and the
 /// narrowest: the key is `<created-file member name>:<column name>`, both ASCII
 /// lower case (`example_ckt7/di_yr_0/di_totals_1.csv:kvarh`), so a scope masks
 /// ONE column of ONE demand-interval file — never a file, never a case
@@ -811,19 +791,18 @@ const EXCLUSION_ONLY_FIELDS: [&str; 10] = [
 ];
 
 /// Fields an `exclusion` entry may name — the mirror obligation of
-/// [`LEDGER_FIELDS`], because "has a runtime handler" turned out to be
-/// **kind-dependent** once G2.5 added the coarse half.
+/// [`LEDGER_FIELDS`], because "has a runtime handler" is **kind-dependent**.
 ///
 /// `LEDGER_FIELDS` exists so a typo'd or unimplemented field cannot sit in the
-/// ledger silently never applying (pre-E/F audit UGA-T4). That guarantee has a
-/// hole the moment some fields are handled for one kind only: `iterations`,
+/// ledger silently never applying. That guarantee has a hole where some fields
+/// are handled for one kind only: `iterations`,
 /// `property`, `eventlog` and `ctrlqueue` route through handlers that filter on
 /// [`Kind::Divergence`] (the first two re-assert a pin, the last two rewrite the
-/// oracle's line before the compare — none of which an exclusion can mean), so
+/// OpenDSS line before the compare, none of which an exclusion can mean), so
 /// an `exclusion` naming one of them would pass the loader and then do nothing.
 /// Refused by `assert_structural` instead.
 ///
-/// `variables` (`R4133_PROPS_PLAN.md` RP3.10) is served by
+/// `variables` is served by
 /// [`LedgerView::excluded`] like the coarse four, keyed on the lowercased
 /// `element:variable` pair the runner builds (`corpus_gate/runner.rs`, e.g.
 /// `windgen.w1:pgen`), so `every_exclusion_field_is_honoured_by_the_runtime`
@@ -832,17 +811,17 @@ const EXCLUSION_ONLY_FIELDS: [&str; 10] = [
 /// index an exclusion drops that both engines spell that variable the same —
 /// a mask selected by name must not be able to slide onto a clean channel.
 ///
-/// `run_files` (`GOLDEN_REBASE_PLAN.md` G1.10a) is served by
+/// `run_files` is served by
 /// [`LedgerView::excluded`] the same way, keyed on the normalized created-file
 /// name the runner passes (`corpus_gate/runner.rs`, e.g.
 /// `testygd_transformer_tr1_pq.dsv`), so
 /// `every_exclusion_field_is_honoured_by_the_runtime` covers it with no new
 /// drive. `compare_run_files` keeps the presence rail, the ASCII refusal and
-/// the D25/Q2 scratch split unconditional whatever the ledger says, and an
+/// the engine-scratch split unconditional whatever the ledger says, and an
 /// excluded name leaves BOTH sides, so a mask can never absorb a second
 /// divergence on the same case.
 ///
-/// `di` (`GOLDEN_REBASE_PLAN.md` G1.10c) is served by [`LedgerView::excluded`]
+/// `di` is served by [`LedgerView::excluded`]
 /// the same way, keyed on the `<file>:<column>` pair the comparator builds
 /// (`harness::di`, e.g.
 /// `example_ckt7/di_yr_0/di_voltexceptions_1.csv:min lv bus`), so
@@ -873,69 +852,51 @@ const EXCLUSION_FIELDS: [&str; 15] = [
 /// Fields whose [`Scope::channels`] selects **sub-channels** of a multi-part
 /// comparison, each with the closed set of names it accepts.
 ///
-/// `element` is the only one today (its cap carries currents, powers and
-/// losses, plus G1.3a's three polar renderings). Both handlers spell the
-/// selector as `sc.channels.is_empty() || sc.channels.contains(ch)` — so an
-/// omitted `channels` reads as "all of them", and a committed entry written for
-/// the original three would **silently widen** onto every sub-channel WP-G1
-/// adds to the element row (`GOLDEN_REBASE_PLAN.md` §1.1 surface #1, G1.3a–c):
-/// no ledger diff, no population-lock trip, an exclusion quietly covering more
-/// than it was reviewed for. Every committed scope on such a field must
-/// therefore name its channels, and may name only these.
+/// `element` is the only one (its cap carries currents, powers and losses,
+/// plus the derived channels below). Both handlers spell the selector as
+/// `sc.channels.is_empty() || sc.channels.contains(ch)`, so an omitted
+/// `channels` reads as "all of them", and an entry written for some
+/// sub-channels would **silently widen** onto every sub-channel of the element
+/// row: no ledger diff, no population-lock trip, an exclusion quietly covering
+/// more than it was reviewed for. Every committed scope on such a field must
+/// therefore name its channels, and may name only these. A scope names only
+/// the sub-channels measured failing on its own channel.
 ///
-/// G1.3a (2026-09-04) added `currents_mag_ang`, `voltages_mag_ang` and
-/// `residuals` — the `CktElement.CurrentsMagAng` / `VoltagesMagAng` /
-/// `Residuals` channels of the `compare_derived` surface (r4133
-/// `DDLL/DCktElement.pas:1058`/`:1082`/`:827`), handled by
-/// [`envelope_element`] and [`rewrite_element_selected`] like the first three.
-/// None of the 14 committed `element` scopes widened onto them silently — this
-/// rule is exactly what stopped that: G1.3a F6′ then re-measured the corpus and
-/// widened **13** of them deliberately, each onto only the polar sub-channels
-/// that were measured failing on that entry's own channel (see each entry's
-/// `measured.g13a_polar_first_failure`); `r4133-indmachmidi-injection-ulp` was
-/// measured NOT to fail and keeps the original three.
+/// `currents_mag_ang`, `voltages_mag_ang` and `residuals` are the
+/// `CktElement.CurrentsMagAng` / `VoltagesMagAng` / `Residuals` channels of the
+/// `compare_derived` surface, handled by [`envelope_element`] and
+/// [`rewrite_element_selected`] like the first three.
 ///
-/// G1.3d(ii) (2026-09-05) added `phase_losses` — `CktElement.PhaseLosses`
-/// (r4133 `Common/CktElement.pas:1078-1120`), the same `V·conj(I)` products
-/// `powers` carries, bucketed by phase — handled by [`envelope_element`] and
-/// [`rewrite_element_selected`] like the six before it. Same discipline: the
-/// live drive measured which committed scopes actually fail on it and widened
-/// only those (`measured.g13d2_phase_losses_first_failure` on each), and the
-/// four `r4133-*-injection-ulp` divergences were measured NOT to fail and keep
-/// their committed lists.
+/// `phase_losses` is `CktElement.PhaseLosses`, the same `V·conj(I)` products
+/// `powers` carries, bucketed by phase, handled the same way.
 ///
-/// G1.3b (2026-09-05) added `seq_currents`, `seq_voltages` and `seq_powers` —
-/// the per-element symmetrical-component surfaces `CktElement.SeqCurrents` /
-/// `SeqVoltages` / `SeqPowers` (r4133 `DDLL/DCktElement.pas:700-737` /
-/// `:660-698` / `:739-797`; capi `CAPI/CAPI_Alt.pas:490-527` / `:620-659` /
-/// `:529-593`), handled by [`envelope_element`] and [`rewrite_element_selected`]
-/// like the seven before them, with one property the seven do not need: only the
+/// `seq_currents`, `seq_voltages` and `seq_powers` are the per-element
+/// symmetrical-component surfaces `CktElement.SeqCurrents` / `SeqVoltages` /
+/// `SeqPowers`, handled by [`envelope_element`] and [`rewrite_element_selected`]
+/// like the others, with one property the others do not need: only the
 /// slots [`harness::compare_element_seq`] **bands** are covered here (see
 /// [`seq_slot_is_banded`]). The discrete slots — the whole not-available arm's
 /// `1.0`/sentinel payload and the exact zeros beside the positive-sequence one —
 /// are neither envelope-checked nor rewritten by a `divergence` scope, so no
 /// such scope can mask a discrete miss, which is the same guarantee the ten
-/// discrete extras get by having no sub-channel at all. The one exception is
-/// coordinator decision D31: an `exclusion` naming `seq_powers` neutralizes
-/// every slot of the [`SeqArm::PosSeqSinglePhase`] power array (pinned by
-/// `an_exclusion_scope_neutralizes_the_whole_posseq_seq_powers_array`; TESTING.md
-/// §"The unified corpus gate", the D31 paragraph), while `seq_currents`,
-/// `seq_voltages` and the not-available arm stay untouched in both kinds.
+/// discrete extras get by having no sub-channel at all. The one exception: an
+/// `exclusion` naming `seq_powers` neutralizes every slot of the
+/// [`SeqArm::PosSeqSinglePhase`] power array (pinned by
+/// `an_exclusion_scope_neutralizes_the_whole_posseq_seq_powers_array`), while
+/// `seq_currents`, `seq_voltages` and the not-available arm stay untouched in
+/// both kinds.
 ///
-/// G1.3c (2026-09-06) added `cplx_seq_currents`, `cplx_seq_voltages` and
-/// `total_powers` — `CktElement.CplxSeqCurrents` / `CplxSeqVoltages`, the
-/// **un-`Cabs`'d** output of the very transform `seq_currents`/`seq_voltages`
-/// report the magnitudes of (r4133 `DDLL/DCktElement.pas:931-975` / `:885-928`
-/// over `CalcSeqCurrents` `:30-80` / `CalcSeqVoltages` `:84-122`; capi
-/// `CAPI/CAPI_Alt.pas:898-925` / `:872-895`), and `CktElement.TotalPowers`, the
-/// per-terminal sum of `GetPhasePower` with `0.001` applied once to the sum
-/// (r4133 `:1109-1139`, capi `:1108-1141`). The complex pair inherits the
+/// `cplx_seq_currents` and `cplx_seq_voltages` are `CktElement.CplxSeqCurrents`
+/// / `CplxSeqVoltages`, the **un-`Cabs`'d** output of the very transform
+/// `seq_currents`/`seq_voltages` report the magnitudes of, and `total_powers` is
+/// `CktElement.TotalPowers`, the per-terminal sum of the phase powers with
+/// `0.001` applied once to the sum. The complex pair inherits the
 /// `seq_*` rule verbatim — only [`seq_slot_is_banded`] slots are
 /// envelope-checked and rewritten, at the same per-terminal
 /// `harness::seq_terminal_bands` the comparator bands them with, so **no
 /// `cplx_seq_*` scope can mask a discrete miss** either: the `(-1, 0)`
 /// not-available payload and the exact zeros beside the positive-sequence slot
-/// stay the ORACLE's and `harness::compare_element_cplx_seq` keeps comparing
+/// stay the OpenDSS values and `harness::compare_element_cplx_seq` keeps comparing
 /// them exactly. `total_powers` is banded per terminal by
 /// `harness::total_power_band`, the per-conductor power floor summed over that
 /// terminal's conductors — the `harness::phase_loss_band` construction on the
@@ -964,11 +925,11 @@ const SUBCHANNEL_FIELDS: &[(&str, &[&str])] = &[(
 /// named, reviewed escape hatch for a scope that really does mean "every
 /// sub-channel, including ones added later".
 ///
-/// **Empty**, and meant to stay that way: after G1.0 "all" is a decision someone
-/// wrote down here with a reason, never the default an omitted key falls into.
+/// **Empty**, and meant to stay that way: "all" is a decision someone writes
+/// down here with a reason, never the default an omitted key falls into.
 const BARE_CHANNELS_ALLOWED: &[&str] = &[];
 
-/// The three load-time `channels` rules (`GOLDEN_REBASE_PLAN.md` G1.0 rails):
+/// The three load-time `channels` rules:
 ///
 /// 1. a scope on a [`SUBCHANNEL_FIELDS`] field carries a non-empty `channels`
 ///    (unless its id is in [`BARE_CHANNELS_ALLOWED`]) — the anti-widening rule;
@@ -1156,7 +1117,7 @@ fn compile_scope(id: &str, s: &RawScope) -> Scope {
     assert!(
         LEDGER_FIELDS.contains(&s.field.as_str()),
         "ledger entry {id:?}: scope field {:?} has no runtime handler (implemented: \
-         {LEDGER_FIELDS:?}). The §1.3 field global_result needs a handler \
+         {LEDGER_FIELDS:?}). The schema field global_result needs a handler \
          implemented BEFORE it can be ledgered — an unhandled scope would silently \
          never apply.",
         s.field
@@ -1219,14 +1180,14 @@ impl LedgerView<'_> {
     /// Is the comparison of `field` (of the artifact called `name`, where the
     /// field has one) dropped for this (case, channel) by an `exclusion` entry?
     ///
-    /// The coarse half of the ledger, added by `GOLDEN_REBASE_PLAN.md` G2.5.
+    /// The coarse half of the ledger.
     /// The partitioning handlers below (`voltages`, `element`, …) split one
     /// comparison into a scoped part and an unscoped remainder, which is the
     /// right shape whenever the divergence is local. It is the wrong shape for
     /// the artifacts an *engine* fix moves wholesale — the assembled system Y,
     /// its fingerprint, the affected element's YPrim, an EnergyMeter's register
     /// block — where there is no remainder and no envelope to re-assert, only
-    /// "the oracle computes this from the bug we declined". Those get a plain
+    /// "OpenDSS computes this from the bug we declined". Those get a plain
     /// skip, still hit-accounted (an exclusion that stops matching fails the
     /// gate as NEVER APPLIED) and still bound by `assert_structural`'s rule
     /// that only `kind: "exclusion"` may name them.
@@ -1255,7 +1216,7 @@ impl LedgerView<'_> {
         hit
     }
 
-    /// The D11(2) bus-array normalization's predicate — deliberately NARROWER
+    /// The bus-array normalization's predicate — deliberately NARROWER
     /// than [`Self::excluded`]`("voltages", None, step)`.
     ///
     /// `harness::compare_bus` / `compare_all_bus_vmag_pu` drop the three
@@ -1269,13 +1230,13 @@ impl LedgerView<'_> {
     /// suppress far more than the triaged cause. Such a scope therefore
     /// suppresses nothing: the bus arrays stay compared, and a divergence that
     /// survives is triaged in its own right (or the exclusion is widened
-    /// deliberately — D10). `name_re` is refused for the reason
+    /// deliberately). `name_re` is refused for the reason
     /// `excluded(…, None, …)` refuses it: a named scope never applies to an
     /// unnamed artifact.
     ///
     /// This is the ONLY writer of a `voltages` scope's `hit` flag, which is what
     /// makes [`LedgerRuntime::bus_array_suppressions`] an exact report of the
-    /// suppressions this run actually performed (G1.4a audit settlement AC-1/T3).
+    /// suppressions this run actually performed.
     pub(crate) fn bus_arrays_suppressed(&self, step: usize) -> bool {
         let mut hit = false;
         for e in self.entries().filter(|e| e.kind == Kind::Exclusion) {
@@ -1403,7 +1364,7 @@ impl LedgerView<'_> {
                 keep[ni] = false;
                 if e.kind == Kind::Exclusion {
                     Self::mark_applied(e);
-                    // Liveness (settle of the G2.5 audit): an exclusion has no
+                    // Liveness: an exclusion has no
                     // envelope to re-assert, but a `voltages` scope DOES have a
                     // measurement — the same `diff` vs tier `floor` the
                     // divergence arm below records. Taking it here is what lets
@@ -1565,14 +1526,14 @@ impl LedgerView<'_> {
 
     /// Returns `true` if a probe scope handled this probe (caller skips the
     /// standard `compare_probe`). A display-precision divergence pins `num_rel`:
-    /// the Rust `?`-value and the (low-precision-rendered) oracle value must agree
+    /// the Rust `?`-value and the (low-precision-rendered) OpenDSS value must agree
     /// numerically within `num_rel`, and the raw gap must exceed the tier floor
-    /// (else stale). A genuine discrete VALUE jump (e.g. `normamps` 730-vs-230)
-    /// pins `oracle`+`rust` with NO `num_rel` — exact-pair-numeric (§1.3 discrete):
-    /// the Rust value must equal the pinned `rust` exactly (an envelope would mask
-    /// real drift), stale once it converges to the oracle. A non-numeric value
-    /// (enum/word) is exact-pair via the `oracle`+`rust` strings (both mandatory
-    /// — §1.3 drift-safety, Phase F re-review RR-1).
+    /// (else stale). A genuine discrete VALUE jump (a first-wire against a
+    /// min-over-phase `normamps`) pins `oracle`+`rust` with NO `num_rel`
+    /// (exact-pair-numeric): the Rust value must equal the pinned `rust` exactly
+    /// (an envelope would mask real drift), stale once it converges to the
+    /// OpenDSS value. A non-numeric value (enum/word) is exact-pair via the
+    /// `oracle`+`rust` strings (both mandatory, for drift safety).
     pub(crate) fn probe_handled(
         &self,
         dss: &mut dss_core::exec::Dss,
@@ -1601,8 +1562,8 @@ impl LedgerView<'_> {
                     let os = value_as_str(o);
                     assert!(
                         exp.value.eq_ignore_ascii_case(&os),
-                        "{ctx}: ledger `{}` probe {key}: oracle value {:?} != pinned {os:?} — \
-                         the upstream getter changed; re-measure",
+                        "{ctx}: ledger `{}` probe {key}: OpenDSS value {:?} != pinned {os:?} — \
+                         the OpenDSS getter changed; re-measure",
                         e.id,
                         exp.value
                     );
@@ -1613,7 +1574,7 @@ impl LedgerView<'_> {
                 if let (Some(rv), Some(ov)) = (rn, on) {
                     if let Some(num_rel) = sc.num_rel {
                         // numeric-skeleton (display-precision) envelope: the Rust
-                        // value and the low-precision-rendered oracle value agree
+                        // value and the low-precision-rendered OpenDSS value agree
                         // numerically within `num_rel`.
                         let base = ov.abs();
                         let diff = (rv - ov).abs();
@@ -1631,23 +1592,22 @@ impl LedgerView<'_> {
                             Self::mark_exceeded(e);
                         }
                     } else {
-                        // exact-pair-NUMERIC (§1.3 discrete): a genuine value jump
-                        // (e.g. normamps 730-vs-230 first-wire-vs-min-over-phase),
-                        // NOT a display rounding — an envelope would mask real
-                        // drift, so pin the exact `rust` value. `oracle` is pinned
-                        // (asserted above vs the capture); stale once rust==oracle.
+                        // exact-pair-NUMERIC: a genuine value jump (normamps
+                        // first-wire against min-over-phase), NOT a display
+                        // rounding. An envelope would mask real drift, so pin the
+                        // exact `rust` value. `oracle` is pinned (asserted above
+                        // against the capture), stale once the values agree.
                         //
-                        // The `rust` pin is MANDATORY (fix-round audit F1/F2): with
-                        // only an oracle pin, staleness fires on `rv != ov`, so a
-                        // port regression that moved the value to any THIRD value
-                        // (still != oracle) would neither trip the assert nor mark
-                        // the entry stale — a silent drift. Requiring `rust` closes
-                        // the last soft spot in the exact-pair-numeric machinery.
+                        // The `rust` pin is MANDATORY: with only an `oracle` pin,
+                        // staleness fires on `rv != ov`, so a regression of this
+                        // engine that moved the value to any THIRD value (still
+                        // != OpenDSS) would neither trip the assert nor mark the
+                        // entry stale, a silent drift.
                         assert!(
                             sc.rust.is_some(),
                             "{ctx}: ledger `{}` probe {key}: exact-pair-numeric scope must pin an \
-                             exact `rust` value — with only `oracle`, a port drift to a third \
-                             value != oracle passes silently (§1.3 discrete drift-safety)",
+                             exact `rust` value — with only `oracle`, an engine drift to a third \
+                             value != OpenDSS passes silently",
                             e.id
                         );
                         if let Some(r) = &sc.rust {
@@ -1665,25 +1625,25 @@ impl LedgerView<'_> {
                     }
                 } else {
                     // non-numeric probe (enum/word): discrete state is ledgerable
-                    // only as an EXACT PAIR (§1.3). A bare scope here would compare
-                    // nothing (self-certifying hit) — require an explicit `oracle`
-                    // pin (asserted above against the capture) AND a `rust` pin
-                    // (Phase F re-review RR-1: with only `oracle`, staleness fires
-                    // on rust != oracle, so a port drift to any THIRD value would
-                    // pass silently — the same hole the fix-round F1/F2 closed for
-                    // the numeric arm).
+                    // only as an EXACT PAIR. A bare scope here would compare
+                    // nothing (self-certifying hit), so require an explicit
+                    // `oracle` pin (asserted above against the capture) AND a
+                    // `rust` pin: with only `oracle`, staleness fires on a
+                    // difference from OpenDSS, so an engine drift to any THIRD
+                    // value would pass silently, the same hole as in the numeric
+                    // arm.
                     assert!(
                         sc.oracle.is_some(),
                         "{ctx}: ledger `{}` probe {key}: non-numeric value {:?} needs an exact \
-                         `oracle` pin — discrete state is exact-pair only, never a bare scope (§1.3)",
+                         `oracle` pin — discrete state is exact-pair only, never a bare scope",
                         e.id,
                         exp.value
                     );
                     assert!(
                         sc.rust.is_some(),
                         "{ctx}: ledger `{}` probe {key}: non-numeric exact-pair scope must pin an \
-                         exact `rust` value — with only `oracle`, a port drift to a third value \
-                         != oracle passes silently (§1.3 discrete drift-safety)",
+                         exact `rust` value — with only `oracle`, an engine drift to a third value \
+                         != OpenDSS passes silently",
                         e.id
                     );
                     if let Some(r) = &sc.rust {
@@ -1695,7 +1655,7 @@ impl LedgerView<'_> {
                         );
                     }
                     // Stale-if-converged: the discrete divergence is gone once the
-                    // Rust value equals the oracle capture (§5 R3 fail-on-stale).
+                    // Rust value equals the OpenDSS capture (fail-on-stale).
                     Self::mark_applied(e);
                     if !rust_val.trim().eq_ignore_ascii_case(exp.value.trim()) {
                         Self::mark_exceeded(e);
@@ -1740,13 +1700,13 @@ impl LedgerView<'_> {
     /// assertion, no `?`-query and no hit accounting.
     ///
     /// It exists for the census knob's disposition mode
-    /// (`DSS_PROPS_CENSUS=claims`, `R4133_PROPS_PLAN.md` RP0.2/RP2.1), whose job
-    /// is to answer "would a ledger entry claim this divergent cell at RP4.1?"
-    /// over a walk that must never fail. Sharing [`Self::property_scopes`] and
+    /// (`DSS_PROPS_CENSUS=claims`), whose job
+    /// is to answer "would a ledger entry claim this divergent cell?" over a
+    /// walk that must never fail. Sharing [`Self::property_scopes`] and
     /// [`Self::scope_names_prop`] with the gate path is what keeps the answer the
-    /// gate's own: RP0.2 forbids the claims mode from re-implementing the policy
-    /// chain, because a drifting copy would corrupt RP4.1's zero-UNCLAIMED read
-    /// silently. What it deliberately does NOT reproduce is the gate's
+    /// gate's own: the claims mode never re-implements the policy chain, because
+    /// a drifting copy would corrupt its zero-UNCLAIMED read silently. What it
+    /// deliberately does NOT reproduce is the gate's
     /// assertions — a census must record, never panic — so a cell it reports as
     /// `ledger-hit` is one an entry NAMES, not one whose pins were re-verified.
     pub(crate) fn property_scope_keys(&self, props: &[PropsCap]) -> BTreeSet<(String, String)> {
@@ -1772,12 +1732,11 @@ impl LedgerView<'_> {
     }
 
     /// Element property-value pairs handled by a `property` scope. Same contract
-    /// as [`Self::probe_handled`] (§1.3: probe/property are exact expected pairs,
-    /// or `num_rel` for numeric-skeleton values — pre-E/F audit UGA-T2 parity):
-    /// an exact `oracle` pin re-pins the upstream getter; a numeric value with
-    /// `num_rel` is envelope-checked against the live Rust `?`-value; an
-    /// exact-pair value (numeric or not) REQUIRES both the `oracle` and `rust`
-    /// pins (drift-safety — fix-round F1/F2 + Phase F re-review RR-1). Returns
+    /// as [`Self::probe_handled`] (probe/property are exact expected pairs, or
+    /// `num_rel` for numeric-skeleton values): an exact `oracle` pin re-pins the
+    /// OpenDSS getter, a numeric value with `num_rel` is envelope-checked against
+    /// the live Rust `?`-value, and an exact-pair value (numeric or not)
+    /// REQUIRES both the `oracle` and `rust` pins (drift safety). Returns
     /// the set of `(element_lower, prop_lower)` keys to skip in the standard
     /// `compare_all_properties`.
     pub(crate) fn property_handled_keys(
@@ -1804,8 +1763,8 @@ impl LedgerView<'_> {
                         let os = value_as_str(o);
                         assert!(
                             val.eq_ignore_ascii_case(&os),
-                            "{ctx}: ledger `{}` property {key}: oracle value {val:?} != pinned {os:?} — \
-                             the upstream getter changed; re-measure",
+                            "{ctx}: ledger `{}` property {key}: OpenDSS value {val:?} != pinned {os:?} — \
+                             the OpenDSS getter changed; re-measure",
                             e.id
                         );
                     }
@@ -1815,7 +1774,7 @@ impl LedgerView<'_> {
                     if let (Some(rv), Some(ov)) = (rn, on) {
                         if let Some(num_rel) = sc.num_rel {
                             // Numeric-skeleton path (mirrors `probe_handled`): the
-                            // Rust value agrees with the oracle within `num_rel`.
+                            // Rust value agrees with OpenDSS within `num_rel`.
                             let base = ov.abs();
                             let diff = (rv - ov).abs();
                             let env = num_rel * base + tol.i_abs;
@@ -1832,16 +1791,16 @@ impl LedgerView<'_> {
                                 Self::mark_exceeded(e);
                             }
                         } else {
-                            // exact-pair-NUMERIC (§1.3 discrete, mirrors
-                            // `probe_handled`): a genuine value jump, pinned exactly.
-                            // `rust` is MANDATORY (fix-round audit F1/F2): with only
-                            // an oracle pin, a port drift to a third value != oracle
-                            // would pass silently (staleness fires only on rv==ov).
+                            // exact-pair-NUMERIC (mirrors `probe_handled`): a
+                            // genuine value jump, pinned exactly. `rust` is
+                            // MANDATORY: with only an `oracle` pin, an engine drift
+                            // to a third value != OpenDSS would pass silently
+                            // (staleness fires only on rv==ov).
                             assert!(
                                 sc.rust.is_some(),
                                 "{ctx}: ledger `{}` property {key}: exact-pair-numeric scope must pin \
-                                 an exact `rust` value — with only `oracle`, a port drift to a third \
-                                 value != oracle passes silently (§1.3 discrete drift-safety)",
+                                 an exact `rust` value — with only `oracle`, an engine drift to a third \
+                                 value != OpenDSS passes silently",
                                 e.id
                             );
                             if let Some(r) = &sc.rust {
@@ -1858,23 +1817,23 @@ impl LedgerView<'_> {
                             }
                         }
                     } else {
-                        // Non-numeric property: exact-pair only (§1.3). A bare scope
-                        // would let ANY Rust value pass — require the `oracle` pin
-                        // (asserted above) AND the `rust` pin (Phase F re-review
-                        // RR-1, mirrors the probe arm: an oracle-only pin lets a
-                        // third-value port drift pass as legitimately non-stale).
+                        // Non-numeric property: exact-pair only. A bare scope
+                        // would let ANY Rust value pass, so require the `oracle`
+                        // pin (asserted above) AND the `rust` pin (mirrors the
+                        // probe arm: an `oracle`-only pin lets a third-value
+                        // engine drift pass as legitimately non-stale).
                         assert!(
                             sc.oracle.is_some(),
                             "{ctx}: ledger `{}` property {key}: non-numeric value {val:?} needs an \
                              exact `oracle` pin — discrete state is exact-pair only, never a bare \
-                             scope (§1.3)",
+                             scope",
                             e.id
                         );
                         assert!(
                             sc.rust.is_some(),
                             "{ctx}: ledger `{}` property {key}: non-numeric exact-pair scope must \
-                             pin an exact `rust` value — with only `oracle`, a port drift to a \
-                             third value != oracle passes silently (§1.3 discrete drift-safety)",
+                             pin an exact `rust` value — with only `oracle`, an engine drift to a \
+                             third value != OpenDSS passes silently",
                             e.id
                         );
                         if let Some(r) = &sc.rust {
@@ -1886,7 +1845,7 @@ impl LedgerView<'_> {
                             );
                         }
                         // Stale-if-converged: this exact-pair divergence is gone once
-                        // the Rust `?`-surface equals the oracle value (§5 R3).
+                        // the Rust `?`-surface equals the OpenDSS value.
                         Self::mark_applied(e);
                         if !rust_val.trim().eq_ignore_ascii_case(val.trim()) {
                             Self::mark_exceeded(e);
@@ -2002,11 +1961,11 @@ impl LedgerView<'_> {
     /// record the hit and return a normalized form (trailing-whitespace-trimmed)
     /// so the caller's compare treats the masked artifact as equal.
     ///
-    /// Fail-on-stale (pre-E/F audit UGA-T3): the mask's entire power is
-    /// `trim_end()`, so a live divergence is recorded only when the trailing-
-    /// whitespace artifact is actually PRESENT on the matched line. If upstream
-    /// stops emitting it, the entry stays applied-but-never-exceeded and trips
-    /// STALE (§5 R3) instead of masking forever.
+    /// Fail-on-stale: the mask's entire power is `trim_end()`, so a live
+    /// divergence is recorded only when the trailing-whitespace artifact is
+    /// actually PRESENT on the matched line. If OpenDSS stops emitting it, the
+    /// entry stays applied-but-never-exceeded and trips STALE instead of
+    /// masking forever.
     pub(crate) fn mask_line(&self, field: &str, line: &str) -> String {
         for e in self.entries() {
             if e.kind != Kind::Divergence {
@@ -2032,7 +1991,7 @@ impl LedgerView<'_> {
 }
 
 /// Is slot `k` of a sequence array a **banded** sample on this arm, or one of
-/// the arm's discrete slots? (`GOLDEN_REBASE_PLAN.md` G1.3b.)
+/// the arm's discrete slots?
 ///
 /// The one predicate behind both halves of the `seq_*` sub-channels, so for a
 /// `divergence` scope the envelope check and the rewrite cover exactly the same
@@ -2040,19 +1999,17 @@ impl LedgerView<'_> {
 /// [`the_seq_rewrite_and_the_seq_envelope_cover_the_same_slots`]). An
 /// `exclusion` naming `seq_powers` on the [`SeqArm::PosSeqSinglePhase`] arm is
 /// the one scope that reaches further: it neutralizes every slot of that arm's
-/// power array (coordinator decision D31, pinned by
-/// [`an_exclusion_scope_neutralizes_the_whole_posseq_seq_powers_array`];
-/// TESTING.md §"The unified corpus gate", the D31 paragraph). The arms:
+/// power array (pinned by
+/// [`an_exclusion_scope_neutralizes_the_whole_posseq_seq_powers_array`]). The arms:
 ///
 /// * [`SeqArm::ThreePhase`] — every slot is a transformed value that
 ///   `harness::compare_element_seq` bands with `harness::seq_band` /
 ///   `harness::seq_power_band`, so every slot is envelope-checked and
 ///   neutralizable;
 /// * [`SeqArm::PosSeqSinglePhase`] — only slot `3t+1` carries a value; `3t` and
-///   `3t+2` are compared as **exact** zeros on both sides (capi
-///   `CAPI/CAPI_Alt.pas:555`/`:562`; r4133 `DDLL/DCktElement.pas:760`/`:768`
-///   writes the wrong slot with the wrong stride — the D-b1 defect the port does
-///   not reproduce);
+///   `3t+2` are compared as **exact** zeros on both sides (r4133 writes the
+///   wrong slot with the wrong stride, an OpenDSS bug this engine does not
+///   reproduce);
 /// * [`SeqArm::NotAvailable`] — the whole payload is discrete (`Cabs(-1+0j) =
 ///   1.0` magnitudes and the channel's own `−1` power sentinel, folded at the
 ///   capture boundary by `harness::na_seq_power`), so **no** slot is banded.
@@ -2060,9 +2017,10 @@ impl LedgerView<'_> {
 /// A `divergence` scope may therefore never mask a discrete sequence miss: an
 /// entry widened onto `seq_*` over an element whose arm has no banded slot
 /// measures nothing and is reported STALE by `Scope::dead_channels`, which is
-/// the honest signal rather than a silent pass. The D31 exclusion overwrites
-/// only the oracle's side; the port's own exact zeros on that arm are still
-/// asserted by `harness::compare_element_seq` outside every scope.
+/// the honest signal rather than a silent pass. The positive-sequence
+/// `seq_powers` exclusion overwrites only the OpenDSS side, and this engine's
+/// own exact zeros on that arm are still asserted by
+/// `harness::compare_element_seq` outside every scope.
 fn seq_slot_is_banded(arm: SeqArm, k: usize) -> bool {
     match arm {
         SeqArm::ThreePhase => true,
@@ -2073,10 +2031,10 @@ fn seq_slot_is_banded(arm: SeqArm, k: usize) -> bool {
 
 /// Envelope-check one element's selected sub-channels against the Rust snapshot.
 /// Layout matches `ElementSnapshot`: `currents`/`powers` are complex per
-/// conductor (A, kW+j·kvar) while the oracle `ElementCap` splits re/im into
-/// parallel arrays; `loss_w` is a `(re, im)` tuple vs the oracle's 2-vector.
-/// G1.3a's three polar channels are `Vec<Polar>` on the Rust side against the
-/// oracle's de-interleaved `*_mag`/`*_ang` pair. G1.3b's three sequence channels
+/// conductor (A, kW+j·kvar) while the OpenDSS `ElementCap` splits re/im into
+/// parallel arrays, and `loss_w` is a `(re, im)` tuple against its 2-vector.
+/// The three polar channels are `Vec<Polar>` on the Rust side against the
+/// capture's de-interleaved `*_mag`/`*_ang` pair. The three sequence channels
 /// are `3·NTerms`-long arrays whose banded slots are selected by
 /// [`seq_slot_is_banded`].
 fn envelope_element(
@@ -2122,16 +2080,10 @@ fn envelope_element(
     // (`polar_angle_band` ⇒ `None`), and there the angle is skipped entirely —
     // exactly as `harness::polar_close` skips it. Envelope-checking it instead
     // would hold the ledger to a rule the gate itself does not apply: on such a
-    // sample the two engines' angles are arbitrary (G1.3a measured masked
-    // `CurrentsMagAng` samples 173.7 ° apart at |I| ≈ 7e-12 A), so the only
-    // envelope that could admit them is ±180 °, i.e. a number that bounds
-    // nothing. Measured necessity (GOLDEN_REBASE G1.3a F6′, 2026-09-04): with
-    // the angle recorded, `r4133-combomidi-injection-ulp` reported
-    // `Transformer.t8 cma[9].ang: |diff| 1.394e2 exceeds envelope 2.063e-5` and
-    // `r4133-combomesh-injection-ulp` `Transformer.tg cma[7].ang: |diff|
-    // 1.131e2` — both on conductors whose magnitude is numerical zero, neither
-    // of them the divergence the entry pins. The magnitude is never skipped, so
-    // the sample stays two-sided and the entry can still go stale.
+    // sample the two engines' angles are arbitrary, so the only envelope that
+    // could admit them is ±180 °, i.e. a number that bounds nothing. The
+    // magnitude is never skipped, so the sample stays two-sided and the entry
+    // can still go stale.
     let polar = |label: &str, a: &Polar, om: f64, oa: f64, mag_band: f64| {
         record(
             &format!("{label}.mag"),
@@ -2181,7 +2133,7 @@ fn envelope_element(
         check("loss_re", snap.loss_w.0, ec.loss_w[0]);
         check("loss_im", snap.loss_w.1, ec.loss_w[1]);
     }
-    // G1.3a. `CurrentsMagAng` inherits the current tier, `VoltagesMagAng` the
+    // `CurrentsMagAng` inherits the current tier, `VoltagesMagAng` the
     // voltage tier, and `Residuals` the conductor-sum band
     // (`harness::residual_band`: a terminal residual is Σ_c I_c, so its floor is
     // the sum of the conductors' bands). Empty on a disabled element — the
@@ -2259,8 +2211,8 @@ fn envelope_element(
         sc.mark_channel_exceeded("residuals");
     }
     block.set(false);
-    // G1.3d(ii). `PhaseLosses[i] = Σ_j NodeV[NodeRef[k]]·conj(Iterminal[k])` at
-    // `k = j·nconds + i` (r4133 `Common/CktElement.pas:1093-1112`) — the very
+    // `PhaseLosses[i] = Σ_j NodeV[NodeRef[k]]·conj(Iterminal[k])` at
+    // `k = j·nconds + i`: the very
     // products this cap already reports as `powers`, bucketed by phase — so an
     // entry whose cause moves `powers`/`losses` moves this too. Banded by
     // `harness::phase_loss_band`, the per-conductor power band summed over that
@@ -2327,15 +2279,14 @@ fn envelope_element(
     if block.get() {
         sc.mark_channel_exceeded("phase_losses");
     }
-    // G1.3b. The three sequence channels — `SeqCurrents` / `SeqVoltages`
-    // (`Cabs` of the 012 components, r4133 `DDLL/DCktElement.pas:700-737` /
-    // `:660-698`) and `SeqPowers` (`0.003·V012·conj(I012)`, `:739-797`) — banded
+    // The three sequence channels — `SeqCurrents` / `SeqVoltages` (`Cabs` of
+    // the 012 components) and `SeqPowers` (`0.003·V012·conj(I012)`) — banded
     // by `harness::seq_band` and `harness::seq_power_band`, the images of the
     // already-calibrated `i_*`/`v_*` tier bands over the terminal's own phase
-    // magnitudes, plus the r4133-only `SEQ_C012` truncated-matrix term
-    // (`Shared/mathutil.pas:302-303`/`:562-564`). Those are the same floors
-    // `harness::compare_element_seq` gates the unpinned samples with, over the
-    // same oracle-side `CurrentsMagAng`/`VoltagesMagAng` magnitudes, so a ledger
+    // magnitudes, plus the r4133-only `SEQ_C012` truncated-matrix term. Those
+    // are the same floors `harness::compare_element_seq` gates the unpinned
+    // samples with, over the same OpenDSS-side
+    // `CurrentsMagAng`/`VoltagesMagAng` magnitudes, so a ledger
     // envelope here is measured on exactly the scale it excludes.
     //
     // Only the arm's BANDED slots take part ([`seq_slot_is_banded`]): the
@@ -2362,7 +2313,7 @@ fn envelope_element(
     let arm = snap.seq_arm;
     let seq_live = (want("seq_currents") || want("seq_voltages") || want("seq_powers"))
         && !ec.seq_i.is_empty();
-    // G1.3c: the complex twins are the same transform read without `Cabs`, so
+    // The complex twins are the same transform read without `Cabs`, so
     // they ride on the same per-terminal bands and the same banded-slot rule.
     let cplx_live = (want("cplx_seq_currents") || want("cplx_seq_voltages"))
         && snap.n_terms > 0
@@ -2404,10 +2355,9 @@ fn envelope_element(
             snap.seq_voltages.len(),
             snap.seq_powers.len()
         );
-        // G1.3c: the complex halves are `3·NTerms` too (both engines size them
-        // at `3*NTerms` and copy the same transform's output — r4133
-        // `DDLL/DCktElement.pas:900`/`:946`, capi `CAPI/CAPI_Alt.pas:882`/`:910`),
-        // asserted only when the complex family is live so an entry written
+        // The complex halves are `3·NTerms` too (both OpenDSS engines size them
+        // at `3*NTerms` and copy the same transform's output), asserted only
+        // when the complex family is live so an entry written
         // for the magnitude channels keeps its own message.
         assert!(
             !cplx_live
@@ -2443,7 +2393,7 @@ fn envelope_element(
             e.id,
             ec.name
         );
-        // The one shared walk (`GOLDEN_REBASE_PLAN.md` G1.3c): the envelope must
+        // The one shared walk: the envelope must
         // be evaluated at exactly the band `harness::compare_element_seq` and
         // `harness::compare_element_cplx_seq` judge the same sample with,
         // including the r4133-only truncated-matrix term the helper keys on
@@ -2518,9 +2468,8 @@ fn envelope_element(
     if block.get() {
         sc.mark_channel_exceeded("seq_powers");
     }
-    // G1.3c. `CplxSeqCurrents`/`CplxSeqVoltages` are the same `Calc*` output
-    // read without `Cabs` (r4133 `DDLL/DCktElement.pas:931-975`/`:885-928`, capi
-    // `CAPI/CAPI_Alt.pas:898-925`/`:872-895`), so they are banded by the same
+    // `CplxSeqCurrents`/`CplxSeqVoltages` are the same sequence transform's
+    // output read without `Cabs`, so they are banded by the same
     // per-terminal `(bv, bi)` — `harness::seq_band` bounds the COMPLEX
     // difference of the transform and the magnitude channel only ever used it
     // through `||a| − |b|| <= |a − b|` — and cover exactly the same banded slots
@@ -2529,14 +2478,12 @@ fn envelope_element(
     // scope from excusing a wrong `(-1, 0)` sentinel or a wrong
     // positive-sequence slot.
     //
-    // Reachability, stated rather than assumed (G1.3c audit settlement,
-    // 2026-09-06): only a `divergence` entry reaches this function, and the
-    // four that carry an `element` scope today (`r4133-*-injection-ulp`) select
-    // `currents`/`losses`/`currents_mag_ang` only, so these three branches are
-    // exercised by the `ledger::*` fixtures alone until some future divergence
-    // names one. That is the shape the `seq_*` branches above already have; the
-    // alternative — inventing a ledger row so the branch runs live — is exactly
-    // the mask WP-G1 forbids.
+    // Reachability, stated rather than assumed: only a `divergence` entry
+    // reaches this function, and none of those selects these channels, so these
+    // three branches are exercised by the `ledger::*` fixtures alone until some
+    // divergence names one. That is the shape the `seq_*` branches above have.
+    // Inventing a ledger row so the branch runs live would be a mask with no
+    // divergence behind it.
     block.set(false);
     if want("cplx_seq_currents") {
         for (t, (_, bi)) in cplx_bands.iter().enumerate() {
@@ -2575,9 +2522,8 @@ fn envelope_element(
     if block.get() {
         sc.mark_channel_exceeded("cplx_seq_voltages");
     }
-    // G1.3c. `TotalPowers[j] = 0.001 · Σ_{i<nconds} NodeV·conj(Iterminal)` at
-    // `k = j·nconds + i` (r4133 `DDLL/DCktElement.pas:1123-1134`, capi
-    // `CAPI/CAPI_Alt.pas:1128-1139`) — the same products this cap reports as
+    // `TotalPowers[j] = 0.001 · Σ_{i<nconds} NodeV·conj(Iterminal)` at
+    // `k = j·nconds + i`: the same products this cap reports as
     // `powers`, bucketed by TERMINAL where `phase_losses` buckets them by phase,
     // so an entry whose cause moves `powers`/`losses` moves this too. Banded by
     // `harness::total_power_band`, the per-conductor power band summed over that
@@ -2647,9 +2593,8 @@ fn envelope_element(
 /// A value-copy of an oracle element capture, so a rewrite never mutates the
 /// capture the other channel still compares against.
 ///
-/// Field-complete by construction (`#[derive(Clone)]` on the harness struct):
-/// the enumerated copy this used to be silently dropped every field a later
-/// sub-step added — `GOLDEN_REBASE_PLAN.md` G1.3a adds seven.
+/// Field-complete by construction (`#[derive(Clone)]` on the harness struct),
+/// so a field added to the capture is never silently dropped.
 fn clone_element_cap(ec: &ElementCap) -> ElementCap {
     ec.clone()
 }
@@ -2685,10 +2630,10 @@ fn rewrite_element_selected(
         cap.loss_w[0] = snap.loss_w.0;
         cap.loss_w[1] = snap.loss_w.1;
     }
-    // G1.3a: the polar channels are two parallel oracle arrays per Rust
-    // `Polar`, so a pin has to write BOTH halves back — writing only the
-    // magnitude would leave `compare_element_derived` comparing the port's
-    // angle against the oracle's, i.e. an entry that pins half a channel and
+    // The polar channels are two parallel OpenDSS arrays per Rust
+    // `Polar`, so a pin has to write BOTH halves back: writing only the
+    // magnitude would leave `compare_element_derived` comparing this engine's
+    // angle against the OpenDSS one, i.e. an entry that pins half a channel and
     // silently keeps gating the other half.
     if want("currents_mag_ang") {
         for k in 0..cap
@@ -2723,9 +2668,8 @@ fn rewrite_element_selected(
             cap.res_ang[t] = snap.residuals[t].ang;
         }
     }
-    // G1.3d(ii): the snapshot is W/var and the capture kW/kvar (each oracle
-    // scales at its API boundary — r4133 `DDLL/DCktElement.pas:651`, capi
-    // `CAPI/CAPI_Alt.pas:464-467`), so the pin writes the SCALED value, the same
+    // The snapshot is W/var and the capture kW/kvar (each OpenDSS engine
+    // scales at its API boundary), so the pin writes the SCALED value, the same
     // ×0.001 `harness::compare_element_phase_losses` applies. The snapshot
     // length joins the `min` so that a shape mismatch survives to that
     // comparator's own length assert instead of panicking on an index here.
@@ -2740,10 +2684,9 @@ fn rewrite_element_selected(
             cap.pl_kvar[i] = snap.phase_losses[i].im * 0.001;
         }
     }
-    // G1.3b: the three sequence channels. Both sides are already in the same
-    // units — the `0.003` is applied INSIDE the arm on both engines (r4133
-    // `DDLL/DCktElement.pas:767`/`:788`, capi `CAPI/CAPI_Alt.pas:561`/`:588-590`)
-    // rather than at the API boundary the way `PhaseLosses`' `0.001` is — so the
+    // The three sequence channels. Both sides are already in the same units:
+    // the `0.003` is applied INSIDE the arm on both engines rather than at the
+    // API boundary the way `PhaseLosses`' `0.001` is, so the
     // pin writes the value straight through.
     //
     // Only the arm's BANDED slots are neutralized ([`seq_slot_is_banded`], the
@@ -2768,12 +2711,10 @@ fn rewrite_element_selected(
         }
     }
     // `seq_powers` on the 1φ-positive-sequence arm is the ONE place where an
-    // `exclusion` reaches further than the banded slot, and only there
-    // (coordinator decision **D31**, 2026-09-05). On that arm the whole
-    // `SeqPowers` result is one mode-9 write, and r4133's defect misplaces it:
-    // the value lands in slot `3t+2` and the correct slot `3t+1` is left zero
-    // (`DDLL/DCktElement.pas:760`/`:768` against capi's correct
-    // `CAPI/CAPI_Alt.pas:555`/`:562`). An entry that names `seq_powers` there but
+    // `exclusion` reaches further than the banded slot, and only there. On
+    // that arm the whole `SeqPowers` result is one mode-9 write, and an OpenDSS
+    // bug in r4133 misplaces it: the value lands in slot `3t+2` and the correct
+    // slot `3t+1` is left zero (capi is correct). An entry that names `seq_powers` there but
     // neutralized only `3t+1` would exclude nothing — the divergence is entirely
     // in the cells it did not touch. So a `Kind::Exclusion` neutralizes every
     // slot of that arm's power array, and NOTHING else changes:
@@ -2782,11 +2723,11 @@ fn rewrite_element_selected(
     //   every cell it neutralizes
     //   (`the_seq_rewrite_and_the_seq_envelope_cover_the_same_slots`);
     // * `seq_currents`/`seq_voltages` are untouched in both kinds — they come out
-    //   of `Calc*`, which r4133 writes correctly, which is why D31's scope names
-    //   `seq_powers` alone;
+    //   of the sequence transform, which r4133 writes correctly, which is why
+    //   this widening names `seq_powers` alone;
     // * the not-available arm is untouched in both kinds, so no scope can excuse
     //   a sentinel miss;
-    // * the PORT's own exact zeros are asserted by `harness::compare_element_seq`
+    // * this engine's own exact zeros are asserted by `harness::compare_element_seq`
     //   outside every scope, so an engine writing r4133's slot still reds here.
     let seq_power_slots = |n: usize| {
         (0..n).filter(move |k| {
@@ -2805,11 +2746,8 @@ fn rewrite_element_selected(
             cap.seq_p_kvar[k] = snap.seq_powers[k].im;
         }
     }
-    // G1.3c: the complex sequence pair. Same units on both sides (neither engine
-    // scales — r4133 `DDLL/DCktElement.pas:906-910`/`:952-956` copy the
-    // transform's own amps/volts out of `cValues` unchanged; capi never copies:
-    // `CalcSeqVoltages`/`_CalcSeqCurrents` write straight into `ResultPtr`,
-    // `CAPI/CAPI_Alt.pas:882-883`/`:910-913`), so the pin writes both halves
+    // The complex sequence pair. Same units on both sides (neither OpenDSS
+    // engine scales the transform's own amps/volts), so the pin writes both halves
     // straight through — writing only the real part would leave
     // `harness::compare_element_cplx_seq` comparing
     // the port's imaginary part against the oracle's, i.e. an entry that pins
@@ -2841,9 +2779,8 @@ fn rewrite_element_selected(
             cap.cseq_v_im[k] = snap.cplx_seq_voltages[k].im;
         }
     }
-    // G1.3c: `TotalPowers`. Both sides are kW/kvar — each engine applies its
-    // `0.001` to the terminal SUM inside its own arm (r4133
-    // `DDLL/DCktElement.pas:1132`, capi `CAPI/CAPI_Alt.pas:1138-1139`) and
+    // `TotalPowers`. Both sides are kW/kvar: each engine applies its
+    // `0.001` to the terminal SUM inside its own arm and
     // `ElementSnapshot::total_powers` is accumulated and scaled the same way —
     // so, unlike `phase_losses`, the pin writes the value straight through. Every
     // terminal is a banded sample (there is no discrete arm here), and the
@@ -2885,11 +2822,11 @@ fn parse_leading_f64(s: &str) -> Option<f64> {
 }
 
 // ---------------------------------------------------------------------------
-// Structural test (oracle-free) — the §1.3 invariants.
+// Structural test (engine-free): the ledger invariants.
 // ---------------------------------------------------------------------------
 
 /// The structural invariants of the ledger, verified against the manifests with
-/// NO engine spawned (§1.3): unique ids; every `case` exists in a manifest and
+/// NO engine spawned: unique ids; every `case` exists in a manifest and
 /// its `channel` is in that case's `engines`; a `divergence`/`exclusion` needs a
 /// non-empty `match`; every entry carries `cause` or a resolving `cause_ref`;
 /// the field/kind split. Unknown keys, the per-scope shape rules
@@ -2921,7 +2858,7 @@ pub(crate) fn assert_structural(
         assert!(
             engines.contains(&channel),
             "ledger entry {:?}: channel {:?} is not in case {:?} engines {:?} — a ledger \
-             entry may only pin a channel the case actually gates (§1.3)",
+             entry may only pin a channel the case actually gates",
             e.id,
             e.channel,
             e.case,
@@ -2952,8 +2889,7 @@ pub(crate) fn assert_structural(
         }
         // Whole-artifact fields are exclusion-only: there is no remainder to
         // tier-check and no envelope to re-assert, so a `divergence` naming one
-        // would claim a measurement the runtime never makes
-        // (`GOLDEN_REBASE_PLAN.md` G2.5).
+        // would claim a measurement the runtime never makes.
         for sc in &e.match_scopes {
             assert!(
                 !(EXCLUSION_ONLY_FIELDS.contains(&sc.field.as_str()) && e.kind != "exclusion"),
@@ -2977,7 +2913,7 @@ pub(crate) fn assert_structural(
             );
         }
         // discrete-state guard: probe/property scopes must be exact pairs, never
-        // envelopes (§1.3 — discrete state is ledgerable only as exact pairs).
+        // envelopes (discrete state is ledgerable only as exact pairs).
         // An `exclusion` drops the pair from comparison outright, so the pin
         // requirement (which is about what a *divergence* re-asserts) does not
         // apply to it.
@@ -2986,31 +2922,31 @@ pub(crate) fn assert_structural(
                 assert!(
                     !(sc.oracle.is_none() && (sc.max_rel.is_some() || sc.max_abs.is_some())),
                     "ledger entry {:?}: {} scope must pin an exact `oracle` value, \
-                     never an envelope (discrete state is exact-only, §1.3)",
+                     never an envelope (discrete state is exact-only)",
                     e.id,
                     sc.field
                 );
                 // A bare selector-only scope would mask the value with no assertion
-                // at all (pre-E/F audit UGA-T2): §1.3 allows exactly two forms —
-                // an exact expected pair, or `num_rel` for numeric-skeleton values.
+                // at all: the ledger allows exactly two forms, an exact
+                // expected pair or `num_rel` for numeric-skeleton values.
                 assert!(
                     sc.oracle.is_some() || sc.num_rel.is_some(),
                     "ledger entry {:?}: {} scope needs an exact `oracle` pin or a \
                      `num_rel` numeric-skeleton envelope — a bare selector-only scope \
-                     asserts nothing (§1.3)",
+                     asserts nothing",
                     e.id,
                     sc.field
                 );
-                // Exact-pair drift-safety (fix-round F1/F2 + Phase F re-review
-                // RR-1): a scope with no `num_rel` is an exact pair, and an
-                // oracle-only pin lets a port drift to a THIRD value (!= oracle)
-                // pass as legitimately non-stale — the `rust` pin is mandatory
-                // for both the numeric and non-numeric arms.
+                // Exact-pair drift safety: a scope with no `num_rel` is an
+                // exact pair, and an `oracle`-only pin lets an engine drift to a
+                // THIRD value (!= OpenDSS) pass as legitimately non-stale, so
+                // the `rust` pin is mandatory for both the numeric and
+                // non-numeric arms.
                 assert!(
                     sc.num_rel.is_some() || sc.rust.is_some(),
                     "ledger entry {:?}: {} exact-pair scope (no `num_rel`) must pin \
                      an exact `rust` value alongside `oracle` — an oracle-only pin \
-                     passes third-value port drift silently (§1.3 drift-safety)",
+                     passes third-value engine drift silently",
                     e.id,
                     sc.field
                 );
@@ -3018,11 +2954,11 @@ pub(crate) fn assert_structural(
         }
     }
 
-    // Full-bypass guard (pre-E/F audit UGA-2): a `skip` entry drops its channel
-    // entirely, so at least one of the case's gating channels must remain
-    // non-skipped — otherwise the case would pass with ZERO verification (not
-    // even the Rust smoke runs on the Live path). §1.3 `skip`: "the other
-    // channel still gates the case".
+    // Full-bypass guard: a `skip` entry drops its channel entirely, so at
+    // least one of the case's gating channels must remain non-skipped,
+    // otherwise the case would pass with ZERO verification (not even the Rust
+    // smoke runs on the Live path). A `skip` means "the other channel still
+    // gates the case".
     let mut skip_channels: std::collections::BTreeMap<&str, Vec<EngineChannel>> =
         std::collections::BTreeMap::new();
     for e in raw.entries.iter().filter(|e| e.kind == "skip") {
@@ -3038,13 +2974,13 @@ pub(crate) fn assert_structural(
             engines.iter().any(|ch| !skipped.contains(ch)),
             "ledger: EVERY gating channel of case {case:?} is `skip`-ledgered \
              ({skipped:?}) — the case would pass with zero verification. A skip \
-             entry requires at least one non-skipped channel to keep gating (§1.3)."
+             entry requires at least one non-skipped channel to keep gating."
         );
     }
 }
 
 // ---------------------------------------------------------------------------
-// Oracle-free structural test.
+// Engine-free structural test.
 // ---------------------------------------------------------------------------
 
 /// Map every gate case key (`<source>:<path>`) to its `engines` channels, for the
@@ -3066,19 +3002,16 @@ fn manifest_engines_map() -> std::collections::BTreeMap<String, Vec<EngineChanne
 /// The fields of [`EXCLUSION_FIELDS`] whose exclusion is served by a dedicated
 /// **partitioning** handler rather than by [`LedgerView::excluded`]: they split
 /// one comparison into a scoped part and an unscoped remainder, so the runner
-/// never asks `excluded()` about them. Both are exercised live by the
-/// `GOLDEN_REBASE_PLAN.md` G2.5 entries in `tests/corpus/ledger.json`.
+/// never asks `excluded()` about them. Both are exercised live by entries in
+/// `tests/corpus/ledger.json`.
 const EXCLUSION_FIELDS_WITH_PARTITIONING_HANDLER: [&str; 2] = ["voltages", "element"];
 
 /// The [`EXCLUSION_FIELDS`] whose scopes select a single VALUE rather than a
 /// whole artifact, and which therefore need their own per-SCOPE liveness in
 /// [`LedgerRuntime::assert_all_hit`]: `applied`/`exceeded_floor` are per ENTRY,
 /// so a dead selector on an entry that also excludes something coarse would
-/// never be reported (RP3.10 audit finding AT-4, generalized by G1.6(i), by
-/// G1.4b's `distance`, whose selector is a BUS name, and by G1.10a's
-/// `run_files`, whose scopes select one created-file NAME, by G1.10c's `di`,
-/// whose scopes select one `<file>:<column>` cell column, and by `voc`, whose
-/// selector is a BUS name).
+/// never be reported. `distance` and `voc` select a BUS name, `run_files` one
+/// created-file NAME, and `di` one `<file>:<column>` cell column.
 const PER_VALUE_EXCLUSION_FIELDS: [&str; 6] = [
     "variables",
     "reliability",
@@ -3090,7 +3023,7 @@ const PER_VALUE_EXCLUSION_FIELDS: [&str; 6] = [
 
 /// Every field [`EXCLUSION_FIELDS`] lets an `exclusion` name must actually be
 /// honoured at runtime — the same guarantee [`LEDGER_FIELDS`] gives one level
-/// up, at the kind granularity `GOLDEN_REBASE_PLAN.md` G2.5 introduced.
+/// up, at the kind granularity.
 ///
 /// This is a **synthetic** drive because two of the thirteen (`probe`, `meter`)
 /// have no live entry in `tests/corpus/ledger.json` today: without it they would be
@@ -3232,12 +3165,12 @@ fn every_exclusion_field_is_honoured_by_the_runtime() {
     }
 }
 
-/// [`LedgerView::property_scope_keys`] — the census's ledger link
-/// (`R4133_PROPS_PLAN.md` RP2.1 disposition mode).
+/// [`LedgerView::property_scope_keys`] — the census's ledger link (disposition
+/// mode).
 ///
 /// It must name exactly the cells the gate's own `property_handled_keys` would
-/// handle, because a claims census reports those as `ledger-hit` and RP4.1 reads
-/// the result as "already accounted for". The two share
+/// handle, because a claims census reports those as `ledger-hit`, read as
+/// "already accounted for". The two share
 /// [`LedgerView::property_scopes`] and [`LedgerView::scope_names_prop`], and this
 /// test drives the shared decision: the `name_re` selects on the lowercased
 /// `element.prop` key, a scope with no `name_re` names **nothing** (the props
@@ -3342,8 +3275,7 @@ fn property_scope_keys_names_the_cells_the_gate_would_handle() {
 }
 
 /// The `exclusion` half of fail-on-stale, proven by canary rather than by
-/// reading the code — the same standard the `divergence` half was held to in the
-/// Phase D/E audits.
+/// reading the code, the same standard as the `divergence` half.
 ///
 /// Three arms, because the rule has to fire, has to stop firing, and must not
 /// fire on the entries it deliberately does not police: an applied
@@ -3414,9 +3346,7 @@ fn a_voltages_exclusion_that_masks_nothing_is_stale() {
     // flag rather than by the entry's `exceeded_floor`: a `name_re` that stops
     // matching (a renamed state variable, a renamed meter) would leave the
     // entry `applied` through its other scopes and mask nothing in silence.
-    // Both directions, for every field on the register (RP3.10 audit
-    // settlement finding AT-4; GOLDEN_REBASE G1.6(i) added `reliability`, G1.4b
-    // `distance`).
+    // Both directions, for every field on the register.
     for field in PER_VALUE_EXCLUSION_FIELDS {
         let unhit = mk(field, true);
         let err = unhit
@@ -3435,7 +3365,7 @@ fn a_voltages_exclusion_that_masks_nothing_is_stale() {
     }
 }
 
-/// The D11(2) normalization must be VISIBLE: a case whose per-bus continuous
+/// The bus-array normalization must be VISIBLE: a case whose per-bus continuous
 /// arrays the bus comparator suppressed is listed in the gate summary next to
 /// the ledger entry that caused it
 /// ([`LedgerRuntime::bus_array_suppressions`], printed by
@@ -3448,7 +3378,7 @@ fn a_voltages_exclusion_that_masks_nothing_is_stale() {
 /// consulted, and never claim a suppression for a `voltages` scope carrying a
 /// `name_re` — which the unnamed artifact can never match — for one carrying a
 /// `node_re` — which excludes a node SUBSET, far narrower than every bus of the
-/// case (G1.4a audit settlement AC-1/T3) — or for a divergence-kind entry, which
+/// case — or for a divergence-kind entry, which
 /// the exclusion path ignores.
 #[test]
 fn a_suppressed_bus_array_is_named_with_the_entry_that_caused_it() {
@@ -3558,7 +3488,7 @@ fn a_suppressed_bus_array_is_named_with_the_entry_that_caused_it() {
             &[1.0, 0.0, 1.0, 0.0],
             &[1.0, 0.0, 1.0, 0.0],
             &crate::harness::tol_for("feeder"),
-            "settlement drive",
+            "synthetic drive",
         );
     assert_eq!(
         keep,
@@ -4034,39 +3964,28 @@ fn the_loader_refuses_every_shape_parse_ledger_refuses() {
     assert_eq!(rt.entries[0].kind, Kind::Exclusion);
 }
 
-/// The (case, channel) pairs on which GOLDEN_REBASE G1.9's aggregate **value**
-/// arms inherit the element ledger: an `element` scope that selects the
-/// `losses` sub-channel rewrites its summands to the port's own value, so the
-/// loss aggregates' value arms compare those summands with themselves, and one
-/// that selects `powers` lets the `Circuit.TotalPower` slack absorb the
-/// port↔oracle gap of the sources it covers. A deck-wide scope does that to
+/// The (case, channel) pairs on which the aggregate **value** arms inherit the
+/// element ledger: an `element` scope that selects the `losses` sub-channel
+/// rewrites its summands to this engine's own value, so the loss aggregates'
+/// value arms compare those summands with themselves, and one that selects
+/// `powers` lets the `Circuit.TotalPower` slack absorb the gap between the
+/// engines on the sources it covers. A deck-wide scope does that to
 /// EVERY summand, so the arm becomes a self-comparison there. A named one does
 /// it to the summands it names, which is the whole arm when it names every
 /// summand (the one source of a deck, under `powers`). The ledger text cannot
 /// show which, so every such scope is counted ([`aggregate_inheriting_pairs`]).
-/// Only a scope selecting neither keeps the value arms comparing against the
-/// oracle.
+/// Only a scope selecting neither keeps the value arms comparing against
+/// OpenDSS.
 ///
-/// That is inherent, not a comparator slip — with every summand accepted, no
-/// bound on their sum can carry oracle content the entries do not already own
+/// That is inherent, not a comparator slip: with every summand accepted, no
+/// bound on their sum can carry OpenDSS content the entries do not already own
 /// (triangle inequality; see `harness::aggregates`' module doc). What must not
 /// happen silently is the inheritance SPREADING, so the set is recorded here
 /// and asserted exactly: a new `element` scope selecting `losses` or `powers`
 /// reds this test until its author acknowledges what it does to that deck's
-/// aggregate value arms. Same visibility rule as coordinator decision D11(2)
-/// for the bus arrays. Membership (P1) and identity (P1b) are untouched on
-/// these decks — they run on the raw oracle capture everywhere.
-///
-/// 14 → 12 at the lane-b G1.4a merge (2026-09-05): the two `capi_v0145` GIC rows
-/// went with their entries when coordinator decisions D12/D14 moved every
-/// `GICTransformer` deck onto the `r4133` channel alone — a SHRINK of the
-/// inheritance, i.e. two decks whose capi aggregate value arms now compare
-/// against the oracle again.
-///
-/// 12 → 13 on 2026-10-17: `makeposseq-repeat-capi` excludes every element's
-/// powers and losses on `modes:makeposseq/makeposseq_pc_repeat.dss`, whose
-/// second `makeposseq` reduces the circuit again on the oracle and changes
-/// nothing in the port.
+/// aggregate value arms. Same visibility rule as [`BUS_ARRAY_SUPPRESSIONS`]
+/// for the bus arrays. Membership and identity are untouched on these decks:
+/// they run on the raw OpenDSS capture everywhere.
 const AGGREGATE_VALUE_ARMS_INHERITING_THE_ELEMENT_LEDGER: [(&str, &str); 13] = [
     ("asymmetric:combo/combo_mesh_asym.dss", "r4133"),
     ("asymmetric:combo/midi_asym.dss", "r4133"),
@@ -4131,7 +4050,7 @@ fn the_aggregate_value_arms_inherit_exactly_the_recorded_element_scopes() {
     assert_eq!(
         found,
         recorded,
-        "the set of (case, channel) pairs whose G1.9 aggregate VALUE arms inherit \
+        "the set of (case, channel) pairs whose aggregate VALUE arms inherit \
          the element ledger has changed.\nnew: {:?}\ngone: {:?}\nAn `element` scope \
          selecting `losses` turns that deck's Circuit.Losses / LineLosses / \
          SubstationLosses / AllElementLosses value comparison into a self-comparison \
@@ -4233,7 +4152,7 @@ fn ledger_is_structurally_valid() {
     );
 }
 
-// --- the polar-channel envelope handler (GOLDEN_REBASE G1.3a F6') -----------
+// --- the polar-channel envelope handler ------------------------------------
 
 /// A divergence entry scoped to one element's `currents_mag_ang`, with the
 /// `injection-ulp` family's committed envelope (`max_abs 2e-5`, `max_rel 1e-8`).
@@ -4278,15 +4197,13 @@ fn polar_envelope_fixture() -> (Entry, ElementCap, dss_core::exec::ElementSnapsh
         name: "Transformer.t8".to_string(),
         enabled: true,
         // One terminal, one conductor: the shape of the single-slot payload
-        // below (GOLDEN_REBASE G1.3d(i) added these five fields to
-        // `ElementSnapshot`; this fixture never reaches
-        // `harness::compare_element_extras`).
+        // below. This fixture never reaches `harness::compare_element_extras`.
         n_terms: 1,
         n_conds: 1,
         n_phases: 1,
         node_order: Vec::new(),
         energy_meter: None,
-        // G1.3d(ii) added these six; this fixture reaches neither
+        // This fixture reaches neither
         // `harness::compare_element_extras` nor
         // `harness::compare_element_phase_losses`.
         phase_losses: Vec::new(),
@@ -4295,7 +4212,7 @@ fn polar_envelope_fixture() -> (Entry, ElementCap, dss_core::exec::ElementSnapsh
         ocp_dev_type: 0,
         has_volt_control: false,
         has_switch_control: false,
-        // G1.3b added these four; this fixture reaches
+        // This fixture reaches
         // `harness::compare_element_seq` through none of its callers, and the
         // `seq_*` sub-channel tests below build their own payload on top of it
         // (`seq_envelope_fixture`).
@@ -4303,7 +4220,7 @@ fn polar_envelope_fixture() -> (Entry, ElementCap, dss_core::exec::ElementSnapsh
         seq_currents: Vec::new(),
         seq_voltages: Vec::new(),
         seq_powers: Vec::new(),
-        // G1.3c added these three; this fixture reaches neither
+        // This fixture reaches neither
         // `harness::compare_element_cplx_seq` nor
         // `harness::compare_element_total_powers`, and the `cplx_seq_*` /
         // `total_powers` sub-channel tests below build their own payload on top
@@ -4324,11 +4241,8 @@ fn polar_envelope_fixture() -> (Entry, ElementCap, dss_core::exec::ElementSnapsh
 
 // The angle of a phasor whose magnitude is at or under its own band carries no
 // information: `harness::polar_close` skips it, and so must the ledger's
-// envelope check. Measured on the live corpus (G1.3a F6', 2026-09-04): with the
-// angle recorded, widening `r4133-combomidi-injection-ulp` onto
-// `currents_mag_ang` failed with `Transformer.t8 cma[9].ang: |diff| 1.394e2
-// exceeds envelope 2.063e-5` on a numerically-zero conductor — a "divergence"
-// no envelope short of +/-180 deg could admit, i.e. one that bounds nothing.
+// envelope check. On a numerically-zero conductor the angle "divergence" is
+// one no envelope short of +/-180 deg could admit, i.e. one that bounds nothing.
 /// A masked angle (magnitude at or under its band) is not envelope-checked.
 #[test]
 fn a_masked_polar_angle_is_not_envelope_checked() {
@@ -4436,7 +4350,7 @@ fn an_unmasked_residual_magnitude_still_hits_the_envelope() {
     envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
 }
 
-// Per-SUB-CHANNEL staleness (G1.3a audit settlement, 2026-09-04, finding T3):
+// Per-SUB-CHANNEL staleness:
 // `exceeded_floor` is ONE flag for the whole entry, so a scope widened onto a
 // sub-channel that masks nothing rides on a sibling channel's divergence for
 // ever and the fail-on-stale gate cannot see it. `Scope::channels_exceeded`
@@ -4483,7 +4397,7 @@ fn a_widened_sub_channel_that_masks_nothing_is_reported_stale() {
     );
 }
 
-// --- the `phase_losses` sub-channel (GOLDEN_REBASE G1.3d(ii) F4) ------------
+// --- the `phase_losses` sub-channel ----------------------------------------
 
 /// A divergence entry scoped to one element's `phase_losses`, on a
 /// single-terminal single-conductor payload whose `Powers`/`Currents` layout the
@@ -4749,7 +4663,7 @@ fn a_short_snapshot_survives_the_envelope_to_the_length_diagnostic() {
     );
 }
 
-// --- the three `seq_*` sub-channels (GOLDEN_REBASE G1.3b F4) ----------------
+// --- the three `seq_*` sub-channels ----------------------------------------
 
 /// A divergence entry scoped to all three of one element's sequence channels,
 /// on a payload shaped by the requested [`SeqArm`]:
@@ -5068,9 +4982,9 @@ fn the_seq_rewrite_and_the_seq_envelope_cover_the_same_slots() {
     }
 }
 
-/// **The one exception to the rail above, and its exact width** (coordinator
-/// decision **D31**, 2026-09-05). On the 1φ-positive-sequence arm the whole
-/// `SeqPowers` result is a single mode-9 write, and r4133 misplaces it — the
+/// **The one exception to the rail above, and its exact width.** On the
+/// 1φ-positive-sequence arm the whole `SeqPowers` result is a single mode-9
+/// write, and an OpenDSS bug in r4133 misplaces it — the
 /// value lands in slot `3t+2`, the correct `3t+1` stays zero — so an
 /// `exclusion` that names `seq_powers` there and neutralized only the banded
 /// slot would exclude nothing at all. It therefore neutralizes every slot of
@@ -5106,7 +5020,7 @@ fn an_exclusion_scope_neutralizes_the_whole_posseq_seq_powers_array() {
                 );
                 // …and nothing else moved with it: the two magnitude arrays keep
                 // the banded-slot rule under BOTH kinds, which is what keeps
-                // D31's scope honest at `seq_powers` alone.
+                // the widening honest at `seq_powers` alone.
                 assert_eq!(
                     cap.seq_i[k] == 12345.0,
                     banded,
@@ -5304,7 +5218,7 @@ fn an_asymmetric_seq_power_is_judged_on_its_own_two_factor_bands() {
     );
 }
 
-// --- the G1.3c sub-channels (GOLDEN_REBASE G1.3c F4) ------------------------
+// --- the complex-sequence and total-power sub-channels ---------------------
 
 /// A divergence entry scoped to **both** complex sequence channels of one
 /// element, on the very payload [`seq_envelope_fixture`] shapes for the same
@@ -5446,8 +5360,7 @@ fn the_cplx_seq_envelope_still_fails_outside_the_committed_bound() {
 /// `2e-6 A` floor, inside the entry's `3e-5 A` envelope) while its magnitude
 /// moves by `5e-14 A`, eleven orders under the same floor: the scope's
 /// `seq_currents` half measures nothing and is reported stale, its
-/// `cplx_seq_currents` half records the divergence. (The ledger-level half of
-/// the sub-step's M1 demo.)
+/// `cplx_seq_currents` half records the divergence.
 #[test]
 fn the_cplx_envelope_sees_a_rotation_the_magnitude_channel_cannot() {
     let tol = crate::harness::tol_for("micro");
@@ -5595,13 +5508,12 @@ fn the_cplx_rewrite_and_the_cplx_envelope_cover_the_same_slots() {
                 );
 
                 // The rewrite side: the slot is neutralized iff it is banded —
-                // and that holds under BOTH ledger kinds. D31's widening (an
+                // and that holds under BOTH ledger kinds. The one widening (an
                 // `exclusion` reaching past the banded slot) is `seq_powers` on
                 // the positive-sequence arm ALONE: modes 13/14 put that arm's
-                // value in the correct slot `3t+1` on both engines — mode 9's
-                // `Count := 2` stride does not reach them (measured on both
-                // channels, G1.3c F1) — so no `cplx_seq_*` scope of either kind
-                // ever excuses a discrete miss.
+                // value in the correct slot `3t+1` on both engines (mode 9's
+                // wrong stride does not reach them), so no `cplx_seq_*` scope of
+                // either kind ever excuses a discrete miss.
                 for exclusion in [false, true] {
                     let (entry, mut cap, mut snap) =
                         cplx_seq_envelope_fixture(arm, EngineChannel::CapiV0145);
@@ -5635,11 +5547,10 @@ fn a_discrete_cplx_slot_is_never_neutralized_by_a_scope() {
     let (entry, mut cap, mut snap) =
         cplx_seq_envelope_fixture(SeqArm::NotAvailable, EngineChannel::CapiV0145);
     // The port spells r4133's `(-1, 0)` as `(-1, -1)` — capi's SeqPowers
-    // sentinel, which this surface does NOT share (G1.3c §1.2, measured at the
-    // wire on both channels).
+    // sentinel, which this surface does NOT share on either channel.
     snap.cplx_seq_currents[0] = num_complex::Complex64::new(-1.0, -1.0);
-    // `true` = the kind D31 widened: even an `exclusion` scope must leave this
-    // sentinel to the oracle (that widening is `seq_powers` on the posseq arm).
+    // `true` = the widened kind: even an `exclusion` scope must leave this
+    // sentinel to OpenDSS (that widening is `seq_powers` on the posseq arm).
     rewrite_element_selected(&mut cap, &entry.scopes[0], &snap, true);
     crate::harness::compare_element_cplx_seq(
         std::slice::from_ref(&snap),
@@ -5988,8 +5899,8 @@ fn a_zero_terminal_total_power_sentinel_is_not_envelope_checked() {
     snap.n_terms = 0;
     snap.total_powers = Vec::new();
     cap.n_terms = Some(0);
-    // The measured capi shape on `controls/upfc/upfc_dual.dss`'s
-    // `UPFCControl.myupfcctrl` (GOLDEN_REBASE G1.3c F2).
+    // The capi shape on `controls/upfc/upfc_dual.dss`'s
+    // `UPFCControl.myupfcctrl`.
     cap.tp_kw = vec![0.0];
     cap.tp_kvar = vec![0.0];
     envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");

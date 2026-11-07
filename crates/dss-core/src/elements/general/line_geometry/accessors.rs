@@ -496,7 +496,7 @@ impl DssObject for LineGeometryObj {
             _ => {}
         }
 
-        // Third block: flag the geometry stale (step 2c-ii consumes this).
+        // Third block: flag the geometry stale (the matrix accessors recompute).
         if matches!(
             idx,
             prop::NCONDS

@@ -19,7 +19,7 @@
 //!    `"Bus"`/`"kV"` carries the full plural array → apply the plural property);
 //!  * `DoubleOnStructArray` / `IntegerOnStructArray` (`ON_ARRAY` scalar) values
 //!    are per-struct JSON arrays → the typed struct setters
-//!    ([`ClassProps::set_prop_struct_f64s`] / [`set_prop_struct_i32s`]);
+//!    ([`ClassProps::set_prop_struct_f64s`] / [`ClassProps::set_prop_struct_i32s`]);
 //!  * every other type is rendered to the exact string its
 //!    [`ClassProps::edit_property`] (string) path expects and applied through
 //!    that same property-applier VM — the string parse reproduces the oracle's
@@ -86,9 +86,8 @@ impl ClassProps {
             }
             self.set_json_value(obj, idx, jval, eng);
         }
-        // The `TDynEqPCE` `"DynInit"` tail (`DSSObjectHelper.pas:4979-4996`) is
-        // NOT ported here (mirrors the export-side `DynInit` deferral,
-        // JSON_EXPORT_PLAN §6): it only fires for a Generator/PVSystem/Storage
+        // The `TDynEqPCE` `"DynInit"` tail is NOT read here, although the
+        // export side emits it: it only fires for a Generator/PVSystem/Storage
         // carrying a `DynamicExp`. A model that used it would round-trip every
         // other property and simply omit the dynamic-init overrides.
     }

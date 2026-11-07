@@ -88,12 +88,12 @@ impl Dss {
         }
 
         // A-Diakoptics tearing commands (`Tear_Circuit`, `AggregateProfiles`)
-        // are compiled out of the vendored/oracle build (plan §0.2), so they are
+        // are compiled out of the vendored/oracle build, so they are
         // absent from `EXEC_COMMANDS` (which the oracle-pinned `Dump commands`
         // golden mirrors byte-exact). Register them here as a deliberate,
         // recorded departure — the engine behaves like a `DSS_CAPI_ADIAKOPTICS`
         // build — without perturbing that golden. `help` still resolves them
-        // (`help_catalog` already carries their text). See STATUS §WP-AD.2.
+        // (`help_catalog` already carries their text).
         if pointer == 0 && param_name.is_empty() {
             match param.to_ascii_lowercase().as_str() {
                 "tear_circuit" => {
@@ -108,10 +108,9 @@ impl Dss {
                     return;
                 }
                 "aggregateprofiles" => {
-                    // NOT_PORTED (scoped): `AggregateProfiles` is WP-AD.5.
-                    self.errors.push(
-                        "Command \"AggregateProfiles\" is not ported yet (WP-AD.5).".to_string(),
-                    );
+                    // NOT_PORTED: `AggregateProfiles` is refused with an error.
+                    self.errors
+                        .push("Command \"AggregateProfiles\" is not ported yet.".to_string());
                     return;
                 }
                 _ => {}
@@ -274,11 +273,9 @@ impl Dss {
             // Pascal `DoShowCmd` (ShowOptions.pas). Post-circuit dispatch (Pascal
             // `ProcessCommand`), so `Show` before a circuit falls through to the
             // generic guard above and records the #301 "create a circuit first"
-            // error exactly like the oracle (audit-code WP8.1: the oracle's
-            // dispatch gate errors #301 before `DoShowCmd` runs). With a circuit,
-            // every `Show` report is a faithful headless no-op (writes a file,
-            // changes no electrical state — PHASE8_PLAN §2.5); WP8.4 lands the
-            // real ShowResults formatters + the 24700/24701/24702/999 errors.
+            // error exactly like the OpenDSS engines, whose dispatch gate errors
+            // #301 before `DoShowCmd` runs. With a circuit, a `Show` report
+            // writes a file and changes no electrical state.
             cmd::SHOW => self.do_show_cmd(),
             // Pascal `DoPlotCmd` (`PlotOptions.pas:182`). With no plot callback
             // registered it exits before ANY guard (the pinned headless oracle),
@@ -306,7 +303,7 @@ impl Dss {
             // Pascal `ExecCommands.pas` `ord(Cmd.Wait)`: `if
             // PMParent.Parallel_enabled then Wait4Actors(...)` — with the
             // parallel machinery disabled (the pinned oracle's default and this
-            // port's only mode until MULTITHREADING_PLAN lands actors) it is a
+            // engine's only mode) it is a
             // silent no-op, exactly like the oracle (the StoCtrl corpus deck's
             // `Add_Issues.dss` issues a bare `wait` mid-script).
             cmd::WAIT => {}
@@ -372,8 +369,7 @@ impl Dss {
     /// port (`set_cmd.rs::apply_data_path`), the Pascal non-writable-dir →
     /// scratch `OutputDirectory` fallback (`DSSGlobals.pas:562-568`) is
     /// NOT_PORTED — an environment-dependent I/O rescue, not oracle-pinnable;
-    /// a later write fails loudly instead (audit WP8.8: consistent recorded
-    /// narrowing, corpus-unreachable).
+    /// a later write fails loudly instead (corpus-unreachable).
     fn do_cd_cmd(&mut self) {
         self.parser.next_param(&self.vars);
         let param = self.parser.make_string(&self.vars).to_string();
@@ -500,11 +496,11 @@ impl Dss {
     /// Pascal `DSSClassDefs.SetObjectClass`: activate the class named `param`.
     /// Sets `active_class` — the unified field for both Pascal
     /// `LastClassReferenced` AND `ActiveDSSClass`. The r3875 fix
-    /// (dss_capi `7457fc0b`, C11) added the `ActiveDSSClass := …` assignment so
+    /// (dss_capi `7457fc0b`) added the `ActiveDSSClass := …` assignment so
     /// SetObjectClass *always* activates the selected class; because the port
     /// collapses the two Pascal fields into one, that fix is inherent here. An
     /// unknown class logs #903 and leaves the previously-referenced class in
-    /// place. WP-U1.1 item 5.
+    /// place.
     pub(super) fn set_object_class(&mut self, param: &str) {
         match self.class_by_name.get(&param.to_ascii_lowercase()).copied() {
             Some(ci) => self.active_class = Some(ci),
@@ -863,12 +859,12 @@ impl Dss {
 
     /// Pascal `DoVisualizeCmd` (`ExecHelper.pas:4099-4197`). The plot itself
     /// goes to `DSSPlotCallback` — NIL in the pinned headless oracle — so past
-    /// the guards this is a faithful no-op (PHASE8_PLAN §2.5). The guards run
+    /// the guards this is a faithful no-op. The guards run
     /// BEFORE the callback check and ARE engine-observable, so they are
     /// ported: #24722 on an unsolved circuit (`Solution.NodeV` unallocated),
     /// #282 element-not-found. Notes:
     /// - the no-circuit #24721 arm is unreachable here — the dispatcher's
-    ///   generic pre-circuit guard already emits #301 (oracle-probed, WP8.1);
+    ///   generic pre-circuit guard already emits #301 (oracle-probed);
     /// - the `"%s" must be a circuit element type!` #282 arm is dead upstream:
     ///   `GetCktElementIndex` (`Utilities.pas:733`) resolves through
     ///   `element.Handle`, and a general (non-circuit) `DSSObject`'s Handle is
@@ -1012,7 +1008,7 @@ impl Dss {
             // reserved TCC_Curve name — it means "no curve" when referenced by a
             // circuit element — so creating one errors (423) and NewObject returns
             // NIL, which the caller's `if obj=NIL then Exit` guard drops (here: we
-            // return without adding). WP-U1.1 item 4.
+            // return without adding).
             if name.eq_ignore_ascii_case("none")
                 && self.classes[ci]
                     .props
@@ -1103,10 +1099,9 @@ impl Dss {
         // where `fBase = 50.0` selects the IEC 61000-4-15 230 V/50 Hz lamp
         // weighting instead of the 120 V/60 Hz set (`Pstcalc.pas:609-626`), so a
         // 50 Hz feeder's Pst comes out on the wrong lamp curve unless the user
-        // writes `basefreq=50` by hand. `GOLDEN_REBASE_PLAN.md` G2.2b tore the
-        // reproduction down: both lanes inherit, and the property compare that
-        // observes it (`Monitor.BaseFreq` on the 50 Hz LVTestCase) is excluded in
-        // both lanes and pinned by
+        // writes `basefreq=50` by hand. Both lanes inherit, and the property
+        // compare that observes it (`Monitor.BaseFreq` on the 50 Hz LVTestCase)
+        // is excluded in both lanes and pinned by
         // `exec::tests::base_frequency::monitor_basefreq_inherits_the_fundamental`.
         let fundamental = self.circuit.as_ref().expect("checked above").fundamental;
         self.classes[ci]
@@ -1247,26 +1242,28 @@ impl Dss {
     ///
     /// 1. `cd.vterminal` from the solution when the property (`Some(idx)`) — or,
     ///    for the whole-object `Dump`, *any* property (`None`) — is marked
-    ///    [`PropFlags::READS_VTERMINAL`]. Pascal's live-result getter reloads
+    ///    [`PropFlags::READS_VTERMINAL`](crate::obj::props::PropFlags::READS_VTERMINAL).
+    ///    Pascal's live-result getter reloads
     ///    `Vterminal` from `Solution.NodeV` itself
     ///    (`TTransfObj.GetAllWindingCurrents`, `Transformer.pas` l.1538).
     /// 2. A RegControl's `tap_snap` from its **live** controlled transformer
     ///    when reading `TapNum` (or the whole-object dump). Pascal `Get_TapNum`
     ///    reads `Transformer().PresentTap[TapWinding]` live; the Rust getter
     ///    reads a cached snapshot that a control action / direct `Taps=` edit
-    ///    leaves stale (WP8.5b).
+    ///    leaves stale.
     /// 3. A StorageController's four fleet aggregates
     ///    (`kWhTotal`/`kWTotal`/`kWhActual`/`kWActual`, marked
-    ///    [`PropFlags::RENDERS_LIVE_RESULT`]) from the live fleet. r4133's
+    ///    [`PropFlags::RENDERS_LIVE_RESULT`](crate::obj::props::PropFlags::RENDERS_LIVE_RESULT))
+    ///    from the live fleet. r4133's
     ///    getters re-sum `FleetPointerList` on every call
     ///    (`StorageController.pas:1162-1198`); the `&self` getter cannot reach
     ///    the Storage arena, so the sums land in the controller's render cache
-    ///    here, immediately before the render (RP3.8).
+    ///    here, immediately before the render.
     /// 4. An IndMach012's `pf` (same marker) from the present solution. r4133
     ///    renders `PowerFactor(Power[1, ActiveActor])` inside the getter
     ///    (`IndMach012.pas:1790`); the `&self` getter reaches no solution, so
     ///    the power factor lands in the machine's render cache here
-    ///    ([`IndMach012::refresh_live_pf`], RP3.8).
+    ///    ([`IndMach012::refresh_live_pf`](crate::elements::pc::IndMach012::refresh_live_pf)).
     pub(super) fn refresh_vterminal_if_marked(
         &mut self,
         ci: usize,
@@ -1348,22 +1345,12 @@ impl Dss {
     /// every object; the per-object callee does the flag gating, so nothing but
     /// a marked property's cache moves (a pure read of the model).
     ///
-    /// Measured through `epri-worker` on the r4133 DLL (2026-09-02), all three
-    /// marked kinds — the port wrote the first column, r4133 the second:
-    ///
-    /// | saved property | before | r4133 |
-    /// |---|---|---|
-    /// | `IndMach012.PF` (deck wrote `pf=0.5`) | `1`, or the live value if a `?` came first | `0.886059` |
-    /// | `StorageController.kWhTotal` (deck wrote `kWhTotal=42`) | `0` | `6000` |
-    /// | `Transformer.WdgCurrents` (deck wrote `wdgcurrents=1`) | all-zero | the solved currents |
-    ///
-    /// The first row is why this exists: the pre-settlement answer depended on
-    /// the session's **read history**, which is the contamination shape the
-    /// corpus gate's own three-run artifact exists to forbid. The `WdgCurrents`
-    /// row is the same latency on the older [`PropFlags::READS_VTERMINAL`]
-    /// marker, pre-dating RP3.8 and fixed with it (RP3.8 audit settlement;
-    /// no deck in the corpus or the goldens writes any of these properties, so
-    /// no committed byte moves — swept 2026-09-02).
+    /// Without this pass, a saved value of the three marked kinds
+    /// (`IndMach012.PF`, the StorageController fleet aggregates and
+    /// `Transformer.WdgCurrents` under
+    /// [`PropFlags::READS_VTERMINAL`](crate::obj::props::PropFlags::READS_VTERMINAL))
+    /// would depend on the session's **read history**, the contamination shape
+    /// the corpus gate's own three-run artifact exists to forbid.
     ///
     /// `only = Some(ci)` restricts the pass to one class (`Save <class>`);
     /// `None` covers the store (`Save circuit`).
@@ -1386,7 +1373,8 @@ impl Dss {
     /// (`StorageController.pas:991-994` -> `GetkWhTotal`/`GetkWTotal`/
     /// `GetkWhActual`/`GetkWActual`): collect each fleet member's live
     /// nameplate/state out of the Storage arena and hand them to
-    /// [`StorageController::refresh_live_aggregates`], which sums them
+    /// [`StorageController::refresh_live_aggregates`](crate::elements::control::storage_controller::StorageController::refresh_live_aggregates),
+    /// which sums them
     /// loop-for-loop. Nothing is written to the fleet, and the two
     /// `TotalkWhCapacity`/`TotalkWCapacity` fields r4133's `Var Sum` getters
     /// store into do not exist here (they are a dead store upstream — see
@@ -1395,7 +1383,8 @@ impl Dss {
     /// IndMach012 — `pf` (`IndMach012.pas:1790`,
     /// `Format('%.6g', [PowerFactor(Power[1, ActiveActor])])`): hand the machine
     /// the live `SysCtx` + `NodeV` its `Get_Power` equivalent needs
-    /// ([`IndMach012::refresh_live_pf`], which documents the fresh-`Iterminal`
+    /// ([`IndMach012::refresh_live_pf`](crate::elements::pc::IndMach012::refresh_live_pf),
+    /// which documents the fresh-`Iterminal`
     /// choice). Without a circuit there is no solution to read and the cache
     /// keeps its `PowerFactor(0) = 1` construction value, r4133's own no-power
     /// answer.
@@ -1531,9 +1520,9 @@ impl Dss {
         } = self;
         // Split the registry so the active class is borrowed mutably for the
         // edit while every *other* class is a read view for ObjectRef
-        // resolution (PHASE4_PLAN §3.1). `split_at_mut` + `split_first_mut`
+        // resolution. `split_at_mut` + `split_first_mut`
         // keep the three regions provably disjoint with no unsafe. The active
-        // class's objects (`active_arena`) come with it (R1: objects live in
+        // class's objects (`active_arena`) come with it (objects live in
         // `DssClass::arena`), so no separate arena split is needed.
         let (left, rest) = classes.split_at_mut(ci);
         let (active_class, right) = rest.split_first_mut().expect("ci is in range");
@@ -1993,7 +1982,7 @@ impl Dss {
             }
         }
 
-        // Deferred user-model (WASM) loads (WASM_USERMODELS WM.3+). Like the file
+        // Deferred user-model (WASM) loads. Like the file
         // loads above, the `UserModel=`/`UserData=`/`ShaftModel=`/`ShaftData=`
         // property hook cannot reach the filesystem or the current directory, so
         // it queued the request; resolve the path here (literal → `current_dir`,
@@ -2126,7 +2115,8 @@ fn attach_source(
 /// to rebuild), drained here once the edit finishes, with the deferred errors
 /// and ref-actions. Shared with [`Dss::edit_active_inner`] so the
 /// MakePosSequence applier (`exec::make_pos_seq::apply::apply_pos_seq_plan`)
-/// runs the same tail after replaying an element's [`PosSeqPlan`]. `ci`/`oi`
+/// runs the same tail after replaying an element's
+/// [`PosSeqPlan`](crate::elements::pos_seq::PosSeqPlan). `ci`/`oi`
 /// name the class and object just edited, and `classes` is the full registry
 /// (for ref-action targets), each class reaching its objects through
 /// `class.arena`.
@@ -2372,7 +2362,8 @@ fn apply_generic_dbl_array_file(
     obj.set_i32(gf.size_prop, count);
 }
 
-/// Write a queued [`ShapeSave`] to `OutputDirectory` and set `GlobalResult`
+/// Write a queued [`ShapeSave`](crate::obj::base::ShapeSave) to `OutputDirectory`
+/// and set `GlobalResult`
 /// (Pascal `TLoadShapeObj.SaveToDblFile`/`SaveToSngFile` and the TShape/
 /// PriceShape equivalents). The P/value file is always written; the Q file only
 /// when the shape carries a Q series (`if Assigned(dQ)`). Filenames follow the
@@ -2416,8 +2407,8 @@ fn write_shape_save(
         // Pascal `AppendGlobalResult(DSS, ' Qmult=[<ftag>=' + FName + ']')` —
         // `AppendGlobalResult` (`DSSGlobals.pas:452-459`) joins a non-empty
         // result with `', '`, and the appended clause itself starts with a
-        // space, so the oracle emits `],  Qmult=[` (comma + TWO spaces; audit
-        // settlement, oracle-probed).
+        // space, so the oracle emits `],  Qmult=[` (comma + TWO spaces,
+        // oracle-probed).
         last_result.push_str(&format!(",  Qmult=[{ftag}={}]", q_path.display()));
     }
 }

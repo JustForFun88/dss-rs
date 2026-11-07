@@ -1,6 +1,6 @@
-//! Channel-1 hermetic replay gate for the WASM_USERMODELS **WM.4** Storage
-//! (`DynaDLL=`) and PVSystem (`UserModel=`) user-model paths (plan §2.5-1;
-//! recorded decision: the oracle channel is the in-house **r4133 bridge**).
+//! Channel-1 hermetic replay gate for the Storage (`DynaDLL=`) and PVSystem
+//! (`UserModel=`) user-model paths. The reference channel is the in-house
+//! **r4133 bridge**.
 //!
 //! Each `tools/golden/wasm_decks/wasm_{pv_pflow,storage_dyn}.dss` deck is run on
 //! the **Rust** engine with `@FIXTURE@` substituted by the committed `.wasm`
@@ -10,11 +10,11 @@
 //! Those goldens are generated (manually) by `crates/dss-epri/tests/
 //! gen_wasm_usermodels_wm4.rs`, which runs the **same decks** on the r4133 engine
 //! driving the **native `.dll` twin** of the wm4model reference model. So this is
-//! a real cross-engine oracle comparison — Rust engine + wasm fixture vs r4133
+//! a real cross-engine comparison — Rust engine + wasm fixture vs r4133
 //! engine + native twin — **never "Rust agrees with itself"** (the twin and the
 //! wasm fixture are independent builds of the SAME model core).
 //!
-//! Hermetic (plan §2.6): needs only the committed `.wasm` + the committed
+//! Hermetic: needs only the committed `.wasm` + the committed
 //! goldens — no FPC, no native DLL, no wasm toolchain. Runs in every
 //! `cargo test`.
 
@@ -53,7 +53,7 @@ fn load_golden(deck: &str) -> WasmGolden {
     serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse golden {}: {e}", path.display()))
 }
 
-/// Run a WM.4 deck on the Rust engine with `@FIXTURE@` → the committed `.wasm`.
+/// Run a gate deck on the Rust engine with `@FIXTURE@` → the committed `.wasm`.
 fn run_deck(deck: &str) -> Dss {
     let fixture = workspace_root()
         .join(FIXTURE_REL)
@@ -118,27 +118,27 @@ fn check(
 ///   voltage, so it is bit-exact vs the r4133 oracle (~1e-13).
 /// - `wasm_storage_dyn` (Storage `DynaDLL=`, TStoreDynaModel): a 2-step dynamics
 ///   run — and it ALSO matches the r4133 oracle at floor (~1e-13, MEASURED).
-///   Unlike the WM.3 Generator dynamics (the D2 divergence in the swing-damping /
-///   Zthev-Norton coupling), the Storage `DoDynaModel` is a **pure per-phase
+///   Unlike the Generator dynamics (the swing-damping / Zthev-Norton coupling),
+///   the Storage `DoDynaModel` is a **pure per-phase
 ///   current injection** (`StickCurrInTerminalArray(-DESSCurr)`, no swing damping,
 ///   no Zthev) — there is no cross-version coupling to diverge, so the multi-step
 ///   trajectory (base storage vars included) gates numerically too.
 ///
 /// The base element variable surface (indices 0..base) is the ENGINE's own. Its
 /// non-sentinel vars (physical quantities + the `9999`/`0` operation flags) match
-/// the r4133 oracle at f64-floor — MEASURED worst rel 4.4e-16 across both decks
-/// (WM.4 settle T-WM4-1: base var VALUES ARE now floor-gated). The ONLY excluded
+/// the r4133 reference at f64-floor, so base var VALUES are floor-gated. The
+/// ONLY excluded
 /// base vars are the empty-named `-9999.99` InvDynVar sentinels: a genuine base-
 /// surface version divergence (the r4133 oracle sentinels them outside dynamics,
-/// while the dss_capi-0.14.5 Rust port names/computes them) — NOT the WM.4
-/// subject, so those are skipped in both name and value.
+/// while this engine names and computes them) — not the user-model subject, so
+/// those are skipped in both name and value.
 fn gate_deck(deck: &str) {
     let g = load_golden(deck);
     let mut dss = run_deck(deck);
 
     // The deck loads a real `.wasm`, so there is no "Not Loaded" warning and no
     // trap: the engine must be error-free (a surfaced user-model trap/protocol
-    // fault would land here — plan §2.9-5, never a silent fallback).
+    // fault would land here, never a silent fallback).
     assert!(
         dss.errors().is_empty(),
         "{deck}: unexpected engine errors: {:?}",
@@ -156,7 +156,7 @@ fn gate_deck(deck: &str) {
     let vtol = tol_for("feeder");
     // State-variable floor: 1e-8 rel (the feeder voltage class the model vars
     // inherit through the current computation) / 1e-12 abs (near-zero floor).
-    // NOT loosened to pass (CLAUDE.md).
+    // Never loosened to pass.
     let (var_rel, var_abs) = (1e-8, 1e-12);
 
     let mut worst = (0.0_f64, String::from("(none)"));
@@ -244,7 +244,7 @@ fn gate_deck(deck: &str) {
         }
         // Skip only the empty-named InvDynVar sentinels (the base-surface version
         // divergence); every other var — base physical/flag vars AND the 4-var
-        // user tail — is floor-compared (WM.4 settle T-WM4-1).
+        // user tail — is floor-compared.
         if name.is_empty() || ev == SENTINEL {
             continue;
         }
@@ -285,16 +285,15 @@ fn wasm_pv_pflow_matches_r4133_oracle() {
 
 /// Storage `DynaDLL=` (TStoreDynaModel, 13-fn) 2-step dynamics: full numeric gate
 /// vs the r4133 oracle — the pure current-injection DoDynaModel matches at floor
-/// (no swing-damping/Zthev coupling to diverge, unlike WM.3's Generator dynamics).
+/// (no swing-damping/Zthev coupling to diverge, unlike the Generator dynamics).
 #[test]
 fn wasm_storage_dyn_matches_r4133_oracle() {
     gate_deck("wasm_storage_dyn");
 }
 
-/// WM.3 precedent (no silent fallback): a `model=3` (UserModel) Storage with NO
-/// `UserModel=` must SURFACE the missing-model diagnostic (#567) through the
-/// solution error log — the inject path drains into `Dss::errors()` (never a
-/// silent drop, plan §2.9-5).
+/// A `model=3` (UserModel) Storage with NO `UserModel=` surfaces the
+/// missing-model diagnostic (#567) through `Dss::errors()`, never a silent
+/// drop.
 #[test]
 fn storage_model3_without_usermodel_surfaces_diagnostic() {
     let deck = "\
@@ -319,9 +318,9 @@ solve";
     );
 }
 
-/// WM.3 precedent (no silent fallback): a `model=3` (UserModel) PVSystem with NO
-/// `UserModel=` must SURFACE the missing-model diagnostic (#567) through the
-/// solution error log.
+/// A `model=3` (UserModel) PVSystem with NO `UserModel=` surfaces the
+/// missing-model diagnostic (#567) through the solution error log, never a
+/// silent fallback.
 #[test]
 fn pvsystem_model3_without_usermodel_surfaces_diagnostic() {
     let deck = "\
@@ -346,12 +345,11 @@ solve";
     );
 }
 
-/// `like=` must carry a **live** user model on the WM.4 classes too (RP1.3 audit
-/// settlement, 2026-08-23) — the same defect, the same fix as the Generator's
+/// `like=` must carry a **live** user model on the PVSystem and Storage classes
+/// too, the same as the Generator's
 /// (`wasm_usermodels.rs::like_carries_a_live_user_model_on_both_generator_slots`)
-/// and the WindGen's: Pascal `UserModel.Name := Other…` / `DynaModel.Name := …`
-/// (`PVsystem.pas:909`, `Storage.pas:1210-1211`) are eager `Set_Name`s, while a
-/// cloned slot comes back dead (`Clone` drops the live wasmi instance, every call
+/// and the WindGen's: the model name is loaded eagerly, while a cloned slot
+/// comes back dead (`Clone` drops the live wasmi instance, every call
 /// site guards on `exists()`) and falls back to the built-in model in silence.
 ///
 /// The state-variable surface is the discriminator: it is the class's built-in
@@ -383,7 +381,7 @@ fn like_carries_a_live_user_model_on_the_wm4_classes() {
     }
 }
 
-/// Every committed WM.4 golden parses, has index-aligned name/value arrays, and
+/// Every committed Storage/PVSystem golden parses, has index-aligned name/value arrays, and
 /// its deck template exists.
 #[test]
 fn all_wm4_decks_have_consistent_goldens() {

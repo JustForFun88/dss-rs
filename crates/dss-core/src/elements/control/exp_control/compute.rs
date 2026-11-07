@@ -1,4 +1,4 @@
-//! The ExpControl control algorithm (PHASE7_PLAN WP7.5 step 3): the PVSystem
+//! The ExpControl control algorithm: the PVSystem
 //! fleet build (`MakePVSystemList`), the `Sample` trigger logic, the
 //! `DoPendingAction` adaptive-`Vreg` volt-var dispatch, and `UpdateExpControl`
 //! (the per-step `Vreg` slew). Ported loop-for-loop from `Controls/ExpControl.pas`.

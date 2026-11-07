@@ -88,7 +88,7 @@ fn primitive_matrix_skips_ground() {
     assert!((x[0] - c(2.0, 0.0)).norm() < 1e-12);
 }
 
-/// The cached-assemble fast path (P15 items 1-2: `zero()` + restamp the same
+/// The cached-assemble fast path (`zero()` + restamp the same
 /// `(r,c)` pattern with new values) must reproduce a fresh from-scratch build
 /// **bit-for-bit**. This is the bit-neutrality proof for the dedup-mapping cache
 /// and its insertion-order re-accumulation — a stronger check than the
@@ -206,7 +206,7 @@ fn cache_reaccumulates_new_values_not_stale() {
     );
 }
 
-/// P15 item 2 — the cached fast path must actually be *taken* on a same-pattern
+/// The cached fast path must actually be *taken* on a same-pattern
 /// `zero()`+restamp (not silently fall back to the from-scratch slow path, which
 /// is bit-identical but pays the full HashMap dedup + faer rebuild). All the
 /// bit-neutrality tests above pass equally on either path, so this asserts the
@@ -257,8 +257,8 @@ fn same_pattern_rebuild_takes_fast_path() {
     );
 }
 
-/// P15 item 3 — `add_primitive_matrix_col_major` (the product's sole element
-/// stamping path, `ymatrix.rs`) must be **bit-for-bit** equivalent to the old
+/// `add_primitive_matrix_col_major` (the product's sole element stamping path,
+/// `ymatrix.rs`) must be **bit-for-bit** equivalent to
 /// `add_primitive_matrix(nodes, &cmatrix.to_row_major())`. Same `TcMatrix` read
 /// column-major (element `(i,j)` at `cm[j*order+i]`) vs its row-major transpose
 /// (`rm[i*order+j] == cm[j*order+i]`), stamped into two sets; the assembled COO
@@ -310,11 +310,11 @@ fn col_major_stamp_matches_row_major_transpose_bitwise() {
     assert_eq!(vc.len(), 4, "ground row/col must be skipped on both paths");
 }
 
-/// P15 item 6 — `find_islands`' recursion→iterative path-compression rewrite,
-/// exercised for both **correctness** (connected components) and **scale** (the
-/// degenerate long-chain the change targets: a chain that would drive the old
-/// recursive `find` deep). The iterative version must return the right component
-/// labels and complete without a stack overflow at chain scale.
+/// `find_islands`' iterative path compression, exercised for both
+/// **correctness** (connected components) and **scale** (a degenerate long
+/// chain that would drive a recursive `find` deep). The iterative version must
+/// return the right component labels and complete without a stack overflow at
+/// chain scale.
 #[test]
 fn find_islands_components_and_deep_chain() {
     // Small mixed case: two islands {0,1,2} (a path) and {3,4} (an edge), plus an

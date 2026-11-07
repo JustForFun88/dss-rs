@@ -1,4 +1,4 @@
-//! Phase 3 gate (PORTING_PLAN.md): replay each vertical-slice scenario from
+//! Slice gate: replay each vertical-slice scenario from
 //! `tests/golden/slice.json` through the Rust engine and require
 //!   (a) 2-bus vsource+line+load voltages within 1e-9 rel of dss-python,
 //!   (b) the IEEE13-flat variant within 1e-6 rel,
@@ -69,7 +69,7 @@ fn run_scenario(sc: &Scenario) {
         .unwrap_or_else(|| panic!("{}: no circuit after replay", sc.name));
 
     // (c) convergence flag and fixed-point iteration count (exact in the parity
-    // lane, ±`lane::ITER_SLACK` in the default lane — Stage F drift model).
+    // lane, ±`lane::ITER_SLACK` in the default lane).
     assert!(sc.converged, "{}: oracle did not converge", sc.name);
     assert!(ckt.is_solved, "{}: Rust solution did not converge", sc.name);
     harness::lane::compare_iterations(ckt.solution.iteration, sc.iterations, &sc.name);

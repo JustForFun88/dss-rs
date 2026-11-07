@@ -16,11 +16,11 @@
 //! width-8 fixed 2-decimal, `IntToStr`, `StrYorN` → `Yes`/`No`,
 //! `GetDSSArray`/`IntArrayToString`). **Which** commands are emitted, in which
 //! order, with which spec, is permanent contract, not compat: this block is DSS
-//! script that our own parser must re-compile into the same circuit
-//! (`DE_PASCALIZE_PLAN.md` IV.1, `Save` round-trip), so the specs stay.
+//! script that our own parser must re-compile into the same circuit (`Save`
+//! round-trip), so the specs stay.
 //!
-//! How each number inside them is *spelled* is the F-FMT seam's business
-//! (Part IV.2 §F-FMT, step F.4), and both spellings used here route through it:
+//! How each number inside them is *spelled* is the lane seam's business, and
+//! both spellings used here route through it:
 //! `%g` through [`crate::util::fmt_g`] (via [`g`]) and `%8.2f` through
 //! [`crate::compat::fixed_w_script`]. Neither call site decides a lane.
 
@@ -50,7 +50,7 @@ fn str_y_or_n(b: bool) -> &'static str {
 /// — e.g. `[ 0.208 0.48 12.47]`.
 ///
 /// The `%g` fidelity (15-significant general format) belongs to the module's
-/// F-FMT compat family above; the goldens pin this exact spelling.
+/// lane seam above; the goldens pin this exact spelling.
 ///
 /// Pascal returns the empty string (not `[]`) for a NIL/empty array (`dbls = NIL`
 /// → `Result := ''`); the empty `ArrayOfDouble` overload passes `@dbls[0] = NIL`.

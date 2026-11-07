@@ -1,4 +1,4 @@
-// PHASE8_PLAN WP8.6 Distribute fixture: loads with three different kW
+// Distribute fixture: loads with three different kW
 // bases and specs (kW/PF, xfkva+allocationfactor, kwh+cfactor) so the
 // Proportional weights differ per load. The gen_reports.py DISTRIB group
 // issues the deterministic variants (Proportional / Uniform / Skip /

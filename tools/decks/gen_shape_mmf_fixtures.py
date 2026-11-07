@@ -13,15 +13,15 @@ tests/corpus/modes/inputformat/shape_mmf/ -- the quirk-observing deck:
                 the feature-sensitivity axis: BOTH oracle revisions filter the
                 MMF text column through an accept-set of bytes [46,58)
                 (`.`/`/`/digits), dropping the sign and the `e` exponent, so they
-                read `1.5e-1` as 1.51 where the file says 0.15. GOLDEN_REBASE
-                G2.5 fixed that in the port (both lanes), so this deck now
-                diverges from the pinned oracle wholesale and is ledgered
+                read `1.5e-1` as 1.51 where the file says 0.15. This engine
+                reads the column verbatim (both lanes), so this deck diverges
+                from the pinned dss_capi wholesale and is ledgered
                 (`mmf-accept-set-honoured-capi`). All lines are the SAME byte
                 width (the MMF byte indexer requires it); spaces pad.
 
 tests/corpus/modes/inputformat/shape_mmf_io/ -- the sibling that keeps the
-MMF-reader coverage oracle-compared (added by G2.5 before excluding the deck
-above). Same shapes, same loads, same monitors; only the pq fixture differs:
+MMF-reader coverage compared with the OpenDSS engines, apart from the deck
+above. Same shapes, same loads, same monitors; only the pq fixture differs:
 
   mm8.sng, mm8.dbl -- byte-identical copies of the pair above.
   mmpq8_plain.csv  -- the same P/Q numbers written in PLAIN decimal, so every

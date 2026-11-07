@@ -30,7 +30,7 @@ fn gen_controller_class_is_not_registered() {
 
 #[test]
 fn tcc_curve_none_is_reserved() {
-    // WP-U1.1 item 4 (SVN r4119 / fd034bb0): "none" is a reserved TCC_Curve name.
+    // "none" is a reserved TCC_Curve name (SVN r4119).
     // `new TCC_Curve.none` errors (423) and NO object is created — matching
     // capi015 AND r4133. Feature-sensitive: the object stays absent.
     let mut dss = dss_with_circuit();
@@ -54,14 +54,8 @@ fn tcc_curve_none_is_reserved() {
 
 #[test]
 fn fuse_curve_none_clears_silently_like_r4133() {
-    // WP-U2.1 (EPRI r4133, delta D1/E3): `GetTccCurve('none')` returns NIL
-    // **silently** — no #401 — and prop 5 renders the literal `none` (Pascal `if
-    // FuseCurve <> nil then FuseCurve.Name else 'none'`). This supersedes the
-    // Rung-1 capi015 behavior (clear + #401, the WP-U1.1 item-4 / DIVERGENCES.md
-    // §AllowNone-single-ref decision) which the fuse used before this WP; the fuse
-    // now moves to the r4133 protection surface.
-    // Probed 2026-07-16 on the EPRI r4133 engine (Oddie): with a real `tlink` set,
-    // `Edit fuse.f fusecurve=none` leaves Error.Number 0 and renders `none`.
+    // `fusecurve=none` clears the curve **silently**, as r4133 does — no #401 —
+    // and prop 5 renders the literal `none`.
     let mut dss = dss_with_circuit();
     dss.command("New TCC_Curve.tlink npts=2 C_array=(1 10) T_array=(1 0.1)");
     dss.command("New line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1 length=1");

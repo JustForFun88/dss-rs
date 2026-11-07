@@ -1,9 +1,9 @@
 //! Unit tests for the `DynamicExp` interpreter/evaluator (`InterpretDiffEq` →
 //! `cmds`, `SolveEq`). The property dump is pinned against the oracle by the
 //! `props_roundtrip` golden (`tests/golden/props/dynamicexp.json`); these tests
-//! exercise the compilation + evaluation that the dump cannot reach (the oracle
-//! does not expose `cmds`/`SolveEq` outside a dynamics solve — that arrives,
-//! oracle-pinned, with WP7.7). Values are hand-derived from the Pascal algorithm.
+//! exercise the compilation + evaluation that the dump cannot reach (the
+//! OpenDSS engines expose `cmds`/`SolveEq` only inside a dynamics solve).
+//! Values are hand-derived from the Pascal algorithm.
 
 use super::*;
 
@@ -202,8 +202,7 @@ fn unknown_variable_clears_expression() {
     // *before* it validates the token (`SetLength(Cmds, Length(Cmds) + 1)` at
     // `DynamicExp.pas:526`, then `Get_Var_Idx`), so upstream additionally keeps
     // the zero-filled cell the `OpIdx < 0` arm never writes — a stray `Var(0)`
-    // in an object whose expression has just been discarded. Not reproduced;
-    // recorded at the W3-settler STATUS record.
+    // in an object whose expression has just been discarded. Not reproduced.
     assert_eq!(o.cmds_ordinals(), vec![0, -50]);
 }
 
@@ -307,7 +306,7 @@ fn constant_before_dt_is_rejected_with_the_pascal_message() {
     // two zero-filled cells left in the stream; both of its readers are the
     // wild-write path this port already guards (`SolveEq`'s unguarded
     // `MemSpace[OutIdx][1]` with `OutIdx = -1`), so the cells are not
-    // reproduced — see the W3-settler STATUS record.
+    // reproduced.
     assert!(o.cmds_ordinals().is_empty(), "{:?}", o.cmds_ordinals());
 }
 

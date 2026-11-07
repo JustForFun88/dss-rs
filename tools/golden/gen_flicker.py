@@ -1,4 +1,4 @@
-"""Generate the Monitor mode-4 flicker golden (WP-PF.2).
+"""Generate the Monitor mode-4 flicker golden.
 
 UNUSUAL ORACLE — read this before regenerating. The pinned dss_capi oracle
 (dss-python 0.15.7) **cannot** produce a mode-4 flicker result: its
@@ -10,22 +10,21 @@ Process()` of a mode-4 monitor (probe-verified 2026-07-11: hard segfault). The
 **official** Delphi engine keeps `Terminals` 1-based (`pTerminalList`), so it runs
 the flicker calc correctly.
 
-The committed golden (`tests/golden/flicker/pst_demo.json`) is the FROZEN
-capture from the official EPRI **r3723** binary via the retired Oddie bridge
-(its `oracle` block records that provenance). Both the r3723 binary and the
-Oddie/dss-python channel are gone (UNIFIED_GATE Phase E); the regeneration path
-now drives the official EPRI **r4133** binary — the only vendored official
-revision — through the in-house Rust bridge (`epri-worker`, crates/dss-epri,
-auto-built if missing):
+The committed golden (`tests/golden/flicker/pst_demo.json`) is a FROZEN
+capture from the official EPRI **r3723** binary (its `oracle` block records
+that provenance). The regeneration path drives the official EPRI **r4133**
+binary — the only vendored official revision — through the in-house Rust
+bridge (`epri-worker`, crates/dss-epri, auto-built if missing):
 
     python tools/golden/gen_flicker.py
 
-Cross-revision parity is byte-proven (STATUS "EPRI bridge parity round",
-2026-07-19): the r4133 regen reproduces the committed r3723 payload — raw f32
+Cross-revision parity is byte-proven (2026-07-19): the r4133 regen reproduces the committed r3723 payload — raw f32
 magnitudes, flicker + Pst channels, kvbase — byte-identically (the engine's
 flicker meter and this trivial deck's power flow are revision-stable), so only
-the `oracle` provenance block differs. `DSS_GOLDEN_OUT` redirects the output
-dir (scratch parity runs).
+the `oracle` provenance block differs.
+
+Environment: `DSS_GOLDEN_OUT` redirects the output dir (scratch parity runs).
+Default `tests/golden/flicker`.
 
 The Rust replay (`crates/dss-core/tests/golden_flicker.rs`) is solve-decoupled: it
 feeds the captured raw per-phase magnitudes straight into `flicker_meter` and
@@ -57,7 +56,7 @@ DECK = [
     'set voltagebases="1.73205"',
     "calcvoltagebases",
     "solve mode=duty stepsize=10 number=8640",
-    "wait",  # PM/async solve barrier (D9 rule) before reading.
+    "wait",  # PM/async solve barrier before reading.
 ]
 
 

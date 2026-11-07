@@ -14,15 +14,14 @@ use crate::report::export::for_each_enabled_elem;
 use crate::report::format;
 
 /// Build the `Export Capacity` body (Pascal `ExportCapacity`). Walks the
-/// PDElements calling the mutating `GetCurrents`/`Power` getters (PHASE8_PLAN
-/// §2.1).
+/// PDElements calling the mutating `GetCurrents`/`Power` getters.
 ///
-/// Seasonal ratings (dss_capi 0.15.x `55400a29`, WP-U1.5 E2): the norm/emerg
+/// Seasonal ratings (dss_capi 0.15.x `55400a29`): the norm/emerg
 /// ratings come from `TPDElement.GetRatings`, which applies the globally-synced
 /// `DSS.SeasonalRatingIdx` (`Circuit::seasonal_rating_idx`) to ANY PDElement with
 /// `NumAmpRatings > 1`. The 0.14.5 baseline re-read the XYCurve per element AND
 /// state-mutated `DSS.SeasonalRating := FALSE` on a miss (a state-mutating read
-/// from a report export — not reproduced, per CLAUDE.md's known-bug policy); the
+/// from a report export — an OpenDSS bug, not reproduced); the
 /// 0.15.x form drops that mutation by precomputing the index at solve time
 /// (`sync_seasonal_rating_idx`). `seasonal_rating_idx == -1` (feature off) → the
 /// element's own `NormAmps`/`EmergAmps`.

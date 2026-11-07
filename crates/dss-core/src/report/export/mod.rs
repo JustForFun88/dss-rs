@@ -1,7 +1,6 @@
 //! Per-report formatters for `Export` (Pascal `Common/ExportResults.pas`). Each
 //! takes a read view of the (solved) circuit and returns the report text/CSV; no
-//! formatter mutates electrical state (PHASE8_PLAN §2.1). Coverage grows per WP
-//! (WP8.1: `Counts`; WP8.2: the solution exports; WP8.3: device/meter/reliability).
+//! formatter mutates electrical state.
 //!
 //! Two formatter shapes:
 //! * the **bus/node** exports (`Voltages`/`BusCoords`/`NodeNames`/`YNodeList`) are
@@ -106,8 +105,8 @@ use crate::exec::registry::DssClass;
 /// order, invoking `f(full_name, &mut elem)` for each **enabled** element — the
 /// shared iteration the element exports build on (Pascal `<list>.First`/`.Next`
 /// under `if Enabled`). The element's `FullName` (`Class.Name`, original case) is
-/// pre-built; the text/CSV comparator matches identifiers case-insensitively
-/// (PHASE8_PLAN §2.3), so the un-uppercased name is gate-equivalent.
+/// pre-built; the text/CSV comparator matches identifiers case-insensitively,
+/// so the un-uppercased name is gate-equivalent.
 ///
 /// `classes` and `refs` are passed as **separate** borrows (the `refs` come from
 /// the immutable `&Circuit`, the elements are reached through `&mut [DssClass]`)

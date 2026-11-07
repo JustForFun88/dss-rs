@@ -30,8 +30,8 @@ pub struct PropEngine<'a> {
     /// `Controls/SwtControl.pas:433-480`). The executive sets it per token;
     /// seams without an outer parser (JSON import, unit tests) leave it
     /// `false` — a class hook that cares reconstructs the quoted case from
-    /// the value's own leading quote character / token count (RP3.7 A2;
-    /// [`crate::obj::base::DssObject::set_enum_array_raw`]).
+    /// the value's own leading quote character / token count
+    /// ([`crate::obj::base::DssObject::set_enum_array_raw`]).
     pub was_quoted: bool,
 }
 
@@ -39,7 +39,7 @@ pub struct PropEngine<'a> {
 /// uses to resolve an `ObjectRef` to a live object (Pascal `cls.Find`). The
 /// executive implements it over the class registry minus the active class; the
 /// returned `ElemId` is stable (nothing is deleted except whole-circuit
-/// `Clear`, PORTING_PLAN §2.1).
+/// `Clear`).
 pub trait ForeignClassesView<'a> {
     /// Case-insensitive lookup of `name` in class `class`. `None` when the
     /// class or the object is unknown.

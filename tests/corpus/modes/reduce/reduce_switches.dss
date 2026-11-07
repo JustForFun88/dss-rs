@@ -1,5 +1,5 @@
-// Reduce coverage (PHASE8_PLAN WP8.7): the SWITCHES strategy
-// (DoReduceSwitches, ReduceAlgs.pas:297): an in-line switch (IsSwitch)
+// Reduce coverage: the SWITCHES strategy
+// (DoReduceSwitches): an in-line switch (IsSwitch)
 // with one child, no shunts at its to-bus and the bus not kept is merged
 // into the downstream non-switch line (sw1 -> merged into l2, b2
 // eliminated); a dangling switch with no shunts is disabled (sw2).

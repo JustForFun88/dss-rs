@@ -1,7 +1,6 @@
 //! Dispatch a `Dump` to a class's Pascal `DumpProperties` **override** body.
 //!
-//! Pascal models `DumpProperties` as a virtual method; 14 leaf classes (that
-//! exist in this port — `AutoTrans`/`GICLine` are Phase-9-deferred, unported)
+//! Pascal models `DumpProperties` as a virtual method; 16 leaf classes
 //! override it. Rust has no inheritance, so [`dump_override`] narrows the object
 //! to each overriding type (a typed `ClassArena` read) and calls its co-located
 //! `dump_body` (the method lives with the element so it reads its private fields
@@ -9,16 +8,13 @@
 //! through to
 //! [`super::dump_generic`].
 //!
-//! WP8.5 step 1 ported the **Reactor** override; step 2 adds the
-//! per-winding/matrix overrides **Transformer**, **Line**, **LineCode**,
-//! **LineGeometry** and **XfmrCode**; step 3a adds the remaining 8 —
-//! **Capacitor**, **Fault**, **VSource**, **UPFC**, **RegControl**, **Monitor**,
-//! **EnergyMeter**, **Spectrum**. Every Pascal `DumpProperties` override that
-//! exists in this port is now dispatched here — the only two NOT covered
-//! (`AutoTrans`, `GICLine`) are Phase-9-deferred, unported classes.
+//! The dispatched overrides are **Reactor**, the per-winding/matrix overrides
+//! **Transformer**, **AutoTrans**, **Line**, **LineCode**, **LineGeometry** and
+//! **XfmrCode**, and **Capacitor**, **Fault**, **VSource**, **GICLine**,
+//! **UPFC**, **RegControl**, **Monitor**, **EnergyMeter**, **Spectrum**.
 //!
-//! WPG.14 adds one more dispatch entry, **Isource** — not a real Pascal
-//! override (`TIsourceObj` has none), but it needs one here anyway: it is
+//! **Isource** has a dispatch entry too — not a real Pascal override
+//! (`TIsourceObj` has none), but it needs one here anyway: it is
 //! `NON_PCPD_ELEM` like VSource, so the generic path's `is_pc` (driven by
 //! `Circuit.pc_elements` membership) can't select the `TPCElement` dump
 //! ordering it actually needs (see `elements/pc/isource/dump.rs`).

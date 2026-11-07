@@ -1,6 +1,6 @@
 //! `PriceShape` — per-hour price curve.
 //! Port of Pascal `General/PriceShape.pas` (`TPriceShapeObj`). A `DSS_OBJECT`
-//! class whose curve feeds `ckt.PriceSignal` in `SolveDaily` (wired in WP5.7).
+//! class whose curve feeds `ckt.PriceSignal` in `SolveDaily`.
 //! The data storage and the hour lookup / mean-std-dev / CSV reader live on the
 //! shared [`ScalarShapeCore`]; this file is the property table and the
 //! class-specific `PropertySideEffects`.
@@ -12,8 +12,7 @@
 //! positive `Interval` drops the hour array.
 //!
 //! `CSVFile`/`SngFile`/`DblFile` are all read via the deferred [`FileLoad`]
-//! path (WPG.1 for the binary pair); `Action=DblSave/SngSave` (binary output)
-//! stays `NOT_PORTED`.
+//! path. `Action=DblSave/SngSave` queues the binary write for the executive.
 
 #[cfg(test)]
 mod tests;

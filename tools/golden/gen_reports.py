@@ -1,5 +1,4 @@
-"""Generate the targeted report goldens from the pinned oracle (historically
-"Phase 8", PHASE8_PLAN.md).
+"""Generate the targeted report goldens from the pinned oracle.
 
 The reporting/output layer (Export/Show/Save/Dump). Unlike the command-replay
 goldens (timeseries_controls / metering_monitors / der_controls), these pin the
@@ -8,15 +7,18 @@ pinned engine, issues the
 `Export`/`Show`/... command, and captures the produced file's exact bytes into
 `tests/golden/reports/<report>.txt`. The Rust side (`golden_reports.rs`) replays
 the same fixture, writes its own report, and diffs the two **after parsing
-numbers out** via the `compare_export` harness (PHASE8_PLAN §2.3) — never a raw
+numbers out** via the `compare_export` harness — never a raw
 float-string diff.
 
-WP8.1 self-test: `Export Counts` (Pascal `ExportCounts`) — a text dump of every
+The self-test report: `Export Counts` — a text dump of every
 DSS class and its instance count. The Rust class registry is a *proper subset*
 of the oracle's (only a subset of classes is ported), so the Rust file is
 compared as a `RustSubsetByKey` subset of the oracle file: every ported class's
-count is pinned against the oracle, the classes we do not yet register are
-ignored (documented in `tests/TOLERANCE_NOTES.md`).
+count is pinned against the oracle, the classes this engine does not register
+are ignored.
+
+Environment: `DSS_ORACLE_ENGINE` (default `capi`). Set to `capi015`, the run
+regenerates only the seasonal-rating goldens.
 
 Usage:
     python tools/golden/gen_reports.py            # regenerate all report goldens
@@ -90,7 +92,7 @@ FEEDER_REPORTS = [
     ("buscoords", "EXP_BUSCOORDS.csv", "export_buscoords"),
     ("nodenames", "EXP_NodeNames.csv", "export_nodenames"),
     ("ynodelist", "EXP_YNodeList.csv", "export_ynodelist"),
-    # WP8.2 sub-step 2a — the aggregate PD/PC power exports (kW/kvar/W, no angles).
+    # The aggregate PD/PC power exports (kW/kvar/W, no angles).
     ("powers", "EXP_POWERS.csv", "export_powers"),
     ("losses", "EXP_LOSSES.csv", "export_losses"),
     ("p_byphase", "EXP_P_BYPHASE.csv", "export_p_byphase"),
@@ -99,12 +101,12 @@ FEEDER_REPORTS = [
     # twin's file (read immediately, so no clash).
     ("powers mva", "EXP_POWERS.csv", "export_powers_mva"),
     ("p_byphase mva", "EXP_P_BYPHASE.csv", "export_p_byphase_mva"),
-    # WP8.2 sub-step 2b — the symmetrical-component family (V1/V2/V0, I1/I2/I0,
+    # The symmetrical-component family (V1/V2/V0, I1/I2/I0,
     # seq powers) + %NEMA + PD ratings. All magnitude/ratio columns, no angles.
     ("seqvoltages", "EXP_SEQVOLTAGES.csv", "export_seqvoltages"),
     ("seqcurrents", "EXP_SEQCURRENTS.csv", "export_seqcurrents"),
     ("seqpowers", "EXP_SEQPOWERS.csv", "export_seqpowers"),
-    # WP8.2 sub-step 2c — the per-terminal/per-conductor element exports (mag +
+    # The per-terminal/per-conductor element exports (mag +
     # angle) + NodeOrder + Taps.
     ("currents", "EXP_CURRENTS.csv", "export_currents"),
     ("nodeorder", "EXP_NodeOrder.csv", "export_nodeorder"),
@@ -112,7 +114,7 @@ FEEDER_REPORTS = [
     ("elemvoltages", "EXP_ElemVoltages.csv", "export_elemvoltages"),
     ("elempowers", "EXP_ElemPowers.csv", "export_elempowers"),
     ("taps", "EXP_Taps.csv", "export_taps"),
-    # WP8.2 sub-step 3 — the matrix/summary exports. `y triplet` is the sparse
+    # The matrix/summary exports. `y triplet` is the sparse
     # `Row,Col,G,B` form (the dense form glues `+j` onto the imaginary tokens, so
     # it is not plain-CSV gate-able; its values are pinned by the checkpoint/live
     # full-Y gates). `Yprims` is the per-element primitive-Y dump. `Summary` is the
@@ -122,7 +124,7 @@ FEEDER_REPORTS = [
     ("yprims", "EXP_YPRIM.csv", "export_yprims"),
     ("summary", "EXP_Summary.csv", "export_summary"),
     ("result", "EXP_Result.csv", "export_result"),
-    # WP8.2 follow-up — the remaining solution-family exports: VoltagesElements
+    # The remaining solution-family exports: VoltagesElements
     # (per-element terminal voltages, the by-element companion to Voltages) and the
     # raw Y-ordered node vectors YVoltages (NodeV) / YCurrents (Solution.Currents).
     ("voltageselements", "EXP_VOLTAGES_ELEM.csv", "export_voltageselements"),
@@ -130,7 +132,7 @@ FEEDER_REPORTS = [
     ("ycurrents", "EXP_YCurrents.csv", "export_ycurrents"),
 ]
 
-# The IEEE 8500-Node bus/summary exports (PHASE8_PLAN §WP8.2 step 4): pin the
+# The IEEE 8500-Node bus/summary exports: pin the
 # same `Voltages`/`Summary`/`Counts` reports at scale (8531 nodes, 6103 devices).
 # The 8500 master needs `Set Maxiterations=20` to converge (exactly as the
 # `golden_ieee8500.rs` snapshot gate does). The per-element/matrix dumps are
@@ -181,8 +183,8 @@ def gen_ieee8500_reports(d) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-# The IEEE 34/37/123 core solution exports (PORTING_PLAN §6 literal acceptance).
-# §6 requires the export-diff suite green on IEEE 13/34/37/123/8500: 13 is pinned
+# The IEEE 34/37/123 core solution exports. The export-diff suite covers
+# IEEE 13/34/37/123/8500: 13 is pinned
 # by `gen_feeder_reports` (the full export family) and 8500 by
 # `gen_ieee8500_reports`; these three feeders complete the letter with the core
 # solution exports Voltages/Currents/Powers (mirroring the IEEE13 core set — the
@@ -205,7 +207,7 @@ EXTRA_FEEDER_REPORTS = [
 
 def gen_extra_feeder_reports(d) -> None:
     """Capture the oracle's Voltages/Currents/Powers on the solved IEEE34/37/123
-    feeders (PORTING_PLAN §6 export-diff coverage)."""
+    feeders (export-diff coverage)."""
     for prefix, master in EXTRA_FEEDERS:
         master_abs = (REPO_ROOT / "tests" / "corpus" / "electricdss-tst" / master).resolve()
         if not master_abs.is_file():
@@ -241,7 +243,7 @@ def gen_extra_feeder_reports(d) -> None:
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-# The monitor-export fixture (PHASE8_PLAN §WP8.3 step 1): the IEEE13 feeder with
+# The monitor-export fixture: the IEEE13 feeder with
 # three monitors covering the distinct CSV shapes — mode 0 (general V/I: paired
 # magnitude/angle, unquoted header), mode 1 (power: `S (kVA)`/`Ang` header, whose
 # spaces force `CommaText` quoting), and mode 2 (transformer tap: the single
@@ -300,8 +302,8 @@ def gen_monitor_reports(d) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-# The register-dump fixtures (PHASE8_PLAN §WP8.3 step 2). No corpus deck uses these
-# keywords, so they are synthesized (PHASE8_PLAN §1). Two fixtures, both daily-solved
+# The register-dump fixtures. No corpus deck uses these
+# keywords, so they are synthesized. Two fixtures, both daily-solved
 # 3 steps so every register accumulates:
 #   A) plain IEEE13 + an EnergyMeter (on Line.650632) → `Meters` + `Loads`. The meter
 #      registers match the oracle to ~1e-8 (the same daily meter path `corpus_live.rs`
@@ -418,7 +420,7 @@ def _gen_show_group(d, post, reports) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-# The `Show` register-table fixtures (PHASE8_PLAN §WP8.4). Reuse the WP8.3 register
+# The `Show` register-table fixtures. Reuse the register-dump
 # fixtures so the accumulated `%10.0f` register values are the same daily-solved
 # meter/generator paths `corpus_live.rs` + the `Export Meters`/`Export Generators`
 # goldens already pin — `Show Meters` (`EMout.txt`) on the metered IEEE13 (fixture A),
@@ -435,7 +437,7 @@ def gen_show_meter_reports(d) -> None:
     _gen_show_group(d, REGISTER_B_POST, SHOW_METER_REPORTS_B)
 
 
-# `Show Meters`/`Show Generators` edge branches (WP8.4 step-8 audit follow-up):
+# `Show Meters`/`Show Generators` edge branches:
 #   MULTI: two EnergyMeters (em1 on the feeder head, em2 on a lateral) → the
 #     legend-uses-FIRST-meter path + two data rows with distinct per-zone registers
 #     (a bug printing the legend per-meter, dropping a row, or using meter[0]'s
@@ -463,8 +465,8 @@ def gen_show_meter_edgecases(d) -> None:
     _gen_show_group(d, ["solve"], SHOW_NONE_REPORTS)
 
 
-# The event/error-log dumps (PHASE8_PLAN §WP8.3 step 3). No corpus deck exports
-# these, so they are synthesized (PHASE8_PLAN §1), both on the IEEE13 feeder:
+# The event/error-log dumps. No corpus deck exports
+# these, so they are synthesized, both on the IEEE13 feeder:
 #   EventLog: a daily-3 solve with `Set Log=yes` (ckt.LogEvents) + per-RegControl
 #     event logging, driving a **swinging load** (a 1200 kW load on the regulated
 #     bus 675 with a 1×/2×/0.5× day shape) so the regulators actually **move
@@ -473,8 +475,8 @@ def gen_show_meter_edgecases(d) -> None:
 #     per-iteration + control markers, Solution Done) **plus** every regulator
 #     `AppendToEventLog` tap-change line (`CHANGED n TAPS TO <pu>` — non-integer
 #     tap values, so the numeric-tolerance compare path is genuinely exercised).
-#     Our engine wires all these LogThisEvent call sites (the Circuit-build ones
-#     landed in WP8.3 step 3a) and matches the oracle's tap decisions line-for-line
+#     This engine wires all these LogThisEvent call sites (the Circuit-build
+#     ones included) and matches the oracle's tap decisions line-for-line
 #     (the timeseries_controls `daily_ieee13` gate pins the same tap logic). This golden pins
 #     the **export** (SaveToFile → `EXP_EventLog.csv` naming + the `%g` render
 #     into the file) on top of the marker + tap-change stream.
@@ -550,7 +552,7 @@ def gen_feeder_reports(d) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-# The Show-report fixture (PHASE8_PLAN §WP8.4): the same solved IEEE13 feeder, then
+# The Show-report fixture: the same solved IEEE13 feeder, then
 # each `Show <keyword>` captured from the fixed-name file it writes. Unlike Export,
 # `Show` sets no `GlobalResult`, so the produced file is found by its fixed suffix
 # glob (`<case>_<name>.txt`, original-case circuit name). Each tuple:
@@ -712,7 +714,7 @@ def gen_show_yprim(d) -> None:
     )
 
 
-# `Show LineConstants` fixture (PHASE8_PLAN §WP8.4). A self-contained geometry deck
+# `Show LineConstants` fixture. A self-contained geometry deck
 # (no corpus deck is small + geometry-only): `g3` is a 3-conductor overhead line
 # (order 3 → exercises the R/jX/susceptance/L/C matrices AND the equivalent
 # symmetrical-component summary Z1/Z0/C1/C0/surge/velocity); `g1` is a 1-conductor
@@ -841,7 +843,7 @@ def gen_show_variables(d) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-# Synthesized deck (PHASE8_PLAN §1) for `Show kvbasemismatch`'s *value* branches —
+# Synthesized deck for `Show kvbasemismatch`'s *value* branches —
 # plain IEEE13 has no >10% kV-base mismatch, so add four small (electrically
 # negligible, kw=1) elements with deliberately-off kV bases: a 3-phase and a
 # 1-phase load, and a 3-phase and a 1-phase generator, exercising both the
@@ -985,7 +987,7 @@ def gen_faultstudy(d) -> None:
     )
 
 
-# FaultStudy on an UNBASED circuit (WP8.4 step-10 audit-tests follow-up): no
+# FaultStudy on an UNBASED circuit: no
 # `Set Voltagebases` / `CalcVoltageBases`, so every bus keeps `kVBase = 0` and
 # sections 2 & 3 render the `%10.1f` "L-N Volts if no base" branch instead of the
 # `%10.3f` per-unit form (the based IEEE13 golden only exercises pu). A prior
@@ -1018,8 +1020,8 @@ def gen_show_faultstudy(d) -> None:
     )
 
 
-# The reliability/capacity fixture (PHASE8_PLAN §WP8.3 step 3c). No corpus deck
-# exports these, so it is synthesized (PHASE8_PLAN §1) as a self-contained deck (no
+# The reliability/capacity fixture. No corpus deck
+# exports these, so it is synthesized as a self-contained deck (no
 # master, like the Counts fixture): a two-section radial feeder (src→b1→b2) with
 # per-line fault data, a load with `numcust` on each section, a **recloser** (the OCP
 # device `RelCalc` needs so the forward interruption sweep completes) and an
@@ -1053,8 +1055,8 @@ RELIABILITY_REPORTS = [
 ]
 
 
-# The Sections fixture (PHASE8_PLAN §WP8.3 step 3c part 3). No corpus deck exports
-# it, so it is synthesized (PHASE8_PLAN §1): a two-feeder circuit with TWO meters —
+# The Sections fixture. No corpus deck exports
+# it, so it is synthesized: a two-feeder circuit with TWO meters —
 # m1's zone has two recloser-headed sections (src→b1→b2), m2's zone one
 # fuse-headed section (src→c1, pinning the FUSE branch of getOCPDeviceTypeString) —
 # solved + `relcalc`'d so `SectionCount`/`FeederSections` persist on each meter.
@@ -1117,7 +1119,7 @@ def gen_sections(d) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-# The Profile fixture (PHASE8_PLAN §WP8.3 step 3c part 3): IEEE13 + an EnergyMeter
+# The Profile fixture: IEEE13 + an EnergyMeter
 # (Profile walks each meter's branch list with the zone-build `DistFromMeter`),
 # solved snapshot. Seven variants pin every `PhasesToPlot` selector branch: the
 # default (3-phase primary), `all`/`primary` (per-present-phase L-N, incl. the
@@ -1143,7 +1145,7 @@ def gen_profile(d) -> None:
     _gen_register_group(d, PROFILE_POST, PROFILE_REPORTS)
 
 
-# The demand-interval fixture (PHASE8_PLAN §WP8.3 step 4 / §2.6). The DI files are
+# The demand-interval fixture. The DI files are
 # written DURING the time-series solve (opened by SolveDaily, one row per SampleAll,
 # closed by its finally), not by an Export command — so this generator sets the
 # datapath BEFORE the post commands and collects the produced files from
@@ -1218,13 +1220,13 @@ def gen_demand_interval(d) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-# Single-phase-overload fixture (WP8.3 step 4 audit-tests follow-up). The daily
+# Single-phase-overload fixture. The daily
 # IEEE13 DI fixture only overloads 3-phase trunk lines, so `WriteOverloadReport`'s
 # `NPhases < 3` phase-mapping branch (the per-conductor `MapNodeToBus.node_num`
 # lookup that replaces Pascal's `FirstBus` string-parse) is unexercised. This deck
 # overloads a phase-2-only lateral (`normamps=5` vs ≈32 A load current), so its
 # current must land in the I2 column — I1/I3 zero — pinning the mapping. No corpus
-# deck exercises this, so it is synthesized (PHASE8_PLAN §1).
+# deck exercises this, so it is synthesized.
 OV1PH_DECK = [
     "new circuit.ov2 basekv=12.47 bus1=src phases=3",
     "new line.main bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1 c1=0",
@@ -1341,7 +1343,7 @@ def gen_reliability_multimeter(d) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-# The GICMvars fixture (ORPHANED_GAPS §1.1). No corpus deck *exports* it, so the
+# The GICMvars fixture. No corpus deck *exports* it, so the
 # GAPS `gictransformer_gic` deck is reused as a self-contained fixture: a quasi-DC
 # (Set frequency=0.1) GIC study with all three GICTransformer types — GSU (tg1) +
 # YY (tg2) on the K-factor Mvar path, and an Auto (tg3) on the VarCurve path
@@ -1431,9 +1433,9 @@ def gen_reliability(d) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-# The overload / unserved / allocation-factor fixtures (PHASE8_PLAN §WP8.3 step 3c
-# part 2). No corpus deck exports these either, so each is synthesized as a small
-# self-contained deck (PHASE8_PLAN §1) tailored to make the report non-empty:
+# The overload / unserved / allocation-factor fixtures. No corpus deck exports
+# these either, so each is synthesized as a small
+# self-contained deck tailored to make the report non-empty:
 #   * Overloads — a line with a deliberately small `normamps`/`emergamps` under a
 #     heavy load so its terminal-1 current exceeds both ratings (the only rows
 #     `ExportOverloads` writes).
@@ -1567,7 +1569,7 @@ def _gen_show_deck_group(d, deck, reports) -> None:
 # AND the `EmergAmps <= 0` degenerate `%Emerg` literal (`     0.0`); a small
 # overloaded shunt **capacitor** (`normamps=1` under 600 kvar ≈ 27.8 A) pins the
 # capacitor-skip — it must NOT appear (`(CLASSMASK and DSSObjType) <> CAP_ELEMENT`).
-# No corpus deck exercises these, so it is synthesized (PHASE8_PLAN §1).
+# No corpus deck exercises these, so it is synthesized.
 SHOW_OVL_COV_DECK = [
     "new circuit.ovlcov basekv=12.47 bus1=src phases=3",
     "new line.lat bus1=src.1 bus2=b1.1 phases=1 length=1 units=mi r1=0.3 x1=0.3 normamps=5 emergamps=0",
@@ -1580,7 +1582,7 @@ SHOW_OVL_COV_DECK = [
 
 
 def gen_show_overload_unserved(d) -> None:
-    """Capture the oracle's `Show Overloads`/`Show Unserved` (PHASE8_PLAN §WP8.4).
+    """Capture the oracle's `Show Overloads`/`Show Unserved`.
     Reuses the `DECK_GROUPS` export decks (index 0=ovl, 1=ovl2, 2=uns, 3=uns2) so the
     `Show` and `Export` forms share fixtures and can never drift: ovl/ovl2 overload a
     small-`normamps` line (ovl2 adds the unbalanced I2/I0 + the `normamps=0`
@@ -1602,7 +1604,7 @@ def gen_show_overload_unserved(d) -> None:
     _gen_show_deck_group(d, uns2, [("unserved", "Unserved.txt", "show_unserved_normal")])
 
 
-# `Show Loops` / `Show Zone` (PHASE8_PLAN §WP8.4): the two EnergyMeter zone-tree
+# `Show Loops` / `Show Zone`: the two EnergyMeter zone-tree
 # reports. The radial IEEE13 (fixture `em1` on Line.650632) pins the header/empty
 # path (`show_loops`, no loops → two header lines) and the radial branch/shunt
 # tree (`show_zone`). A synthesized **meshed** deck — a 3-line loop (b1-b2-b3-b1)
@@ -1610,8 +1612,8 @@ def gen_show_overload_unserved(d) -> None:
 # PARALLEL/LOOP branches of BOTH reports (`ShowLoops` one line per parallel/looped
 # branch; `ShowMeterZone` the inline `(PARALLEL:Name)`/`(LOOP:FullName)`
 # annotations). No corpus deck has a looped metered zone, so it is synthesized
-# (PHASE8_PLAN §1). Element names are lowercase — the reports emit them native
-# case (LoopLineObj / zone branch), and the port's names are lowercase-normalized.
+# Element names are lowercase — the reports emit them native
+# case (LoopLineObj / zone branch), and this engine's names are lowercase-normalized.
 SHOW_MESH_DECK = [
     "new circuit.meshtest basekv=12.47 bus1=sourcebus phases=3",
     "new line.feed  bus1=sourcebus bus2=b1 phases=3 length=1 units=km r1=0.1 x1=0.1 c1=0",
@@ -1653,7 +1655,7 @@ SHOW_MESH2_DECK = [
 
 
 def gen_show_zone_loops(d) -> None:
-    """Capture the oracle's `Show Loops`/`Show Zone` (PHASE8_PLAN §WP8.4)."""
+    """Capture the oracle's `Show Loops`/`Show Zone`."""
     d.AllowEditor = False
     # Radial IEEE13 (fixture A: em1 on Line.650632) — header-only loops + the
     # radial zone tree.
@@ -1673,7 +1675,7 @@ def gen_show_zone_loops(d) -> None:
 # `Show Controlled` multi-control coverage (audit follow-up, step 13). The feeder
 # golden (`show_controlled`) only exercises one control per PD element
 # (RegControl→Transformer) and only the `RegControl` `controlled_element()`
-# override. This synthesized deck (PHASE8_PLAN §1) pins: (a) the multiple-controls
+# override. This synthesized deck pins: (a) the multiple-controls
 # `, %s , %s ` loop + its creation-order ordering — Line.l1 carries a Recloser then
 # a Relay, Line.l2 two SwtControls; (b) all FIVE PD-targeting overrides —
 # `swt_control`/`recloser`/`relay`/`fuse` (→Line) and `cap_control` (→Capacitor).
@@ -1893,7 +1895,7 @@ def gen_show_topology(d) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-# WP8.8 exit-sweep fixture: the AutoTrans special cases in the element-form Show
+# Fixture for the AutoTrans special cases in the element-form Show
 # reports (`ShowResults.pas` — `WriteTerminalCurrents:604`, `ShowPowers` case
 # 1 `:1190`, `ShowNodeCurrentSum:3636`: `Ntimes = Nphases` instead of `NConds`,
 # with the per-terminal `Inc(k, Ntimes)` block-skip in the first/last and the
@@ -2016,7 +2018,7 @@ def gen_deck_groups(d) -> None:
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-# Synthesized Dump fixture (PHASE8_PLAN §WP8.5). Two reactors exercise the
+# Synthesized Dump fixture. Two reactors exercise the
 # `TReactorObj.DumpProperties` override: `r1` (series R+X, no matrices → the Z/LmH
 # custom formats + no RMatrix line) and `rz` (R/X matrices → the un-`~` `RMatrix=
 # (…)` / `XMatrix= (…)` lines). `debug` adds the CktElement Complete block
@@ -2033,7 +2035,7 @@ DUMP_R_DECK = [
 ]
 
 # Symmetrical-components reactor (`SpecType=4`) — the corpus `REACTORTest.DSS`
-# `KerstingMotor` shape (WP8.5 audit-tests #1): NON-zero `Z1/Z2/Z0` through the
+# `KerstingMotor` shape: NON-zero `Z1/Z2/Z0` through the
 # `%-.8g` complex path the r1/rz fixtures never touch (both had `Z*=[0,0]`).
 # Dumped single-object (`reactor.rk debug`) — also covers the non-glob form.
 DUMP_SC_DECK = [
@@ -2046,7 +2048,7 @@ DUMP_SC_DECK = [
     "solve",
 ]
 
-# A **disabled** reactor (WP8.5 audit-code Finding 1 + audit-tests #4): `dump
+# A **disabled** reactor: `dump
 # reactor.* debug` walks enabled AND disabled objects — the disabled one prints
 # `! DISABLED`, `NodeRef = "nil"` (bus refs resolve only for enabled elements) and
 # `Terminal Bus Ref: [-1 …]` (Pascal `Terminal.BusRef = -1` "not set", NOT 0).
@@ -2059,15 +2061,15 @@ DUMP_DIS_DECK = [
 
 # The generic base (no Pascal `DumpProperties` override): LoadShape is a plain
 # `TDSSObject` (header + props, no `! ENABLED`) whose port property names already
-# carry the oracle display case, so it pins the plain-object generic path for free
-# (WP8.5 audit-tests #2). The PC / non-PC-CktElement generic paths need those
+# carry the oracle display case, so it pins the plain-object generic path for
+# free. The PC / non-PC-CktElement generic paths need those
 # classes' names corrected first (tracked for the systematic name pass).
 DUMP_LS_DECK = [
     "new circuit.dumpls basekv=12.47 bus1=src",
     "new loadshape.ls1 npts=3 interval=1 mult=(1 2 3)",
 ]
 
-# --- WP8.5 step 2: per-winding / matrix DumpProperties overrides ---
+# --- per-winding / matrix DumpProperties overrides ---
 # Transformer (`TTransfObj.DumpProperties`): the per-winding block + `XHL…X23` +
 # `Xscmatrix` + thermal/loss scalars, and — with `debug` — the `ZB`/`Y_OneVolt`/
 # `Y_Terminal`/`TermRef` complex lower-triangle dumps. A 2-winding and a
@@ -2187,7 +2189,7 @@ DUMP_XC_DECK = [
     "kvs=[115 4.16] kvas=[5000 5000]",
 ]
 
-# --- WP8.5 step 3a: the 8 remaining leaf `DumpProperties` overrides ---
+# --- the 8 remaining leaf `DumpProperties` overrides ---
 # `tools/golden/report_decks/dump3.dss` (see its header comment): every
 # override except Capacitor (Fault ×2 spec types, Vsource — the implicit
 # `circuit.dmp3` source, UPFC, RegControl, Monitor, EnergyMeter, Spectrum) in
@@ -2293,17 +2295,16 @@ DUMP_ISRC_DECK = [
     "solve",
 ]
 
-# AutoTrans DumpProperties (WPG.15 Stage A): the bare `dump autotrans.<obj>`
+# AutoTrans DumpProperties: the bare `dump autotrans.<obj>`
 # form — the per-winding block (conn=Series, kv/kVA/tap/%r/Rdcohms as %.7g),
 # XHX/XHT/XXT (no X12/X13/X23), the flat Xscmatrix, and the generic tail. NO
-# solve (the auto YPrim/solve path is Stage B; DumpProperties is solve-
-# independent — ZB/Y_Term come from edit-time RecalcElementData). The elements
+# solve (DumpProperties is solve-independent — ZB/Y_Term come from edit-time
+# RecalcElementData). The elements
 # sit on buses ISOLATED from the source so the pre-solve `WdgCurrents` readout
 # is a deterministic zero on both engines (the source bus's initialized NodeV
 # would otherwise leak a tiny anti-float current into the oracle side only). A
 # 2-winding 115/34.5 and a 3-winding 345/161/13.8 (delta tertiary). The
-# debug/Complete form (ZB/Y_Terminal matrices) is added in Stage B once solve
-# works.
+# debug/Complete form (ZB/Y_Terminal matrices) is not pinned here.
 DUMP_AT_DECK = [
     "new circuit.dumpat basekv=115 bus1=src",
     "new autotrans.t1 phases=3 windings=2 xhx=6 buses=[h mid] "
@@ -2311,12 +2312,12 @@ DUMP_AT_DECK = [
     "new autotrans.t3 phases=3 windings=3 xhx=7.23 xht=24.45 xxt=28.45 "
     "buses=[h3 low3 tert3] conns=[s w d] kvs=[345 161 13.8] "
     "kvas=[330000 330000 72000] %imag=0.0329 %noloadloss=0.024",
-    # No `calcv`/`solve`: both build the system Y, and the auto YPrim path is
-    # Stage B (would abort here). DumpProperties is edit-time-only, so the dump
+    # No `calcv`/`solve`: both build the system Y, which this fixture does not
+    # need. DumpProperties is edit-time-only, so the dump
     # is unchanged, and `WdgCurrents` stays a deterministic zero (no NodeV).
 ]
 
-# GIC family DumpProperties (WPG.16): a small 0.1-Hz GIC net exercising all
+# GIC family DumpProperties: a small 0.1-Hz GIC net exercising all
 # three classes. GICLine has a real `DumpProperties` override (the Complete-only
 # BaseFrequency/Volts/VMag/VE/VN block + the series Z matrix); GICTransformer
 # (shunt PD) and GICsource (NON_PCPD source) fall through to the generic base
@@ -2386,7 +2387,7 @@ DUMP_DECKS = [
     ("dump_isource_debug", DUMP_ISRC_DECK, "isource.i1 debug"),
 ]
 
-# WP8.5 step 3b — the whole-circuit / aux Dump forms, all over the same
+# The whole-circuit / aux Dump forms, all over the same
 # `dump3.dss` fixture: bare `dump` / `dump debug` (every CktElement + every
 # general DSSObj + the Solution options; debug adds the `Circuit.DebugDump`
 # header, the per-element Complete blocks and the system-Y dump),
@@ -2480,7 +2481,7 @@ def gen_dump_decks(d) -> None:
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-# --- WP8.5 step 4: the `Save` forms (Pascal `DoSaveCmd`) ---
+# --- the `Save` forms ---
 # `tools/golden/report_decks/save_forms.dss` (see its header comment): a 4-step
 # daily deck with a sampled EnergyMeter + Monitor, so `save` (the meters default
 # branch) writes real `MTR_em1.csv` registers, `save voltages` a solved
@@ -2524,7 +2525,7 @@ SAVE_DECKS = [
 
 
 def gen_save_decks(d) -> None:
-    """Capture the oracle's `Save` outputs on the save_forms deck (WP8.5 step 4)."""
+    """Capture the oracle's `Save` outputs on the save_forms deck."""
     d.AllowEditor = False
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     for stem, command, produced_name in SAVE_DECKS:
@@ -2554,7 +2555,7 @@ def gen_save_decks(d) -> None:
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-# --- WP8.6 step 4: Interpolate, gated via `export buscoords` -----------------
+# --- Interpolate, gated via `export buscoords` ------------------------------
 # The pre-validated fixture deck (tools/golden/report_decks/interp.dss, see its
 # header + the report_decks README): an EnergyMeter zone where only the anchor
 # buses src/b1/b5/c2 carry coordinates (SetBusXY); `interpolate` fills b2/b3/b4
@@ -2582,7 +2583,7 @@ def load_report_deck(name: str) -> list[str]:
 
 
 def gen_interp(d) -> None:
-    """Capture the oracle's `export buscoords` after `interpolate` (WP8.6)."""
+    """Capture the oracle's `export buscoords` after `interpolate`."""
     deck = load_report_deck("interp.dss")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
@@ -2614,7 +2615,7 @@ def gen_interp(d) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-# --- WP8.6 step 5: the Distribute command (PHASE8_PLAN §WP8.6) ---
+# --- the Distribute command ---
 # `tools/golden/report_decks/distrib.dss`: loads with three different kW bases
 # and specs (kW/PF, xfkva+allocationfactor, kwh+cfactor) so the Proportional
 # weights differ per load, plus a disabled load (pins the enabled filter AND
@@ -2688,7 +2689,7 @@ def gen_distribute(d) -> None:
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-# --- WP8.6 step 6: Uuids + `Export Uuids` (PHASE8_PLAN §WP8.6) ---
+# --- Uuids + `Export Uuids` ---
 # `tools/golden/report_decks/uuids.dss` + `uuids_pre.csv`: the deck preloads a
 # UUID for the circuit, EVERY bus, EVERY ckt element, the library linecode AND
 # the three hashed keys the CIM exporter auto-creates (`DefaultCircuitUUIDs` →
@@ -2824,7 +2825,7 @@ BINSAVE_MMF_FILES = [
 BINSAVE_MMF_ABSENT = ["md_Q.sng", "md_Q.dbl"]
 # Per-action `GlobalResult` decomposition (datapath-relative filenames + their
 # `<obj>=[<ftag>=…]` tags), single-sourced here for the meta AND the generator's
-# self-check against the captured oracle string (audit settlement). The Rust
+# self-check against the captured oracle string. The Rust
 # runner (`golden_reports.rs::binsave_mmf_matches_oracle`) rebuilds the identical
 # form against its own scratch dir; the Q clause is joined by `AppendGlobalResult`'s
 # `', '` + the clause's leading space -> `,  ` (comma + two spaces).
@@ -2898,7 +2899,7 @@ def gen_loadshape_binsave_mmf(d) -> None:
         for absent in BINSAVE_MMF_ABSENT:
             if (Path(tmp) / absent).exists():
                 sys.exit(f"binsave_mmf: expected NO {absent} (Assigned(dQ) false)")
-        # Audit settlement: verify the hand-written result_files/result_tags
+        # Verify the hand-written result_files/result_tags
         # (which the Rust test rebuilds the expected GlobalResult from) actually
         # reproduce the TRUE oracle GlobalResult captured above — otherwise a
         # wrong tag/joiner would pass unchecked, making the Rust clause
@@ -2948,7 +2949,7 @@ def gen_loadshape_binsave_mmf(d) -> None:
     )
 
 
-# WP-U1.5 E2 (dss_capi 0.15.x `55400a29`): seasonal ratings. A snapshot circuit
+# Seasonal ratings (dss_capi 0.15.x `55400a29`). A snapshot circuit
 # with three overloaded PDElements — an overhead Line, a Transformer, and a CN
 # cable Line — each carrying `Seasons=4 Ratings=[...]`. `SeasonRating=yes` +
 # `SeasonSignal=season` + `set hour=13` -> `SeasonalRatingIdx = trunc(GetYValue(
@@ -2957,7 +2958,7 @@ def gen_loadshape_binsave_mmf(d) -> None:
 # to lines and did NOT apply it in `Export Overloads` at all — this golden is
 # revision-SENSITIVE: the default 0.14.5 oracle reports base ratings, capi015 ==
 # r4133 report the seasonal ones). Validated bit-identical on capi015 and
-# oddie:r4133 (§1.7). GATED ON `capi015` — regenerate with
+# r4133. GATED ON `capi015` — regenerate with
 # `DSS_ORACLE_ENGINE=capi015 <oddie-venv>/python tools/golden/gen_reports.py`.
 SEASONAL_FIXTURE = "seasov"
 SEASONAL_DECK = [
@@ -3009,7 +3010,7 @@ def gen_seasonal_overloads(d, engine_spec: str) -> None:
                 "fixture": case,
                 "suffix": suffix,
                 "deck": SEASONAL_DECK,
-                "oracle": engine_spec,  # §1.5 provenance stamp
+                "oracle": engine_spec,  # provenance stamp
             }
             (OUT_DIR / f"{stem}.meta.json").write_text(
                 json.dumps(meta, indent=2) + "\n", newline="\n"
@@ -3020,9 +3021,9 @@ def gen_seasonal_overloads(d, engine_spec: str) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-# `Export Estimation` (Pascal `ExportEstimation`, ORPHANED_GAPS §1.10): the
+# `Export Estimation`: the
 # EnergyMeter/Sensor state-estimation error report. No corpus deck uses the
-# keyword, so three fixtures are synthesized (PHASE8_PLAN §1):
+# keyword, so three fixtures are synthesized:
 #
 #   est8   — the allocated path. Two feeders off the source so both EnergyMeters
 #            are at a feeder head: a 3-phase one (`m1`, unequal `peakcurrent=`
@@ -3037,8 +3038,8 @@ def gen_seasonal_overloads(d, engine_spec: str) -> None:
 #            allocation loop), so the `I… Calc` / `%Err` columns are live.
 #            A **disabled EnergyMeter** is deliberately absent: the pinned 0.14.5
 #            oracle access-violates in `allocateloads` on one (no `Enabled` guard
-#            before `TEnergyMeterObj.AllocateLoad`'s zone walk — DIVERGENCES §D9,
-#            fixed upstream in SVN r4115), so it is not gate-able *on the allocated
+#            before `TEnergyMeterObj.AllocateLoad`'s zone walk, fixed in
+#            OpenDSS SVN r4115), so it is not gate-able *on the allocated
 #            path*; the meter-side `Enabled` filter is pinned by `estns` instead
 #            (that AV is specific to `allocateloads`, which `estns` never runs).
 #   estns  — solved but **not** allocated: nonzero targets against an all-zero
@@ -3161,12 +3162,12 @@ def main() -> None:
     # Suppress the report editor auto-open (`FireOffEditor`): the `Show` commands
     # call it per report and would spawn a Notepad window for every golden file.
     # Report *content* is unaffected — the file is always written; only the GUI
-    # editor launch is disabled (headless-faithful, PHASE8_PLAN §2.2).
+    # editor launch is disabled (headless-faithful).
     d.AllowEditor = False
 
-    # WP-U1.5 E2: the seasonal goldens are gated on `capi015` (0.14.5 does not
+    # The seasonal goldens are gated on `capi015` (0.14.5 does not
     # apply seasonal ratings in these reports). Running the generator under
-    # `DSS_ORACLE_ENGINE=capi015` regenerates ONLY those files (§1.5); the default
+    # `DSS_ORACLE_ENGINE=capi015` regenerates ONLY those files. The default
     # (0.14.5) run leaves them untouched and regenerates the rest.
     engine_spec = pin.get("engine_spec", "capi")
     if os.environ.get("DSS_ORACLE_ENGINE", "capi") == "capi015":

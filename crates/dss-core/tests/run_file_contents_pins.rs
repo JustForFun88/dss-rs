@@ -1,12 +1,11 @@
-//! **GOLDEN_REBASE G1.10b — the expected-value pins behind the run-file
-//! CONTENTS surface** (`harness::run_file_contents::compare_run_file_cells`:
-//! every CELL of every run-produced report the gate selects, compared under the
-//! D40(1) rule `|a − b| ≤ floor(quantity class, tol_for(&kind)) + ulp(print
-//! format)`).
+//! **The expected-value pins behind the run-file CONTENTS surface**
+//! (`harness::run_file_contents::compare_run_file_cells`: every CELL of every
+//! run-produced report the gate selects, compared under the cell rule
+//! `|a − b| ≤ floor(quantity class, tol_for(&kind)) + ulp(print format)`).
 //!
-//! Five measured cell classes (C1–C5, `tmp/g110b/STOP.md` §2.2) and three
-//! deliberate declines carry this surface, and CLAUDE.md wants each of them
-//! pinned by an expected-value test that names BOTH numbers:
+//! Five measured cell classes (C1–C5) and three deliberate declines carry this
+//! surface, and each is pinned by an expected-value test that names both
+//! numbers:
 //!
 //! * **C1** the angle of a cancellation residual, where one engine prints an
 //!   exact `0 A ∠ 0.00°` and the other a `1e-11 A` residual with a real
@@ -15,22 +14,20 @@
 //!   case's own `i_abs`;
 //! * **C3** a `%10.6g` magnitude one unit apart in its last significant place;
 //! * **C4** a near-zero cancellation cell bounded by the case floor;
-//! * **C5** the two oracles' exponent spellings inside `Export Y`'s `+j` cells;
-//! * the Storage `DebugTrace`'s 36 `%-.g` columns, which the two ORACLES
-//!   disagree on (D40(3)), and its read-back TAIL, which is the gate's own
-//!   reader footprint (D43(1));
-//! * the reports that are recorded and never compared (D40(5)).
+//! * **C5** the two OpenDSS engines' exponent spellings inside `Export Y`'s
+//!   `+j` cells;
+//! * the Storage `DebugTrace`'s 36 `%-.g` columns, which the two OpenDSS
+//!   engines disagree on, and its read-back TAIL, which is the gate's own
+//!   reader footprint;
+//! * the reports that are recorded and never compared.
 //!
-//! Every pin takes the port's side from the port itself — the very
+//! Every pin takes this engine's side from the engine itself — the very
 //! `RunFileProbe` the corpus gate uses, over a fresh scratch copy of the
-//! vendored corpus deck (`harness::scratch`, RETRO_FIXES RF-I00-01; never
-//! `.inputs/`, CLAUDE.md) — so no port literal can rot: if the engine's own
-//! render of a pinned cell moves, the pin reds before the claim in the docs goes
-//! stale. The ORACLE side of every pair is the literal the gate's own capture
-//! measured on the named channel (`tmp/g110b/f4_cells2.tsv`, the instrumented
-//! scoped drive of 2026-09-12, whose cells agree with the R part's independent
-//! Python replica, `tmp/g110b/census.txt`); each doc comment says which side is
-//! which.
+//! vendored corpus deck (`harness::scratch`, never `.inputs/`) — so no literal
+//! of this engine can rot: if the engine's own render of a pinned cell moves,
+//! the pin reds before the claim in the docs goes stale. The OpenDSS side of
+//! every pair is the literal the gate's own capture measured on the named
+//! channel; each doc comment says which side is which.
 //!
 //! **Windows-only**, like the surface: the classification and the sidecar
 //! transport live in `dss_epri::guard`, and `dss-epri` is `#[cfg(windows)]`.
@@ -66,7 +63,7 @@ const DECK_NEV: &str = "electricdss-tst/Version8/Distrib/IEEETestCases/NEVTestCa
 /// `Test/PVSystemTest.dss` — the only live register report (`EXP_PV_<NAME>.CSV`).
 const DECK_PV: &str = "electricdss-tst/Test/PVSystemTest.dss";
 /// `Examples/StorageTechNote/Example_9_3_Price/Storage_price.dss` — the only
-/// corpus deck with `debugtrace=yes` (G1.10a F4a ported the writer).
+/// corpus deck with `debugtrace=yes`.
 const DECK_STOR: &str =
     "electricdss-tst/Version8/Distrib/Examples/StorageTechNote/Example_9_3_Price/Storage_price.dss";
 
@@ -92,8 +89,8 @@ fn corpus_deck(rel: &str) -> PathBuf {
 /// run-file probe, and return the CONTENTS of the members the gate selects.
 ///
 /// Memoized behind a `Mutex`, which serializes the runs as well. Each run
-/// compiles the port's own fresh scratch copy of the case (`harness::scratch`,
-/// RETRO_FIXES RF-I00-01), never the vendored tree: the probe removes
+/// compiles this engine's own fresh scratch copy of the case
+/// (`harness::scratch`), never the vendored tree: the probe removes
 /// everything the run created in it, then the copy goes.
 fn port_contents(rel: &str) -> BTreeMap<String, String> {
     static RUNS: OnceLock<Mutex<BTreeMap<String, BTreeMap<String, String>>>> = OnceLock::new();
@@ -114,8 +111,8 @@ fn port_contents(rel: &str) -> BTreeMap<String, String> {
     dss.command("solve");
     assert!(dss.errors().is_empty(), "{rel}: {:?}", dss.errors());
     // The gate's port capture reads every element's terminal quantities once at
-    // the converged `NodeV` (`corpus_gate::runner`'s `dss.snapshot_elements()`,
-    // GOLDEN_REBASE G2.3), so the probe does too: on a deck with a Storage
+    // the converged `NodeV` (`corpus_gate::runner`'s `dss.snapshot_elements()`),
+    // so the probe does too: on a deck with a Storage
     // `debugtrace` that read is itself a writer — it appends the two records
     // that make up the port's half of the read-back tail
     // (`the_storage_trace_tail_is_the_readers_footprint`). Leaving it out would
@@ -348,13 +345,13 @@ fn fails(channel: &str, name: &str, oracle: &str, port: &str) -> String {
 /// information at all — `harness::polar_angle_band` returns `None` once
 /// `|I| ≤ allowed` and the cell is DECLINED, counted, never compared.
 ///
-/// What makes the rule two-sided (D40(1)) is that the magnitude is
+/// What makes the rule two-sided is that the magnitude is
 /// `max(|oracle|, |port|)`: the golden's `GateSpec::PrevCol(1e-6)` reads the
 /// ORACLE's magnitude only and deliberately never fires on an exact `0`, so on
 /// exactly this class it would compare `45.00°` against `0.00°` as two numbers.
 ///
 /// Both numbers: port `1.02898E-11 A ∠ 45.00°` (read live below) vs
-/// `capi_v0145` `0 A ∠ 0.00°` (measured, `tmp/g110b/f4_cells2.tsv`). The r4133
+/// `capi_v0145` `0 A ∠ 0.00°` (measured). The r4133
 /// channel prints its own residual there, which is why the class is gated and
 /// not excluded.
 #[test]
@@ -562,8 +559,7 @@ fn a_cancellation_residual_cell_is_bounded_by_the_case_floor() {
 /// three-digit exponent against the port's two-digit one as STRINGS and fail on
 /// a spelling. `harness::run_file_contents`'s tokenizer removes the marker on
 /// both sides (asserting its presence on both, so a layout change cannot hide)
-/// and the numbers are then compared by the same rule as every other cell
-/// (coordinator decision **D40(4)**).
+/// and the numbers are then compared by the same rule as every other cell.
 ///
 /// Both numbers: port `+j 2.220446049E-16` (live) vs `r4133`
 /// `+j 2.220446049E-016` (measured) — the identical f64.
@@ -618,9 +614,7 @@ fn the_two_oracle_exponent_spellings_of_a_j_cell_meet_numerically() {
 /// renders `5.5`) vs capi `5.5` vs r4133 `5.45` — three renders of ONE number,
 /// and the one cell of this surface where the port's two lanes part. At two
 /// significant digits every numeric band is vacuous (a 2 % straddle), so
-/// the column SET is declined on both channels and counted — never a tolerance
-/// (coordinator decision **D40(3)**; WP-G4 **G4.1** re-measures the decline once
-/// the `fmt_g` kernel dies and the port prints at r4133's precision).
+/// the column SET is declined on both channels and counted — never a tolerance.
 ///
 /// The decline is a COLUMN SET, not a file: exactly 36 of the row's 52 value
 /// columns are declined and the other 16 — `Iteration`, `Mode`, `LoadModel`,
@@ -696,16 +690,16 @@ fn the_two_sig_trace_columns_are_declined_on_both_channels() {
 /// record — solving or merely reporting. The two oracle transports read the
 /// element's terminal quantities six times after the last solve and therefore
 /// append six records; the port's `exec::view::snapshot_elements` recomputes
-/// ONCE at the converged `NodeV` (GOLDEN_REBASE **G2.3**) and appends two.
+/// ONCE at the converged `NodeV` and appends two.
 ///
 /// Both numbers, measured on `Storage_price.dss` (48 hours × 2 iterations = 96
 /// `Injection` records, identical on all three engines): oracle **102** rows on
 /// BOTH channels, port **98** (read live below), gap **4** — the population
 /// `corpus_gate::scheduler::TRACE_READBACK_RECORDS` pins fail-on-stale in both
 /// directions. The comparator therefore asserts `port_rows <= oracle_rows`,
-/// compares every cell of the common prefix and REPORTS the gap (coordinator
-/// decision **D43(1)**, option A: positive accounting of the gate's own
-/// footprint — never a declined file, never a data-derived boundary).
+/// compares every cell of the common prefix and REPORTS the gap (positive
+/// accounting of the gate's own footprint — never a declined file, never a
+/// data-derived boundary).
 #[test]
 fn the_storage_trace_tail_is_the_readers_footprint() {
     let kind = ReportKind::StorageTrace;
@@ -727,9 +721,9 @@ fn the_storage_trace_tail_is_the_readers_footprint() {
         (rows, solve_records, read_back),
         (98, 96, 2),
         "the port writes 96 solve records (48 hours × 2 iterations) and the two \
-         records its single G2.3 recompute appends"
+         records its single converged recompute appends"
     );
-    // The ORACLE side, measured on both channels (`tmp/g110b/f_F2r.md`).
+    // The OpenDSS side, measured on both channels.
     const ORACLE_ROWS: usize = 102;
     const ORACLE_READ_BACK: usize = 6;
     assert_eq!(ORACLE_ROWS, solve_records + ORACLE_READ_BACK);
@@ -777,10 +771,9 @@ fn the_storage_trace_tail_is_the_readers_footprint() {
 // ---------------------------------------------------------------------------
 
 /// **A report without a policy is RECORDED, never compared ad hoc** — the eight
-/// census rows of `harness::run_file_contents::CONTENTS_NOT_SELECTED`
-/// (coordinator decision **D40(5)**).
+/// census rows of `harness::run_file_contents::CONTENTS_NOT_SELECTED`.
 ///
-/// The eighth row is the G1.10b audit settlement (finding AC-4): `capacity`,
+/// The eighth row: `capacity`,
 /// `ycurrents` and `ynodelist` DO have golden policies, but only `large*` decks
 /// export them, so they were neither selected nor recorded — the hole the
 /// census exists to prevent. They are now named with their reason, and
@@ -804,8 +797,8 @@ fn a_report_without_a_policy_is_recorded_not_compared() {
     }
     assert_eq!(CONTENTS_NOT_SELECTED.len(), 8);
 
-    // Real created-set members, measured on the corpus (`tmp/g110b/census.txt`,
-    // `tmp/g110a/oracle_diff.txt`), each with the census row that claims it.
+    // Real created-set members, measured on the corpus, each with the census
+    // row that claims it.
     let declined: [(&str, &str); 8] = [
         ("ieee13_mon_m1_1.csv", "monitor CSV"),
         ("ieee13_eventlog.csv", "eventlog CSV"),
@@ -866,14 +859,11 @@ fn a_report_without_a_policy_is_recorded_not_compared() {
 
 /// **Every compared kind reads its structure out of the SAME `ExportPolicy` its
 /// byte golden uses** — the compile-time half of "the live compare uses the
-/// policy the golden uses" (§1.1 mechanic (c), coordinator decision **D40(2)**).
+/// policy the golden uses".
 ///
-/// The seven golden policies were lifted byte-faithfully out of
-/// `tests/golden_reports.rs` into `harness::export_policies`
-/// (`SPLITTING_RULES.md` protocol; the unchanged golden run and `golden_lock`
-/// are the proof that no value moved), and both callers now name the same
-/// function — so a re-tuned policy moves the goldens and the live surface
-/// together, and cannot move one silently.
+/// The seven golden policies live in `harness::export_policies`, and both
+/// callers name the same function — so a re-tuned policy moves the goldens and
+/// the live surface together, and cannot move one silently.
 ///
 /// The Storage `DebugTrace` is the one kind with no golden at all: it is not an
 /// `Export` report, so its separator and header count are declared with their
@@ -887,8 +877,7 @@ fn every_compared_kind_uses_the_same_policy_as_its_golden() {
     // asserting the two against each other would be a tautology — the teeth are
     // here and in `harness::export_policies::tests::
     // the_lifted_policy_values_are_the_ones_the_goldens_carried`, which pins the
-    // same numbers on the producers' side. (Settlement of the G1.10b test audit,
-    // finding T1.)
+    // same numbers on the producers' side.
     //
     // (kind, sep, header lines, rel, abs, column overrides)
     let want: [(ReportKind, char, usize, f64, f64, usize); 9] = [
@@ -946,7 +935,7 @@ fn every_compared_kind_uses_the_same_policy_as_its_golden() {
 }
 
 // ---------------------------------------------------------------------------
-// The per-kind mutation gates (§1.1(f), spec §2.6).
+// The per-kind mutation gates.
 // ---------------------------------------------------------------------------
 
 /// Which column a kind's scale / re-spelling drives move.
@@ -1198,8 +1187,7 @@ fn field_count(kind: ReportKind, text: &str, row: usize) -> usize {
 
 /// **Every compared report kind is mutation-gated on its own report**: a 1 %
 /// scale error, a swapped column pair, a dropped row and a re-ordered row each
-/// RED, while a last-place re-spelling of the same number PASSES (§1.1(f) and
-/// spec §2.6).
+/// RED, while a last-place re-spelling of the same number PASSES.
 ///
 /// The drives run on the engine's OWN live reports — real headers, real widths,
 /// real values, read through the same `RunFileProbe` the gate uses — with the
@@ -1263,7 +1251,7 @@ fn every_compared_kind_is_mutation_gated_on_its_own_report() {
         );
 
         // (2) …while one unit in the cell's last printed place must PASS: that
-        // is the print resolution the D40(1) rule spends, and nothing more.
+        // is the print resolution the cell rule spends, and nothing more.
         let step = last_place(&field(kind, &slice, tr, j));
         let respelt = set_field(kind, &slice, tr, j, &format!("{}", v + step));
         compare_labeled(&label, "capi_v0145", d.file, &slice, &respelt);
@@ -1284,7 +1272,7 @@ fn every_compared_kind_is_mutation_gated_on_its_own_report() {
         );
 
         // (4) a dropped row must RED. The Storage trace is the one kind whose
-        // row count is an inequality (D43(1)), so its drive drops the record
+        // row count is an inequality, so its drive drops the record
         // from the ORACLE side — the direction that is a finding there.
         let (short_oracle, short_port) = if kind == ReportKind::StorageTrace {
             (drop_row(kind, &slice, take.len() - 1), slice.clone())
@@ -1321,7 +1309,7 @@ fn every_compared_kind_is_mutation_gated_on_its_own_report() {
         // The message must name one of the three shapes a moved row can fail
         // as — the identity key, a `Yprim` element-name line, a changed field
         // count, or a cell of this kind's own map. `contains("row")` alone was
-        // satisfied by nearly any panic (G1.10b test audit, finding T5).
+        // satisfied by nearly any panic.
         let shapes = [
             "identity (field".to_string(),
             "element name differs".to_string(),

@@ -1,9 +1,9 @@
-//! Unit tests for the InvControl parse-only skeleton (WP7.5 step 2a): `Create`
-//! defaults and the `PropertySideEffects` guards that don't need a resolved DER
-//! fleet or curve. The full property round-trip (incl. `ValidateXYCurve` curve
-//! nulling and `MakeLike`) is oracle-pinned by `tests/golden/props/invcontrol.json`
-//! via `props_roundtrip.rs`. These are spec-pinned (Pascal is the spec): the
-//! oracle exposes none of these internals outside a full InvControl solve.
+//! Unit tests for InvControl: `Create` defaults, the `PropertySideEffects` guards
+//! that don't need a resolved DER fleet or curve, and the dispatch math through a
+//! mock env. The full property round-trip (incl. `ValidateXYCurve` curve nulling
+//! and `MakeLike`) is pinned by `tests/golden/props/invcontrol.json` via
+//! `props_roundtrip.rs`. The OpenDSS engines expose none of the internals pinned
+//! here outside a full InvControl solve.
 
 use super::*;
 use crate::exec::Dss;
@@ -268,15 +268,8 @@ fn invcontrol_enums_pin_pascal_and_registry_ordinals() {
     assert_eq!(VoltWattYAxis::default(), VoltWattYAxis::Pmpp);
 }
 
-/// The retyped setters keep the previous value when `from_ordinal` misses
-/// (`Enum::from_ordinal(v).unwrap_or(self.x)`), where the pre-enum accessors
-/// stored the raw `i32` verbatim. That fallback is unreachable from the parse
-/// engine — `MappedStringEnum` rejects an unknown token before any write and
-/// `MappedIntEnum` early-returns on an out-of-set ordinal
-/// (`obj/props/class_props/parse.rs:307-324`) — which is exactly why it needs a
-/// test: nothing else pins that the error is *raised* rather than swallowed
-/// into a silently-changed field. Settler pass, 2026-07-26 (audit-tests
-/// finding 2).
+/// An unknown enum token or an out-of-set ordinal raises an error and leaves the
+/// field unchanged, rather than being swallowed into a silently-changed field.
 #[test]
 fn bad_enum_values_raise_and_leave_the_field_unchanged() {
     let mut dss = Dss::new();
@@ -309,7 +302,7 @@ fn bad_enum_values_raise_and_leave_the_field_unchanged() {
     );
 }
 
-// --- WP7.5 step 2b/2c: the dispatch math, pinned through a mock env ---
+// --- The dispatch math, pinned through a mock env ---
 //
 // The full end-to-end convergence is oracle-pinned by the
 // `tests/golden/der_controls/invcontrol_{voltvar,voltwatt,vv_vw}.json` goldens (the live
@@ -337,7 +330,7 @@ mod dispatch {
         vmag: f64,        // per-phase terminal voltage magnitude (balanced)
         vbase: f64,
         /// Delta connection: `der_is_delta` reports it and `der_vterminal` returns
-        /// a balanced 120°-spaced phasor set (so the D4 line-to-line path yields
+        /// a balanced 120°-spaced phasor set (so the delta line-to-line path yields
         /// √3·vmag, not the flat wye magnitude). nconds drops the neutral (3, not 4).
         is_delta: bool,
         present_kw: f64,
@@ -361,7 +354,7 @@ mod dispatch {
         panel_kw: f64,   // FDCkW
         /// The last `der_set_kw_requested` value (ideal readback for `der_present_kw`).
         requested_kw: f64,
-        // --- Storage volt-watt state (WPG.10; ignored when `!is_storage`) ---
+        // --- Storage volt-watt state (ignored when `!is_storage`) ---
         storage_state: StorageState, // TStorageObj.StorageState
         vw_state_requested: bool,    // TStorageObj.FVWStateRequested
         storage_dckw: f64,           // TStorageObj.DCkW (Calc_PBase %Available base)
@@ -489,7 +482,7 @@ mod dispatch {
         fn der_vterminal(&mut self, r: ElemId) -> Vec<num_complex::Complex64> {
             let d = &self.ders[Self::idx(r)];
             if d.is_delta {
-                // Balanced 120°-spaced phasor set at magnitude vmag: the D4
+                // Balanced 120°-spaced phasor set at magnitude vmag: the delta
                 // line-to-line path (Vterminal[j] − Vterminal[NextDeltaPhase(j)])
                 // then yields |Vab| = √3·vmag for every pair.
                 (0..3)
@@ -714,7 +707,7 @@ mod dispatch {
 
     #[test]
     fn exponential_control_model_runs_pi_controller() {
-        // WPG.9: the Exponential ControlModel (`ControlModel=1`) runs the `TPICtrl`
+        // The Exponential ControlModel (`ControlModel=1`) runs the `TPICtrl`
         // PI controller in `CalcVoltVar_vars` — `Sample` must NOT reject it, and it
         // must NOT freeze the var output at the "stay put" level. Same V=1.05 absorb
         // scenario as the Linear test: QDesireVVpu=-0.625, QHeadRoom(VARMAX)=600, so
@@ -813,7 +806,7 @@ mod dispatch {
         );
     }
 
-    // --- WP7.5 step 2c: VOLTWATT + VV_VW ---
+    // --- VOLTWATT + VV_VW ---
 
     /// A VOLTWATT control with a volt-watt curve that limits above 1.02 pu,
     /// VoltWattYAxis=%Pmpp (default, PBase = Pmpp), DeltaP_factor=0.45 (a *set*
@@ -888,7 +881,7 @@ mod dispatch {
 
     #[test]
     fn voltwatt_storage_dispatches_kw() {
-        // WPG.10: a discharging Storage in VOLTWATT now dispatches (no NOT_PORTED).
+        // A discharging Storage in VOLTWATT dispatches.
         // Discharging + not VWStateRequested reads the main `voltwatt_curve`, and
         // yaxis=%Pmpp gives PBase = FDCkWRated = 600 — so the InvControl-side math
         // equals the PVSystem case: V=1.05 → curve y=0.625, PLimitEndpu=0.625,
@@ -917,7 +910,7 @@ mod dispatch {
 
     #[test]
     fn voltwatt_storage_charging_selects_ch_curve() {
-        // WPG.10: the Storage-specific `CalcPVWcurve_limitpu` branch — a CHARGING
+        // The Storage-specific `CalcPVWcurve_limitpu` branch — a CHARGING
         // Storage with a `voltwattCH_curve` (and no VWStateRequested flip) reads the
         // CH curve, NOT the discharge `voltwatt_curve`. Distinct flat curves make the
         // pick observable: CH y=0.5 everywhere vs the discharge curve's 0.625 at 1.05.
@@ -943,7 +936,7 @@ mod dispatch {
 
     #[test]
     fn voltwatt_storage_yaxis_available_reads_live_dckw() {
-        // WPG.10 coverage: VoltWattYAxis=0 (%Available) on a Storage takes the
+        // VoltWattYAxis=0 (%Available) on a Storage takes the
         // `Calc_PBase` branch that reads the LIVE `TStorageObj.DCkW` via
         // `der_storage_dckw` — Pascal `Calc_PBase` sets FDCkW:=0 for a Storage and
         // reads the DCkW property instead, so PBase = DCkW * EffFactor. The
@@ -976,8 +969,7 @@ mod dispatch {
 
     #[test]
     fn voltwatt_storage_vw_state_requested_swaps_curves() {
-        // WPG.10 coverage: `CalcPVWcurve_limitpu`'s FVWStateRequested swap (Pascal
-        // InvControl.pas l.2960-2961 / 2969-2970). Once the VW function has
+        // `CalcPVWcurve_limitpu`'s FVWStateRequested swap. Once the VW function has
         // requested a state flip, the curve selection SWAPS vs the normal pick: a
         // DISCHARGING storage reads the CH curve, a CHARGING storage reads the
         // discharge curve. Distinct flat curves make the pick observable: the
@@ -1036,9 +1028,8 @@ mod dispatch {
 
     #[test]
     fn vv_vw_storage_dispatches_both() {
-        // WPG.10: a discharging Storage in the VV_VW combi dispatches BOTH the
-        // volt-watt kW limit and the volt-var kvar in one DoPendingAction (no
-        // NOT_PORTED). Same curves/scenario as the PVSystem VV_VW test, so the
+        // A discharging Storage in the VV_VW combi dispatches BOTH the
+        // volt-watt kW limit and the volt-var kvar in one DoPendingAction. Same curves/scenario as the PVSystem VV_VW test, so the
         // set-points match: PLimitVW=498.75 (VW) and QDesiredVV=-75.8 (VV).
         let mut ic = InvControl::new("ic1");
         ic.set_i32(prop::COMBI_MODE, InvCombiMode::VvVw.ordinal());
@@ -1175,7 +1166,7 @@ mod dispatch {
         );
     }
 
-    // --- WP7.5 step 2d: DRC + VV_DRC ---
+    // --- DRC + VV_DRC ---
     //
     // DRC has no curve: `CalcQDRC_desiredpu` derives the desired var from the
     // per-step voltage *change* vs the DRC rolling-average window, so these mocks
@@ -1245,7 +1236,7 @@ mod dispatch {
 
     #[test]
     fn drc_exponential_control_model_runs_pi_controller() {
-        // WPG.9: ControlModel=1 (Exponential) drives CalcDRC_vars's else branch (the
+        // ControlModel=1 (Exponential) drives CalcDRC_vars's else branch (the
         // TPICtrl PI controller over the *full* DeltaQ, InvControl.pas l.2804-2809)
         // instead of the Linear QOldDRC-relative formula. Same absorb scenario as
         // `drc_absorbs_on_rising_voltage` (V=1.05pu, window seeded at 1.0pu ->
@@ -1383,7 +1374,7 @@ mod dispatch {
 
     #[test]
     fn vv_drc_exponential_control_model_runs_pi_controller() {
-        // WPG.9: ControlModel=1 (Exponential) drives CalcVVDRC_vars's else branch
+        // ControlModel=1 (Exponential) drives CalcVVDRC_vars's else branch
         // (the TPICtrl PI controller over the *full* DeltaQ, InvControl.pas
         // l.2840-2845). Same combi scenario as `vv_drc_sums_curve_and_drc_q`
         // (V=1.01pu, window seeded at 1.0pu): QDesireVVpu=-0.125,
@@ -1461,7 +1452,7 @@ mod dispatch {
 
     #[test]
     fn gfm_mode_is_ported_and_inert_when_der_not_grid_forming() {
-        // GFM (mode ordinal 7) is ported (WPG.13): Sample no longer rejects it.
+        // GFM (mode ordinal 7) is ported: Sample accepts it.
         // The GFM arm is a no-op for a DER that is not itself in grid-forming mode
         // (`der_gfm_mode == false` in the mock), so Sample succeeds and queues
         // nothing. (The live amps-limiter path is gate-verified by the
@@ -1613,7 +1604,7 @@ mod dispatch {
 
     #[test]
     fn avr_exponential_control_model_runs_pi_controller() {
-        // WPG.9: ControlModel=1 (Exponential) drives CalcAVR_vars's else branch (the
+        // ControlModel=1 (Exponential) drives CalcAVR_vars's else branch (the
         // TPICtrl PI controller over the *full* DeltaQ, InvControl.pas l.2746-2751),
         // not the Linear literal-0.2-over-QOldAVR formula. Same iter1->iter2->iter3
         // path as `avr_iter3_regulator_step_clamped_by_dqmax` (iter1 seeds
@@ -2058,16 +2049,15 @@ mod dispatch {
         );
     }
 
-    // --- WP-U1.3 rows ---
+    // --- Solution-voltage buffer, per-DER base, sqrt guard, delta monitoring ---
 
     #[test]
     fn d1_buffer_2slot_tracks_last_two_pu_voltages() {
-        // Row D1 / ledger L1 -- the InvControlDeltaV per-control 2-slot buffer.
-        // `FVpuSolutionIdx` starts at -1 and toggles 0<->1 unconditionally each
-        // `UpdateInvControl` pass; each pass writes the current per-unit solution
-        // voltage into the cursor slot. Feature-sensitive to the 0.15.x refactor:
-        // the pre-fix 3-slot / init-0 / toggle-1<->2 form would give idx {1,2,1}
-        // and a shifted buffer layout, failing every assertion below.
+        // The InvControlDeltaV per-control 2-slot buffer. `FVpuSolutionIdx`
+        // starts at -1 and toggles 0<->1 unconditionally each `UpdateInvControl`
+        // pass, and each pass writes the current per-unit solution voltage into
+        // the cursor slot. A 3-slot / init-0 / toggle-1<->2 form would give idx
+        // {1,2,1} and a shifted buffer layout, failing every assertion below.
         let mut ic = voltvar_ic();
         let mut env = MockEnv::new(vec![MockDer::new("pv", 1.00, 300.0)]);
         let vb = env.ders[0].vbase;
@@ -2092,12 +2082,11 @@ mod dispatch {
 
     #[test]
     fn d2_update_uses_per_der_basekv_not_first_der() {
-        // Row D2 -- the per-DER base-voltage cross-leak fix: UpdateInvControl's
-        // MonBus renormalization must scale each DER's monitored voltage by ITS
-        // OWN FVBase, not the first DER's (Pascal l.2550, `with CtrlVars[j]`).
+        // UpdateInvControl's MonBus renormalization must scale each DER's
+        // monitored voltage by ITS OWN FVBase, not the first DER's.
         // Two DERs on different bases (7200 / 4160) monitor the SAME bus at 4160 V
         // (its own vbase). DER #2 must read 4160 V (its base cancels the scale);
-        // the pre-fix code used DER #1's 7200 base -> 4160*7200/4160 = 7200.
+        // DER #1's 7200 base would give 4160*7200/4160 = 7200.
         let mut ic = InvControl::new("ic1");
         ic.set_i32(prop::MODE, InvControlMode::VoltVar.ordinal());
         ic.set_i32(prop::REF_REACTIVE_POWER, ReacPowerRef::VarMax.ordinal());
@@ -2134,8 +2123,8 @@ mod dispatch {
 
     #[test]
     fn d3_watt_priority_sqrt_guard_zeroes_tiny_negative_radicand() {
-        // Row D3 -- guard `SQR(kVArating) - SQR(presentkW)` against a tiny f64
-        // negative before `Sqrt` (Pascal l.3442-3446, r4056). kVA=10 with kW one
+        // Guard `SQR(kVArating) - SQR(presentkW)` against a tiny f64
+        // negative before `Sqrt`. kVA=10 with kW one
         // ULP above it makes the radicand ~-3.6e-14 (|.| < EPSILON=1e-12), which
         // the guard zeroes -> Q_Ppriority = 0 -> the watt-priority clamp drives
         // QDesireLimitedpu to 0. WITHOUT the guard, Sqrt(<0) = NaN, every NaN
@@ -2167,14 +2156,12 @@ mod dispatch {
 
     #[test]
     fn d4_delta_der_monitors_line_to_line_voltage() {
-        // Row D4 -- a DELTA-connected DER monitors LINE-TO-LINE terminal voltages
-        // (Pascal GetMonVoltage l.1647-1652, r3822: `cBuffer[j] = Vterminal[j] -
-        // Vterminal[NextDeltaPhase(j)]`), NOT the line-neutral magnitude the pre-fix
-        // 0.14.5 used. With a balanced set at |V|=vbase (vpu 1.0) the LL magnitude is
+        // A DELTA-connected DER monitors LINE-TO-LINE terminal voltages
+        // (`cBuffer[j] = Vterminal[j] - Vterminal[NextDeltaPhase(j)]`), NOT the
+        // line-neutral magnitude. With a balanced set at |V|=vbase (vpu 1.0) the LL magnitude is
         // √3·vbase, so FPresentDRCVpu (raw pu on the L-N base) reads √3, not 1.0.
-        // A regression that reverted to the wye (LN) path would land at 1.0 -- the
-        // exact sign-flipping divergence the live delta deck gates against capi015
-        // (probe: capi015 +524 kvar vs 0.14.5 −34 kvar).
+        // A regression to the wye (LN) path would land at 1.0, which flips the
+        // sign of the delta DER's kvar in a live deck.
         let mut ic = voltvar_ic();
         let mut der = MockDer::new("pv", 1.0, 300.0);
         der.is_delta = true;
@@ -2190,7 +2177,7 @@ mod dispatch {
 
     #[test]
     fn d4_wye_der_monitors_line_neutral_voltage() {
-        // Row D4 control: the SAME setup with a wye DER stays on the line-neutral
+        // Control case: the SAME setup with a wye DER stays on the line-neutral
         // magnitude -- FPresentDRCVpu = 1.0 (the delta branch is a strict no-op for
         // wye), confirming the √3 above is the delta path, not a mock artifact.
         let mut ic = voltvar_ic();
@@ -2205,8 +2192,8 @@ mod dispatch {
 
     #[test]
     fn c8_monbus_missing_nodes_errors_2024111() {
-        // Row C8 -- a MonBus entry with no node numbers is a hard parse error
-        // (dss_capi 0.15.x #2024111, InvControl.pas l.694-698). "m" (no `.node`)
+        // A MonBus entry with no node numbers is a hard parse error
+        // (#2024111). "m" (no `.node`)
         // parses to an empty node list -> the side effect logs the error.
         let mut ic = InvControl::new("ic1");
         ic.set_string_list(prop::MON_BUS, vec!["m".into()]);
@@ -2221,9 +2208,8 @@ mod dispatch {
 
     #[test]
     fn c8_monbus_invalid_bus_aborts_2024112() {
-        // Row C8 -- a MonBus name that never resolves to a real bus aborts the
-        // solve at GetMonVoltage (dss_capi 0.15.x #2024112, InvControl.pas
-        // l.1596-1601) instead of silently reading the ground node. The mock
+        // A MonBus name that never resolves to a real bus aborts the
+        // solve at GetMonVoltage (#2024112) instead of silently reading the ground node. The mock
         // reports the bus unresolved (no `mon_bus_v` entry) -> push_error + abort.
         let mut ic = monbus_voltvar(vec!["nobus.1".into()], vec![7200.0]);
         let mut env = MockEnv::new(vec![MockDer::new("pv", 1.0, 300.0)]);

@@ -1,4 +1,4 @@
-! WP-U1.4 (UPGRADE_PLAN §WP-U1.4) — merged TCableConstants per-conductor model.
+! Merged TCableConstants per-conductor model.
 ! dss_capi 0.15.x merges TCNLineConstants/TTSLineConstants into one TCableConstants
 ! whose CN-vs-TS choice is per-conductor (FCondType via SetCondType). This geometry
 ! MIXES conductor kinds on one line: phase 1 CN, phase 2 TS, phase 3 CN, plus a bare

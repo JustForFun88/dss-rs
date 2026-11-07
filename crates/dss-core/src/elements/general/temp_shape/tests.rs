@@ -71,7 +71,7 @@ fn fixed_interval_temps_and_stats() {
 ///
 /// Upstream prints the sample itself: the pinned oracle answers `3.5` for this
 /// deck's `? TShape.t.stddev` (r4133 computes it in the same one-point branch
-/// as the LoadShape). Not reproduced (GOLDEN_REBASE G2.1a; `issue-11`). `mean`
+/// as the LoadShape). Not reproduced. `mean`
 /// is 3.5, so a broken accessor cannot fake the result by returning nothing.
 #[test]
 fn single_point_shape_stddev_property_is_zero() {
@@ -174,7 +174,7 @@ fn make_like_copies() {
 
 #[test]
 fn binary_file_props_queue_a_binary_file_load() {
-    // WPG.1: SngFile/DblFile are ported (deferred FileLoad, like CSVFile).
+    // SngFile/DblFile queue a deferred FileLoad, like CSVFile.
     for name in ["sngfile", "dblfile"] {
         let (_cls, mut obj, errs) = edited(&[("npts", "4"), ("interval", "1"), (name, "t.bin")]);
         assert!(errs.is_empty(), "{name}: {errs:?}");
@@ -225,7 +225,7 @@ fn csvfile_queues_a_file_load() {
 
 #[test]
 fn action_dblsave_queues_bare_name_double_save() {
-    // WPG.17: `Action=DblSave/SngSave` now queues a binary write (Pascal
+    // `Action=DblSave/SngSave` queues a binary write (Pascal
     // `TTShapeObj.SaveToDblFile`/`SaveToSngFile`). TShape uses the bare `<name>`
     // filename (no `_P`/`_Q` split), a single value series, GlobalResult tag `Temp`.
     let (_cls, mut obj, errs) = edited(&[

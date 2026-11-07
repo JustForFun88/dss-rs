@@ -1,5 +1,4 @@
-//! The dss-core side of the WASM user-model host for PVSystem (`UserModel=`,
-//! WASM_USERMODELS WM.4).
+//! The dss-core side of the WASM user-model host for PVSystem (`UserModel=`).
 //!
 //! Mirrors the Pascal `UserModel: TPVsystemUserModel` (15-fn,
 //! `PVsystem.pas:228`; `PVSystemUserModel.pas`): a bound model is (re)created by
@@ -10,7 +9,7 @@
 //! and state-variable (`num_vars`/`get_all_vars`/`get_variable`/`set_variable`/
 //! `get_var_name`, `:2449-2640`) call sites. PVSystem has NO `InitStateVars`
 //! user-model call (unlike Generator/Storage — `PVsystem.pas:2174` never calls
-//! `FInit`). Same warn-and-fallback contract (plan §2.4 / ABI doc §5).
+//! `FInit`). Same warn-and-fallback contract (ABI doc §5).
 
 use std::sync::Arc;
 
@@ -282,7 +281,7 @@ impl PvUserModelSlot {
                 Effect::ControlQueuePush { .. } => errors.push(DssDiagnostic::msg(
                     format!(
                         "PVSystem.{name}: user model called ControlQueuePush, which is not \
-                         wired for PVSystem elements (CapControl scope, WM.5)."
+                         wired for PVSystem elements (CapControl only)."
                     ),
                     Some(9001),
                 )),
@@ -292,8 +291,8 @@ impl PvUserModelSlot {
 
     /// Refresh the cached `num_vars` + names from the live model. A guest trap in
     /// `num_vars`/`get_var_name` is surfaced (propagated), never swallowed to a
-    /// silent `num_vars=0` that would drop the model's state-var tail (plan
-    /// §2.9-5 loud-error policy; WM.4 settle T-WM4-3 — the caller drains it).
+    /// silent `num_vars=0` that would drop the model's state-var tail (the
+    /// caller drains it).
     fn refresh_var_cache(&mut self) -> LiveResult {
         let Some(live) = self.live.as_mut() else {
             return Ok(());
@@ -337,7 +336,7 @@ impl PVSystem {
         });
     }
 
-    /// The executive-drained apply for a resolved [`UserModelLoad`] (§2.4).
+    /// The executive-drained apply for a resolved [`UserModelLoad`] (ABI doc §5).
     pub(super) fn apply_user_model_load_impl(
         &mut self,
         load: &UserModelLoad,
@@ -526,7 +525,7 @@ impl PVSystem {
     /// Pascal `Get_Variable` UserModel tail (`PVsystem.pas:2453-2461`): resolve a
     /// 1-based index above the classic `NumPVSystemVariables` base to a `UserModel`
     /// value (`None` when no loaded model / index out of range). Mirrors the
-    /// Storage sibling's `get_user_model_variable` (WM.4 settle T-WM4-2).
+    /// Storage sibling's `get_user_model_variable`.
     pub(super) fn get_user_model_variable(
         &mut self,
         i: usize,

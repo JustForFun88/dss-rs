@@ -1,4 +1,4 @@
-//! # indmach012a — WASM user-model reference fixture (WP-WM.2)
+//! # indmach012a — WASM user-model reference fixture
 //!
 //! A loop-for-loop port of the canonical OpenDSS example user-model DLL
 //! (`.inputs/electricdss-code-r3723-trunk/Version8/Source/IndMach012a/`:
@@ -6,22 +6,22 @@
 //! `wasm32-unknown-unknown` guest speaking the frozen ABI of
 //! `docs/wasm/USERMODEL_ABI.md` (15-function Generator interface + `memory` +
 //! `dss_alloc`; host imports from module `dss_env` — the fixture uses only
-//! `msg_callback`, per the WM.0 P3 census).
+//! `msg_callback`, per `docs/wasm/probes/p3_callback_census.txt`).
 //!
 //! The committed artifact `tests/fixtures/wasm/indmach012a.wasm` is a
-//! golden-class binary (plan §2.6): rebuilt MANUALLY ONLY via
+//! golden-class binary: rebuilt MANUALLY ONLY via
 //! `tools/wasm_usermodel/build_wasm.ps1` with the toolchain pinned in
 //! `tools/wasm_usermodel/PIN.txt`. Its numeric spec is the *native twin* —
-//! the same vendored Pascal compiled by FPC (`build_native.ps1`, plan A) —
+//! the same vendored Pascal compiled by FPC (`build_native.ps1`) —
 //! probed via `tools/wasm_usermodel/twin_probe.py`; expected values live in
 //! `docs/wasm/probes/p6_twin_expected.txt` and are pinned bit-exact by
-//! `tests/twin_parity.rs` (host target) and, post-WM.1 integration, through
-//! the `dss-usermodel` crate API (WM.2 item 4).
+//! `tests/twin_parity.rs` (host target) and through the `dss-usermodel`
+//! crate API.
 //!
 //! ## Unsafe surface
 //!
 //! This is a workspace-excluded fixture/tooling crate (outside the product
-//! `forbid(unsafe_code)` scope, plan §2.6); it still keeps `unsafe` to the
+//! `forbid(unsafe_code)` scope); it still keeps `unsafe` to the
 //! irreducible minimum: exactly one `unsafe` expression — the `dss_env`
 //! `msg_callback` host-import call (`wasm_exports.rs`). Everything else,
 //! including all pointer traffic, resolves through a safe allocation

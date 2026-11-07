@@ -373,8 +373,8 @@ impl LoadShapeObj {
     /// Pascal `TLoadShapeObj.SetMaxPandQ` (`LoadShape.pas:2048`): peak P and
     /// the coincident Q. Under MMF (or external memory, not modeled) Pascal
     /// exits FIRST, leaving `MaxP`/`MaxQ` at the constructor defaults `1.0`/
-    /// `0.0` — oracle-confirmed `pmax=1, qmax=0` for every MMF shape (audit
-    /// settlement 2026-07-09: the dropped guard mis-scaled `useactual` loads).
+    /// `0.0`. OpenDSS reports `pmax=1, qmax=0` for every MMF shape. Without the
+    /// guard, `useactual` loads are mis-scaled.
     pub(super) fn set_max_p_and_q(&mut self) {
         if self.use_mmf {
             return;
@@ -398,7 +398,8 @@ impl LoadShapeObj {
     /// SaveToDblFile`/`SaveToSngFile`, `LoadShape.pas:1880/1939`). Mirrors the
     /// Pascal head: `UseFloat64` first, then the `if not Assigned(dP)` guard
     /// (`DoSimpleMsg` 622/623), then snapshot `dP` — and `dQ` when `Assigned(dQ)`
-    /// — into a [`ShapeSave`] for the executive (which owns `OutputDirectory` /
+    /// — into a [`crate::obj::base::ShapeSave`] for the executive (which owns
+    /// `OutputDirectory` /
     /// `GlobalResult`). LoadShape uses the `_P`/`_Q` filename split.
     pub(super) fn queue_shape_save(&mut self, sng: bool, errors: &mut crate::diag::ErrorLog) {
         // Pascal `UseFloat64` (LoadShape.pas:1888/1946): ensure the f64 arrays.
@@ -606,7 +607,7 @@ impl LoadShapeObj {
         // whole file (`file=`+name, column 1) and eager-read via the text
         // accept-set. Single-column text under MMF divides by zero in the
         // pinned 0.14.5 oracle's lazy byte reader (#482) — the c4590d16 fix
-        // (D13) restored the missing `not` on the CreateMMF guard; the eager
+        // restored the missing `not` on the CreateMMF guard; the eager
         // reader already loads the P data the fixed engine loads. Gated capi015
         // (`modes/upgrade/mmf_singlecol`) + unit
         // `mmf_single_column_csvfile_loads_like_capi015`.
@@ -618,7 +619,7 @@ impl LoadShapeObj {
         }
         // Pascal `ReadCSVFile` runs `UseFloat64` first (`LoadShape.pas:1044`):
         // a CSV read ends any live single-precision storage before it
-        // overwrites `dP`/`dH` (audit follow-up — without this a stale `sP`
+        // overwrites `dP`/`dH` (without this a stale `sP`
         // from an earlier `sngfile=` would keep winning the lookup).
         self.use_float64();
         let npts = self.n();
@@ -732,9 +733,9 @@ impl LoadShapeObj {
     /// NOT_PORTED(LoadShape float32 truncated-pair shrink): Pascal's float32
     /// `Interval=0` loop (`:1129-1134`) breaks on a short read **without**
     /// shrinking `NumPoints`, leaving the tail of `sH`/`sP` as uninitialized
-    /// heap (`ReallocMem` does not zero) — nondeterministic upstream UB, NOT
-    /// reproduced per the CLAUDE.md rule; the port shrinks like the float64
-    /// path, so a truncated file yields the defined prefix instead of garbage.
+    /// heap (`ReallocMem` does not zero) — nondeterministic UB in OpenDSS, not
+    /// reproduced. This engine shrinks like the float64 path, so a truncated
+    /// file yields the defined prefix instead of garbage.
     pub(super) fn read_sng_file(&mut self, content: &[u8]) {
         // Pascal `ReadSngFile` MMF branch (`LoadShape.pas:1103-1113`): map the
         // whole file (`sngfile=`+name) and read `npts` little-endian f32,
@@ -848,7 +849,7 @@ impl LoadShapeObj {
     }
 
     // ------------------------------------------------------------------
-    // Memory-mapped-file (`MemoryMapping=Yes`) eager readers (WPG.17).
+    // Memory-mapped-file (`MemoryMapping=Yes`) eager readers.
     // Pascal maps the file and reads records lazily through the map in
     // `GetMultAtHour`; this port reads the whole file up front into the f64
     // `dP`/`dQ` arrays with the identical record semantics
@@ -918,9 +919,8 @@ impl LoadShapeObj {
     /// `tests::mmf_text_reader_agrees_with_its_non_mapped_twin` pins exactly
     /// that, over content carrying a sign, an exponent and an explicit `+`.
     ///
-    /// Fixed in both lanes (CLAUDE.md 2026-08-02: upstream bugs are never
-    /// reproduced) by `GOLDEN_REBASE_PLAN.md` G2.5. Two consequences worth
-    /// naming: `tests/corpus/modes/inputformat/shape_mmf/shape_mmf.dss` exists
+    /// Fixed in both lanes (upstream bugs are never reproduced). Two consequences
+    /// worth naming: `tests/corpus/modes/inputformat/shape_mmf/shape_mmf.dss` exists
     /// *to observe* the quirk (its `mmpq8.csv` P column is written in exponent
     /// notation on purpose), so it now diverges from the `capi_v0145` oracle
     /// across the whole run — ledgered as `mmf-accept-set-honoured-capi`, with
@@ -1031,13 +1031,13 @@ impl LoadShapeObj {
 
     /// Apply a non-memory-mapped `InterpretDblArray` LoadShape directive
     /// (`mult=(file=…)` / `qmult=(sngfile=…)` / `hour=(dblfile=…)`, Pascal
-    /// `CustomSetRaw`, `LoadShape.pas:749-810`, WPG.19). Runs `UseFloat64` first
+    /// `CustomSetRaw`, `LoadShape.pas:749-810`). Runs `UseFloat64` first
     /// (Pascal `:767/779/804`), reads with the `Utilities.pas` file grammar
     /// capped at the current `NumPoints`, then stores per the Pascal shrink rule:
     /// `mult`/`Pmult` shrink `NumPoints := result` (`:770`); `qmult`/`hour` leave
     /// it unchanged (the return is ignored, `:781/806`). A short `qmult`/`hour`
-    /// file leaves an uninitialized tail upstream (`ReAllocmem` UB, not
-    /// reproduced per CLAUDE.md): we store only the prefix read.
+    /// file leaves an uninitialized tail in OpenDSS (`ReAllocmem` UB, not
+    /// reproduced): this engine stores only the prefix read.
     pub(super) fn apply_interp_file(&mut self, il: &InterpLoad, bytes: &[u8]) {
         self.use_float64();
         let max = self.n();

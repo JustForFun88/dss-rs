@@ -1,4 +1,4 @@
-# WASM_USERMODELS WP-WM.0 — build + run the ABI probes (evidence generator).
+# Build + run the WASM user-model ABI probes (evidence generator).
 # Requires FPC 3.2.2 with the x86_64-win64 cross-compiler (ppcrossx64), the
 # vendored .inputs/dss_capi + .inputs/electricdss-code-r3723-trunk, and the
 # pinned dss-python oracle (tools/golden/PIN.txt) on `python`.
@@ -39,8 +39,8 @@ $b = Join-Path $OutDir 'build_r3723'; New-Item -ItemType Directory -Force $b | O
 & $Fpc -Mdelphi -O3 -CF64 "-Fu$r3723\Shared" "-Fu$r3723\PCElements" "-Fi$r3723\Common" "-FU$b" "-FE$b" (Join-Path $here 'abi_probe_r3723.pas')
 & (Join-Path $b 'abi_probe_r3723.exe') | Tee-Object (Join-Path $OutDir 'p2_offsets_r3723.txt')
 
-# 2b. P8 — r4133 record-layout probe (ABI re-freeze to r4133, user decision
-# 2026-07-19): the headers the r4133 example DLL / native twin compile against.
+# 2b. P8 — r4133 record-layout probe (ABI re-freeze to r4133, 2026-07-19): the
+# headers the r4133 example DLL / native twin compile against.
 # Result: TDynamicsRec 52 B / TDSSCallBacks 256 B UNCHANGED; TGeneratorVars
 # 244 -> 252 B (deltaQNom at 176, tail +8). → docs/wasm/probes/p8_offsets_r4133.txt
 $b = Join-Path $OutDir 'build_r4133'; New-Item -ItemType Directory -Force $b | Out-Null
@@ -52,7 +52,7 @@ $b = Join-Path $OutDir 'build_stub'; New-Item -ItemType Directory -Force $b | Ou
 & $Fpc -Mdelphi -O2 -CF64 "-Fu$capi\Shared" "-Fi$here" "-FU$b" "-FE$b" (Join-Path $here 'genstub.pas')
 python (Join-Path $here 'probe_oracle_load.py') (Join-Path $b 'genstub.dll') | Tee-Object (Join-Path $OutDir 'p1_oracle_load.txt')
 
-# 2c. P9 — r4133 TCapControlVars layout probe (WP-WM.5): compiles the REAL
+# 2c. P9 — r4133 TCapControlVars layout probe: compiles the REAL
 # vendored r4133 unit Version8/Source/Controls/CapControlVars.pas in its
 # -dUSER_DLL variant (uses only ucomplex + ControlActionDefs.txt, no engine
 # closure) — the byte-identical record the engine assembles for the CapControl
@@ -62,7 +62,7 @@ $b = Join-Path $OutDir 'build_ccvars'; New-Item -ItemType Directory -Force $b | 
 & $Fpc -Mdelphi -O3 -CF64 -dUSER_DLL "-Fu$r4133\Controls" "-Fu$r4133\Shared" "-Fi$r4133\Controls" "-FU$b" "-FE$b" (Join-Path $here 'abi_probe_capcontrolvars.pas')
 & (Join-Path $b 'abi_probe_capcontrolvars.exe') | Tee-Object (Join-Path $OutDir 'p9_offsets_capcontrolvars_r4133.txt')
 
-# 2d. P10 — r4133 TWindGenVars layout probe (R4133_PROPS_PLAN RP1.3): compiles
+# 2d. P10 — r4133 TWindGenVars layout probe: compiles
 # the REAL vendored r4133 unit Version8/Source/PCElements/WindGenVars.pas — the
 # record TWindGenUserModel.FNew receives (WindGenUserModel.pas:34). Result:
 # 356 B; NO deltaQNom (the three integers keep the Appendix-A offsets
@@ -74,7 +74,7 @@ $b = Join-Path $OutDir 'build_wgvars'; New-Item -ItemType Directory -Force $b | 
 & $Fpc -Mdelphi -O3 -CF64 "-Fu$r4133\Shared" "-Fu$r4133\PCElements" "-Fi$r4133\Common" "-FU$b" "-FE$b" (Join-Path $here 'abi_probe_windgenvars.pas')
 & (Join-Path $b 'abi_probe_windgenvars.exe') | Tee-Object (Join-Path $OutDir 'p10_offsets_windgenvars_r4133.txt')
 
-# 4. P2 plan-A check — the VENDORED IndMach012a.dpr, as-is (zero source edits)
+# 4. P2 native-twin check — the VENDORED IndMach012a.dpr, as-is (zero source edits)
 $b = Join-Path $OutDir 'build_indmach'; New-Item -ItemType Directory -Force $b | Out-Null
 & $Fpc -Mdelphi -O2 "-Fu$r3723\IndMach012a" "-Fu$r3723\Shared" "-Fu$r3723\Parser" "-Fu$r3723\PCElements" "-Fi$r3723\Common" "-FU$b" "-FE$b" (Join-Path $r3723 'IndMach012a\IndMach012a.dpr')
 Write-Host "IndMach012a.dll built: $((Get-Item (Join-Path $b 'IndMach012a.dll')).Length) bytes"

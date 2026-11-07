@@ -133,7 +133,7 @@ fn reduce_marks_cap_and_reactor_buses() {
     assert!(keep("b2"), "shunt reactor bus should be a keeper");
 }
 
-/// `Reduce` with a metered feeder runs the zone reduction (WP8.7): the DEFAULT
+/// `Reduce` with a metered feeder runs the zone reduction: the DEFAULT
 /// strategy merges an un-loaded in-line bus out (`Line.MergeWith` SERIES —
 /// child renamed `Other.Name~Name`, parent disabled), and the node count drops.
 /// No deferral error is emitted.
@@ -268,8 +268,8 @@ fn reduce_shortlines_keeps_b2(feeder: ShortLineFeeder) -> bool {
 /// past the end (`.inputs/dss_capi/src/Meters/ReduceAlgs.pas:200`/`:209`; r4133
 /// `Version8/Source/Meters/ReduceAlgs.pas:199`/`:206` is the same pair), so a
 /// capacitor sitting second is merged away — moved onto another bus — instead
-/// of blocking. Both gating oracles carry that; neither lane reproduces it
-/// (`GOLDEN_REBASE_PLAN.md` G2.1d; `issue-31`), because the merge-with-child
+/// of blocking. Both gating oracles carry that, and neither lane reproduces it
+/// (`issue-31`), because the merge-with-child
 /// branch of the same procedure (`:246-258`) spells the identical loop with a
 /// single cursor.
 ///
@@ -396,14 +396,12 @@ fn prop_of(dss: &mut Dss, target: &str) -> String {
 /// (`LenUnitsSaved := LengthUnits`) and restores them with a **separate** Edit
 /// at `:1794-1796` that runs *after* the `Rmatrix=…Xmatrix=…` (`:1778-1779`) and
 /// `Cmatrix=…` (`:1791-1792`) Edits — precisely because the `12..14` side effect
-/// calls `ResetLengthUnits` (`:691-693`). dss_capi 0.14.5 inverted the two
-/// (`src/PDElements/Line.pas:1806-1817`: the field write, then
-/// `PropertySideEffects(rmatrix/xmatrix/cmatrix)`), and the port had copied that
-/// order, so every matrix-model series merge came out `UNITS_NONE`. r4133 is the
-/// behavioral authority and its bugs are never reproduced (CLAUDE.md
-/// 2026-08-02), so both lanes now restore.
+/// calls `ResetLengthUnits` (`:691-693`). dss_capi 0.14.5 inverts the two (the
+/// field write, then the side effect), so every matrix-model series merge comes
+/// out `UNITS_NONE` there. That is an OpenDSS bug and is not reproduced: both
+/// lanes restore the units.
 ///
-/// Probed live on the r4133 DLL (RP3.5, 2026-08-28): `mi` on this deck, `cm` on
+/// Probed live on the r4133 DLL: `mi` on this deck, `cm` on
 /// its mirror, `kft` on `tests/corpus/modes/reduce/midi_reduce.dss`'s three
 /// merged lines and `none` on a switch — four different answers, which is why
 /// this pin reads two decks that disagree instead of one that could pass against
@@ -420,8 +418,7 @@ fn prop_of(dss: &mut Dss, target: &str) -> String {
 /// `3.37878787878788`); the port keeps the full `f64` sum, as capi 0.14.5 does
 /// by assigning the field (`src/PDElements/Line.pas:1806`). Every vendored
 /// `reduce` deck sums to an exactly representable length, so no gated case sees
-/// it (RP3.5 audit settlement, 2026-08-28 — recorded in STATUS §RP3.5 for
-/// RP4.1).
+/// it.
 ///
 /// The moving cell moves the pinned dss_capi 0.14.5 channel, hence the
 /// `capi_v0145` ledger entry `reduce-merge-units-restored-midi-capi-props`.
@@ -460,9 +457,7 @@ fn merged_matrix_line_keeps_the_surviving_lines_length_units() {
 /// EnergyMeter zone's line length (`solution/meters/zones/build.rs`). With the
 /// units lost, both read the merged length as if it were dimensionless — miles
 /// stayed at the *pre-merge* value the matrix branch never recomputed, and the
-/// zone length counted `3.3788` km for what is 3.3788 **miles**. Both are
-/// corrections, so they are asserted here rather than left silent (RP3.5 audit
-/// settlement, 2026-08-28).
+/// zone length counted `3.3788` km for what is 3.3788 **miles**.
 #[test]
 fn merged_matrix_line_converts_its_length_with_the_restored_units() {
     use crate::elements::pd::line::Line;
@@ -495,14 +490,14 @@ fn merged_matrix_line_converts_its_length_with_the_restored_units() {
 
 /// The pin on the corpus deck the claims census actually flagged.
 ///
-/// The three `line.units` cells RP3.5 owns are all on
+/// The three `line.units` cells this pin covers are all on
 /// `tests/corpus/modes/reduce/midi_reduce.dss` (`Line.l2a~l2b`, `Line.l3a~l3b`,
 /// `Line.bb14_15~l9a`), and the value they must render — `kft` — is measured on
 /// the r4133 DLL, not derived from the port. The corpus gate pins the same three
 /// cells from the other side (the `capi_v0145` ledger entry's `rust` field), but
 /// that half needs the pinned dss-python installed; this one needs nothing but
-/// the vendored deck, so the corpus claim survives even when the oracle does
-/// not (RP3.5 audit settlement, 2026-08-28).
+/// the vendored deck, so the corpus claim survives even when dss-python is not
+/// installed.
 ///
 /// The discriminators are in the same deck: `Line.bb1_2` is an **un-merged**
 /// line that also reads `kft`, and `Line.tie` is a `switch=yes` line that reads
@@ -583,7 +578,7 @@ fn parallel_switch_reduce(circuit: &str, p1_switch: bool, p2_switch: bool) -> Ds
 /// branch, so the two switch arms — the only arms that produce no impedance
 /// values — never restored the length at all.
 ///
-/// Two independent defects, both fixed in both lanes (RP3.5, 2026-08-28), both
+/// Two independent defects, both fixed in both lanes, both
 /// probed live against the r4133 DLL and the pinned dss_capi 0.14.5:
 ///
 /// * **self is the switch** (`:1708`, `S := ''`): the merged line kept the
@@ -647,7 +642,7 @@ fn parallel_merge_with_a_switch_restores_length_and_dummy_z() {
 /// rescaled by `1/ConvertLineUnits(kft, km) = 1/0.3048`, and the merged line
 /// entered the solve with the wrong shunt.
 ///
-/// Probed live (RP3.5 audit settlement, 2026-08-28) on the deck this pin builds:
+/// Probed live on the deck this pin builds:
 /// the r4133 DLL and the pinned dss_capi 0.14.5 both render `c1 = 1.1`,
 /// `c0 = 1`; the port rendered `3.60892388451444` / `3.28083989501312`. The
 /// self-is-switch arm restores `Units=none`, where the conversion factor is 1.0
@@ -679,7 +674,7 @@ fn parallel_merge_with_a_switch_recalcs_before_the_cap_fixup() {
 /// element name therefore went stale on every merge that had one, which
 /// `Save`/`Dump`/`?` render and which the control re-resolves.
 ///
-/// Probed live (RP3.5 audit settlement, 2026-08-28): on this deck the r4133 DLL
+/// Probed live: on this deck the r4133 DLL
 /// renders `? CapControl.cc.element` as `line.s1~s2` where the port rendered
 /// `Line.s2`. The port's spelling keeps the class's canonical capitalization —
 /// that is its render convention for a stored element name everywhere, not
@@ -720,13 +715,10 @@ fn merge_repoints_the_controls_of_the_surviving_line() {
     assert!(dss.circuit().expect("circuit").is_solved);
 }
 
-/// GOLDEN_REBASE G1.5 (R3) — the `kVBase <= 0` fallback of the lateral removal
-/// is `Solution.UpdateVBus` + `Cabs(VBus[1])·0.001` (r4133
-/// `Meters/ReduceAlgs.pas:500-508`, capi `:487-494`), and `UpdateVBus` (r4133
-/// `Common/Solution.pas:4070-4083`) snapshots the live node voltages into
-/// **every** bus's `VBus` — the array `Bus.Voc` publishes — not just the head
-/// bus's. The port used to skip the call and read `NodeV` directly, which gets
-/// the same kV base but loses the side effect.
+/// The `kVBase <= 0` fallback of the lateral removal snapshots the live node
+/// voltages into **every** bus's `VBus` — the array `Bus.Voc` publishes — not
+/// just the head bus's. Reading `NodeV` directly gets the same kV base but
+/// loses that side effect.
 ///
 /// The two numbers: before the reduce every `VBus` entry is still the
 /// allocation zero (a plain `Solve` snapshots nothing — `PreserveNodeVoltages`

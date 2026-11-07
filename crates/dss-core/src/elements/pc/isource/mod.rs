@@ -23,10 +23,9 @@
 //! upstream an explicit `Bus2=` is only sticky if it is parsed *after* `Bus1=`
 //! on the same edit (the `Bus1` side effect unconditionally re-derives the
 //! grounded-Y default whenever it runs, since `Bus2Defined` never becomes
-//! true). `GOLDEN_REBASE_PLAN.md` G2.2b tore that reproduction down: this port
-//! latches the flag on the `Bus2` property in **both** lanes, exactly as the
-//! sibling source class does. See `accessors.rs`'s `BUS2` arm and
-//! `tests::bus2_latches_like_the_sibling_class`.
+//! true). This port latches the flag on the `Bus2` property in **both** lanes,
+//! exactly as the sibling source class does. See `accessors.rs`'s `BUS2` arm
+//! and `tests::bus2_latches_like_the_sibling_class`.
 
 #[cfg(test)]
 mod tests;

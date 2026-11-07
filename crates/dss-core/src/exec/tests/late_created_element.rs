@@ -1,6 +1,4 @@
-//! Reporting on a circuit element declared **after** the last solve
-//! (GOLDEN_REBASE G1.10b micro-part F2b, from the F0 side observation;
-//! coordinator decision D43(4)).
+//! Reporting on a circuit element declared **after** the last solve.
 //!
 //! `NodeRef` is the element's map from its own conductors to the solution's node
 //! vector. r4133 leaves it `nil` in the constructor
@@ -107,7 +105,7 @@ const LATE_ELEMENTS: [(&str, &str); 9] = [
     ),
 ];
 
-/// **Pin (D43(4)).** A report that reaches an element declared after the last
+/// **Pin.** A report that reaches an element declared after the last
 /// solve reads the base trait's result — every terminal current `0`, on all
 /// nine classes whose override used to index the empty `node_ref` and panic
 /// (`index out of bounds: the len is 0`). r4133 answers the same read with DSS
@@ -134,7 +132,7 @@ fn a_report_on_an_element_created_after_the_last_solve_reads_as_ground() {
     }
 }
 
-/// **Pin (D43(4), the both-numbers half).** The zero above is the *unmapped*
+/// **Pin (the both-numbers half).** The zero above is the *unmapped*
 /// state, not a silenced element: the very same `Storage.s1`, exported again
 /// after the `Solve` that maps it, reports `2.31504 A` at `179.99°` on phase 1
 /// (50 kW discharging at 12.47 kV, `pf = 1`) where the report taken before that

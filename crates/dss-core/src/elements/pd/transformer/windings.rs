@@ -86,7 +86,7 @@ impl Transformer {
 
     /// Pascal `Get_BasekVLL(i)` = `Winding[i].kVLL` (`Transformer.pas:1819`) —
     /// also the raw `Winding[i].kvll` the CIM `PowerTransformerEnd.ratedU`
-    /// reads. 1-based winding; 0 out of range. (CIM export, WPG.18 Stage E.)
+    /// reads. 1-based winding; 0 out of range. (CIM export.)
     pub fn winding_kvll(&self, i: usize) -> f64 {
         if i >= 1 && i <= self.num_windings.max(0) as usize {
             self.windings[i - 1].kvll
@@ -132,7 +132,7 @@ impl Transformer {
     }
 
     /// `Winding[i].NumTaps` — the tap-changer step count (CIM
-    /// `ShortCircuitTest.energisedEndStep`, WPG.18 Stage E). 1-based; 0 out of
+    /// `ShortCircuitTest.energisedEndStep`). 1-based; 0 out of
     /// range.
     pub fn winding_num_taps(&self, i: usize) -> i32 {
         if i >= 1 && i <= self.num_windings.max(0) as usize {

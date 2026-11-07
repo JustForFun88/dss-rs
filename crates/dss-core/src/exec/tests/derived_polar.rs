@@ -1,9 +1,9 @@
-//! The three polar element surfaces of `GOLDEN_REBASE_PLAN.md` G1.3a —
+//! The three polar element surfaces —
 //! `CktElement.CurrentsMagAng`, `CktElement.VoltagesMagAng` and
 //! `CktElement.Residuals` — as they come out of
 //! [`Dss::snapshot_elements`](crate::exec::Dss::snapshot_elements).
 //!
-//! These are the sub-step's expected-value pins: the live corpus gate compares
+//! These are the expected-value pins: the live corpus gate compares
 //! the three arrays against both oracle channels case by case, and these tests
 //! nail down, in-engine and against numbers read from the pinned oracle
 //! (dss-python 0.15.7 / dss_capi 0.14.5, `tools/golden/PIN.txt`), the four
@@ -11,7 +11,7 @@
 //!
 //! 1. each terminal's residual sums **its own** conductors (the
 //!    `k := (i-1)*Nconds` offset that the `Export SeqCurrents` report path
-//!    drops — CLAUDE.md upstream bug 1 — and that both API paths carry);
+//!    drops — an OpenDSS bug — and that both API paths carry);
 //! 2. the angle is `CDANG`'s *truncated* `57.29577951` image, not the
 //!    full-precision `180/π` one;
 //! 3. `VoltagesMagAng` is read through the element's own `NodeRef`, so a
@@ -31,7 +31,7 @@ use crate::support::complexutil::cdang;
 /// The `feeder` tolerance tier — `crates/dss-test-harness/src/harness/mod.rs::tol_for` (`"feeder"`,
 /// `:967-976`), the tier IEEE13 is gated at, restated here because a `src`
 /// unit test cannot reach the integration harness. Every band below is that
-/// tier's *derived* image (`tests/TOLERANCE_NOTES.md`), never a fresh number.
+/// tier's *derived* image, never a fresh number.
 const I_ABS: f64 = 1e-5;
 const I_REL: f64 = 1e-7;
 const V_ABS: f64 = 1e-6;
@@ -47,8 +47,7 @@ const RAD_TO_DEG: f64 = 57.29577951308232;
 /// `export`/`show`/`save` (its `Show` block is commented out) and
 /// `controls/fuse/midi_fuse.dss` / `controls/capcontrol/capcontrol_time.dss`
 /// are in-repo synthetic decks that write no file, so no directory guard is
-/// needed. Never `.inputs/` — the corpus tree is the one the live gate reads
-/// (CLAUDE.md).
+/// needed. Never `.inputs/` — the corpus tree is the one the live gate reads.
 fn compile_corpus_deck(rel: &str) -> Dss {
     let deck = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/corpus")
@@ -145,7 +144,7 @@ fn residuals_sum_the_rows_own_terminal() {
         l.residuals,
     );
 
-    // The sample G1.3a's spec names, kept for the record: a switch line whose
+    // A sample element: a switch line whose
     // terminal-1 residual is 2.830776231e-05 A (oracle 2.8307762314793113e-05,
     // port 2.8307755907964043e-05 — 6.4e-12 A apart) while terminal 2's is
     // numerically zero (oracle 1.639614891002561e-12 A, port
@@ -292,8 +291,8 @@ fn voltages_mag_ang_follows_node_ref_and_grounds_to_zero() {
 // `elem.NodeRef = NIL` -> the one-element `DefaultResult` `[0.0]`), r4133 does
 // not and dereferences the nil pointer at `DCktElement.pas:1099` — measured:
 // `CktElementV(19)` kills the epri-worker on this very element. The capture
-// therefore reads the three fields for enabled elements only (G1.3a spec
-// §1.4-H1); this pin is the engine-side half of that contract.
+// therefore reads the three fields for enabled elements only. This pin is the
+// engine-side half of that contract.
 /// A never-enabled element reports `enabled = false`, an empty
 /// `voltages_mag_ang`, and zeros for the current-derived pair.
 #[test]
@@ -338,10 +337,9 @@ fn a_never_enabled_element_has_no_polar_payload() {
 // branch. The pinned dss_capi 0.14.5 still carries the pre-`b9bc87b8` form,
 // `effElement := ControlledElement` with `ElementTerminal := 1` forced for
 // TIMECONTROL *and* FOLLOWCONTROL (`src/Controls/CapControl.pas:597-608`, used
-// at `:619`), i.e. the capacitor's bus. The port follows r4133 — the adoption
-// `docs/upgrade/DIVERGENCES.md` D11 (part 2) recorded for the
-// `effElement`/`Terminal` readback and L8 now records for the bus half. G1.3a's
-// `VoltagesMagAng` is the first live channel that can see it, because it reads
+// at `:619`), i.e. the capacitor's bus. This engine follows r4133, for the
+// `effElement`/`Terminal` readback and for the bus. `VoltagesMagAng` is the
+// first live channel that can see it, because it reads
 // `NodeV` through the element's own `NodeRef`; the `capi_v0145` divergence is
 // excluded by ledger entry `capi-capcontrol-time-bus-is-the-capacitors` and the
 // `r4133` channel of the same case needs no entry at all.
@@ -420,17 +418,13 @@ fn capcontrol_time_voltages_follow_the_monitored_elements_terminal() {
     }
 }
 
-// Regression pin (G1.3a audit settlement, 2026-09-04) — the polar accessor must
-// not panic on a stale `NodeRef`. `set_nterms`/`set_nconds` grow `Yorder` and
-// reallocate the terminal buffers but leave `node_ref` alone
-// (`elements/ckt.rs:326`, `:334-346`); only `set_node_ref` resizes it (`:382`),
-// and `TDSSCircuit.ReProcessBusDefs` re-runs it for **enabled** elements only
-// (`circuit/circuit.rs:735`, Pascal `Common/Circuit.pas:2380-2400`). So a
-// disabled element that grows phases keeps a `node_ref` SHORTER than its
-// `yorder`, and the first cut of the G1.3a block sliced `node_ref[..yorder]`
-// there — a panic in the public `snapshot_elements` reachable from ordinary
-// deck input (found by the G1.3a code audit; `range end index 6 out of range
-// for slice of length 2`).
+// Regression pin — the polar accessor must not panic on a stale `NodeRef`.
+// `set_nterms`/`set_nconds` grow `Yorder` and reallocate the terminal buffers
+// but leave `node_ref` alone. Only `set_node_ref` resizes it, and
+// `reprocess_bus_defs` re-runs it for **enabled** elements only. So a disabled
+// element that grows phases keeps a `node_ref` SHORTER than its `yorder`, and
+// slicing `node_ref[..yorder]` there would panic in the public
+// `snapshot_elements`, reachable from ordinary deck input.
 /// A disabled element whose `NodeRef` is shorter than its `Yorder` reports a
 /// full-length `voltages_mag_ang` whose stale slots read as ground.
 #[test]

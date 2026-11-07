@@ -33,7 +33,7 @@ extern "C" {
 
 /// Guest-global state: the allocation registry backing `dss_alloc` plus the
 /// `MainUnit` model registry. One instance per wasm instance (each element
-/// binding gets its own `Store`/instance per plan §2.1, so per-guest global
+/// binding gets its own `Store`/instance, so per-guest global
 /// state matches the native DLL's per-process globals).
 struct Guest {
     allocs: BTreeMap<u32, Box<[u8]>>,

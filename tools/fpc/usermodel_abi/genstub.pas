@@ -1,5 +1,5 @@
 library genstub;
-// WASM_USERMODELS WP-WM.0 P1 — minimal 15-export Generator user-model stub
+// Probe P1 — minimal 15-export Generator user-model stub
 // DLL. Proves the pinned dss-python oracle (dss_capi 0.14.5 backend, win64)
 // loads a native user-model DLL through `Generator.UserModel=` and drives the
 // full 15-function contract (GenUserModel.pas `TGenUserModel`).

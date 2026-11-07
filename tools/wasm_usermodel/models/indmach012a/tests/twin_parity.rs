@@ -1,4 +1,4 @@
-//! Native-twin parity pin (WP-WM.2 item 3/4 pre-stage): replays the exact
+//! Native-twin parity pin: replays the exact
 //! `tools/wasm_usermodel/twin_probe.py` scenario against the Rust port
 //! (`mainunit` level — the same functions the wasm exports shim into) and
 //! asserts every recorded value BIT-EXACT against the FPC-built native twin
@@ -7,15 +7,15 @@
 //!
 //! The model uses only f64 `+ - * /` / `sqrt` (IEEE-exact on x86-64 SSE2 and
 //! in wasm), so the floor is exact bit equality — any mismatch is a port bug,
-//! never "tolerance". The integrator (WM.2 item 4) re-pins the committed
-//! `.wasm` against the same constants through the `dss-usermodel` crate API.
+//! never "tolerance". The `dss-usermodel` tests re-pin the committed `.wasm`
+//! against the same constants through that crate's API.
 //!
 //! Run: `cargo +stable test` in `tools/wasm_usermodel/models/indmach012a`
 //! (host target; the crate is workspace-excluded so the repo gate does not
-//! run it — the committed artifact is gated via WM.1/WM.3).
+//! run it — the committed artifact is gated through `dss-usermodel`).
 //!
-//! ABI re-freeze to r4133 (user decision 2026-07-19): the native twin is now
-//! the r4133 build (`build_native.ps1`). Its `TGeneratorVars` grew the
+//! The native twin is
+//! the r4133 build (`build_native.ps1`). Its `TGeneratorVars` carries the
 //! r4088+/NCIM `deltaQNom` slot (244->252 B, native side only). Because the
 //! IndMach012a model math is byte-identical r3723->r4133 and `deltaQNom` never
 //! reaches the model, EVERY value in `twin_expected.rs` is bit-identical to the

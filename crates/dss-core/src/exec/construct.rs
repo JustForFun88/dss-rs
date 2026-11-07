@@ -45,7 +45,7 @@ impl Dss {
             // Isource registers right after VSource (Pascal
             // DSSClassDefs.pas:198, immediately below VSource:192; VCCS comes
             // AFTER Isource upstream, :201, but is registered later in this
-            // file — WP7.8) — registration order does not affect node
+            // file) — registration order does not affect node
             // ordering, and the class order the oracle observes is pinned by
             // the dump3_commands golden (Vsource → Isource → VCCS).
             DssClass::ckt_class(isource::class_props(&enums), ElemKind::Source),
@@ -73,7 +73,7 @@ impl Dss {
             // DSSClassDefs.pas:240, before Recloser). Registration order does not
             // affect node ordering, which follows element creation order.
             DssClass::ckt_class(relay::class_props(&enums), ElemKind::Control),
-            // Recloser is a protection control on the WP5.7 sweep (Pascal
+            // Recloser is a protection control on the control sweep (Pascal
             // DSSClassDefs.pas:243, before Fuse). Registration order does not
             // affect node ordering, which follows element creation order.
             DssClass::ckt_class(recloser::class_props(&enums), ElemKind::Control),

@@ -1,4 +1,4 @@
-// Recloser, permanent GANGED fault (r4133 WP-U2.2): a 3-phase permanent fault
+// Recloser, permanent GANGED fault (r4133): a 3-phase permanent fault
 // drives the ganged (all-phase) trip path -> FAST trip (curve A) -> reclose ->
 // SLOW trip (curve D, OperationCount>NumFast) -> lockout -> ends OPEN
 // [open,open,open]. This re-validates the do_open_ganged lockout-to-OPEN branch

@@ -25,8 +25,8 @@ pub enum BuildOption {
 /// Reuse the existing sparse set when the matrix order is unchanged: `zero()`
 /// keeps the dedup / symbolic / row-equilibration skeletons, so a value-only Y
 /// rebuild (a tap change, the per-step load `Yeq` restamp) refactors without
-/// re-hashing the dedup map or re-analyzing the symbolic factorization
-/// (DE_PASCALIZE P15 item 1). A node-count change (a bus redefinition)
+/// re-hashing the dedup map or re-analyzing the symbolic factorization. A
+/// node-count change (a bus redefinition)
 /// allocates a fresh set; a renumbering that keeps the count is caught by the
 /// stamp-pattern check inside [`dss_sparse::SparseSet`], which then rebuilds.
 fn reuse_or_new_sparse(slot: &mut Option<SparseSet>, n: usize) {
@@ -76,9 +76,8 @@ pub fn initialize_node_vbase(ckt: &mut Circuit) {
 /// for EVERY bus and so restores `vbus.len() == nodes.len() == ref_no.len()`.
 /// Upstream has no such guarantee — it writes past `VBus` when
 /// `NumNodesThisBus` grew without a realloc — so a length reconciliation here
-/// would pad an invariant the port maintains, not port one. (GOLDEN_REBASE G1.5
-/// audit settlement AC-7: `red_head_base_kv` gave up a `.get()`-total read when
-/// it gained this call; the invariant above is why that is safe.)
+/// would pad an invariant this engine maintains, not port one.
+/// `red_head_base_kv` relies on this invariant after its `update_vbus` call.
 pub(crate) fn update_vbus(ckt: &mut Circuit) {
     let node_v = &ckt.solution.node_v;
     for bus in &mut ckt.buses {
@@ -118,11 +117,11 @@ pub fn build_y_matrix(
     // `RestoreNodeVfromVbus()` when `Solution.PreserveNodeVoltages` is set
     // (r4133 `Common/YMatrix.pas:170`/`:282` == capi `Ymatrix.pas` l.298/l.449,
     // the rev the port was written against), so node voltages survive a Y
-    // rebuild that renumbers nodes. The flag is set entering Harmonic/HarmonicT (WP7.6) and
-    // Dynamic (WP7.7). `update_vbus` snapshots the present node voltages *before*
+    // rebuild that renumbers nodes. The flag is set entering Harmonic/HarmonicT and
+    // Dynamic. `update_vbus` snapshots the present node voltages *before*
     // the (possible) `ReprocessBusDefs`; `restore_node_v_from_vbus` at the tail
     // writes them back. Whenever the node count is unchanged (the harmonics
-    // goldens + the dynamics step-1 driver) the round-trip is a net no-op —
+    // goldens + the first dynamics step) the round-trip is a net no-op —
     // restore re-applies exactly the pre-build snapshot — so no gate moves; it
     // only matters once a mid-mode rebuild renumbers or reallocates nodes.
     if ckt.solution.preserve_node_voltages {
@@ -284,7 +283,7 @@ pub fn build_y_matrix(
                 // Read the `TcMatrix` column-major storage directly, traversed
                 // in the same row-major `(i,j)` order (so triplet insertion — and
                 // thus dedup summation — order is unchanged): no per-element
-                // `to_row_major` transpose copy (DE_PASCALIZE P15 item 3).
+                // `to_row_major` transpose copy.
                 sparse.add_primitive_matrix_col_major(&cd.node_ref[..cd.yorder], m.values());
             }
         }
@@ -492,8 +491,7 @@ mod tests {
         );
     }
 
-    /// The feature's actual point (audit settlement — the prior tests only
-    /// covered the no-renumber net-no-op): a rebuild that RENUMBERS nodes must
+    /// The feature's actual point: a rebuild that RENUMBERS nodes must
     /// restore each bus's saved voltages at the bus's NEW node indices — the
     /// snapshot keys by (bus, node position), not by global node number
     /// (Pascal `VBus[j]` ↔ `RefNo[j]`, `Solution.pas:2377/2392`).

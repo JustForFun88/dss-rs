@@ -270,9 +270,8 @@ impl CktElement for PVSystem {
         }
         // Surface any user-model trap / missing-model diagnostic through the
         // solution ErrorLog — never a silent fallback on a trapping `.wasm`
-        // (WASM_USERMODELS plan §2.9-5, WM.3 precedent). An `abort`-flagged fault
-        // (a wasm trap, ABI §6, or the missing dynamics model #5671,
-        // `PVsystem.pas:1894`) lifts `SolutionAbort`.
+        // (`docs/wasm/USERMODEL_ABI.md` §6). An `abort`-flagged fault
+        // (a wasm trap, or the missing dynamics model #5671) lifts `SolutionAbort`.
         for d in errors.into_vec() {
             if d.abort {
                 *ctx.solution_abort = true;
@@ -305,7 +304,7 @@ impl CktElement for PVSystem {
         }
         // Pascal `TPVsystemObj.GetTerminalCurrents` (@ 0.15.0b4): `and (not
         // (Flg.ForceInjCurrents in Flags))` — skip the model recompute when the
-        // currents are forced from the DSS language (WP-U1.9).
+        // currents are forced from the DSS language.
         if !self.cd.iterminal_solved_for(sys.solution_count)
             && !self.pv_system_obj_switch_open
             && !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS)
@@ -314,7 +313,7 @@ impl CktElement for PVSystem {
             self.calc_pvsystem_model_contribution(sys, node_v, &mut errors);
             // Route the recompute's user-model diagnostics to the element's
             // deferred-error log (drained by the executive) instead of dropping
-            // them (WASM_USERMODELS plan §2.9-5, WM.3 precedent).
+            // them.
             for d in errors.into_vec() {
                 self.cd.obj.push_error(d);
             }
@@ -461,12 +460,11 @@ impl PVSystem {
         // User model: Pascal `UserModel.Name := Other…UserModel.Name`
         // (`PVsystem.pas:909`) is a `Set_Name` — an EAGER free + `LoadLibrary` +
         // `FNew`, so the copy runs a live instance of its own at the guest's
-        // defaults. Cloning the donor's slot left it DEAD instead (the slot's
+        // defaults. Cloning the donor's slot would leave it DEAD (the slot's
         // `Clone` drops the live wasmi instance and every call site guards on
-        // `exists()`), i.e. a silent fallback to the built-in model with no
-        // diagnostic — the same defect RP1.3 found and fixed on WindGen (audit
-        // settlement, 2026-08-23). Queue a real load; the executive drains it
-        // before `end_edit`.
+        // `exists()`), a silent fallback to the built-in model with no
+        // diagnostic. Queue a real load, which the executive drains before
+        // `end_edit`.
         self.base.user_model_name = other.base.user_model_name.clone();
         self.base.user_model_edit = other.base.user_model_edit.clone();
         self.user_model = None;
@@ -637,7 +635,7 @@ impl DssObject for PVSystem {
         use prop::*;
         match idx {
             // `UserModel=` stores the name; the deferred load is queued by
-            // `side_effects` and resolved by the executive (WM.4 §2.4).
+            // `side_effects` and resolved by the executive.
             USERMODEL => self.base.user_model_name = value,
             USERDATA => self.base.user_model_edit = value,
             SPECTRUM => self.spectrum = value,
@@ -685,7 +683,7 @@ impl DssObject for PVSystem {
     }
 
     /// Resolve a shape / curve / dynamic-expression reference (snapshot-clone,
-    /// the WP4.2/WP5.3 `FetchLineCode` pattern).
+    /// like `FetchLineCode`).
     fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use prop::*;
         let load_shape_ref = || resolved.and_then(|o| o.idx::<LoadShapeObj>());
@@ -790,12 +788,11 @@ impl DssObject for PVSystem {
                 }
             }
             CONTROL_MODE => {
-                // GFM Vgrid allocation / ResetIBR is WP7.7; the Y rebuild flag
-                // is the observable power-flow effect.
+                // The Y rebuild flag is the observable power-flow effect.
                 self.cd.yprim_invalid = true;
             }
-            // WASM_USERMODELS WM.4 — the §2.4 uniform activation rule. Pascal edit
-            // dispatch (PVsystem.pas:628-632): `UserModel.Name` (load) then
+            // The uniform activation rule (`docs/wasm/USERMODEL_ABI.md` §5). Edit
+            // dispatch: `UserModel.Name` (load) then
             // `UserData` (edit). The filesystem is unreachable from the property
             // hook, so each records a deferred request the executive resolves
             // before `end_edit`.
@@ -825,7 +822,7 @@ impl DssObject for PVSystem {
     }
 
     /// Drain the deferred `UserModel=`/`UserData=` requests queued by the
-    /// property side effects (WASM_USERMODELS WM.4, §2.4).
+    /// property side effects.
     fn take_user_model_loads(&mut self) -> Vec<UserModelLoad> {
         std::mem::take(&mut self.pending_user_model_loads)
     }

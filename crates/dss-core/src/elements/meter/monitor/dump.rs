@@ -16,7 +16,7 @@
 //! unconditionally at the end of every multi-step solve (`TDSSMonitor.
 //! SaveAll`, called from every `SolveDaily`/`SolveYearly`/… loop in
 //! `SolutionAlgs.pas` right after `MonitorClass.SampleAll`, **except**
-//! `SolveGeneralTime`/`SolveFaultStudy` — WPG.2 oracle probe). So a *solved*
+//! `SolveGeneralTime`/`SolveFaultStudy`). So a *solved*
 //! monitor's `// Bufptr=`/`// Buffer=` dump reads only whatever accumulated
 //! **after** the last flush — in practice, after any ordinary `solve`, that's
 //! empty (see [`render_buffer`]'s doc for the direct oracle confirmation),
@@ -85,8 +85,8 @@ impl Monitor {
 /// (`Monitor.pas:1127`) — so by the time a script can issue `Dump`, a sampled
 /// monitor's buffer has already been flushed and is empty (probe-confirmed: a
 /// 3-step `solve mode=daily` still dumps `// Bufptr=0`). `SolveGeneralTime`
-/// (`mode=Time`) is the one ported exception — it never calls `SaveAll`
-/// (WPG.2 oracle probe), so `Dump` mid-run genuinely observes a non-empty
+/// (`mode=Time`) is the one ported exception — it never calls `SaveAll`,
+/// so `Dump` mid-run genuinely observes a non-empty
 /// pending buffer there; no gate fixture currently dumps a monitor in that
 /// mode, so this case is documented rather than golden-pinned too. A
 /// non-empty buffer is otherwise real, reachable Pascal state (mid-

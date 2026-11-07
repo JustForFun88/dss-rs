@@ -274,8 +274,8 @@ impl DssObject for Line {
                 // there. On a miss the port's generic ObjectRef parse has already
                 // emptied the stored name (dss_capi's #401 path), so the flag
                 // falls with it — r4133 instead leaves name and flag untouched
-                // and logs its own #180, a separate pair recorded in STATUS
-                // §RP3.6(b) (it needs `RefMissMessage` to carry r4133's
+                // and logs its own #180, a separate divergence (following it
+                // needs `RefMissMessage` to carry r4133's
                 // " for Line object Line.<name>" suffix).
                 self.line_code_name = name;
                 self.line_code_ref = resolved.and_then(|o| o.idx::<LineCodeObj>());
@@ -628,8 +628,7 @@ impl DssObject for Line {
                     // `:1211`, `:1284`, `:1371-1393`, `:1403`,
                     // `ExportCIMXML.pas:3741`), so the object outliving the flag
                     // is unobservable; probed on the r4133 DLL and here, a
-                    // switched geometry line answers `? geometry` = `''` on both
-                    // (RP3.6 audit settlement, recorded in STATUS §RP3.6).
+                    // switched geometry line answers `? geometry` = `''` on both.
                     self.kill_geometry_specified();
                     // `SpacingSpecified := False` (`:696`) — the flag only. The
                     // spacing object, the wire array and `FPhaseChoice` survive,

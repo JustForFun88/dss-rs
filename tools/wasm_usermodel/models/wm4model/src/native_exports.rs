@@ -1,5 +1,5 @@
-//! The **native twin** boundary — the r4133-oracle side of the WM.4 gate
-//! (plan §2.5 channel 1 / §2.6 plan B). This module compiles ONLY for the host
+//! The **native twin** boundary — the r4133 side of the Storage/PVSystem
+//! user-model goldens. This module compiles ONLY for the host
 //! target (`#[cfg(not(target_arch = "wasm32"))]`) into a native cdylib the
 //! official EPRI OpenDSS r4133 engine loads as a Storage `DynaDLL=` / PVSystem
 //! `UserModel=` DLL. It exports the exact PascalCase Stdcall names and the exact
@@ -11,10 +11,10 @@
 //!
 //! It shares the SAME [`crate::Model`] math as the wasm guest, so the r4133
 //! engine (native twin) and the dss-rs engine (wasm fixture) run bit-identical
-//! model code — the WM.4 gate is a real cross-engine comparison, never "Rust
+//! model code — the comparison is a real cross-engine one, never "Rust
 //! agrees with itself". This shim is tooling (built on demand for manual golden
 //! generation), lives outside the product's `forbid(unsafe_code)` scope, and
-//! never joins the workspace (plan §2.6).
+//! never joins the workspace.
 //!
 //! On Win64 there is a single calling convention, so `extern "system"` matches
 //! Delphi's `stdcall`; `var` parameters are pointers. All record/array layouts

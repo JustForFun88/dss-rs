@@ -1,4 +1,4 @@
-//! AutoTrans `XfmrCode` — EPRI r4133 property 39 (R4133_PROPS_PLAN RP1.2).
+//! AutoTrans `XfmrCode` — EPRI r4133 property 39.
 //!
 //! r4133 registers `PropertyName^[39] := 'XfmrCode'`
 //! (`Version8/Source/PDElements/AutoTrans.pas:329`) and answers it with the
@@ -12,9 +12,9 @@
 //! `asymmetric:autotrans/autotrans_xfmrcode.dss` gates the single-phase form on
 //! the r4133 channel, and everything multi-phase is pinned here.
 //!
-//! Two r4133 statements in this arm are upstream bugs and are **not**
-//! reproduced (CLAUDE.md — never, in any lane); both are pinned below by the
-//! behaviour the port has *instead*:
+//! Two r4133 statements in this arm are OpenDSS bugs and are **not**
+//! reproduced, in any lane. Both are pinned below by the behaviour this engine
+//! has *instead*:
 //!
 //! - `DoSimpleMsg('XFmrCode Property not used with AutoTrans object.', 100131)`
 //!   (`:567`), fired unconditionally right after `:520` applied the code — a
@@ -241,10 +241,7 @@ fn every_copied_field_arrives() {
 /// `FetchXfmrCode` starts with `SetNumWindings` (`:2352`), which re-`Init`s
 /// every winding to the class defaults, and then assigns field by field — so a
 /// deleted assignment leaves that field at its default. A cell whose expected
-/// value *is* the default therefore reads correctly either way and pins nothing
-/// (measured: with the pre-audit fixture, deleting
-/// `self.pct_load_loss = code.pct_load_loss()` left `every_copied_field_arrives`
-/// green, because the code's own `%loadloss` was 0.21 + 0.19 = the default 0.4).
+/// value *is* the default therefore reads correctly either way and pins nothing.
 /// This test fails instead, on the cell, the moment the fixture drifts back onto
 /// a default.
 ///
@@ -523,9 +520,9 @@ fn the_contradictory_not_used_message_is_never_logged() {
 }
 
 /// Display slot. r4133 registers `XfmrCode` as its 39th own property, between
-/// `bank` (38) and `XRConst` (40) (`AutoTrans.pas:328-330`), which is what makes
-/// its table 53 names long — the `oracle_count` the vendored census records in
-/// `tests/corpus/props_r4133/shape.txt` against the port's pre-RP1.2 52.
+/// `bank` (38) and `XRConst` (40), which is what makes its table 53 names long —
+/// the `oracle_count` the vendored census records in
+/// `tests/corpus/props_r4133/shape.txt`.
 #[test]
 fn xfmrcode_sits_at_display_slot_39() {
     let mut dss = Dss::new();

@@ -202,7 +202,7 @@ fn generator_model3_power_read_uses_cached_stamp_vs_oracle() {
     }
 }
 
-/// WP4.7 step 6 (the "silent killer" check): control elements attach to
+/// The "silent killer" check: control elements attach to
 /// existing buses, so adding a RegControl must not change `YNodeOrder`,
 /// and the Y build must skip their `yprim: None` (no stamping, solvable).
 #[test]
@@ -222,7 +222,7 @@ fn reg_control_does_not_change_node_order() {
         dss.command("CalcVoltageBases");
         // Controls off: this test isolates the *structural* invariants
         // (node order, no Yprim stamping). With controls active the
-        // RegControl legitimately adds control iterations (WP5.7).
+        // RegControl legitimately adds control iterations.
         dss.command("Set controlmode=off");
         dss.command("Solve");
         assert!(dss.errors().is_empty(), "{:?}", dss.errors());
@@ -248,7 +248,7 @@ fn reg_control_does_not_change_node_order() {
     assert_eq!(iter_w, iter_wo, "RegControl changed the iteration count");
 }
 
-/// WP6.1: `BuildActiveBusAdjacencyLists` (CktTree.pas l.678) — non-shunt
+/// Bus adjacency lists: non-shunt
 /// PD branches are listed at *every* terminal's bus; PC elements and
 /// shunt capacitors land on the terminal-1 PC list; sources (NON_PCPD)
 /// appear in neither.

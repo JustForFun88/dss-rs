@@ -7,8 +7,8 @@
 //! pushes power into the node. Six power-flow models are ported
 //! (`DoConstantPQGen` .. `DoCurrentLimitedPQ`); dynamics and harmonics are
 //! ported (see [`dynamics`]), and the `UserModel`/`ShaftModel` surface is ported
-//! over the sandboxed WASM ABI (`WASM_USERMODELS_PLAN.md` §WP-WM.3) — native-DLL
-//! names warn-and-fall-back per §2.4; native DLL loading stays out of scope.
+//! over the sandboxed WASM ABI — native-DLL names warn-and-fall-back, and
+//! native DLL loading stays out of scope.
 //!
 //! Split into submodules (this file holds the metadata, struct and `Create`):
 //! - [`nominal`]: dispatch/shape multipliers, `SetNominalGeneration` and
@@ -220,9 +220,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("kVA")
             .flags(PropFlags::REPLACE_ZERO | PropFlags::DYNAMIC_DEFAULT | PropFlags::FINITE_BASE),
         // `MVA` (prop 27) uses plain `DblValue * 1000` in r4133 (`generator.pas:664`)
-        // — NOT `DblValueNZ`: no zero-clamp, unlike `kVA` (prop 26). Reproduce the
-        // upstream asymmetry (only WindGen's MVA clamps, via `DblValueNZ * 1000`, at
-        // WP-U1.8). See `docs/upgrade/DIVERGENCES.md` L2.
+        // — NOT `DblValueNZ`: no zero-clamp, unlike `kVA` (prop 26). The asymmetry
+        // is kept: only WindGen's MVA clamps, via `DblValueNZ * 1000`.
         PropDef::double("MVA")
             .scale(1000.0)
             .flags(PropFlags::REDUNDANT | PropFlags::FINITE_BASE),
@@ -231,8 +230,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("Xdpp"),
         PropDef::double("H"),
         PropDef::double("D"),
-        // User-written models over WASM (WASM_USERMODELS WM.3): `UserModel=`/
-        // `UserData=`/`ShaftModel=`/`ShaftData=` follow the plan §2.4 uniform
+        // User-written models over WASM: `UserModel=`/
+        // `UserData=`/`ShaftModel=`/`ShaftData=` follow the uniform
         // activation rule — a value resolving to an existing `.wasm` file loads
         // through `dss-usermodel` (sandboxed wasmi); anything else (native-DLL
         // names, missing files) warns non-fatally ("… Not Loaded", #570) and
@@ -256,7 +255,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // refuels; the getter is 0. `BOOLEAN_ACTION` gives the schema `writeOnly`
         // + the action-tail `AltPropertyOrder` placement.
         PropDef::boolean("Refuel").flags(PropFlags::BOOLEAN_ACTION),
-        // Dynamics machinery (WP7.7 step 3b): the linked DynamicExp + its output
+        // Dynamics machinery: the linked DynamicExp + its output
         // variable selection (the `DynEqPCE` base; resolved/integrated like
         // PVSystem/Storage).
         PropDef::object_ref_class("DynamicExp", "DynamicEq"),
@@ -416,7 +415,7 @@ pub struct Generator {
     pub shaft_model_name: String,
     pub shaft_data: String,
     /// The bound `UserModel=` WASM model (Pascal `UserModel: TGenUserModel`),
-    /// `None` until a `.wasm` loads (WASM_USERMODELS WM.3).
+    /// `None` until a `.wasm` loads.
     pub user_model: Option<Box<GenUserModelSlot>>,
     /// The bound `ShaftModel=` WASM model (Pascal `ShaftModel: TGenUserModel`).
     pub shaft_model: Option<Box<GenUserModelSlot>>,
@@ -424,7 +423,7 @@ pub struct Generator {
     /// the executive to resolve (paths need `current_dir` — Pascal defers the
     /// `LoadLibrary`/`Edit` to the property hook, which has the DSS context).
     pub pending_user_model_loads: Vec<crate::obj::base::UserModelLoad>,
-    /// `DynEqPCE` base: the linked `DynamicExp` + its dynamics memory (WP7.7 step 3b).
+    /// `DynEqPCE` base: the linked `DynamicExp` + its dynamics memory.
     pub dyneq: DynEqPceData,
     pub spectrum: String,
     /// Resolved harmonic spectrum (Pascal `SpectrumObj := SpectrumClass.DefaultGen`

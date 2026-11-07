@@ -1,6 +1,6 @@
-//! Golden-artifact tests for WP-AD.2 Stage A.
+//! Golden-artifact tests for the METIS fixtures.
 //!
-//! These exercise the landed foundation against the committed golden fixtures:
+//! These exercise the reader against the committed golden fixtures:
 //! the METIS `.graph` reader ([`dss_metis::graph::Graph`]) and the `.part.N`
 //! partition goldens generated offline from the C original (see
 //! `tools/golden/gen_metis_reference.md`).
@@ -12,11 +12,10 @@
 //! - a `.graph` -> `Graph` -> string -> `Graph` round-trip is stable;
 //! - every committed `.part.N` golden is a **valid k-way partition** of its
 //!   graph (length `nvtxs`, labels in `[0, k)`, all `k` parts non-empty) — the
-//!   partition-validity invariants the plan (D2 gate) calls for.
+//!   partition-validity invariants.
 //!
-//! The **bit-exact replay** of a port-computed partition against these `.part.N`
-//! goldens is the tracked continuation (the coarsen/init/refine pipeline is not
-//! yet ported); the goldens are committed now as its ready oracle.
+//! The **bit-exact replay** of this crate's partition against these `.part.N`
+//! goldens is `tests/golden_part.rs`.
 
 use dss_metis::Idx;
 use dss_metis::graph::Graph;

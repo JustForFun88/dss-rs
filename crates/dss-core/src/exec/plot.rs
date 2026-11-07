@@ -248,7 +248,7 @@ impl Dss {
                             // FPC `Round` (banker's) into an `array of Cardinal`:
                             // a negative wraps modulo 2^32 (range checks off
                             // upstream), so go through i64 — `as u32` alone
-                            // would saturate to 0 (audit settlement).
+                            // would saturate to 0.
                             .map(|v| (v.round_ties_even() as i64) as u32)
                             .collect();
                         p.bases = vec![1.0; n];
@@ -490,10 +490,8 @@ fn parse_type(p: &mut PlotParams, param: &str, case_name: &str) {
         b'G' => p.plot_type = "GeneralData".to_string(),
         // `PlotOptions.pas:274` dispatches on the FIRST LETTER only, so every
         // `L…` is a LoadShape plot — `type=Losses` included (the language has no
-        // losses plot). Permanent semantics in both lanes: IV.1 keeps the
-        // language's abbreviation/prefix matching, and rejecting unknown option
-        // values instead of prefix-matching them is IV.1b layer 2 — opt-in and
-        // sequenced after Stage F.
+        // losses plot). Permanent semantics in both lanes: the language keeps
+        // its abbreviation/prefix matching.
         b'L' => p.plot_type = "LoadShape".to_string(),
         b'M' => {
             p.plot_type = if cts("mon") { "Monitor" } else { "Matrix" }.to_string();
@@ -518,8 +516,7 @@ fn parse_type(p: &mut PlotParams, param: &str, case_name: &str) {
         // `PlotOptions.pas:305` has an empty `else`: an unrecognized first letter
         // leaves PlotType at its default (`Circuit`). Permanent semantics in both
         // lanes — the deck language's leniency, which the vendored corpus relies
-        // on; loud rejection of unknown option values is IV.1b layer 2 (opt-in,
-        // after Stage F).
+        // on.
         _ => {}
     }
 }

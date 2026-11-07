@@ -1,15 +1,13 @@
-//! GOLDEN_REBASE G1.7 — in-engine pins for [`Dss::topology_view`], the six
+//! In-engine pins for [`Dss::topology_view`], the six
 //! order-free `ITopology` quantities the live corpus gate compares
 //! (`NumLoops` / `NumIsolatedBranches` / `NumIsolatedLoads` and their three name
 //! lists; r4133 `Version8/Source/DDLL/DTopology.pas` `TopologyI` modes 0-2 and
 //! `TopologyV` modes 0-2, capi 0.14.5 `CAPI_Topology.pas`).
 //!
-//! Every expected value below was measured on BOTH gating oracles — the pinned
-//! dss-python 0.15.7 (`tmp/g17/capi_topo_merged.json`, 422/422 capi-gating cases)
-//! and the vendored r4133 DLL (`tmp/g17/r4133_topo.json`) — at the *fresh* tree,
-//! i.e. after a forced `FreeTopology` (`calcvoltagebases` ->
-//! `Common/Solution.pas:2550` -> `DoResetMeterZones` -> `FreeTopology`), which is
-//! the state the port answers from on every call. The two channels agreed byte
+//! Every expected value below was measured on BOTH OpenDSS engines — the pinned
+//! dss-python 0.15.7 and the vendored r4133 DLL — at the *fresh* tree, i.e. after
+//! a forced `FreeTopology` (through `calcvoltagebases`), which is the state this
+//! engine answers from on every call. The two channels agreed byte
 //! for byte on all six decks used here.
 
 use crate::elements::pos_seq::balance;
@@ -20,7 +18,7 @@ use crate::exec::*;
 /// The decks read below write no files (the `Show`/`Export` lines of
 /// `IEEE13Nodeckt.dss` are commented out; the three synthetic decks have none),
 /// so no directory guard is needed. Never `.inputs/` — the vendored corpus tree
-/// is the one the live gate reads (CLAUDE.md).
+/// is the one the live gate reads.
 fn compile_corpus_deck(rel: &str) -> Dss {
     let deck = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/corpus")
@@ -212,10 +210,8 @@ fn isolated_loads_walk_the_pc_list() {
 /// answer from the pre-trip tree: **`NumIsolatedBranches = 0`,
 /// `NumIsolatedLoads = 0`** on IEEE13. Forcing `FreeTopology` through
 /// `calcvoltagebases` on the very same state then yields **15 and 15** (measured
-/// with the pinned dss-python by `tmp/g17/control_capi.py`, GOLDEN_REBASE G1.7
-/// spec §3.3). The port caches nothing, so it reports the correct 15/15 at once —
-/// the upstream staleness is never reproduced (CLAUDE.md; the corpus-side
-/// settlement is coordinator decision D15).
+/// with the pinned dss-python). This engine caches nothing, so it reports the
+/// correct 15/15 at once — the OpenDSS staleness is never reproduced.
 #[test]
 fn an_open_conductor_isolates_the_downstream_branch() {
     let mut dss = compile_corpus_deck(
@@ -331,8 +327,8 @@ fn topology_view_does_not_disturb_the_active_element() {
 /// every *overlapping* window rather than every stored pair, and a new candidate
 /// that happens to equal a straddling window `(b_j, a_{j+1})` is dropped.
 ///
-/// The port does not reproduce that (CLAUDE.md; [`Dss::topology_view`]); this
-/// helper is the gate's *model of the oracle*, so it is written to mirror the
+/// This engine does not reproduce that ([`Dss::topology_view`]). This helper is
+/// the gate's model of the OpenDSS scan, so it is written to mirror the
 /// Pascal indices literally (`k = buf.len() - 1`, hence `-1` on the empty
 /// buffer, which is why the first candidate is always accepted).
 fn window_dedup(candidates: &[(String, String)]) -> Vec<(String, String)> {
@@ -374,8 +370,8 @@ fn pairs(v: &[(&str, &str)]) -> Vec<(String, String)> {
 /// The smallest sequence that exhibits it. After `(a,b)` and `(c,d)` are stored
 /// the buffer is `[a, b, c, d]`; the third candidate `(b, c)` is a pair nobody
 /// found, but it *is* the window `(TStr[1], TStr[2])`, so `:286-296` reports
-/// `found` and drops it. The port's per-pair rule keeps it. This is the whole of
-/// coordinator decision D16 in four lines, and it fails the moment
+/// `found` and drops it. The port's per-pair rule keeps it. This is the whole
+/// defect in four lines, and the test fails the moment
 /// [`window_dedup`] stops mirroring the Pascal indices.
 #[test]
 fn the_window_scan_drops_a_straddling_pair() {
@@ -398,9 +394,8 @@ fn the_window_scan_drops_a_straddling_pair() {
     );
 }
 
-/// **Pin 7b — the oracles' `AllLoopedPairs` IS the window scan of the port's own
-/// candidate sequence** (coordinator decision D16, the positive form the live
-/// gate asserts).
+/// **Pin 7b — the OpenDSS engines' `AllLoopedPairs` IS the window scan of this
+/// engine's own candidate sequence** (the positive form the live gate asserts).
 ///
 /// The port keeps the correct, larger list; upstream's window scan
 /// ([`window_dedup`], r4133 `DTopology.pas:286-296`, capi
@@ -409,8 +404,7 @@ fn the_window_scan_drops_a_straddling_pair() {
 /// the divergence is fully explained by that one defect and nothing else in the
 /// port's walk (order, `IsLoopedHere`, `LoopLineObj`) differs from upstream.
 ///
-/// Both numbers, measured on the oracles (`tmp/g17/capi_topo_merged.json`,
-/// `tmp/g17/r4133_topo.json`) and reproduced here:
+/// Both numbers, measured on the OpenDSS engines and reproduced here:
 ///
 /// * `controls/combo/midi_protection.dss` (r4133-gated) — 7 candidates, port
 ///   **5** pairs, window **4** = r4133's four pairs verbatim; `NumLoops` 3 on
@@ -505,24 +499,23 @@ fn the_oracle_pair_list_is_the_window_scan_of_the_candidates() {
 /// (`FindAllChildBranches`, `:566`). Fixed in
 /// [`crate::circuit::ckt_tree::is_shunt_element`] and its three call sites.
 ///
-/// The fixture moved at the merge into `update`: G1.4a's coordinator decision
-/// **D14** split the single `new gictransformer.gt` line out of
-/// `modes/makeposseq/makeposseq_shunt.dss` into the `r4133`-gated
-/// `modes/makeposseq/makeposseq_gic.dss` (capi 0.14.5 is nondeterministic on any
-/// deck that instantiates one — D12), so the pin now drives BOTH halves of the
-/// class switch, one deck each.
+/// The GICTransformer lives in the `r4133`-gated
+/// `modes/makeposseq/makeposseq_gic.dss`, apart from
+/// `modes/makeposseq/makeposseq_shunt.dss` (capi 0.14.5 is nondeterministic on
+/// any deck that instantiates one), so the pin drives BOTH halves of the class
+/// switch, one deck each.
 ///
 /// (a) `makeposseq_gic.dss` puts `GICTransformer.gt` on `b1` (`busH=b1`,
 /// `busNH=b1.4.4.4`) behind `Line.feed`, so the transformer's own second terminal
 /// returns to a bus the tree has already checked. Measured on the r4133 DLL
-/// one-shot (`tmp/merge/lane-s-G17/probe_gic.py`, identical after the deck and
-/// after an extra solve): `NumLoops` **1**, `AllLoopedPairs`
+/// (identical after the deck and after an extra solve): `NumLoops` **1**,
+/// `AllLoopedPairs`
 /// `[Line.feed, GICTransformer.gt]`. Routed as a shunt the element leaves the
 /// tree entirely and the deck has **0** loops — which is what the port answered
 /// before the fix.
 ///
-/// (b) `makeposseq_shunt.dss` is now the converse guard, and a sharper one than
-/// it was: with the GICTransformer gone its three Capacitors and four Reactors
+/// (b) `makeposseq_shunt.dss` is the converse guard: without a GICTransformer
+/// its three Capacitors and four Reactors
 /// are the only elements with both terminals on one bus, and r4133 measures
 /// `NumLoops` **0** with no pairs at all (same probe; the deck is capi-gated in
 /// the live corpus gate, which compares the same six rows every run). If the

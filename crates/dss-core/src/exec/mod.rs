@@ -87,7 +87,7 @@ pub use view::{
 /// The plot/visualize callback (`DSS.DSSPlotCallback`): given the assembled
 /// `plotParams` JSON string, returns an `i32` (Pascal ignores it; kept for
 /// signature parity). Boxed so a GUI consumer can capture state. `+ Send` is
-/// the P7 thread-readiness rider (DE_PASCALIZE R1): it keeps `Dss: Send` (see
+/// the thread-readiness bound: it keeps `Dss: Send` (see
 /// `lib.rs` `assert_send::<Dss>()`) — a GUI hook captured for a threaded engine
 /// is `Send` in practice.
 type PlotCallback = Box<dyn FnMut(&str) -> i32 + Send>;
@@ -95,18 +95,17 @@ type PlotCallback = Box<dyn FnMut(&str) -> i32 + Send>;
 /// The DSS engine context (`TDSSContext`).
 pub struct Dss {
     /// The registered classes, each owning its objects in a typed
-    /// [`ClassArena`] (`class.arena`) — DE_PASCALIZE R1 ownership flip off the
-    /// pre-R1 `Vec<Box<dyn DssObject>>` (`PORTING_PLAN §2.1`).
+    /// [`ClassArena`] (`class.arena`).
     classes: Vec<DssClass>,
     /// Lowercased class name → index (Pascal `ClassNames`).
     class_by_name: HashMap<String, usize>,
     commands: CommandList,
     option_list: CommandList,
     /// `DSS.DSSExecutive.ExportCommands` — the `Export` report keyword list
-    /// (Pascal `ExportOptions.DefineOptions`), abbreviation-matched (WP8.1).
+    /// (Pascal `ExportOptions.DefineOptions`), abbreviation-matched.
     export_commands: CommandList,
     /// `DSS.DSSExecutive.ShowCommands` — the `Show` report keyword list
-    /// (Pascal `ShowOptions.DefineOptions`), abbreviation-matched (WP8.1).
+    /// (Pascal `ShowOptions.DefineOptions`), abbreviation-matched.
     show_commands: CommandList,
     /// `DSS.DSSExecutive.PlotCommands` — the `Plot` option keyword list
     /// (Pascal `PlotOptions.DefineOptions`), abbreviation-matched (WPG.17).
@@ -177,8 +176,8 @@ pub struct Dss {
     /// drives a `Redirect`/`Compile` deck (scope rule v1: one command line = one
     /// source). Restored around each redirect so nested decks report correctly.
     cmd_origin: String,
-    /// `DSS.CIMExporter`: the persistent hashed-UUID list state (WP8.6 step 6;
-    /// GAPS_PLAN WPG.18 adds the CIM XML exporters on top).
+    /// `DSS.CIMExporter`: the persistent hashed-UUID list state the CIM XML
+    /// exporters build on.
     cim: crate::cim::CimExporter,
     /// `DSS.DSSObjs`: every general (`DSS_OBJECT`) object in global creation
     /// order — the list the whole-circuit `Dump` walks after `CktElements`
@@ -189,7 +188,7 @@ pub struct Dss {
     /// Lives on the DSS context, not the circuit.
     daisy_size: f64,
     /// The A-Diakoptics child engines (Pascal `ActiveCircuit[2..NumOfActors]`),
-    /// owned by the coordinator per plan D3 (`children: Vec<Dss>`, sequential —
+    /// owned by the coordinator (`children: Vec<Dss>`, sequential —
     /// no threads, no shared state). Empty until `set ADiakoptics=yes` runs
     /// `ADiakopticsInit`; `child[0]` is Pascal actor 2 (the feeder-head zone 1),
     /// `child[k-2]` is actor `k`. Rebuilt from scratch each init (cleared then
@@ -308,11 +307,9 @@ impl Dss {
         &self.classes
     }
 
-    /// Mutable view of the registered class list, for unit tests that must
-    /// drive an object through seams the property surface does not expose yet
-    /// (RP3.7 A1: the per-phase `InterpretSwitchState` mechanics land on the
-    /// arena object before A2 wires them into the property parser; the test
-    /// then applies the deferred `RefAction`s exactly like the executive).
+    /// Mutable view of the registered class list, for unit tests that drive an
+    /// arena object directly (the per-phase `InterpretSwitchState` mechanics)
+    /// and then apply the deferred `RefAction`s exactly like the executive.
     #[cfg(test)]
     pub(crate) fn registered_classes_mut(&mut self) -> &mut [DssClass] {
         &mut self.classes

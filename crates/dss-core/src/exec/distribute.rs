@@ -2,7 +2,7 @@
 //! `Utilities.pas` `makeDistributedGenerators:3701` and the four
 //! `Write*Generators` writers, `Utilities.pas:1338-1531`): write a DSS script
 //! that places a distributed generator (or load) at every enabled load bus,
-//! sized per the `How=` rule. PHASE8_PLAN WP8.6 step 5.
+//! sized per the `How=` rule.
 
 use super::*;
 use crate::report::format;
@@ -40,8 +40,7 @@ fn write_line(out: &mut String, do_generators: bool, row: &LoadRow, kw_field: &s
 
 /// FPC `random`: a uniform `f64` in `[0, 1)` from a fresh entropy source.
 /// Upstream `WriteRandomGenerators` calls `randomize` (time-seeded) first, so
-/// the output is RNG-carried and **never golden-gated** (PHASE8_PLAN WP8.6
-/// step 5 / the GAPS_PLAN RNG rule). The 53 low bits of a v4 UUID are OS
+/// the output is RNG-carried and **never golden-gated**. The 53 low bits of a v4 UUID are OS
 /// entropy (version/variant bits live in the high half), giving a full-width
 /// uniform mantissa without a dedicated RNG dependency.
 fn entropy_random() -> f64 {

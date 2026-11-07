@@ -1,4 +1,4 @@
-"""Corpus coverage report (CORPUS_TEST_PLAN.md §6).
+"""Corpus coverage report.
 
 Summarizes the manifests under `tests/corpus/manifests/` and writes
 `tests/corpus/COVERAGE.md`: how many `.dss` are in each bucket, and what fraction

@@ -273,8 +273,8 @@ fn make_like_copies_and_recomputes() {
 
 #[test]
 fn binary_and_pq_file_props_queue_a_file_load() {
-    // WPG.1: SngFile/DblFile/PQCSVFile are ported (deferred FileLoad, like
-    // CSVFile); SngFile/DblFile queue a *binary* load, PQCSVFile a text one.
+    // SngFile/DblFile/PQCSVFile queue a deferred FileLoad, like CSVFile.
+    // SngFile/DblFile queue a *binary* load, PQCSVFile a text one.
     for (name, prop, binary) in [
         ("sngfile", prop::SNGFILE, true),
         ("dblfile", prop::DBLFILE, true),
@@ -454,8 +454,8 @@ fn csvfile_through_executive_matches_oracle() {
 ///
 /// Upstream prints the multiplier itself (0.4) — `StdDev := Data^[1];`, r4133
 /// `Version8/Source/Shared/mathutil.pas:405`, identical in the pinned dss_capi
-/// 0.14.5 (`:323`) — which is not reproduced (GOLDEN_REBASE G2.1a;
-/// `issue-11`). `mean` is 0.4, so a broken accessor cannot fake the result by
+/// 0.14.5 (`:323`) — which is not reproduced. `mean` is 0.4, so a broken
+/// accessor cannot fake the result by
 /// returning nothing. `npts=1` shapes are real corpus input
 /// (`epri_dpv/{J1,K1,M1}` load shapes), which is why the fix gets a deck-level
 /// pin and not only a unit-level one.
@@ -491,7 +491,7 @@ fn csvfile_missing_records_error() {
     );
 }
 
-/// Full path through the executive for the binary readers (WPG.1): a temp
+/// Full path through the executive for the binary readers: a temp
 /// `.sng`/`.dbl` file resolved relative to the script's current directory,
 /// read as raw bytes and parsed (Pascal `ReadSngFile`/`ReadDblFile`). Values
 /// are transcribed from the pinned oracle (dss-python 0.15.7).
@@ -700,7 +700,7 @@ fn sng_single_storage_transitions_to_f64_on_edits() {
 /// Pascal runs `UseFloat64` at the head of `ReadCSVFile`/`Read2ColCSVFile`/
 /// `ReadDblFile` (LoadShape.pas:1044/:970/:1220): a later non-sng read must
 /// end single storage, or a stale `sP` from an earlier `sngfile=` would keep
-/// winning the lookup (audit follow-up regression pin).
+/// winning the lookup.
 #[test]
 fn csv_after_sng_ends_single_storage() {
     let bare: Vec<u8> = [0.25f32, 0.5, 0.75]
@@ -737,7 +737,7 @@ fn csv_after_sng_ends_single_storage() {
 
 #[test]
 fn action_sngsave_no_qmult_omits_q() {
-    // Audit settlement: a LoadShape WITHOUT `qmult` must queue no Q series
+    // A LoadShape WITHOUT `qmult` must queue no Q series
     // (Pascal writes `_Q` only `if Assigned(dQ)`, LoadShape.pas:1908/1971) —
     // and the P side carries the `_P` split + `mult` GlobalResult tag.
     let (_cls, mut obj, errs) = edited(&[
@@ -771,7 +771,7 @@ fn action_save_p_undefined_errors() {
 
 #[test]
 fn action_save_mmf_queues_eager_read_values() {
-    // WPG.20: an MMF-backed save is no longer refused. The eager MMF read
+    // An MMF-backed save is not refused. The eager MMF read
     // (`read_mmf_raw`/`finish_mmf`) has already populated `p_mult` (and `q_mult`
     // iff a `qmult=` MMF directive was given, matching Pascal `Assigned(dQ)`), so
     // `queue_shape_save` snapshots the f32-narrowed values byte-for-byte like the
@@ -830,7 +830,7 @@ fn action_save_mmf_queues_eager_read_values() {
 }
 
 // -------------------------------------------------------------------------
-// MemoryMapping=Yes (WPG.17): eager MMF readers. Under MMF the array
+// MemoryMapping=Yes: eager MMF readers. Under MMF the array
 // properties dump the `(<directive>)` round-trip, not numbers, so value
 // correctness is checked through the `get_mult_at_hour` lookup (mirroring the
 // oracle, where the C-API array getters cannot see MMF data either).
@@ -854,7 +854,7 @@ fn mmf_sngfile_fixed_matches_non_mmf() {
     plain.read_sng_file(&bytes);
 
     for (h, &v) in (1..=8).zip(vals.iter()) {
-        // Audit settlement: pin the exact f32→f64 widenings from the known
+        // Pin the exact f32→f64 widenings from the known
         // bytes, not only Rust-vs-Rust reader agreement.
         assert_eq!(mmf.get_mult_at_hour(h as f64).re, v as f64, "hour {h} MMF");
         assert_eq!(
@@ -898,11 +898,11 @@ fn mmf_dblfile_fixed_matches_non_mmf() {
 /// (dss_capi 0.14.5 `src/General/LoadShape.pas:1374`; EPRI r4133
 /// `Version8/Source/Common/Utilities.pas:834`), which deletes the sign, the
 /// `+` and the exponent letter and would read `-0.5` as `0.5` and `1.5e-3` as
-/// `1.53`. `GOLDEN_REBASE_PLAN.md` G2.5 fixed that in both lanes, so the three
-/// values below are the file's own. The empty-column default of `1.0`
-/// (`:1389-1390`) is a deliberate default return value and is kept.
+/// `1.53`. Both lanes fix that, so the three values below are the file's own.
+/// The empty-column default of `1.0` (`:1389-1390`) is a deliberate default
+/// return value and is kept.
 ///
-/// Precision note (audit settlement, unchanged): only row 0 is byte-for-byte
+/// Precision note: only row 0 is byte-for-byte
 /// what Pascal would read — Pascal indexes records by the FIRST line's byte
 /// stride (`mmLineLen`, `LoadShape.pas:609-615`), so this non-uniform-width
 /// input is upstream UB past row 0 (misaligned reads); the port reads
@@ -932,9 +932,8 @@ fn mmf_plaintext_reader_keeps_sign_and_exponent() {
 /// `ReadCSVFile`'s non-mapped branch (`:1044`), which hands each row to the aux
 /// parser. Given identical bytes they must produce identical numbers; upstream
 /// they do not, because the mapped one deletes the sign, the `+`, the exponent
-/// and the whitespace before `strtofloat` sees the token. Since
-/// `GOLDEN_REBASE_PLAN.md` G2.5 both readers take the column verbatim through
-/// the same aux parser, in both lanes.
+/// and the whitespace before `strtofloat` sees the token. Here both readers
+/// take the column verbatim through the same aux parser, in both lanes.
 ///
 /// The content is chosen so every deleted character class is represented: a
 /// leading `-`, an `e-` exponent, an explicit `+`, and leading whitespace.
@@ -943,7 +942,7 @@ fn mmf_text_reader_agrees_with_its_non_mapped_twin() {
     // Uniform-width rows: outside the `mmLineLen` UB the number parser is the
     // only thing that could separate the two readers.
     const CONTENT: &str = "-0.500\n1.5e-3\n+2.000\n 0.250\n";
-    // What the file says — and, since G2.5, what BOTH readers return.
+    // What the file says, and what BOTH readers return.
     let verbatim = [-0.5, 1.5e-3, 2.0, 0.25];
     // What the upstream accept-set made of the first two rows; asserted absent.
     let filtered = [0.5, 1.53];
@@ -1264,8 +1263,8 @@ fn mmf_accept_set_fix_is_gated_by_exactly_one_deck() {
     );
 }
 
-/// D13 (dss_capi `c4590d16`): the single-column `csvfile=` MMF path loads its P
-/// data. In 0.14.5 the `ReadCSVFile` single-column branch exits on CreateMMF
+/// The single-column `csvfile=` MMF path loads its P data (dss_capi
+/// `c4590d16`). In 0.14.5 the `ReadCSVFile` single-column branch exits on CreateMMF
 /// **success** (the "missing not"), so the shape stays empty → daily solve
 /// divides by zero (`#482`). The fix restores the load; the port's eager
 /// `read_csv_file` MMF branch already matches it. **capi015 probe** (0.15.0b4):
@@ -1390,7 +1389,7 @@ fn mmf_pqcsv_dump_quirk_through_executive() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// WPG.19: without MemoryMapping, `mult=(file=…)` / `(sngfile=…)` / `(dblfile=…)`
+/// Without MemoryMapping, `mult=(file=…)` / `(sngfile=…)` / `(dblfile=…)`
 /// read the file through the Pascal `InterpretDblArray` grammar
 /// (`Common/Utilities.pas:461-566`) — covering column select, header skip, the
 /// binary formats, the short-file `NumPoints` shrink, and `action=normalize`
@@ -1494,7 +1493,7 @@ fn non_mmf_file_directive_reads_the_file() {
         "normalize follows the file read"
     );
 
-    // A plain numeric list is unaffected by the WPG.19 interception.
+    // A plain numeric list is unaffected by the file-directive interception.
     dss.command("New LoadShape.lst npts=3 interval=1 mult=(0.1 0.2 0.3)");
     assert!(dss.errors().is_empty(), "{:?}", dss.errors());
     dss.command("? Loadshape.lst.mult");
@@ -1503,7 +1502,7 @@ fn non_mmf_file_directive_reads_the_file() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// Audit settlement (Major): Pascal `SetMaxPandQ` exits FIRST under
+/// Pascal `SetMaxPandQ` exits FIRST under
 /// `UseMMF or ExternalMemory` (`LoadShape.pas:2048`), leaving `MaxP`/`MaxQ`
 /// at the constructor defaults 1.0/0.0 — oracle-confirmed (`? pmax = 1`,
 /// `? qmax = 0` for every MMF shape). A dropped guard mis-scales any
@@ -1530,14 +1529,9 @@ fn mmf_leaves_max_p_and_q_at_defaults() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// WP-U1.6 C5-r3723: settled as NOT-a-delta for the capi015 oracle. EPRI's
-/// SVN r40xx line inserts a LoadShape `Mode` prop at index 22 (shifting
-/// `Interpolation` to 23), but dss_capi 0.15.x explicitly declines it — the
-/// enum keeps `// Mode = 22, -- not useful to implement this yet` with
-/// `Interpolation = 22` (both 0.14.5 AND 0.15.0b4). capi015 probe (2026-07-16)
-/// confirms 23 props, `Interpolation` at 22, no `Mode`. Porting Mode would
-/// break every LoadShape deck's property-count parity against the oracle, so
-/// the port matches capi015 verbatim. This guard fails if a stray `Mode` lands.
+/// The LoadShape property table keeps `Interpolation` at index 22 and has no
+/// `Mode` property, as dss_capi does (the EPRI SVN line inserts `Mode` at 22).
+/// The guard fails if a stray `Mode` lands.
 #[test]
 fn no_mode_prop_interpolation_stays_at_22() {
     let enums = EnumRegistry::new();

@@ -1,7 +1,7 @@
 //! Winding structural machinery: the active-winding index, winding reallocation,
 //! `RotatePhases` and the `TermRef` conductor map. The RegControl-facing tap
-//! surface (`present_tap`/`set_present_tap`/…) and the winding readouts land with
-//! the RegControl integration in WPG.15 Stage C.
+//! surface (`present_tap`/`set_present_tap`/…) and the winding readouts live
+//! here too.
 
 use crate::elements::general::xfmr_code::XfmrCodeObj;
 use crate::elements::pd::winding::{Connection, TermRef};
@@ -80,7 +80,7 @@ impl AutoTrans {
     }
 
     /// Pascal `Get_BasekVLL(i)` = `Winding[i].kVLL` (`AutoTrans.pas:1817`) — the
-    /// CIM `PowerTransformerEnd.ratedU`/`zbase` source (WPG.18 Stage E). 1-based;
+    /// CIM `PowerTransformerEnd.ratedU`/`zbase` source. 1-based;
     /// 0 out of range.
     pub fn winding_kvll(&self, i: usize) -> f64 {
         if i >= 1 && i <= self.num_windings.max(0) as usize {
@@ -206,8 +206,8 @@ impl AutoTrans {
     /// 2026-08-22 on the epri-worker, one 115/69 kV 3-phase auto reports
     /// `NumConductors = 4` and `MID.1 = 92 236 V` on a 69 kV winding, while the
     /// same deck with a trailing `phases=3` (which re-runs the correct side
-    /// effect) reports 6 and 38 472 V. Upstream bugs are never reproduced
-    /// (CLAUDE.md), so the port keeps the `2 * Fnphases` that `SetNumWindings`
+    /// effect) reports 6 and 38 472 V. OpenDSS bugs are never reproduced, so
+    /// this engine keeps the `2 * Fnphases` that `SetNumWindings`
     /// has already written (`:1021`). Report:
     /// `investigations/to_opendss/37-autotrans-fetchxfmrcode-nconds.md`; the
     /// corpus deck `asymmetric:autotrans/autotrans_xfmrcode.dss` is single-phase

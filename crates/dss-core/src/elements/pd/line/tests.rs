@@ -1,4 +1,4 @@
-//! WP7.1 step 3a — the `geometry=` Carson path. These drive a `Line` through
+//! The `geometry=` Carson path. These drive a `Line` through
 //! the property engine, attach a `LineGeometry`, and assert the resulting
 //! `Z`/`Yc`/`YPrim` against the **same dss-python oracle reference**
 //! (`deri_full_3cond`) the line-constants and LineGeometry matrix unit tests
@@ -100,7 +100,7 @@ fn test_sys() -> SysCtx {
     }
 }
 
-/// The canonical WP7.1 3-phase overhead geometry (the `deri_full_3cond`
+/// The canonical 3-phase overhead geometry (the `deri_full_3cond`
 /// reference): `build_si_wire` at x = 0/1/2 m, h = 10 m, driven through the
 /// LineGeometry editing path.
 fn build_overhead_geometry() -> LineGeometryObj {
@@ -253,11 +253,11 @@ fn sym_scalar_detaches_geometry() {
     assert_eq!(line.fz_frequency, -1.0);
 }
 
-// --- WP7.1 step 3b — the `spacing=`/`wires=`/`cncables=` path ----------------
+// --- The `spacing=`/`wires=`/`cncables=` path --------------------------------
 //
 // Each test builds a spacing+conductor line and asserts its total `Z`/`Yc` equal
-// the matrices the *equivalent* `geometry=` line produces — which the step-3a
-// `geometry_tests` and the `line_geometry` unit tests pin entry-by-entry to the
+// the matrices the *equivalent* `geometry=` line produces — which the
+// `geometry=` tests and the `line_geometry` unit tests pin entry-by-entry to the
 // dss-python oracle. `probe_line_spacing.py` confirmed the two paths agree
 // **exactly** (maxdiff 0) in the oracle for all three forms, so this transitively
 // pins the spacing path; the hardcoded `Z[0][0]` anchors pin it directly too.
@@ -388,7 +388,7 @@ fn spacing_wires_match_geometry_and_oracle() {
     let lcls = class_props(&enums);
 
     // Equivalent `geometry=` line → oracle-pinned total matrices (the same
-    // `deri_full_3cond` reference the step-3a test anchors).
+    // `deri_full_3cond` reference the `geometry=` test anchors).
     let mut geom = build_overhead_geometry();
     let z_ref = geom.z_matrix(60.0, 1.0, M_UNIT, DERI).expect("z_ref");
     let yc_ref = geom.yc_matrix(60.0, 1.0, M_UNIT, DERI).expect("yc_ref");
@@ -426,7 +426,8 @@ fn spacing_wires_match_geometry_and_oracle() {
         3,
     );
     // Independent Yc[0][0] oracle anchor (the overhead `C3_NF` diagonal × ω, the
-    // step-3a trick): proves the shunt is pinned, not just compared to `yc_ref`.
+    // `geometry=` test's trick): proves the shunt is pinned, not just compared
+    // to `yc_ref`.
     #[allow(clippy::approx_constant)] // truncated upstream `Twopi`, mirrors the engine
     let omega = 6.283185307 * 60.0;
     let yc = line.yc.as_ref().unwrap();
@@ -721,7 +722,7 @@ fn cncables_without_spacing_errors() {
     assert!(line.line_wire_data.is_empty());
 }
 
-// --- WP-U1.4 (wt-u14cond) — the 0.15.x `Conductors=` array (Line prop 34) -----
+// --- The 0.15.x `Conductors=` array (Line prop 34) ---------------------------
 //
 // A real mixed `Conductors=` list reaches the object via the resolved-refs entry
 // point `set_object_ref_array(CONDUCTORS)` + the `CONDUCTORS` side effect —
@@ -846,7 +847,7 @@ fn conductors_array_overhead_matches_wires_and_oracle() {
     );
 }
 
-/// Redundancy / last-writer (minor audit item): an all-`none` `Conductors=`
+/// Redundancy / last-writer: an all-`none` `Conductors=`
 /// (the one text-reachable form) after a `wires=` clears the redundant `Wires`
 /// set-mark (Pascal `PrpSequence[Wires] := 0`) and NILs every slot, then
 /// defaults the model to Overhead. Pins the `clear_seq(WIRES/CNCABLES/TSCABLES)`
@@ -886,7 +887,7 @@ fn conductors_all_none_after_wires_clears_wires_seq() {
     assert_eq!(line.fphase_choice, ConductorChoice::Overhead);
 }
 
-// --- WPG.21 — TLineObj.MakePosSequence (Line.pas:1531-1629) -------------------
+// --- TLineObj.MakePosSequence -------------------------------------------------
 
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
 
@@ -1069,10 +1070,9 @@ fn make_pos_sequence_two_phase_line_c1_is_the_shunt_self_term() {
 }
 
 /// Above three conductors a matrix line reduces C1 like Z1, by the mean of the
-/// diagonal minus the mean over all off-diagonal pairs (user ruling
-/// 2026-10-04). The balanced 4x4 gives C1 12 nF (both oracles print 8.6667),
-/// R1 0.8 and X1 9. The unbalanced `cmatrix` gives 11.25 nF, where
-/// the three-conductor sum would give 16.
+/// diagonal minus the mean over all off-diagonal pairs. The balanced 4x4 gives
+/// C1 12 nF (both oracles print 8.6667), R1 0.8 and X1 9. The unbalanced
+/// `cmatrix` gives 11.25 nF, where the three-conductor sum would give 16.
 #[test]
 fn make_pos_sequence_four_conductor_line_takes_mean_self_minus_mean_mutual() {
     let r = "1 | 0.2 1 | 0.2 0.2 1 | 0.2 0.2 0.2 1";
@@ -1132,8 +1132,8 @@ fn mean_self_minus_mean_mutual(m: &[f64], n: usize) -> f64 {
 /// reduction divides them by that length: R1, X1 and C1 are the mean of the
 /// diagonal minus the mean over all off-diagonal pairs of the per-mile
 /// `rmatrix`, `xmatrix` and `cmatrix` the line reads back, and the reduced
-/// line keeps its 5 mi. This is the user ruling of 2026-10-04 read over all
-/// four conductors, neutral included. Whether a neutral the geometry names
+/// line keeps its 5 mi. The rule is read over all four conductors, neutral
+/// included. Whether a neutral the geometry names
 /// should be Kron-reduced out first, which gives the exact positive-sequence
 /// values of a line whose neutral is grounded at both ends, is open for the
 /// user.
@@ -1327,8 +1327,7 @@ fn long_line_correction_changes_the_long_line_yprim() {
     );
 }
 
-/// WP-U1.5 E2 / 0.15.x-adoption sweep (EPRI r4133 PDElement.pas l.351):
-/// `TPDElement.GetRatings` overrides the (norm, emerg) ratings with
+/// r4133 `TPDElement.GetRatings` overrides the (norm, emerg) ratings with
 /// `AmpRatings[SeasonalRatingIdx]` for ANY PDElement (0.14.5's `DI_Overloads`
 /// path restricted this to lines) — but ONLY when the element carries more than
 /// one season (`NumAmpRatings > 1`). Both norm and emerg take the same seasonal
@@ -1353,8 +1352,8 @@ fn get_ratings_applies_seasonal_index() {
     // `(NormAmps, EmergAmps)` at every index — it never binds `AmpRatings[0]`.
     // dss_capi 0.15.x `55400a29` dropped the `> 1` guard (a single-season element
     // would silently take the stale constructor default `AmpRatings[0]` for BOTH
-    // norm and emerg, hiding real overloads) — proven a bug vs r4133 + physics
-    // (0.15.x-adoption sweep, DIVERGENCES L4/E2); the port follows r4133.
+    // norm and emerg, hiding real overloads) — an OpenDSS bug by physics. This
+    // engine follows r4133.
     line.num_amp_ratings = 1;
     line.amp_ratings = vec![Set(50.0)];
     assert_eq!(line.get_ratings(0), (Set(100.0), Set(120.0)));
@@ -1367,12 +1366,9 @@ fn get_ratings_applies_seasonal_index() {
 /// and the identical comment "but do not erase FUserLengthUnits, in case of CIM
 /// export".
 ///
-/// The port cleared it too (RP3.5, 2026-08-28) — a port-authored divergence from
-/// **both** oracles, so there was no authority question to weigh. It is not
-/// theoretical: `FUserLengthUnits` is the units the CIM writer converts
-/// `Conductor.length` with (r4133 `Common/ExportCIMXML.pas:3707`, `:3735`,
-/// `:3877`), and a deck that types `units=` before its impedances exported a
-/// length short by the whole unit factor —
+/// Clearing it is not harmless: `FUserLengthUnits` is the units the CIM writer
+/// converts `Conductor.length` with, so a deck that types `units=` before its
+/// impedances would export a length short by the whole unit factor —
 /// [`crate::cim`]'s observable half of this pin lives in
 /// `golden_cim::cim_conductor_length_uses_the_users_length_units`.
 ///

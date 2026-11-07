@@ -1,4 +1,4 @@
-! UPGRADE_PLAN WP-U1.7 (NCIM solver) — micro PQ-only snapshot.
+! NCIM solver — micro PQ-only snapshot.
 ! A two-line radial feeder (sourcebus -> mid -> loadbus) with all model-1
 ! constant-power loads, re-solved with Set algorithm=NCIM (the Newton
 ! Current-Injection Method). NCIM holds the swing bus at the ideal EMF (no

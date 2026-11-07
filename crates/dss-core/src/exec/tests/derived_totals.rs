@@ -1,17 +1,16 @@
-//! The three "derived totals" element surfaces of `GOLDEN_REBASE_PLAN.md`
-//! G1.3c — `CktElement.CplxSeqCurrents`, `CktElement.CplxSeqVoltages` and
+//! The three "derived totals" element surfaces —
+//! `CktElement.CplxSeqCurrents`, `CktElement.CplxSeqVoltages` and
 //! `CktElement.TotalPowers` — as they come out of
 //! [`Dss::snapshot_elements`](crate::exec::Dss::snapshot_elements).
 //!
-//! These are the sub-step's expected-value pins; the live corpus gate compares
+//! These are the expected-value pins; the live corpus gate compares
 //! all three against both oracle channels case by case. What a floor cannot
 //! express, and what these tests nail down in-engine against numbers read from
-//! the pinned dss-python 0.15.7 / dss_capi 0.14.5 oracle on the very decks
-//! below (`tmp/g13c/probe_f1_capi.py`, 2026-09-05, in the exact `compile`-only
-//! state each test reads), is:
+//! the pinned dss-python 0.15.7 / dss_capi 0.14.5 on the very decks below (in
+//! the exact `compile`-only state each test reads), is:
 //!
 //! 1. that `CplxSeq*` are the **same** 012 components whose magnitudes the
-//!    G1.3b surfaces report — one transform, one `norm()` — so the two cannot
+//!    sequence surfaces report — one transform, one `norm()` — so the two cannot
 //!    drift, and that the complex pair carries the *angle*, which the magnitude
 //!    channel cannot see at all;
 //! 2. that the n/A sentinel here is `(-1, 0)` on **both** engines (r4133
@@ -47,7 +46,7 @@ use num_complex::Complex64;
 /// The `feeder` tolerance tier — `crates/dss-test-harness/src/harness/mod.rs::tol_for`
 /// (`"feeder"`), the tier IEEE13 is gated at, restated here because a `src` unit test cannot
 /// reach the integration harness. Every band below is that tier's *derived*
-/// image (`tests/TOLERANCE_NOTES.md`), never a fresh number.
+/// image, never a fresh number.
 const FEEDER_I_ABS: f64 = 1e-5;
 const FEEDER_I_REL: f64 = 1e-7;
 const FEEDER_V_ABS: f64 = 1e-6;
@@ -66,7 +65,7 @@ const IEEE13: &str = "electricdss-tst/Version8/Distrib/IEEETestCases/13Bus/IEEE1
 /// convention in `exec/tests/`): every deck read here is read-only — IEEE13's
 /// `Show` block is commented out, `makeposseq_report.dss` ends in `sample` and
 /// `midi_fuse.dss` is an in-repo synthetic deck; none writes a file. Never
-/// `.inputs/` — the corpus tree is the one the live gate reads (CLAUDE.md).
+/// `.inputs/` — the corpus tree is the one the live gate reads.
 fn compile_corpus_deck(rel: &str) -> Dss {
     let deck = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/corpus")
@@ -85,11 +84,12 @@ fn elem<'a>(snaps: &'a [ElementSnapshot], name: &str) -> &'a ElementSnapshot {
         .unwrap_or_else(|| panic!("{name} not in the snapshot"))
 }
 
-/// The band of one 012 slot, restated from `tests/TOLERANCE_NOTES.md` §G1.3b:
+/// The band of one 012 slot:
 /// `X012 = Ap2s·Xph` with every `|Ap2s[k][j]| = 1/3`, so
 /// `|ΔX012_k| ≤ (1/3)·Σ_j |ΔXph_j| ≤ abs + rel·mean_j|Xph_j|` — a bound on the
-/// **complex** difference, which is what this module compares (G1.3b could only
-/// use it through the weaker `||a| − |b|| ≤ |a − b|`). No coefficient moves.
+/// **complex** difference, which is what this module compares (a magnitude
+/// comparison can only use it through the weaker `||a| − |b|| ≤ |a − b|`). No
+/// coefficient moves.
 fn seq_slot_band(abs: f64, rel: f64, mean_phase_mag: f64) -> f64 {
     abs + rel * mean_phase_mag
 }
@@ -116,7 +116,7 @@ fn total_power_band(e: &ElementSnapshot, t: usize, i_abs: f64, i_rel: f64) -> f6
 // capi `CAPI_Alt.pas:898-925` likewise), so the port derives both from one
 // transform. The complex pair carries the angle, which no magnitude channel can
 // see — a pure phase rotation is invisible to `SeqCurrents` and reddens this
-// surface, which is the strengthening G1.3c buys.
+// surface.
 /// `cplx_seq_currents` are the terminal's own 012 current components, and
 /// `seq_currents` is exactly their `norm()`.
 #[test]
@@ -207,7 +207,7 @@ fn cplx_seq_currents_are_the_012_components_whose_magnitudes_are_seq_currents() 
 // output over the node voltages this element's `NodeRef` points at (r4133
 // `DCktElement.pas:885-928` over `:84-122`; capi `CAPI_Alt.pas:872-895` over
 // `:294-338`). The second leg ties it to `voltages_mag_ang`, the element's own
-// already-gated view of those same node voltages (G1.3a), so a `NodeRef`
+// already-gated view of those same node voltages, so a `NodeRef`
 // mis-mapping cannot hide in either surface alone.
 /// `cplx_seq_voltages` are the 012 components of the terminal's node voltages,
 /// and `seq_voltages` is exactly their `norm()`.
@@ -480,9 +480,8 @@ fn total_powers_are_the_terminal_sums_of_the_phase_powers() {
             );
         }
         // Leg 2 — the terminal really is the row's own: the two terminals of
-        // this line differ by ~7 MVA, so a repeated-terminal defect (the one
-        // `Export SeqCurrents` carries for `Iresidual`, CLAUDE.md upstream bug
-        // 1) could not pass.
+        // this line differ by ~7 MVA, so a repeated-terminal defect (the OpenDSS
+        // bug `Export SeqCurrents` carries for `Iresidual`) could not pass.
         assert!(
             (e.total_powers[0] - e.total_powers[1]).norm() > 1e3,
             "{name}: the two terminals must differ",

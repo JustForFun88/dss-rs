@@ -99,8 +99,7 @@ fn bus1_side_effect_defaults_bus2_to_grounded_y() {
 // gating oracles re-derive the grounded-Y default over it. The control half (no
 // explicit `Bus2` ⇒ the default IS re-derived) is asserted in the same test, so
 // the fix cannot be mistaken for "the `Bus1` branch stopped working".
-/// The Isource `Bus2` latch, torn down as a lane row by
-/// `GOLDEN_REBASE_PLAN.md` G2.2b.
+/// The Isource `Bus2` latch, in both lanes.
 ///
 /// `TIsourceObj.PropertySideEffects` (`.inputs/dss_capi/src/PCElements/
 /// Isource.pas:221-262`; r4133 `Version8/Source/PCElements/Isource.pas` sets

@@ -1,8 +1,8 @@
 //! Port of `Common/Solution.pas` (`TSolutionObj`): the snapshot power-flow
 //! path (`Solve` → `SolveSnap` → `SolveCircuit` → `DoPFLOWsolution` →
 //! `DoNormalSolution`), `Converged`, the injection machinery, `SolveSystem`,
-//! `SolveZeroLoadSnapShot`, `SetVoltageBases`, `SolveDirect`; plus, since
-//! Phase 5, the full `Set_Mode`, the DynaVars clock (`IncrementTime`), the
+//! `SolveZeroLoadSnapShot`, `SetVoltageBases`, `SolveDirect`; plus the full
+//! `Set_Mode`, the DynaVars clock (`IncrementTime`), the
 //! live `CheckControls` (control loop in [`crate::solution::controls`]) and
 //! the `SolutionAlgs.pas` time-series modes (`SolveDaily`/`SolveYearly`/
 //! `SolveDuty`/`SolvePeakDay`).
@@ -62,7 +62,7 @@ pub(crate) use power_flow::solve_circuit;
 // executive commands (`ExecCommands.pas:578-601`) drive these directly.
 pub(crate) use power_flow::{do_pflow_solution, set_generator_disp_ref, solve_direct};
 // The A-Diakoptics child-side solve stage + the coordinator generator-dQ/dV seed,
-// driven by the executive coordinator loop (`exec/diakoptics/solve.rs`, WP-AD.3).
+// driven by the executive coordinator loop (`exec/diakoptics/solve.rs`).
 // `do_newton_solution` is the coordinator's full-system Newton (the AD `Newton`
 // dispatch: official `DoNewtonSolution` has no ADiakoptics branch — Solution.pas
 // :1018 — so a Newton AD deck bypasses the child stitch and solves the closed

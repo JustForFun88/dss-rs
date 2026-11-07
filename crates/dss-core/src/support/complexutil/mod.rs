@@ -33,8 +33,8 @@ pub fn to_polar(mag: f64, ang: f64) -> Polar {
 // (`:60`); r4133 `Version8/Source/Shared/Ucomplex.pas:98/120/251` is identical,
 // so both gating oracles carry them.
 //
-// **Stage F.3z measured the row and found it is not a pair of independent
-// constants but one round trip, which is why it escapes.**
+// **Measured: the row is not a pair of independent constants but one round
+// trip, which is why it escapes.**
 //
 // * `TRUNCATED_RAD_TO_DEG` is 5.38e-11 relative and `TRUNCATED_PI` 6.6e-14 —
 //   both far below every calibrated floor, so the row *looks* free.
@@ -54,8 +54,8 @@ pub fn to_polar(mag: f64, ang: f64) -> Polar {
 //   corpus cases, 5 `wasm_*` r4133 goldens (worst `V[SOURCEBUS.1].im`
 //   |rel| 9.95e-7 against an allowed 1.027e-6), and 7 further byte goldens.
 //
-// So the row is a whole-artifact re-baseline against a re-captured oracle — an
-// UPGRADE rung, which the parity lane may never run — not a Stage F lane flip.
+// So the row needs a whole-artifact re-baseline against re-captured goldens,
+// which the parity lane may never run, not a lane flip.
 #[allow(clippy::approx_constant)]
 const TRUNCATED_PI: f64 = 3.14159265359;
 const TRUNCATED_RAD_TO_DEG: f64 = 57.29577951;
@@ -66,7 +66,7 @@ const TRUNCATED_RAD_TO_DEG: f64 = 57.29577951;
 /// TODO(compat): replace with `f64::atan2` once the truncated-constant pair
 /// above is re-baselined — this function is the *consumer* of `TRUNCATED_PI`,
 /// so it moves with that row and cannot be flipped on its own (see the
-/// F.3z measurement at the constants).
+/// measurement at the constants).
 fn pascal_atan2(x: f64, iy: f64) -> f64 {
     if x < 0.0 && iy >= 0.0 {
         (iy / x).atan() + TRUNCATED_PI

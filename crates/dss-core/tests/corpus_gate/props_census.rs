@@ -1,55 +1,51 @@
-//! `DSS_PROPS_CENSUS` — the permanent property-census knob
-//! (`R4133_PROPS_PLAN.md` RP0.2).
+//! `DSS_PROPS_CENSUS` — the permanent property-census knob.
 //!
-//! The 2026-08-08 G1.1 measurement that killed `GOLDEN_REBASE` G1.1 (and whose
-//! extracts are vendored at `tests/corpus/props_r4133/`) was a *scratch* test,
-//! reverted with the rest of that attempt. This module makes it a permanent,
-//! opt-in diagnostic: `DSS_PROPS_CENSUS=1` arms the corpus-gate binary's
+//! An opt-in diagnostic: `DSS_PROPS_CENSUS=1` arms the corpus-gate binary's
 //! `corpus_gate_props_census` test, which walks every live case (respecting
 //! `DSS_GATE_ONLY`), captures `all_properties` on **both** channels regardless
-//! of the §1.1 gate masks, compares with the plain (un-normalized) comparator in
-//! *collect-don't-panic* mode, and writes `tmp/props_census.json` plus the
-//! per-channel extracts in the RP0.1 format. It **asserts nothing** — a
-//! divergence is data, never a failure.
+//! of the gate's property masks, compares with the plain (un-normalized)
+//! comparator in *collect-don't-panic* mode, and writes `tmp/props_census.json`
+//! plus the per-channel extracts in the format of the vendored census
+//! (`tests/corpus/props_r4133/`). It **asserts nothing**: a divergence is data,
+//! never a failure.
 //!
 //! It is a SEPARATE `#[test]`, never a diversion of
 //! `corpus_gate_all_cases_match_engines`: the var must not be able to turn the
-//! one mandatory live comparison into a green no-op (RP0.2 audit).
+//! one mandatory live comparison into a green no-op.
 //!
 //! The walk itself lives in [`crate::scheduler::run_props_census`] (it needs the
 //! scheduler's case model, thread pool and channel transports); this module owns
 //! the row model and the artifact writers.
 //!
-//! Plain mode is the knob's baseline forever — it is what reproduces RP0.1, and
-//! nothing RP2.1 added moves a byte of it (the claims-only columns and files are
-//! gated on [`Mode::annotates`]).
+//! Plain mode is the knob's baseline: it reproduces the vendored census, and
+//! the claims-only columns and files are gated on [`Mode::annotates`], so they
+//! move none of its bytes.
 //!
-//! ## The disposition mode (`DSS_PROPS_CENSUS=claims`, RP2.1)
+//! ## The disposition mode (`DSS_PROPS_CENSUS=claims`)
 //!
 //! Same walk, same rows, each **value** row annotated with what the r4133 value
 //! policy does with that cell — [`Disposition`]: `normalized-by-<rule>` /
 //! `echo-row` / `under-floor` / `ledger-hit` / `UNCLAIMED`. It is the per-cell
-//! accounting `R4133_PROPS_PLAN.md` RP4.1's acceptance reads ("zero UNCLAIMED
-//! cells"), and the offline replay's per-**spelling** completeness proof
+//! accounting (its acceptance is "zero UNCLAIMED cells"), and the offline
+//! replay's per-**spelling** completeness proof
 //! (`crates/dss-core/tests/props_r4133_replay.rs`) is its counterpart: replay
 //! before the unmask, claims census after.
 //!
 //! Every verdict comes from a **shipped** predicate — `props_norm::claim_value`
 //! for the harness links, `LedgerView::property_scope_keys` for the ledger one —
-//! never a copy of them (RP0.2: a drifting copy would corrupt RP4.1's read
-//! silently). The mode still asserts nothing about the data.
+//! never a copy of them (a drifting copy would corrupt the read silently). The
+//! mode still asserts nothing about the data.
 //!
 //! Both channels' rows are annotated, and the verdict is **channel-scoped**:
 //! three of the four links are r4133 mechanisms and answer nothing on capi
 //! (`claim_value` takes the channel), while the ledger link is a real capi
 //! mechanism and is applied on both. So a capi row is `ledger-hit` or
 //! `UNCLAIMED` and never `normalized-by-*`/`echo-row`/`under-floor` — the
-//! measured capi zero is the contract, not a property of today's data
-//! ([`Disposition::for_value`], RP2.1 audit round).
+//! capi zero is the contract, not a property of today's data
+//! ([`Disposition::for_value`]).
 //!
 //! It also carries the in-scope flag the plain mode does not need
-//! (`engines ∈ {"both", "r4133"}` — the vendored README's §"The in-scope
-//! filter"), so its tallies are directly comparable with `bins.tsv`'s
+//! (`engines ∈ {"both", "r4133"}`), so its tallies are directly comparable with `bins.tsv`'s
 //! `cells_in_scope` column.
 //!
 //! ## Artifacts
@@ -59,8 +55,8 @@
 //!   Row `kind` ∈ `value_structure` · `value_numeric` (carries `max_rel`) ·
 //!   `shape_count` · `oracle_error` · `rust_error` · `rust_missing_element`.
 //!   The first four are exactly the vendored census's kinds; the last two are
-//!   defensive (the 2026-08-08 walk produced none) because a knob that must not
-//!   fail still has to record what went wrong.
+//!   defensive, because a knob that must not fail still has to record what
+//!   went wrong.
 //!   **One column is new**: `channel`. The vendored census is r4133-only, so its
 //!   rows are this file's `channel == "r4133"` rows with that key dropped.
 //!   The header also stamps `gate_only` — the `DSS_GATE_ONLY` filter the run was
@@ -73,44 +69,39 @@
 //!     or a re-ordering). That number is the reason the vendored value population
 //!     of the five shape-gap classes is a LOWER BOUND (e.g. `windgen.dynout` /
 //!     `windgen.enabled` sit past r4133's `usermodel`/`userdata` insertion and
-//!     are invisible to the census until WP-RP1 closes the gap).
+//!     are invisible to the census while that gap is open).
 //!   - `skipped_elements` / `skipped_element_cells` — elements dropped WHOLE
 //!     before any cell was looked at (the capi-only Recloser/Relay skip). Their
 //!     cells are in neither the rows nor `unaligned_cells`, so a channel with
 //!     `unaligned_cells: 0` is not thereby complete.
 //!   - `heterogeneous_shape_classes` — classes whose `shape_count` rows are not
 //!     all the same shape, i.e. the ones `shape.txt`'s one-row-per-class format
-//!     cannot represent (0 on the 2026-08-08 census; a nonzero value also prints
-//!     a loud banner).
+//!     cannot represent (a nonzero value also prints a loud banner).
 //! * `tmp/props_census/<channel>/structural_pairs.txt`, `numeric_pairs.txt`,
-//!   `examples_full.txt`, `shape.txt`, `summary.json` — the RP0.1 extract formats
-//!   (`tests/corpus/props_r4133/README.md` §"Row formats"), per channel.
+//!   `examples_full.txt`, `shape.txt`, `summary.json` — the vendored extract
+//!   formats (`tests/corpus/props_r4133/README.md`), per channel.
 //! * `tmp/props_census/run.json` — mode, `gate_only`, cases walked, rows: the
 //!   same provenance stamp next to the extracts a reader actually diffs.
 //! * **claims mode only**, per channel: `claims.txt` — `examples_full.txt`'s
 //!   rows in the same order plus `count_in_scope` and the disposition;
 //!   `claims_unclaimed_pairs.txt` — one row per pair still carrying an
-//!   `UNCLAIMED` cell, the work list RP2.2/RP2.3/RP2.4 read (and, from RP2.4
-//!   on, what RP3's remaining sub-steps read);
+//!   `UNCLAIMED` cell, the work list of what is still unclaimed;
 //!   `claims_summary.json` — the per-disposition cell tallies (every
 //!   disposition, zeros included) plus `mixed_disposition_spellings`, the
 //!   spellings whose cells disagreed and were folded to the weakest verdict.
 //!
 //!   Both of those two are **per-spelling** and therefore lossy: a spelling
 //!   whose cells disposition differently is reported under its weakest verdict,
-//!   which is why `swtcontrol.delay` still appears "UNCLAIMED, 24 in scope"
-//!   after RP4.1 landed its two ledger entries. An acceptance question about
-//!   COMPARED cells is answered by the lossless per-cell `props_census.json`.
-//!   Since the RP4.1 audit settlement (2026-09-03) both artifacts carry that
-//!   reading rule in themselves — a `reading_rule` field and a header note — so
-//!   a re-run cannot recreate the misreading.
+//!   so a spelling a ledger entry claims in some cases can still read
+//!   "UNCLAIMED". A question about COMPARED cells is answered by the lossless
+//!   per-cell `props_census.json`. Both artifacts carry that reading rule in
+//!   themselves (a `reading_rule` field and a header note).
 //!
 //! Two vendored extracts are deliberately NOT re-derived here, because the plain
-//! census does not carry what they need: `bins.tsv` needs the §1.1 bin policy
-//! (RP2.1's disposition mode owns it) and the three `*_in_scope` files need the
+//! census does not carry what they need: `bins.tsv` needs the bin policy (the
+//! disposition mode owns it) and the three `*_in_scope` files need the
 //! in-scope case filter. The README's blanket "these same extracts" sentence is
-//! wider than that — recorded as an RP0.2 finding in STATUS, not silently
-//! papered over.
+//! wider than that.
 //!
 //! Deliberate format deviations from the vendored copies, all cosmetic and all
 //! outside the acceptance (which compares cell populations, not bytes): the
@@ -126,8 +117,8 @@
 //! `*_in_scope` files — so the vendored copies spell the same `storage.dynadll`
 //! cell two different ways (`'C:\\Users\\…'` vs `'C:\Users\…'`). One quoting for
 //! all extracts is the fix; a consumer of the vendored files must unescape
-//! `structural_pairs.txt` and must not unescape `examples_full.txt` (recorded as
-//! an RP0.2 finding in STATUS — it is a live trap for RP2.1's replay).
+//! `structural_pairs.txt` and must not unescape `examples_full.txt` (a trap for
+//! the replay test).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
@@ -138,11 +129,11 @@ use serde_json::{Value, json};
 use crate::harness::props_norm::{self, ValueClaim};
 use crate::harness::{CensusBlindSpots, PropCensusRow, PropsChannel};
 
-/// Census mode. Plain is the permanent baseline; `Claims` is RP2.1's
-/// disposition mode.
+/// Census mode. Plain is the permanent baseline, `Claims` the disposition
+/// mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Mode {
-    /// `DSS_PROPS_CENSUS=1` — the un-normalized comparator, RP0.1's measurement.
+    /// `DSS_PROPS_CENSUS=1` — the un-normalized comparator, the vendored census's measurement.
     Plain,
     /// `DSS_PROPS_CENSUS=claims` — the SAME walk and the same rows, each
     /// annotated with the r4133 policy chain's verdict for that cell
@@ -160,8 +151,7 @@ impl Mode {
             "claims" => Mode::Claims,
             other => panic!(
                 "DSS_PROPS_CENSUS={other:?} is not a census mode; the accepted values are \
-                 `1` (the plain, un-normalized census) and `claims` (the disposition mode, \
-                 R4133_PROPS_PLAN.md RP2.1)"
+                 `1` (the plain, un-normalized census) and `claims` (the disposition mode)"
             ),
         }
     }
@@ -180,22 +170,21 @@ impl Mode {
     }
 }
 
-/// **What the r4133 value policy does with one divergent cell** — the per-cell
-/// accounting RP4.1's acceptance reads ("zero UNCLAIMED cells", plan §RP4.1).
+/// **What the r4133 value policy does with one divergent cell**: the per-cell
+/// accounting whose acceptance is "zero UNCLAIMED cells".
 ///
-/// The vocabulary is RP0.2's, exactly: `normalized-by-<rule>` / `echo-row` /
-/// `under-floor` / `ledger-hit` / `UNCLAIMED`. It annotates **value cells** —
-/// the population `bins.tsv` counts and the one RP4.1 reads.
+/// The vocabulary: `normalized-by-<rule>` / `echo-row` / `under-floor` /
+/// `ledger-hit` / `UNCLAIMED`. It annotates **value cells**, the population
+/// `bins.tsv` counts.
 ///
-/// The chain's first link, RP1's **shape allowlist**, has no tag here because it
+/// The chain's first link, the **shape allowlist**, has no tag here because it
 /// acts strictly upstream of everything the census records: `filter_015x` drops
 /// an allowlisted Rust-side prop before the walk compares a value OR builds a
 /// name set, so neither a value row nor a surviving `shape_count` row can be
 /// claimed by it — a `shape_count` row in this census is by construction a gap
-/// the allowlist did **not** close (WP-RP1's residual). Shape rows are therefore
-/// counted on their own in the claims summary, not dispositioned; the offline
-/// exerciser of the allowlist rows is the RP2.1 replay over the frozen
-/// `shape.txt`.
+/// the allowlist did **not** close. Shape rows are therefore counted on their
+/// own in the claims summary, not dispositioned; the offline exerciser of the
+/// allowlist rows is the replay test over the frozen `shape.txt`.
 ///
 /// **Why annotating the PLAIN population is the same statement as re-walking
 /// with the armed policy.** The claims mode runs the identical walk (the plain
@@ -207,7 +196,7 @@ impl Mode {
 /// armed walk's "what disappeared" are the same set, cell for cell (pinned by
 /// `props_norm::tests::the_value_chain_resolves_in_order_and_agrees_with_the_seam`).
 /// Annotating rather than re-walking is what lets ONE run report both the raw
-/// census (RP0.1's baseline, unchanged) and the disposition of every cell in it.
+/// census (the plain baseline, unchanged) and the disposition of every cell in it.
 ///
 /// **The variant order is load-bearing**, not cosmetic: it runs from the
 /// strongest claim to no claim at all, so `Ord`'s `max` is "the weakest link" —
@@ -216,25 +205,22 @@ impl Mode {
 /// these variants changes that aggregation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum Disposition {
-    /// [`props_norm::PROPS_NORM_R4133`] folds the two spellings
-    /// (RP2.1). The payload is the rule's tag. **r4133 rows only.**
+    /// [`props_norm::PROPS_NORM_R4133`] folds the two spellings.
+    /// The payload is the rule's tag. **r4133 rows only.**
     Normalized(&'static str),
-    /// [`props_norm::PROPS_ECHO_R4133`] excludes the pair (RP2.3; 81 rows since
-    /// that sub-step landed, minus what `props_norm::ECHO_CARVE_OUTS` takes back
-    /// out of them cell by cell). **r4133 rows only.**
+    /// [`props_norm::PROPS_ECHO_R4133`] excludes the pair, minus what
+    /// `props_norm::ECHO_CARVE_OUTS` takes back out of it cell by cell.
+    /// **r4133 rows only.**
     Echo,
-    /// The two sides are numbers inside the r4133 display floor — RP2.4's
-    /// derived `2e-4` relative (`props_norm::R4133_DISPLAY_FLOOR`), i.e. one
+    /// The two sides are numbers inside the r4133 display floor, the derived
+    /// relative `props_norm::R4133_DISPLAY_FLOOR`, i.e. one
     /// live double printed by two `Format('%[-].Ng', …)` getters.
     /// **r4133 rows only.**
     UnderFloor,
-    /// A `property`-scoped ledger entry NAMES the cell (plan §1.1(e)). This was
-    /// structurally zero on the r4133 channel while the staging rule kept those
-    /// entries out of the tree; RP4.1 landed the eight staged ones (2026-09-03),
-    /// so the tag carries r4133 cells now.
+    /// A `property`-scoped ledger entry NAMES the cell.
     LedgerHit,
-    /// Nothing in the chain claims it. This is the bucket RP2.2/RP2.3/RP2.4/RP3
-    /// still owe rows for, and the one RP4.1's acceptance requires to be empty.
+    /// Nothing in the chain claims it. This is the bucket the acceptance
+    /// requires to be empty.
     Unclaimed,
 }
 
@@ -252,10 +238,7 @@ impl Disposition {
     /// Every disposition the summary reports, in chain order — so a tally
     /// prints its zeros too: a mechanism that claimed nothing must be visible
     /// rather than absent, or a reader cannot tell "leaned on for nothing" from
-    /// "not reported at all". (All four chain links carry a value since RP2.4,
-    /// and `ledger-hit` — structurally zero on the r4133 channel while the
-    /// staging rule held those entries back — carries cells since RP4.1 landed
-    /// the eight staged entries, 2026-09-03.)
+    /// "not reported at all".
     pub(crate) fn all() -> Vec<Disposition> {
         let mut v: Vec<Disposition> = ["BoolFold", "CaseFold", "ArrayForm", "EnumSynonym"]
             .into_iter()
@@ -279,14 +262,13 @@ impl Disposition {
     /// **The channel is a parameter, and it is not decoration.** This census
     /// walks both channels and annotates the rows of both, while three of the
     /// four links are r4133 mechanisms: `claim_value` therefore refuses every
-    /// channel but `R4133` (plan mechanic (b) at the measurement layer, pinned
-    /// in `props_norm`), and what remains on capi is the **ledger** link, which
+    /// channel but `R4133` (pinned in `props_norm`), and what remains on capi
+    /// is the **ledger** link, which
     /// is a real capi mechanism — the gate's own capi property compare applies
     /// `property`-scoped entries (`makeposseq-cuf-applied-capi-props`), and a
-    /// full-population claims run reports their hits. Before the RP2.1 audit
-    /// round this function was channel-blind, so a capi divergence whose
-    /// spelling an r4133 rule folds would have been reported
-    /// `normalized-by-<rule>` while the live capi comparator still failed on it.
+    /// full-population claims run reports their hits. A channel-blind verdict
+    /// would report a capi divergence whose spelling an r4133 rule folds as
+    /// `normalized-by-<rule>` while the live capi comparator still fails on it.
     fn for_value(
         channel: PropsChannel,
         element: &str,
@@ -315,11 +297,9 @@ impl Disposition {
 ///
 /// It is never serialized — [`Row::to_json`]'s two error arms emit `case` /
 /// `channel` / `kind` / `detail` and no `step`, which is exactly the key set the
-/// vendored census's five `oracle_error` rows carry (`['case','detail','kind']`,
-/// re-measured 2026-08-22). The constant exists only to keep [`Row::sort_key`]
-/// total, and `-1` sorts every error row ahead of that case's step-0 rows.
-/// (An earlier comment here claimed `-1` was "what the vendored census uses";
-/// it uses no `step` on those rows at all — RP0.2 audit, retracted.)
+/// vendored census's `oracle_error` rows carry (`['case','detail','kind']`).
+/// The constant exists only to keep [`Row::sort_key`] total, and `-1` sorts
+/// every error row ahead of that case's step-0 rows.
 const NO_STEP: i64 = -1;
 
 /// What one census row says.
@@ -396,9 +376,7 @@ pub(crate) struct Row {
     pub(crate) step: i64,
     pub(crate) kind: RowKind,
     /// Is this row's case one the gate actually compares on the r4133 channel
-    /// — `engines ∈ {"both", "r4133"}` (the vendored README's §"The in-scope
-    /// filter")? Written before RP4.1 as "will compare"; since that unmask
-    /// (2026-09-03) it is the present tense. Carried on every row in every mode; only the
+    /// — `engines ∈ {"both", "r4133"}`? Carried on every row in every mode; only the
     /// claims artifacts report the split, which is what makes a claims run
     /// comparable with `bins.tsv`'s `cells_in_scope` column.
     ///
@@ -406,8 +384,7 @@ pub(crate) struct Row {
     /// `kind=large*` decks unforced (`scheduler::force_properties`' cost guard).
     /// The two agree here because the census walks exactly the forced population
     /// — live, non-`large` — so no `large` case can produce a row at all; on any
-    /// other population "in scope" would be the wider of the two (RP4.1 audit
-    /// settlement, 2026-09-03).
+    /// other population "in scope" would be the wider of the two.
     pub(crate) in_scope: bool,
     /// The claims mode's per-cell verdict (`None` in plain mode, and on rows
     /// that are not value cells).
@@ -515,8 +492,8 @@ impl Row {
     }
 
     /// `mode` gates the two claims-only columns: the plain census's rows keep
-    /// exactly the key set RP0.2 froze (a plain artifact must stay diffable
-    /// against the vendored 2026-08-08 census forever), and the disposition
+    /// exactly the vendored census's key set (a plain artifact must stay
+    /// diffable against it), and the disposition
     /// mode adds `disposition` + `in_scope` to them.
     fn to_json(&self, mode: Mode) -> Value {
         let mut m = serde_json::Map::new();
@@ -573,7 +550,7 @@ impl Row {
 }
 
 // ---------------------------------------------------------------------------
-// Extract derivation (the RP0.1 formats).
+// Extract derivation (the vendored extract formats).
 // ---------------------------------------------------------------------------
 
 /// One `examples_full.txt` row's identity: `(is_numeric, pair, rust, oracle)`.
@@ -625,16 +602,14 @@ fn trunc(s: &str, n: usize) -> String {
 
 /// Single-quote a value the way the vendored extracts do (Python `repr`).
 ///
-/// The 2026-08-08 generation asserted that no census value contains `'`, CR, LF
-/// or TAB — which is what makes the documented quote-anchored parse regex
+/// The documented quote-anchored parse regex
 /// (`^(\S+) \| '([^']*)' \| '([^']*)' \| (.*)$`,
-/// `tests/corpus/props_r4133/README.md` §"Row formats") safe. A re-measurement
-/// is not bound by that past assertion, so those characters are escaped rather
-/// than emitted raw. On every value the census can contain today this is
-/// byte-identical to `repr`.
+/// `tests/corpus/props_r4133/README.md`) is safe only on values without `'`,
+/// CR, LF or TAB, so those characters are escaped rather than emitted raw. On
+/// every other value this is byte-identical to `repr`.
 ///
 /// The apostrophe is the one arm that deliberately DEVIATES from `repr`, and
-/// the reason is the regex (RP0.2 audit): `repr` would either switch the
+/// the reason is the regex: `repr` would either switch the
 /// delimiters to `"` or emit `\'`, and `[^']*` stops at a literal `'` no matter
 /// what precedes it — both forms silently mis-parse. `\x27` carries the
 /// character losslessly through a single-quoted field without ever writing one,
@@ -695,7 +670,7 @@ struct ChannelExtracts {
     /// claims mode's per-spelling verdict.
     examples: BTreeMap<ExampleKey, ExampleAcc>,
     diverging_cases: BTreeSet<String>,
-    /// Claims mode: `shape_count` rows seen (WP-RP1's residual) and the
+    /// Claims mode: `shape_count` rows seen (the gaps the allowlist leaves) and the
     /// in-scope half of them. Not dispositioned — see [`Disposition`].
     shape_rows: usize,
     shape_rows_in_scope: usize,
@@ -745,11 +720,9 @@ impl ChannelExtracts {
                 // `scheduler.rs` resolves a `LedgerView` per case), so one
                 // spelling that an entry names in case A and no entry names in
                 // case B legitimately answers `LedgerHit` and `Unclaimed` for
-                // the same key. The population is one deck away from it already
-                // — `gictransformer.r2 | '0.09522' | '0.12696'` occurs in two
-                // cases, each with its own entry. An assert here would abort a
-                // 56 s / 1e6-row walk on legitimate data, in a mode whose whole
-                // contract is that it asserts NOTHING (RP2.1 audit round).
+                // the same key. An assert here would abort a long walk on
+                // legitimate data, in a mode whose whole contract is that it
+                // asserts NOTHING.
                 //
                 // The aggregate is the WEAKEST verdict — `Disposition`'s
                 // declaration order runs claimed → `Unclaimed`, so `max` can
@@ -794,8 +767,7 @@ impl ChannelExtracts {
     }
 
     /// Classes whose `shape_count` rows are NOT all the same shape — the ones
-    /// the one-row-per-class extract cannot represent. `0` on the 2026-08-08
-    /// census (all five classes are homogeneous, re-verified 2026-08-22).
+    /// the one-row-per-class extract cannot represent.
     fn heterogeneous_shape_classes(&self) -> usize {
         self.shape.values().filter(|(_, all)| all.len() > 1).count()
     }
@@ -848,10 +820,10 @@ impl ChannelExtracts {
     /// `(rust, oracle)` spelling per pair, values **untruncated**, structural
     /// pairs first then numeric, each section sorted by pair, and within a pair
     /// by descending cell count (ties broken by the `(rust, oracle)` spelling
-    /// ascending — the ordering reverse-engineered from all 2 441 tied rows of
-    /// the vendored file). This is RP2.1's replay input; the vendored
+    /// ascending, the ordering of the vendored file's tied rows). This is the
+    /// replay test's input; the vendored
     /// `bins.tsv` and the three `*_in_scope` extracts are NOT re-derivable here
-    /// (they need the §1.1 bin policy and the in-scope case filter, which the
+    /// (they need the bin policy and the in-scope case filter, which the
     /// plain census does not carry — see the module docs).
     fn examples_text(&self, channel: &str) -> String {
         let mut s = format!("class.prop | rust | {channel} | count\n");
@@ -909,8 +881,8 @@ impl ChannelExtracts {
 
     /// **The unclaimed inventory** — one row per pair that still carries an
     /// `UNCLAIMED` cell: `class.prop | cells | cells_in_scope | spellings`,
-    /// descending by in-scope cells. This is the work list RP2.2/RP2.3/RP2.4
-    /// read, and the file whose emptiness is RP4.1's acceptance.
+    /// descending by in-scope cells. This is the work list of unclaimed cells,
+    /// and the file whose emptiness is the acceptance.
     fn unclaimed_text(&self) -> String {
         let mut per_pair: BTreeMap<&str, (usize, usize, usize)> = BTreeMap::new();
         for ((_, pair, _, _), acc) in &self.examples {
@@ -924,11 +896,10 @@ impl ChannelExtracts {
         }
         let mut rows: Vec<_> = per_pair.into_iter().collect();
         rows.sort_by(|a, b| b.1.1.cmp(&a.1.1).then(b.1.0.cmp(&a.1.0)).then(a.0.cmp(b.0)));
-        // The header carries the reading rule the per-spelling fold forces
-        // (RP4.1 audit settlement, 2026-09-03): a spelling whose cells
-        // disposition differently is listed under its WEAKEST verdict, so
-        // `swtcontrol.delay` appears here with 24 in-scope cells that are in
-        // fact `ledger-hit`. The per-cell truth is `props_census.json`.
+        // The header carries the reading rule the per-spelling fold forces: a
+        // spelling whose cells disposition differently is listed under its
+        // WEAKEST verdict, so cells a ledger entry claims in some cases can
+        // appear here. The per-cell truth is `props_census.json`.
         let mut s = String::from(
             "class.prop | cells | cells_in_scope | spellings  (per-spelling, folded to the weakest disposition; per-cell truth: props_census.json)\n",
         );
@@ -986,12 +957,11 @@ impl ChannelExtracts {
             "shape_rows": self.shape_rows,
             "shape_rows_in_scope": self.shape_rows_in_scope,
             // Spellings whose cells disagreed and were folded to the weakest
-            // verdict (`ChannelExtracts::ingest`) — 1 on the RP4.1 population
-            // (`swtcontrol.delay`: `ledger-hit` in scope, UNCLAIMED out of it).
+            // verdict (`ChannelExtracts::ingest`).
             "mixed_disposition_spellings": self.mixed_disposition_spellings(),
             // …and the reading rule that fold forces, carried IN the artifact
-            // because this file is the one a reader opens first (RP4.1 audit
-            // settlement, 2026-09-03): the per-cell question "does any COMPARED
+            // because this file is the one a reader opens first: the per-cell
+            // question "does any COMPARED
             // cell still lack a disposition?" is answered by the lossless
             // `props_census.json`, never by these per-spelling tallies.
             "reading_rule": "per-SPELLING tallies: a spelling whose cells disposition \
@@ -1081,7 +1051,7 @@ fn stream_census(header: &Value, rows: &[Row], mode: Mode, w: &mut impl Write) {
 /// is the `DSS_GATE_ONLY` filter this run was bounded by (`None` = the full
 /// live population); it is stamped into the census header AND into
 /// `tmp/props_census/run.json` so a family-bounded artifact set can never be
-/// mistaken for a full one (RP0.2 audit). Returns the artifact root for the
+/// mistaken for a full one. Returns the artifact root for the
 /// caller's banner.
 pub(crate) fn write_artifacts(
     mut rows: Vec<Row>,
@@ -1110,8 +1080,8 @@ pub(crate) fn write_artifacts(
         let e = &extracts[ch.tag()];
         // The example column is labelled by the channel that produced it — the
         // vendored files are r4133-only, so their `r4133-example` header is the
-        // r4133 case of this (RP0.2 audit: the capi extracts used to claim to be
-        // r4133 captures).
+        // r4133 case of this (a capi extract must never claim to be an r4133
+        // capture).
         write(
             &dir.join("structural_pairs.txt"),
             &e.structural_text(ch.tag()),
@@ -1125,7 +1095,7 @@ pub(crate) fn write_artifacts(
         );
         // The disposition mode's own three artifacts. Written ONLY in claims
         // mode: a plain run must leave a directory a reader can diff against
-        // the vendored 2026-08-08 census without subtracting files — and a
+        // the vendored census without subtracting files — and a
         // plain run AFTER a claims run must not leave that run's claims files
         // sitting next to its own extracts, where they would read as this run's
         // accounting. Removed BY NAME, one file at a time (never a recursive
@@ -1233,15 +1203,13 @@ pub(crate) fn write_artifacts(
     for ch in channels {
         let e = &extracts[ch.tag()];
         let b = blind.get(ch.tag()).copied().unwrap_or_default();
-        // The error counts ride the PRINTED line, not just `props_census.json`
-        // (RP1.4 audit): a case whose channel hiccups yields ONE `oracle_error`
-        // row instead of that case's divergence rows, so a run that quietly lost
-        // a case used to read exactly like a complete one on stdout. Baselines
-        // measured 2026-08-23 and recorded in `TESTING.md`: 5 on r4133 (the
-        // #303 crash decks the vendored census carries too) and 22 on
-        // `capi_v0145` (decks the 0.14.5 oracle cannot compile or solve —
-        // post-0.14.5 spellings, the WindGen class, `modes:upgrade/*`). Above
-        // the baseline, this run measured LESS than the recorded census and its
+        // The error counts ride the PRINTED line, not just `props_census.json`:
+        // a case whose channel hiccups yields ONE `oracle_error` row instead
+        // of that case's divergence rows, so a run that quietly lost a case
+        // would otherwise read exactly like a complete one on stdout. On r4133
+        // the vendored census carries the same error rows, and on `capi_v0145`
+        // the decks dss_capi 0.14.5 cannot compile or solve add theirs. More
+        // errors than the vendored census means this run measured LESS and its
         // totals are not comparable with it.
         let count_kind =
             |f: fn(&Row) -> bool| rows.iter().filter(|r| r.channel == ch && f(r)).count();
@@ -1412,8 +1380,7 @@ mod tests {
 
     /// A class whose elements do NOT all share one property-table shape is
     /// COUNTED (and banner-reported), because `shape.txt` prints one row per
-    /// class and can only show the first. The lossless record is the census
-    /// JSON. All five classes of the 2026-08-08 census are homogeneous.
+    /// class and can only show the first.
     #[test]
     fn heterogeneous_shape_classes_are_counted_not_swallowed() {
         let shape = |element: &str, rust_count: usize| Row {
@@ -1636,7 +1603,7 @@ mod tests {
         .into_iter()
         .collect();
         let cases = [
-            // Folded by RP2.1's own table — the three live rule kinds.
+            // Folded by the normalization table — the three live rule kinds.
             (
                 "Capacitor.c1",
                 "enabled",
@@ -1658,13 +1625,13 @@ mod tests {
                 "[400,]",
                 "normalized-by-ArrayForm",
             ),
-            // Excluded by RP2.3's echo table — on BOTH elements, because the
+            // Excluded by the echo table — on BOTH elements, because the
             // exclusion is per `(class, prop)` and not per case, and ahead of
             // the ledger link on the one the entry names.
             ("RegControl.r1", "fwdthreshold", "100", "", "echo-row"),
             ("RegControl.r2", "fwdthreshold", "100", "", "echo-row"),
-            // Named by a `property` ledger scope, and by nothing earlier — an
-            // RP3 root-cause pair, which no r4133 link claims.
+            // Named by a `property` ledger scope, and by nothing earlier: a
+            // root-caused pair, which no r4133 link claims.
             (
                 "GICTransformer.g1",
                 "r2",
@@ -1672,9 +1639,8 @@ mod tests {
                 "0.12696",
                 "ledger-hit",
             ),
-            // Claimed by RP2.4's display floor: two renders of one double,
-            // 6.431124e-05 apart (`load.pf`, the worst cell the floor takes).
-            // Its pair holds no normalization and no echo row, so this is the
+            // Claimed by the display floor: two renders of one double. Its
+            // pair holds no normalization and no echo row, so this is the
             // fourth link answering on its own.
             (
                 "Load.l1",
@@ -1683,13 +1649,12 @@ mod tests {
                 "0.7477",
                 "under-floor",
             ),
-            // The bucket RP3 still owes rows for. The second is the
-            // discrimination case: a real value difference inside a pair the
-            // normalization table DOES hold must not be claimed. Both are also
-            // far outside the display floor (2.5e-1 and 2.5e-3), which is what
-            // keeps them UNCLAIMED now that the fourth link is live — and the
-            // third is the same property as the `under-floor` row above, 9.99e-4
-            // apart: the floor is a CELL predicate, never a pair mask.
+            // The unclaimed bucket. The second is the discrimination case: a
+            // real value difference inside a pair the normalization table DOES
+            // hold must not be claimed. Both are also far outside the display
+            // floor, which is what keeps them UNCLAIMED, and the third is the
+            // same property as the `under-floor` row above, outside the floor:
+            // the floor is a CELL predicate, never a pair mask.
             ("GICTransformer.g2", "r2", "0.09522", "0.12696", "UNCLAIMED"),
             ("Line.l1", "ratings", "[ 400]", "[401,]", "UNCLAIMED"),
             (
@@ -1699,12 +1664,10 @@ mod tests {
                 "0.7484477",
                 "UNCLAIMED",
             ),
-            // …and RP3.9's shape, which the RP2.4 audit settlement moved OUT of
-            // `under-floor`: a real census spelling 1.2e-6 apart — inside the
-            // floor by the metric, and still `UNCLAIMED`, because r4133's
-            // `load.kva` is no `%.Ng` render of ours (the two engines hold
-            // different doubles). Without this row the census's vocabulary
-            // could not tell the settlement's two populations apart.
+            // …and a real census spelling inside the floor by the metric that
+            // is still `UNCLAIMED`, because r4133's `load.kva` is no `%.Ng`
+            // render of ours (the two engines hold different doubles). Without
+            // this row the vocabulary could not tell the two populations apart.
             (
                 "Load.l3",
                 "kva",
@@ -1743,23 +1706,10 @@ mod tests {
 
     /// **The capi arm of a claims run is the identity plus the ledger.**
     ///
-    /// Three of the chain's four links are r4133 mechanisms; the ledger link is
-    /// a real capi one (the gate applies `property`-scoped entries on that
-    /// channel — `makeposseq-cuf-applied-capi-props` and its sibling
-    /// `makeposseq-matrix-average-capi-props`). So the SAME cell that folds on
-    /// r4133 must come back `UNCLAIMED` on capi, while a ledger-named cell is
-    /// `ledger-hit` on both.
-    ///
-    /// This is the RP2.1 audit round's fix: `annotate` used to ignore the row's
-    /// channel, so the measured "capi normalizes nothing" was a statement about
-    /// today's capi population rather than about the contract.
-    ///
-    /// **RP2.3 added the echo link to the same statement**, and with it the
-    /// sharpest case in the table: `regcontrol.fwdthreshold` is BOTH an echo
-    /// row and (here) a ledger-named cell, so the one cell resolves `echo-row`
-    /// on r4133 and `ledger-hit` on capi — the chain order and the channel gate
-    /// in a single row. The ledger-hit-on-BOTH case moved to
-    /// `gictransformer.r2`, an RP3 root-cause pair no r4133 link claims.
+    /// The SAME cell that an r4133 link claims comes back `UNCLAIMED` on capi,
+    /// while a ledger-named cell is `ledger-hit` on both. Three of the four
+    /// links are r4133 mechanisms, and the ledger link is the one the gate also
+    /// applies on capi.
     #[test]
     fn the_capi_channel_reaches_no_r4133_link() {
         let named: BTreeSet<(String, String)> = [
@@ -1793,7 +1743,7 @@ mod tests {
                 "normalized-by-ArrayForm",
                 "UNCLAIMED",
             ),
-            // RP2.3's link, and the chain order with it: the echo table
+            // The echo link, and the chain order with it: the echo table
             // answers BEFORE the ledger on r4133, while capi reaches neither
             // the echo row nor any other r4133 link and falls through to the
             // ledger entry that names this very cell.
@@ -1809,11 +1759,11 @@ mod tests {
             // capi, i.e. still owed a compare there — which is exactly what
             // makes the capi channel the witness those rows cite.
             ("Recloser.r1", "eventlog", "No", "", "echo-row", "UNCLAIMED"),
-            // RP2.4's link. It is the one where a capi leak would cost most —
-            // the capi property compare runs at the case's tier floors (1e-9 to
-            // 1e-6 rel, `harness::tol_for`), so a floor reaching that channel
-            // would relax every numeric property of every `both` case to 2e-4
-            // at once, silently and everywhere.
+            // The display-floor link. It is the one where a capi leak would
+            // cost most: the capi property compare runs at the case's tier
+            // floors (`harness::tol_for`), so a floor reaching that channel
+            // would relax every numeric property of every `both` case at once,
+            // silently and everywhere.
             (
                 "Load.l1",
                 "pf",
@@ -1849,17 +1799,9 @@ mod tests {
         }
     }
 
-    /// **Two cells of one spelling may legitimately disagree, and the census
-    /// records that instead of dying on it.**
-    ///
-    /// The first three links are a pure function of `(class, prop, rust,
-    /// oracle)`; the fourth is not — a `property` ledger scope is per (case,
-    /// channel), so one spelling named by an entry in case A and by none in
-    /// case B answers `ledger-hit` there and `UNCLAIMED` here. RP2.1 first
-    /// shipped an `assert_eq!` on that pair, which would have aborted a 56 s /
-    /// 1e6-row walk in a mode whose contract is that it asserts nothing (audit
-    /// round). The aggregate is the WEAKEST verdict, and the conflict is
-    /// counted.
+    /// Two cells of one spelling may legitimately disagree (a `property`
+    /// ledger scope is per case and channel), and the census folds them to the
+    /// WEAKEST verdict and counts the conflict instead of dying on it.
     #[test]
     fn a_spelling_dispositioned_two_ways_aggregates_to_the_weakest() {
         let mut e = ChannelExtracts::default();
@@ -1925,11 +1867,11 @@ mod tests {
         ingest("Capacitor.c1", "enabled", "Yes", "true", true);
         ingest("Capacitor.c2", "enabled", "Yes", "true", false);
         ingest("Line.l1", "ratings", "[ 400]", "[401,]", true);
-        // RP2.3: an excluded-by-echo cell is annotated like any other, so the
+        // An excluded-by-echo cell is annotated like any other, so the
         // full claims run can MEASURE what the echo table masks.
         ingest("RegControl.r1", "idle", "No", "", true);
-        // RP2.4: so is a cell the display floor claims — RP4.1's acceptance
-        // reads this vocabulary, so `under-floor` has to reach the artifacts.
+        // So is a cell the display floor claims: the acceptance reads this
+        // vocabulary, so `under-floor` has to reach the artifacts.
         ingest("Load.l1", "pf", "0.747651914485831", "0.7477", true);
 
         assert_eq!(
@@ -1954,7 +1896,7 @@ mod tests {
         assert_eq!(
             e.unclaimed_text(),
             "class.prop | cells | cells_in_scope | spellings  (per-spelling, folded to the weakest disposition; per-cell truth: props_census.json)\nline.ratings | 1 | 1 | 1\n",
-            "an echo-excluded cell is CLAIMED, so it leaves the work list RP4.1 reads"
+            "an echo-excluded cell is CLAIMED, so it leaves the work list"
         );
         let s = e.claims_summary();
         assert_eq!(s["value_cells"], 5);
@@ -1974,17 +1916,15 @@ mod tests {
         assert_eq!(s["per_disposition"]["UNCLAIMED"]["pairs"], 1);
         // A mechanism that claimed nothing is present at zero, never absent —
         // the reader has to be able to tell "claimed nothing" from "not
-        // reported". Since RP2.4 filled the last slot the only tags in that
-        // state here are the synonym map and the ledger link.
+        // reported". The only tags in that state here are the synonym map and
+        // the ledger link.
         for tag in ["normalized-by-EnumSynonym", "ledger-hit"] {
             assert_eq!(s["per_disposition"][tag]["cells"], 0, "{tag}");
         }
     }
 
     /// The plain census keeps the frozen row shape: no claims columns, no claims
-    /// files. RP0.2 fixed plain as the knob's baseline forever, so a claims
-    /// feature that leaked into it would break every diff against the vendored
-    /// 2026-08-08 census.
+    /// files, so it stays diffable against the vendored census.
     #[test]
     fn plain_mode_rows_carry_no_claims_columns() {
         let mut row = value_row("Capacitor.c1", "enabled", "Yes", "true", true);
@@ -2114,7 +2054,7 @@ mod tests {
         assert_eq!(blind.unaligned_cells, 0);
         assert_eq!(blind.skipped_elements, 1);
         assert_eq!(blind.skipped_element_cells, relay_props.len());
-        // …and the r4133 channel really does compare it (plan §1.2).
+        // …and the r4133 channel really does compare it.
         let mut out = Vec::new();
         let blind = harness::collect_prop_divergences(
             &mut dss,
@@ -2127,37 +2067,10 @@ mod tests {
         assert!(out.is_empty(), "a faithful capture still produces no rows");
     }
 
-    /// **Why the knob may read properties straight after `solve`** (RP0.2
-    /// audit). The live gate reaches `compare_all_properties` at the END of a
-    /// step, after every other comparator; `census_one` reads them immediately
-    /// after `solve`. The knob is supposed to PREDICT what the gate will see
-    /// (WP-RP1's "zero `shape_count` rows", RP4.1's residual read), so the two
-    /// orders must produce the same `?`-surface.
-    ///
-    /// Two independent arguments, and this test is the empirical half:
-    ///
-    ///  * By inspection of `runner::compare_capture`, every `dss.command` it
-    ///    issues between `solve` and the property compare is a `? Element.Prop`
-    ///    QUERY — `compare_probe` (`runner.rs:554` → `harness:compare_probe`)
-    ///    and the ledger's probe/element handlers (`ledger.rs:863`); the
-    ///    ledger's property rewrite (`ledger.rs:1017`, `runner.rs:641`) sits
-    ///    inside the property block itself. No `export`, no `set`, no second
-    ///    `solve`: `compare_export` compares two STRINGS and never touches the
-    ///    engine, and every other comparator (elements, Y, monitors, meters,
-    ///    discrete state, eventlog) reads through accessors.
-    ///  * A `?` query is a read. The one piece of property-visible per-object
-    ///    cursor state, the Transformer `ActiveWinding` behind
-    ///    `skip_transformer_cursor`, is written only by property SETTERS
-    ///    (`set_struct_*` in `elements/pd/transformer/accessors.rs`), never by a
-    ///    getter — and `Dss::element_properties` sets the active object itself
-    ///    and refreshes `Vterminal` per property, so neither selection nor a
-    ///    stale terminal voltage can leak in from a preceding comparator.
-    ///
-    /// So the test replays that intervening traffic — probes on a 3-winding
-    /// transformer (`Wdg` included), a probe on another element, and a full
-    /// property read of another element (what the gate's own props walk does to
-    /// every element before reaching this one) — and asserts the `?`-surface is
-    /// byte-identical to the snapshot taken right after `solve`.
+    /// The `?`-surface read right after `solve` (where the census reads it) is
+    /// byte-identical to the one read after the gate's intervening `?` queries
+    /// (where the gate reads it). Every command `runner::compare_capture` issues
+    /// between `solve` and the property compare is a query, and a query is a read.
     #[test]
     fn the_props_surface_is_stable_across_the_gates_intervening_comparators() {
         use dss_core::exec::Dss;

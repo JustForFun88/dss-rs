@@ -21,7 +21,7 @@ use crate::support::mathutil::{SymComp, power_factor};
 /// cache-aware `compute_iterminal`, where r4133 calls an unconditional
 /// scratch-buffer `GetCurrents` (`Common/ShowResults.pas:785`, `:844`, `:912`;
 /// the code-1 form `:988`, `:1023`, `:1074`) — the same current after a solve,
-/// Newton included since RF-D00-01 (why: the call site in
+/// Newton included (why: the call site in
 /// `report::export::currents`; pinned by
 /// `exec::tests::newton::newton_show_powers_match_the_normal_algorithm`) — plus
 /// `ExcesskVANorm`/`ExcesskVAEmerg`; `opt` = 0 → kW/kvar, 1 → MW/Mvar.

@@ -14,7 +14,7 @@
 //!
 //! The integer form (`SparseInt`) backs the branch-to-node incidence matrix and
 //! its Laplacian (`solution/inc_matrix.rs`); the complex form (`SparseComplex`)
-//! backs the A-Diakoptics matrices (Part II). This is a byte-faithful transcription
+//! backs the A-Diakoptics matrices. This is a byte-faithful transcription
 //! — the ops are not mathematically "cleaned up" (e.g. `multiply` assumes
 //! column-sorted row blocks that the incidence matrix does not actually provide;
 //! `add`/`multiply` use `re<>0 AND im<>0` drop tests): the goldens pin the exact

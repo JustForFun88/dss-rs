@@ -1,5 +1,4 @@
-"""Generate the feeders-controls-off gate artifacts (PHASE4_PLAN.md WP4.9;
-historically "Phase 4").
+"""Generate the feeders-controls-off gate artifacts.
 
 For each IEEE test feeder (13/37/123 bus) this script:
 

@@ -1,4 +1,4 @@
-! WASM_USERMODELS WM.4 — Storage DynaDLL (TStoreDynaModel, 13-fn) dynamics gate.
+! WASM user model — Storage DynaDLL (TStoreDynaModel, 13-fn) dynamics gate.
 ! A stiff source, a short feeder line and a single 3-phase WYE Storage running the
 ! wm4model first-order current-lag dynamics model over the dynamics-only interface
 ! (DynaDLL=). The Storage `DoDynamicMode` delegates to `DoDynaModel` whenever the

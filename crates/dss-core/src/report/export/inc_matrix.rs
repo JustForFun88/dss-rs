@@ -8,8 +8,8 @@
 //! The COO matrices dump one `row,col,value` line per stored non-zero, in storage
 //! (= insertion) order (Pascal `for i := 0 to NZero - 1`). A never-calculated
 //! matrix (Pascal NIL, `None` here) yields a header-only file — the Pascal would
-//! access-violate on the NIL, which this port does not reproduce (CLAUDE.md
-//! known-bugs rule); every meaningful call runs a `CalcIncMatrix*` first.
+//! access-violate on the NIL, an OpenDSS bug this engine does not reproduce;
+//! every meaningful call runs a `CalcIncMatrix*` first.
 
 use crate::circuit::Circuit;
 

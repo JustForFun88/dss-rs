@@ -2,15 +2,14 @@
 //! `tools/oracle/oracle_server.py::run_case` (+ the `capture_*` helpers it shares
 //! with `tools/golden/gen_checkpoints.py`) against the raw r4133 DLL.
 //!
-//! The response is JSON-shape-identical to the retired Oddie oracle's
-//! (`CaseResult { node_order, n_steps, checkpoints, autoadd_log }`, + G1.10a's
-//! `run_files` / `sweep_failed` and G1.10b's `run_file_contents`), so the Rust
-//! gate's `serde` deserialize accepts it unchanged (bit-diff-proven against the
-//! Python path by `xcheck_bridge.py`, itself retired with that stack in Phase
-//! E). Read order within a step matches `oracle_server` exactly — notably the
-//! §1.1(a)/D3 group-A-before-group-B rule in the element capture
-//! (Losses, Powers, then Currents: the harmonics stale-`Iterminal` ordering,
-//! CLAUDE.md), which every read line declares with a `capture-order:` marker.
+//! The response has the capi channel's JSON shape
+//! (`CaseResult { node_order, n_steps, checkpoints, autoadd_log }`, plus
+//! `run_files` / `sweep_failed` and `run_file_contents`), so the Rust gate's
+//! `serde` deserialize accepts it unchanged. Read order within a step matches
+//! `oracle_server` exactly — notably the group-A-before-group-B rule in the
+//! element capture (Losses, Powers, then Currents: the OpenDSS harmonics
+//! stale-`Iterminal` bug), which every read line declares with a
+//! `capture-order:` marker.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -30,11 +29,10 @@ const RUN_ATTEMPTS: usize = 3;
 /// definition (mirrored on the capi transport by
 /// `oracle_server._USER_MODEL_ERRNOS`).
 ///
-/// Needed here because G1.9 made the group-A aggregates the FIRST post-solve
-/// read that recomputes `Iterminal`, so on a `warn_and_continue` deck the single
-/// priming warning now fires inside [`capture_aggregates`] instead of
-/// `Engine::element_pcl`. G1.9's hand-synced local copy was folded into the
-/// `dss` one at the 2026-09-05 lane merge (its "dedup at merge" handoff).
+/// Needed here because the group-A aggregates are the FIRST post-solve read
+/// that recomputes `Iterminal`, so on a `warn_and_continue` deck the single
+/// priming warning fires inside [`capture_aggregates`] instead of
+/// `Engine::element_pcl`.
 use crate::dss::USER_MODEL as USER_MODEL_ERRNOS;
 
 // ---------------------------------------------------------------------------
@@ -52,13 +50,13 @@ pub struct RunRequest {
     pub selected_elements: Vec<String>,
     #[serde(default)]
     pub check_meters_monitors: bool,
-    /// Capture the `PDElements` walk (GOLDEN_REBASE G1.6b). The capi channel
+    /// Capture the `PDElements` walk. The capi channel
     /// spells the same request key (`oracle_server.run_case`), so the two
     /// transports are requested and ordered identically.
     #[serde(default)]
     pub pd_elements: bool,
-    /// Drive the executive `RelCalc` and capture the reliability surface
-    /// (GOLDEN_REBASE G1.6(i)). The capi channel spells the same request key
+    /// Drive the executive `RelCalc` and capture the reliability surface. The
+    /// capi channel spells the same request key
     /// (`oracle_server.run_case`), so both transports run the command at the
     /// same point of the same step and read the same fields.
     ///
@@ -76,11 +74,11 @@ pub struct RunRequest {
     pub eventlog: bool,
     #[serde(default)]
     pub ctrlqueue: bool,
-    /// G1.4a `compare_bus`: capture every bus's voltage surface
+    /// Manifest flag `compare_bus`: capture every bus's voltage surface
     /// ([`capture_all_buses`]) plus the checkpoint-level `AllBusVmagPu`.
     #[serde(default)]
     pub buses: bool,
-    /// G1.5 `compare_zsc`: append the six short-circuit arms
+    /// Manifest flag `compare_zsc`: append the six short-circuit arms
     /// (`Zsc1`/`Zsc0`/`ZscMatrix`/`YscMatrix`/`Isc`/`Voc`) to the ONE per-bus
     /// walk [`Self::buses`] drives — never a second `SetActiveBus` pass.
     /// Requires [`Self::buses`]: without it the walk does not run at all, so
@@ -91,60 +89,57 @@ pub struct RunRequest {
     pub zsc: bool,
     #[serde(default)]
     pub all_properties: bool,
-    /// Manifest flag `compare_derived` (GOLDEN_REBASE G1.3a): capture
+    /// Manifest flag `compare_derived`: capture
     /// `CktElement.Enabled` for every element and the three polar channels
     /// `CurrentsMagAng` / `Residuals` / `VoltagesMagAng` for the **enabled**
-    /// ones, and (GOLDEN_REBASE G1.3b) the three sequence channels
+    /// ones, the three sequence channels
     /// `SeqPowers` / `SeqCurrents` / `SeqVoltages` for the enabled ones too,
-    /// and (GOLDEN_REBASE G1.3c) `TotalPowers` / `CplxSeqCurrents` /
+    /// and `TotalPowers` / `CplxSeqCurrents` /
     /// `CplxSeqVoltages`, also enabled-only.
-    /// Absent or `false` ⇒ none of the seventeen keys is emitted and the reply
-    /// is byte-identical to a pre-G1.3a one.
+    /// Absent or `false` ⇒ none of the seventeen keys is emitted.
     #[serde(default)]
     pub derived: bool,
-    /// Manifest flag `compare_element_extras` (GOLDEN_REBASE G1.3d): capture
+    /// Manifest flag `compare_element_extras`: capture
     /// `CktElement.Enabled`, the discrete index/name scalars
-    /// `NumTerminals` / `NumConductors` / `NumPhases` / `EnergyMeter` (part (i)),
+    /// `NumTerminals` / `NumConductors` / `NumPhases` / `EnergyMeter`,
     /// the five control-derived scalars `NumControls` / `OCPDevIndex` /
     /// `OCPDevType` / `HasVoltControl` / `HasSwitchControl` and `PhaseLosses`
-    /// (part (ii)) for every element, and `NodeOrder` for the ones that are
+    /// for every element, and `NodeOrder` for the ones that are
     /// enabled with at least one terminal. Absent or `false` ⇒ none of those
-    /// keys is emitted and the reply is byte-identical to a pre-G1.3d one.
+    /// keys is emitted.
     #[serde(default)]
     pub element_extras: bool,
-    /// `GOLDEN_REBASE_PLAN.md` G1.7 — the six order-free `Topology` reads.
+    /// The six order-free `Topology` reads.
     #[serde(default)]
     pub topology: bool,
-    /// `GOLDEN_REBASE_PLAN.md` G1.8 — the flat `CalcIncMatrix` / `CalcLaplacian`
-    /// pair and the four `SolutionV` rows it makes readable. See
-    /// [`capture_inc_matrix`].
+    /// The flat `CalcIncMatrix` / `CalcLaplacian` pair and the four `SolutionV`
+    /// rows it makes readable. See [`capture_inc_matrix`].
     #[serde(default)]
     pub inc_matrix: bool,
     #[serde(default)]
     pub global_result: bool,
     #[serde(default)]
     pub autoadd_log: bool,
-    /// `GOLDEN_REBASE_PLAN.md` G1.10a — the run-produced FILE SET under the
-    /// case's DataPath. Not a model read: the run's filesystem effect, taken
-    /// from the SAME [`CorpusGuard`] pass that sweeps the corpus clean, and read
-    /// STRICTLY LAST of the whole run (after `autoadd_log`) while the guard is
-    /// still alive. Twin request key: `oracle_server.py`'s `run_files`.
+    /// The run-produced FILE SET under the case's DataPath. Not a model read:
+    /// the run's filesystem effect, taken from the SAME [`CorpusGuard`] pass
+    /// that sweeps the corpus clean, and read STRICTLY LAST of the whole run
+    /// (after `autoadd_log`) while the guard is still alive. Twin request key:
+    /// `oracle_server.py`'s `run_files`.
     #[serde(default)]
     pub run_files: bool,
-    /// `GOLDEN_REBASE_PLAN.md` G1.10b — the CONTENTS half: the gate's selection
-    /// of created-file names whose bytes this transport hands back, as patterns
-    /// over a [`crate::guard::normalize_created_name`] member
+    /// The CONTENTS half: the gate's selection of created-file names whose
+    /// bytes this transport hands back, as patterns over a
+    /// [`crate::guard::normalize_created_name`] member
     /// ([`crate::guard::RUN_FILE_CONTENTS_PATTERNS`], declared once on the gate
     /// side and shipped in the request so no transport re-derives it). Empty or
     /// absent ⇒ nothing is copied and the reply's `run_file_contents` is `null`
     /// (the key is always serialized — `CaseResult` carries no
-    /// `skip_serializing_if`, exactly as for G1.10a's `run_files`; the gate's
+    /// `skip_serializing_if`, exactly as for `run_files`; the gate's
     /// field is `serde(default)`, so an off request reads back as "not
     /// requested"). Twin request key: `oracle_server.py`'s `run_file_contents`.
     #[serde(default)]
     pub run_file_contents: Vec<String>,
-    /// `GOLDEN_REBASE_PLAN.md` G1.10b, coordinator decision D40(6) — the
-    /// gate-owned sidecar directory the selected files' BYTES are copied into
+    /// The gate-owned sidecar directory the selected files' BYTES are copied into
     /// (never the case directory, never `tests/corpus/`). Required whenever
     /// [`Self::run_file_contents`] is non-empty; the gate reads the copies from
     /// there and deletes the directory inside the same bracket that owns the
@@ -152,9 +147,8 @@ pub struct RunRequest {
     /// `run_file_contents_dir`.
     #[serde(default)]
     pub run_file_contents_dir: Option<String>,
-    /// `GOLDEN_REBASE_PLAN.md` G1.10c — the CONTENTS of the run-created
-    /// demand-interval tree (`<OutputDirectory><CaseName>/DI_yr_<year>/*`,
-    /// r4133 `Version8/Source/Meters/EnergyMeter.pas:824`). Like
+    /// The CONTENTS of the run-created demand-interval tree
+    /// (`<OutputDirectory><CaseName>/DI_yr_<year>/*`). Like
     /// [`Self::run_files`] it is not a model read: the members are the very
     /// [`CorpusGuard`] classification that sweeps the corpus clean, narrowed by
     /// [`crate::guard::is_di_member`], read inside the guard scope after
@@ -163,7 +157,7 @@ pub struct RunRequest {
     #[serde(default)]
     pub di: bool,
     /// The gate's own sidecar directory for this (case, channel): where the DI
-    /// files are COPIED so they survive the guard's sweep (decision D42(5)).
+    /// files are COPIED so they survive the guard's sweep.
     /// Required when [`Self::di`] is set — a missing one fails the case loudly
     /// rather than reporting an empty tree. Twin: `oracle_server.py`'s
     /// `di_dir`.
@@ -202,7 +196,7 @@ pub struct CaseResult {
     n_steps: usize,
     checkpoints: Vec<Checkpoint>,
     autoadd_log: Option<String>,
-    /// G1.10a — the sorted, normalized set of filesystem entries this run
+    /// The sorted, normalized set of filesystem entries this run
     /// created under the case dir (a trailing `/` marks a created directory;
     /// see [`crate::guard::normalize_created_name`]). `None` when the request
     /// did not ask for it, and also when the guard cannot report honestly (an
@@ -210,7 +204,7 @@ pub struct CaseResult {
     /// (`harness::capture_guard::require_capture_opt`) turns the second case
     /// into a failed case rather than "this deck created nothing".
     run_files: Option<Vec<String>>,
-    /// G1.10c — the run-created demand-interval tree's contents, as
+    /// The run-created demand-interval tree's contents, as
     /// `normalized member name -> path relative to the request's di_dir`
     /// (the files themselves are COPIED there, because the guard's sweep
     /// removes the originals before the gate compares them).
@@ -221,7 +215,7 @@ pub struct CaseResult {
     /// "asked, and this deck wrote no demand-interval tree" — is the common,
     /// legitimate answer and is what distinguishes it from `None`.
     di: Option<BTreeMap<String, String>>,
-    /// G1.10a / coordinator decision D32(2) — the created entries this run's own
+    /// The created entries this run's own
     /// hygiene guard could NOT remove, normalized like [`Self::run_files`].
     /// Always present (`[]` is the normal answer), never gated on a request
     /// flag: a producer that leaves an undeletable dropping behind silences the
@@ -231,7 +225,7 @@ pub struct CaseResult {
     /// the case on a non-empty list
     /// (`crates/dss-core/tests/corpus_gate/runner.rs::compare_with_result`).
     sweep_failed: Vec<String>,
-    /// G1.10b — the names (normalized like [`Self::run_files`], sorted) whose
+    /// The names (normalized like [`Self::run_files`], sorted) whose
     /// CONTENTS this run copied into the request's sidecar directory. `None`
     /// when the request carried no selection, which is what lets the gate's
     /// presence rail tell "not requested" from `Some([])`, "requested, and this
@@ -274,10 +268,10 @@ struct Checkpoint {
     ctrlqueue: Vec<String>,
     buses: Vec<BusCap>,
     all_bus_vmag_pu: Vec<f64>,
-    /// G1.4b: `Circuit.AllBusDistances`, one `DistFromMeter` per bus in
+    /// `Circuit.AllBusDistances`, one `DistFromMeter` per bus in
     /// `BusList` order; empty when the run did not request the bus surface.
     all_bus_distances: Vec<f64>,
-    /// G1.4b: `Circuit.AllNodeDistances`, the owning bus's `DistFromMeter` per
+    /// `Circuit.AllNodeDistances`, the owning bus's `DistFromMeter` per
     /// node in the `AllNodeNames` permutation; same emptiness rule.
     all_node_distances: Vec<f64>,
     all_properties: Vec<PropsCap>,
@@ -322,9 +316,9 @@ struct ElementCap {
     p_kw: Vec<f64>,
     p_kvar: Vec<f64>,
     loss_w: Vec<f64>,
-    // The GOLDEN_REBASE G1.3a derived channels, emitted only under
+    // The derived channels, emitted only under
     // `RunRequest::derived` — every one is skipped when empty/absent, so an
-    // off-flag reply keeps the byte-for-byte shape it had before G1.3a
+    // off-flag reply carries none of their keys
     // (`oracle_server.capture_all_elements` emits exactly the same keys).
     /// `CktElement.Enabled` — present for EVERY element under the flag, so the
     /// enabled-only polar capture below can never silently drop an element.
@@ -347,9 +341,9 @@ struct ElementCap {
     vma_mag: Vec<f64>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     vma_ang: Vec<f64>,
-    // The GOLDEN_REBASE G1.3d(i) discrete extras, emitted only under
+    // The discrete extras, emitted only under
     // `RunRequest::element_extras` — every one is skipped when empty/absent, so
-    // an off-flag reply keeps the byte-for-byte shape it had before G1.3d(i)
+    // an off-flag reply carries none of their keys
     // (`oracle_server.capture_all_elements` emits exactly the same keys).
     /// `NumTerminals` / `NumConductors` / `NumPhases` — present for EVERY
     /// element under the flag (all three are pure field reads on both engines).
@@ -368,9 +362,9 @@ struct ElementCap {
     /// [`capture_all_elements`]).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     node_order: Vec<i32>,
-    // The GOLDEN_REBASE G1.3d(ii) additions, emitted under the same
+    // The control-derived extras, emitted under the same
     // `RunRequest::element_extras` flag and skipped when empty/absent, so an
-    // off-flag reply keeps the byte-for-byte shape it had before G1.3d(ii)
+    // off-flag reply carries none of their keys
     // (`oracle_server.capture_all_elements` emits exactly the same keys).
     /// `PhaseLosses`, de-interleaved into kW and kvar the way `p_kw`/`p_kvar`
     /// already are. Length `NPhases` each — empty for a 0-phase element
@@ -392,10 +386,10 @@ struct ElementCap {
     has_volt_control: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     has_switch_control: Option<bool>,
-    // The GOLDEN_REBASE G1.3b sequence channels, emitted under the SAME
+    // The sequence channels, emitted under the SAME
     // `RunRequest::derived` flag as the polar three above and skipped when
-    // empty, so an off-flag reply keeps the byte-for-byte shape it had before
-    // G1.3b (`oracle_server.capture_all_elements` emits exactly the same keys).
+    // empty, so an off-flag reply carries none of their keys
+    // (`oracle_server.capture_all_elements` emits exactly the same keys).
     // All four are enabled-only, like the polar block: `CktElementV(9)` guards
     // neither `Enabled` nor `NodeRef` (see [`crate::dss::Engine::element_seq`]).
     /// `SeqCurrents` — 012 current magnitudes (A), `3 * NTerms` of them; and
@@ -412,10 +406,10 @@ struct ElementCap {
     seq_p_kw: Vec<f64>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     seq_p_kvar: Vec<f64>,
-    // The GOLDEN_REBASE G1.3c additions, emitted under the SAME
+    // The total-power and complex-sequence channels, emitted under the SAME
     // `RunRequest::derived` flag as the two blocks above and skipped when
-    // empty, so an off-flag reply keeps the byte-for-byte shape it had before
-    // G1.3c (`oracle_server.capture_all_elements` emits exactly the same keys).
+    // empty, so an off-flag reply carries none of their keys
+    // (`oracle_server.capture_all_elements` emits exactly the same keys).
     /// `TotalPowers`, de-interleaved into kW and kvar the way `p_kw`/`p_kvar`
     /// already are. `NTerms` each — the per-terminal sum of `GetPhasePower`'s
     /// conductor block, scaled by `0.001` **once**, inside the engine's own arm
@@ -469,7 +463,7 @@ struct MeterCap {
     pce: Vec<String>,
 }
 
-/// The reliability surface of one case (GOLDEN_REBASE G1.6(i)), captured once —
+/// The reliability surface of one case, captured once —
 /// on the last checkpoint, right after the executive `RelCalc` ran.
 ///
 /// Key names and types are the contract on the wire (the worker serializes
@@ -486,11 +480,11 @@ pub struct ReliabilityCap {
     pub meters: Vec<MeterReliabilityCap>,
     /// `Meters.Totals` — read LAST, see [`capture_reliability`].
     pub totals: Vec<f64>,
-    /// The per-bus half of the same post-`RelCalc` surface (GOLDEN_REBASE
-    /// G1.6(ii)), in `BusList` order — see [`capture_bus_reliability`]. It is
+    /// The per-bus half of the same post-`RelCalc` surface, in `BusList`
+    /// order — see [`capture_bus_reliability`]. It is
     /// nested HERE and not at the checkpoint's top level, exactly as
     /// `oracle_server.capture_reliability` nests its own `"buses"` key; the
-    /// `Checkpoint`'s `buses` is G1.4a's voltage capture, a different
+    /// `Checkpoint`'s `buses` is the bus voltage capture, a different
     /// surface.
     pub buses: Vec<BusReliabilityCap>,
 }
@@ -545,7 +539,7 @@ pub struct FeederSectionCap {
     pub fault_rate_x_repair_hrs: f64,
 }
 
-/// One bus's eight reliability columns (GOLDEN_REBASE G1.6(ii)): the six
+/// One bus's eight reliability columns: the six
 /// `Export BusReliability` renders plus the two it does not — `Cust_Duration`
 /// and `SectionID` — captured once per case, right after the executive
 /// `RelCalc` the same payload reports on.
@@ -603,7 +597,7 @@ pub struct BusReliabilityCap {
     pub total_miles: f64,
 }
 
-/// One enabled PD element's `PDElements` record (GOLDEN_REBASE G1.6b): the
+/// One enabled PD element's `PDElements` record: the
 /// thirteen columns `IPDElements._columns` compares wholesale on
 /// `DSS-Python origin/fastdss:dss/IPDElements.py`, plus `parent_name` — the
 /// parent's full name, which `ParentPDElement`'s active-element hijack hands
@@ -657,15 +651,15 @@ struct VariablesCap {
     values: Vec<f64>,
 }
 
-/// One bus's captured voltage surface — the `compare_bus` wire shape
-/// (GOLDEN_REBASE_PLAN.md WP-G1 sub-step G1.4a), serialized field-for-field as
+/// One bus's captured voltage surface — the `compare_bus` wire shape,
+/// serialized field-for-field as
 /// `tools/oracle/oracle_server.py::capture_all_buses` emits it and
 /// `corpus_gate::engines::BusCap` deserializes it.
 ///
 /// Parity target: fastdss' `IBus._columns` (`origin/fastdss` `dss/IBus.py:19-53`,
 /// reached through `save_state`'s `ActiveBus`, `tests/save_outputs.py:351`).
 /// The first four surfaces below are the ones both gating channels compute
-/// with the identical algorithm. The four G1.4c arms after the short-circuit
+/// with the identical algorithm. The four arms after the short-circuit
 /// block — `SeqVoltages`/`CplxSeqVoltages` and `VLL`/`puVLL` — do NOT: the
 /// two channels split structurally on the bus's node set (this transport has
 /// no `Nvalues > 3` clamp on the sequence arms and its L-L pairing loop can
@@ -675,7 +669,7 @@ struct VariablesCap {
 /// All three VOLTAGE arrays are `2 * nodes.len()` doubles in ONE order --
 /// **ascending node number** — and never the bus's internal insertion order:
 /// see [`crate::modes::BUS_NODES`] for the `FindIdx` walk all four arms share.
-/// The six G1.5 short-circuit arrays below are the other convention — the bus's
+/// The six short-circuit arrays below are the other convention — the bus's
 /// INTERNAL node index — and are captured only when the request sets `zsc`
 /// ([`RunRequest::zsc`]); see [`capture_all_buses`].
 #[derive(Serialize)]
@@ -689,7 +683,7 @@ struct BusCap {
     kv_base: f64,
     /// `Bus.Distance` — `TDSSBus.DistFromMeter` in km, published verbatim
     /// (`BUSF(5)`, `DBus.pas:122-128` == capi `CAPI_Bus.pas:419-427` ->
-    /// `CAPI_Alt.pas:2071-2074`). G1.4b.
+    /// `CAPI_Alt.pas:2071-2074`).
     ///
     /// A zone-build output, not a solve output: `MakeMeterZoneLists` writes it
     /// (`Meters/EnergyMeter.pas:1833-1838`), so a circuit with no EnergyMeter —
@@ -766,7 +760,7 @@ struct BusCap {
     /// `Bus.AllPCEatBus` — the qualified names of the power-conversion elements
     /// whose TERMINAL 1 names this bus (`BUSV(18)`, `DBus.pas:840-866` ->
     /// `Common/Circuit.pas:1540-1583`, class set `:1559` == capi
-    /// `CAPI_Bus.pas:773-788` -> `Common/Circuit.pas:1797-1870`). G1.4d.
+    /// `CAPI_Bus.pas:773-788` -> `Common/Circuit.pas:1797-1870`).
     ///
     /// The wire shape is THIS channel's: `getPCEatBus` seeds `Result[0] :=
     /// 'None'` (`:1551`) and appends one empty trailing slot (`:1569-1570`),
@@ -806,8 +800,7 @@ struct BusCap {
 /// values.
 const R4133_SC_SENTINEL_LEN: usize = 2;
 
-/// One element's every-property dump (§2.2 all-properties parity — a **gating**
-/// capture since R4133_PROPS RP4.1, 2026-09-03; report tooling only before it).
+/// One element's every-property dump (a **gating** capture).
 /// Serializes to the exact shape
 /// `oracle_server.capture_all_properties` emits and `harness::PropsCap`
 /// deserializes: `{"element": name, "props": [[prop, value], ...]}` in
@@ -818,8 +811,8 @@ pub struct PropsCap {
     pub props: Vec<(String, String)>,
 }
 
-/// The five `Circuit` aggregates of `GOLDEN_REBASE_PLAN.md` G1.9, in the exact
-/// shape `oracle_server.capture_aggregates` emits.
+/// The five `Circuit` aggregates, in the exact shape
+/// `oracle_server.capture_aggregates` emits.
 ///
 /// The units are in the key names because r4133 does not scale them uniformly:
 /// `Circuit.Losses` (`DDLL/DCircuit.pas:294` -> `Common/Circuit.pas:2436-2443`)
@@ -836,7 +829,7 @@ struct AggregatesCap {
     all_element_losses_kw: Vec<f64>,
 }
 
-/// The ten `Solution` scalars of G1.9, in the exact shape
+/// The ten `Solution` scalars, in the exact shape
 /// `oracle_server.capture_solution_scalars` emits.
 ///
 /// `iterations` and `dbl_hour` are deliberately absent — [`Checkpoint`] already
@@ -858,10 +851,10 @@ struct SolutionScalarsCap {
     load_mult: f64,
 }
 
-/// The six `Topology` quantities of `GOLDEN_REBASE_PLAN.md` G1.7, in the exact
-/// shape `oracle_server.capture_topology` emits (identical JSON keys, identical
-/// normalized list shape) — the six rows of `DDLL/DTopology.pas` that never
-/// touch `ActiveCircuit.ActiveCktElement`. See [`capture_topology`].
+/// The six `Topology` quantities, in the exact shape
+/// `oracle_server.capture_topology` emits (identical JSON keys, identical
+/// normalized list shape) — the six `Topology` rows that never touch the
+/// active circuit element. See [`capture_topology`].
 ///
 /// `looped_pairs` is FLAT, `[a0, b0, a1, b1, ...]`: `TopologyV(0)`
 /// (`DTopology.pas:270-305`) writes the two `QualifiedName`s of one looped pair
@@ -879,8 +872,8 @@ struct TopologyCap {
     isolated_loads: Vec<String>,
 }
 
-/// The four flat incidence quantities of `GOLDEN_REBASE_PLAN.md` G1.8, in the
-/// exact shape `oracle_server.capture_inc_matrix` emits (identical JSON keys,
+/// The four flat incidence quantities, in the exact shape
+/// `oracle_server.capture_inc_matrix` emits (identical JSON keys,
 /// identical normalized shapes). See [`capture_inc_matrix`].
 ///
 /// `inc_matrix` and `laplacian` are FLAT `(row, col, value)` integer triples in
@@ -912,12 +905,12 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
     let warn = req.warn_and_continue;
     let star = req.selected_elements == ["*"];
 
-    // G1.10a: bound by name (it used to be `_guard`) because the run's created
-    // FILE SET is reported from this very guard, after the last read and before
-    // it sweeps — one classification, two consumers (`CorpusGuard::created` and
-    // the sweep), so the reported set cannot disagree with the swept one. `mut`
-    // since D32(2): the sweep is driven explicitly by `finish()` below so its
-    // failures can travel in this reply instead of dying in `Drop`.
+    // Bound by name because the run's created FILE SET is reported from this
+    // very guard, after the last read and before it sweeps — one
+    // classification, two consumers (`CorpusGuard::created` and the sweep), so
+    // the reported set cannot disagree with the swept one. `mut` because the
+    // sweep is driven explicitly by `finish()` below so its failures can travel
+    // in this reply instead of dying in `Drop`.
     let mut guard = CorpusGuard::new(&req.case_path);
 
     let mut node_order: Vec<String> = Vec::new();
@@ -939,7 +932,7 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
                 String::new()
             };
 
-            // GOLDEN_REBASE G1.6(i): the executive `RelCalc` runs exactly ONCE
+            // The executive `RelCalc` runs exactly ONCE
             // per case — on the LAST step, after the solve reply has been read
             // (`RelCalc` overwrites `Text.Result` with its own empty reply) and
             // BEFORE every capture of this checkpoint, which is the slot
@@ -952,9 +945,8 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
                 None
             };
 
-            // G1.9 (`GOLDEN_REBASE_PLAN.md`, §1.1(a) + decision D3) — the circuit
-            // aggregates and the solution scalars, read HERE and nowhere later,
-            // for two independent reasons:
+            // The circuit aggregates and the solution scalars, read HERE and
+            // nowhere later, for two independent reasons:
             //  * group A before group B. Every aggregate is a
             //    `Get_Losses`/`Get_Power` read, i.e. a `ComputeIterminal`
             //    (`Common/CktElement.pas:743` / `:677-680`) over the elements it
@@ -968,7 +960,7 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
             //    `TPointerList` cursor at the end — and `capture_discrete` below
             //    drives `Transformers.First/Next`. Reading before any First/Next
             //    walk removes the interaction by construction.
-            // G1.6(i)'s once-per-case `RelCalc` above precedes this block: a
+            // The once-per-case `RelCalc` above precedes this block: a
             // state-changing command runs ahead of every read of the
             // checkpoint, on both transports.
             // Mirrors `oracle_server.run_case` exactly; the source order of both
@@ -1070,7 +1062,7 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
             let (buses, all_bus_vmag_pu, all_bus_distances, all_node_distances) = if req.buses {
                 let buses = capture_all_buses(engine, req.zsc)?;
                 let all_bus_vmag_pu = capture_all_bus_vmag_pu(engine)?;
-                // G1.4b: the two circuit-level views of the same
+                // The two circuit-level views of the same
                 // `DistFromMeter` the per-bus walk above read one bus at a time.
                 let all_bus_distances = capture_all_bus_distances(engine)?;
                 let all_node_distances = capture_all_node_distances(engine)?;
@@ -1106,14 +1098,13 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
                     all_node_distances,
                 )
             } else if req.zsc {
-                // G1.5: the six SC arms ride the per-bus walk above, so asking
+                // The six SC arms ride the per-bus walk above, so asking
                 // for them without the bus surface would ship nothing at all.
                 // Refuse loudly (the gate asserts the same implication in
                 // `corpus_gate::engines::build_run_request`).
                 return Err(EngineError::Other(
                     "request asks for the bus short-circuit surface (zsc) without the bus \
-                     surface it is appended to: the six SC arms share the one per-bus walk \
-                     (GOLDEN_REBASE_PLAN.md WP-G1 G1.5 section 2.a)"
+                     surface it is appended to: the six SC arms share the one per-bus walk"
                         .into(),
                 ));
             } else {
@@ -1121,13 +1112,13 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
             };
             // Read LAST (after every other capture), like `oracle_server.run_case`:
             // the `? name.Like`/`? name.prop` sweep perturbs the active-element
-            // cursor, so it must not run before any other read (§2.2).
+            // cursor, so it must not run before any other read.
             let all_properties = if req.all_properties {
                 capture_all_properties(engine)?
             } else {
                 Vec::new()
             };
-            // G1.7 — read STRICTLY LAST, after `all_properties`, on both
+            // Read STRICTLY LAST, after `all_properties`, on both
             // transports (`oracle_server.run_case` does the same; the source
             // order of both is asserted by
             // `crates/dss-core/tests/capture_order.rs`). Why last, and why
@@ -1139,7 +1130,7 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
             } else {
                 None
             };
-            // G1.8 — read STRICTLY LAST, after the G1.7 topology block, on both
+            // Read STRICTLY LAST, after the topology block, on both
             // transports (`oracle_server.run_case` does the same; the source
             // order of both is asserted by
             // `crates/dss-core/tests/capture_order.rs`). Why last, why the pair
@@ -1210,10 +1201,10 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
         None
     };
 
-    // G1.10c: the demand-interval tree's CONTENTS, read after `autoadd_log` and
+    // The demand-interval tree's CONTENTS, read after `autoadd_log` and
     // strictly BEFORE the classification below — which the per-run capture-order
-    // rule keeps the last READ of the run (`crates/dss-core/tests/capture_order.rs`,
-    // D33(3)). Inside the guard scope, because the sweep removes exactly these
+    // rule keeps the last READ of the run (`crates/dss-core/tests/capture_order.rs`).
+    // Inside the guard scope, because the sweep removes exactly these
     // files; the copies in the request's sidecar directory are what the gate
     // compares.
     let di = if req.di {
@@ -1222,13 +1213,13 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
         None
     };
 
-    // G1.10a: STRICTLY LAST of the whole run — after every step's model read and
+    // STRICTLY LAST of the whole run — after every step's model read and
     // after the `autoadd_log` file read — and while `guard` is still alive, since
     // its `Drop` removes exactly what this call classifies. `None` means "cannot
     // be reported honestly" (incomplete pre-run snapshot / failed listing); the
     // gate's presence rail turns that into a failed case.
     let run_files = if req.run_files { guard.created() } else { None };
-    // G1.10b / coordinator decision D40(6): the CONTENTS of the files the gate
+    // The CONTENTS of the files the gate
     // selected, copied out of the case directory into the gate's sidecar while
     // the guard still holds them. It consumes the set just classified — never a
     // second classification and never a second listing rule — and it is the one
@@ -1236,7 +1227,7 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
     // (`crates/dss-core/tests/capture_order.rs::check_run_file_contents_read_with_the_set`).
     // The `Result` is carried past `finish()` rather than `?`-ed here so a copy
     // failure still reports `sweep_failed`: a transport that skipped its sweep
-    // would leave the next producer a poisoned pre-run snapshot (D32(2)).
+    // would leave the next producer a poisoned pre-run snapshot.
     let run_file_contents = copy_selected_contents(
         guard.dir(),
         run_files.as_deref(),
@@ -1244,7 +1235,7 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
         req.run_file_contents_dir.as_deref(),
     );
 
-    // D32(2): sweep NOW, not in `Drop`, so a removal the guard could not perform
+    // Sweep NOW, not in `Drop`, so a removal the guard could not perform
     // is reported to the gate instead of being swallowed. Unconditional — the
     // hygiene contract does not depend on the run-file request flag. (An early
     // `?` return above still sweeps through `Drop`, which prints the leak to
@@ -1264,7 +1255,7 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
     })
 }
 
-/// GOLDEN_REBASE G1.10c — copy the run-created demand-interval tree into the
+/// Copy the run-created demand-interval tree into the
 /// gate's sidecar directory and report the mapping.
 ///
 /// The selection is [`CorpusGuard::created_di_files`]: the ONE created-entry
@@ -1292,15 +1283,14 @@ fn capture_di(
     };
     // The sidecar must lie OUTSIDE the case directory: a copy written inside it
     // would be classified as this run's own output by the very guard whose
-    // classification selected the originals — it would enter G1.10a's created
+    // classification selected the originals — it would enter the created
     // file SET and be swept before the gate could read it.
     let case_dir = Path::new(&req.case_path).parent().unwrap_or(Path::new("."));
-    // ONE rail for both sidecars (coordinator decision D42(5), deduped at the
-    // G1.10c landing): `crate::guard::refuse_sidecar_under_case_dir` tests it in
-    // BOTH directions over canonicalized, ASCII-folded paths. Its message states
-    // which relation fired and prints the resolved paths, so this caller names
-    // the DI surface and hands the rail's own text through rather than asserting
-    // one direction (merge settlement of the lane-e G1.10c landing, finding MC-1).
+    // ONE rail for both sidecars: `crate::guard::refuse_sidecar_under_case_dir`
+    // tests it in BOTH directions over canonicalized, ASCII-folded paths. Its
+    // message states which relation fired and prints the resolved paths, so this
+    // caller names the DI surface and hands the rail's own text through rather
+    // than asserting one direction.
     if let Err(why) = crate::guard::refuse_sidecar_under_case_dir(case_dir, Path::new(di_dir)) {
         return Err(EngineError::Other(format!(
             "{}: the demand-interval sidecar {di_dir:?} and the case directory \
@@ -1421,15 +1411,15 @@ fn capture_injection(flat: &[f64]) -> Injection {
     }
 }
 
-/// Group A of the step capture (`GOLDEN_REBASE_PLAN.md` G1.9): the five
+/// Group A of the step capture: the five
 /// `Circuit` aggregates, read before any group-B (`Currents`) read and before
 /// any `First/Next` walk. See the call site in [`run_case`] for the ordering
 /// argument and the Pascal citations.
 ///
 /// The retry mirrors `Engine::element_pcl`: on a `warn_and_continue` deck the
 /// first post-solve `ComputeIterminal` fires one non-fatal user-model
-/// `DoSimpleMsg` (#567/#570/#1570) and clears it, and since G1.9 that first
-/// recompute happens here. The reads are pure, so repeating all five is
+/// `DoSimpleMsg` (#567/#570/#1570) and clears it, and that first recompute
+/// happens here. The reads are pure, so repeating all five is
 /// idempotent; anything but a tolerated errno — and any errno at all on the
 /// second attempt — is returned as an error, never absorbed.
 fn capture_aggregates(engine: &Engine, warn: bool) -> Result<AggregatesCap, EngineError> {
@@ -1470,7 +1460,7 @@ fn capture_aggregates(engine: &Engine, warn: bool) -> Result<AggregatesCap, Engi
 /// reply that is not exactly two doubles is a transport failure, never a value.
 /// Padding it would be indistinguishable from the true answer for
 /// `SubstationLosses`, which is a legitimate `(0, 0)` on every deck without a
-/// `sub=yes` transformer (G1.9 audit CODE-3 / T4).
+/// `sub=yes` transformer.
 fn complex_pair(v: &[f64], what: &str) -> Result<Vec<f64>, EngineError> {
     if v.len() != 2 {
         return Err(EngineError::Other(format!(
@@ -1483,7 +1473,7 @@ fn complex_pair(v: &[f64], what: &str) -> Result<Vec<f64>, EngineError> {
     Ok(vec![v[0], v[1]])
 }
 
-/// Group C of the step capture: the ten order-free `Solution` scalars of G1.9.
+/// Group C of the step capture: the ten order-free `Solution` scalars.
 ///
 /// The two flag reads come back from r4133 as `0|1` ints
 /// (`DSolution.pas:192-197` and `:226-230`, both `IF ... THEN Result := 1`), so
@@ -1509,19 +1499,18 @@ fn capture_solution_scalars(engine: &Engine) -> Result<SolutionScalarsCap, Engin
 }
 
 /// `capture_all_elements`: every element's terminal currents/powers/losses, read
-/// Losses-then-Powers-then-Currents (the §1.1(a)/D3 order —
+/// Losses-then-Powers-then-Currents (the capture order —
 /// [`Engine::element_pcl`]) with the user-model retry.
 ///
-/// Under `derived` (manifest flag `compare_derived`, GOLDEN_REBASE G1.3a) each
+/// Under `derived` (manifest flag `compare_derived`) each
 /// element also reports `CktElement.Enabled`, and every **enabled** element the
 /// three polar channels [`Engine::element_polar`] reads. Disabled elements are
 /// skipped there deliberately: `CktElementV(19)` kills the process on an element
-/// whose `NodeRef` was never allocated (spec §1.4-H1, and the doc of
-/// `element_polar`), while `enabled` itself is captured for every element so the
-/// skip cannot hide one.
+/// whose `NodeRef` was never allocated (see the doc of `element_polar`), while
+/// `enabled` itself is captured for every element so the skip cannot hide one.
 ///
 /// The same flag carries the three sequence channels [`Engine::element_seq`]
-/// reads (GOLDEN_REBASE G1.3b), under the same enabled-only rule — which there
+/// reads, under the same enabled-only rule — which there
 /// is load-bearing rather than shape-normalizing: `CktElementV(9)`
 /// (`SeqPowers`) guards neither `Enabled` nor `NodeRef` and dereferences
 /// `NodeRef^[k+1]` at `DDLL/DCktElement.pas:765`, and capi's own read is no
@@ -1531,7 +1520,7 @@ fn capture_solution_scalars(engine: &Engine) -> Result<SolutionScalarsCap, Engin
 /// de-interleaved into kW/kvar the way `p_kw`/`p_kvar` are; the two magnitude
 /// channels are flat.
 ///
-/// The same flag again carries the GOLDEN_REBASE G1.3c trio, on the same
+/// The same flag again carries a third trio, on the same
 /// enabled-only rule: `TotalPowers` ([`Engine::element_total_powers`]) —
 /// cache-aware, hence read from the head of the element beside `PhaseLosses`
 /// and never from the derived block — plus `CplxSeqCurrents` and
@@ -1543,8 +1532,8 @@ fn capture_solution_scalars(engine: &Engine) -> Result<SolutionScalarsCap, Engin
 /// capi's extra `NodeRef = NIL` guards would otherwise answer a different
 /// length on the very same element.
 ///
-/// Under `extras` (manifest flag `compare_element_extras`, GOLDEN_REBASE
-/// G1.3d) each element also reports `Enabled`, `PhaseLosses` and the nine
+/// Under `extras` (manifest flag `compare_element_extras`) each element also
+/// reports `Enabled`, `PhaseLosses` and the nine
 /// discrete scalars [`Engine::element_extras`] reads, plus `NodeOrder`
 /// (`CktElementV(17)`,
 /// `DDLL/DCktElement.pas:1032`) for the elements that are **enabled** and have
@@ -1558,7 +1547,7 @@ fn capture_solution_scalars(engine: &Engine) -> Result<SolutionScalarsCap, Engin
 /// asymmetry instead of normalizing it. The comparator asserts both sides are
 /// empty there, so neither skip can hide a payload.
 ///
-/// `PhaseLosses` (GOLDEN_REBASE G1.3d(ii), [`Engine::element_phase_losses`]) is
+/// `PhaseLosses` ([`Engine::element_phase_losses`]) is
 /// the one addition that is NOT order-free: it runs `GetPhaseLosses`' own
 /// `ComputeIterminal` (r4133 `Common/CktElement.pas:1090`), so it is group **A**
 /// and is issued FIRST — ahead of `element_pcl`'s `Losses`/`Powers` — which is
@@ -1769,7 +1758,7 @@ fn capture_meters(engine: &Engine) -> Result<Vec<MeterCap>, EngineError> {
     Ok(out)
 }
 
-/// The reliability surface (GOLDEN_REBASE G1.6(i)): every meter's reliability
+/// The reliability surface: every meter's reliability
 /// indices, its three ordered zone lists, its allocation state and each of its
 /// feeder sections, plus the circuit-wide `Meters.Totals`.
 ///
@@ -1797,10 +1786,9 @@ fn capture_meters(engine: &Engine) -> Result<Vec<MeterCap>, EngineError> {
 ///    and so leaves rule 3 literally true (the capi transport nests its
 ///    `"buses"` key at the same point, for the same reason).
 ///
-/// This is group **C** of the capture-order partition (`GOLDEN_REBASE_PLAN.md`
-/// §1.1(a), coordinator decision D3): not one read here goes through
-/// `GetCurrents` into a scratch buffer (`Meters.CalcCurrent` returns the
-/// *stored* `CalculatedCurrent` array, `DMeters.pas:609-624`), so this surface
+/// This is group **C** of the capture-order partition: not one read here goes
+/// through `GetCurrents` into a scratch buffer (`Meters.CalcCurrent` returns
+/// the *stored* `CalculatedCurrent` array, `DMeters.pas:609-624`), so this surface
 /// neither imposes anything on the element capture order nor inherits anything
 /// from it.
 ///
@@ -1875,7 +1863,7 @@ pub fn capture_reliability(
     // Step 3: LAST, after the walk — `TotalizeMeters` ends it.
     let totals = engine.meters_totals()?;
     engine.assert_clean("reliability")?;
-    // Step 4 (G1.6(ii)): the per-bus half of the same post-`RelCalc` surface,
+    // Step 4: the per-bus half of the same post-`RelCalc` surface,
     // through its own function so no `Meters` read can follow `Totals`, and
     // after `totals` so the payload reads meters-then-buses exactly as
     // `oracle_server.capture_reliability` builds it. Its reads are order-free
@@ -1892,7 +1880,7 @@ pub fn capture_reliability(
 }
 
 /// Every bus's eight reliability columns, read AFTER the executive `RelCalc`
-/// (`GOLDEN_REBASE_PLAN.md` §1.1, sub-step G1.6(ii)) — the r4133 half of the
+/// — the r4133 half of the
 /// per-bus reliability capture, a field-for-field port of
 /// `oracle_server.capture_bus_reliability` over the typed mode accessors
 /// ([`crate::modes`] rows `Bus.Lambda`, `Bus.N_interrupts`, `Bus.Int_Duration`,
@@ -1920,11 +1908,11 @@ pub fn capture_reliability(
 /// plausible zero row, and the family's `-1` else arm (`DBus.pas:75`) collides
 /// with a legitimate `SectionID` of `-1`.
 ///
-/// Capture-order class **C, order-free** (`GOLDEN_REBASE_PLAN.md` §1.1(a),
-/// coordinator decision D3): all eight are plain `Buses^[ActiveBusIndex]` field
-/// reads — none goes through `ComputeIterminal`/`GetCurrents`, none writes
-/// engine state, and the only cursor that moves is `ActiveBusIndex`, which
-/// `capture_all_buses`, its one later reader, re-selects per bus anyway.
+/// Capture-order class **C, order-free**: all eight are plain
+/// `Buses^[ActiveBusIndex]` field reads — none goes through
+/// `ComputeIterminal`/`GetCurrents`, none writes engine state, and the only
+/// cursor that moves is `ActiveBusIndex`, which `capture_all_buses`, its one
+/// later reader, re-selects per bus anyway.
 ///
 /// A SEPARATE function from [`capture_reliability`] on purpose: the read-order
 /// pins scan that body for its `Meters`-handle reads and require
@@ -1971,7 +1959,7 @@ pub fn capture_bus_reliability(engine: &Engine) -> Result<Vec<BusReliabilityCap>
     Ok(out)
 }
 
-/// The `PDElements` walk (GOLDEN_REBASE G1.6b): every **enabled** PD element of
+/// The `PDElements` walk: every **enabled** PD element of
 /// the circuit, in `PDElements` pointer-list order (`DPDELements.pas:27-59`
 /// skips the disabled ones, exactly like the capi channel's
 /// `Generic_CktElement_Get_First/Next`).
@@ -2086,18 +2074,15 @@ fn capture_probes(engine: &Engine, specs: &[ProbeSpec]) -> Result<Vec<ProbeCap>,
     Ok(out)
 }
 
-/// Every circuit element's every property value (§2.2 all-properties parity),
-/// a byte-for-byte port of `oracle_server.capture_all_properties`: for each
-/// `AllElementNames` entry, activate it with `? name.Like` (the WPG.1-safe query
-/// path — activates `DSS_OBJECT`s too, unlike `SetActiveElement`), read the
+/// Every circuit element's every property value, a byte-for-byte port of
+/// `oracle_server.capture_all_properties`: for each `AllElementNames` entry,
+/// activate it with `? name.Like` (the query path, which activates
+/// `DSS_OBJECT`s too, unlike `SetActiveElement`), read the
 /// class's `AllPropertyNames` off the now-active object (`DSSElementV` mode 0),
 /// then read each value via `? name.prop` in property-index order.
 ///
-/// **Gating, since R4133_PROPS RP4.1 (2026-09-03).** This capture was
-/// report-tooling only while property parity was pinned to capi_v0145 and the
-/// scheduler masked `all_properties` off the r4133 request; RP4.1 removed both
-/// masks, so what this function returns is now value-compared against the port
-/// for every live non-`large` r4133-gating case. Any non-zero errno on a read
+/// **Gating.** What this function returns is value-compared against this
+/// engine for every live non-`large` r4133-gating case. Any non-zero errno on a read
 /// escalates, exactly like [`capture_probes`] (matching dss-python's
 /// raise-on-error).
 fn capture_all_properties(engine: &Engine) -> Result<Vec<PropsCap>, EngineError> {
@@ -2136,7 +2121,7 @@ fn capture_all_properties(engine: &Engine) -> Result<Vec<PropsCap>, EngineError>
     Ok(out)
 }
 
-/// The G1.7 topology capture: the six order-free `Topology` rows, read LAST in
+/// The topology capture: the six order-free `Topology` rows, read LAST in
 /// the step (after [`capture_all_properties`]) on both transports.
 ///
 /// Two independent reasons for "last", the stronger one first:
@@ -2161,9 +2146,8 @@ fn capture_all_properties(engine: &Engine) -> Result<Vec<PropsCap>, EngineError>
 /// (`DTopology.pas:29-54`, `:96-160`, `:170-186`) and all of `TopologyS` — do,
 /// and would poison the per-element capture, so they are never called. That
 /// absence is asserted from this file's source text by
-/// `crates/dss-core/tests/capture_order.rs` (`GOLDEN_REBASE_PLAN.md` G1.7, the
-/// B16 parity gap: three of `ITopology`'s nine fastdss columns are deliberately
-/// not captured).
+/// `crates/dss-core/tests/capture_order.rs` (three of `ITopology`'s nine
+/// fastdss columns are deliberately not captured).
 fn capture_topology(engine: &Engine) -> Result<TopologyCap, EngineError> {
     // Same read order as `oracle_server.capture_topology`: the three counts,
     // then the three name lists.
@@ -2202,7 +2186,7 @@ fn capture_topology(engine: &Engine) -> Result<TopologyCap, EngineError> {
 /// qualified name is always `Class.name`, so a bare `NONE` can never be a real
 /// entry. Measured on the whole population: 1 281 / 1 555 / 1 694 sentinel
 /// replies over 455 r4133-gating cases, and the capi channel byte-identical
-/// after its own normalization (`GOLDEN_REBASE_PLAN.md` G1.7 §3.1-S1/§3.2).
+/// after its own normalization.
 ///
 /// Every other shape is REFUSED rather than repaired. In particular an empty
 /// entry is a transport failure on this channel, never a value: r4133 filters
@@ -2231,7 +2215,7 @@ fn topo_names(v: Vec<String>, what: &str) -> Result<Vec<String>, EngineError> {
     Ok(v)
 }
 
-/// The G1.8 incidence capture: build the FLAT incidence matrix and its
+/// The incidence capture: build the FLAT incidence matrix and its
 /// Laplacian, then read the four `SolutionV` rows that expose them — issued and
 /// read STRICTLY LAST in the step, after [`capture_topology`], on both
 /// transports.
@@ -2259,19 +2243,19 @@ fn topo_names(v: Vec<String>, what: &str) -> Result<Vec<String>, EngineError> {
 ///    (`Common/Solution.pas:3007-3010`). Building the matrix therefore moves the
 ///    active-element cursor and must not precede any per-element or per-property
 ///    read of the step.
-///  * it must follow the G1.7 topology read, whose census constants
+///  * it must follow the topology read, whose census constants
 ///    (`TOPOLOGY_STALE_DECLINES`, `LOOPED_PAIR_WINDOW_DECLINES`) are defined on a
 ///    `Branch_List` nothing else has touched.
 ///
 /// **What is deliberately never issued or read here.** `CalcIncMatrix_O`
 /// (`ExecCommand[110]`, `Calc_Inc_Matrix_Org`) calls `GetTopology`
 /// (`Common/Solution.pas:3173`), which would build and memoize that same
-/// `Branch_List` and move G1.7's census; and `SolutionV(2)` `Solution.BusLevels`
+/// `Branch_List` and move the topology census; and `SolutionV(2)` `Solution.BusLevels`
 /// is on [`crate::modes::DO_NOT_CALL`] — `DSolution.pas:578-582` does
 /// `setlength(myIntArray, ArrSize)` then `for IMIdx := 0 to ArrSize`, a
 /// one-element heap overflow inside the DLL. Both are out of the live gate by
-/// decision (`GOLDEN_REBASE_PLAN.md` §G1.8 / §G3.2c); the `_O` builder, the bus
-/// levels and the CSV writer keep their byte goldens instead.
+/// decision. The `_O` builder, the bus levels and the CSV writer keep their
+/// byte goldens instead.
 ///
 /// The caller escalates any lingering read error ([`Engine::assert_clean`]).
 fn capture_inc_matrix(engine: &Engine) -> Result<IncMatrixCap, EngineError> {
@@ -2300,7 +2284,7 @@ fn capture_inc_matrix(engine: &Engine) -> Result<IncMatrixCap, EngineError> {
 }
 
 /// Normalize one `SolutionV` integer reply to the flat triple list both
-/// transports emit (G1.8 transport rule N2) — the sentinel decode and the shape
+/// transports emit — the sentinel decode and the shape
 /// contract, nothing else.
 ///
 /// Both arms pre-seed a one-cell `[0]` array and enlarge it only when the matrix
@@ -2309,7 +2293,7 @@ fn capture_inc_matrix(engine: &Engine) -> Result<IncMatrixCap, EngineError> {
 /// `ArrSize := <matrix>.NZero * 3; if ArrSize > 0 then setlength(...)`
 /// (`:550-552`, `:648-650`). So `[0]` means "no non-zeros" and never a value: a
 /// real reply is `3 * NZero` long with `NZero >= 1`, i.e. at least three cells.
-/// Measured over the whole r4133 population (`GOLDEN_REBASE_PLAN.md` G1.8 §3.1):
+/// Measured over the whole r4133 population:
 /// 1 756 steps, 1 652 with `len % 3 == 0` and exactly 104 equal to `[0]` — no
 /// third shape occurred, on either quantity.
 ///
@@ -2323,7 +2307,7 @@ fn capture_inc_matrix(engine: &Engine) -> Result<IncMatrixCap, EngineError> {
 ///
 /// Every other shape is REFUSED rather than repaired: a length that is neither
 /// `3 * NZero` nor the sentinel means the surface's shape contract broke, which
-/// is G1.8's kill criterion and not something a transport may quietly round off.
+/// is a failed case and not something a transport may quietly round off.
 fn inc_ints(v: Vec<i32>, what: &str) -> Result<Vec<i32>, EngineError> {
     if v.len() == 1 {
         if v[0] != 0 {
@@ -2348,7 +2332,7 @@ fn inc_ints(v: Vec<i32>, what: &str) -> Result<Vec<i32>, EngineError> {
 }
 
 /// Normalize one incidence `SolutionV` string reply to the list shape both
-/// transports emit (G1.8 transport rule N3) — the sentinel decode, and nothing
+/// transports emit — the sentinel decode, and nothing
 /// else.
 ///
 /// Both name arms build their buffer and then, only if it stayed empty, write
@@ -2413,7 +2397,7 @@ fn inc_names(
     Ok(v)
 }
 
-/// Oracle-free smoke hook (§2.4): dump every element's every property for the
+/// Oracle-free smoke hook: dump every element's every property for the
 /// currently-compiled circuit, so `smoke.rs` can prove the `DSSElementV`
 /// enumeration + `? name.prop` value read round-trips without an oracle.
 pub fn all_properties_dump(engine: &Engine) -> Result<Vec<PropsCap>, EngineError> {
@@ -2432,21 +2416,20 @@ pub fn all_properties_dump(engine: &Engine) -> Result<Vec<PropsCap>, EngineError
 /// lookup leaves `ActiveBusIndex` at 0 (`Common/DSSGlobals.pas:739-757`) and
 /// would otherwise attribute the previous bus's voltages to this one.
 ///
-/// Capture-order class **C, order-free** (GOLDEN_REBASE_PLAN.md §1.1(a),
-/// coordinator decision D3): every value arm reads `Solution.NodeV` directly
-/// and touches neither `ComputeIterminal` nor `ActiveCktElement` — only
-/// `ActiveBusIndex` moves. The two G1.4d at-bus arms are group C too, but for
-/// the weaker reason `ModeEffect::Impure` carries: they move a class cursor
-/// and the active element, never a current cache, which is why they are read
-/// LAST (see below). The per-bus read order below matches the capi
-/// transport's and is a contract, not a staleness hazard.
+/// Capture-order class **C, order-free**: every value arm reads
+/// `Solution.NodeV` directly and touches neither `ComputeIterminal` nor
+/// `ActiveCktElement` — only `ActiveBusIndex` moves. The two at-bus arms
+/// are group C too, but for the weaker reason `ModeEffect::Impure` carries:
+/// they move a class cursor and the active element, never a current cache,
+/// which is why they are read LAST (see below). The per-bus read order below
+/// matches the capi transport's and is a contract, not a staleness hazard.
 ///
 /// Shapes are asserted, never assumed: `2 * len(nodes)` per value array (a
 /// 0-node bus — 2 in the corpus — yields empty arrays and passes at `0 == 0`),
 /// and the node numbers must come back strictly ascending, which is what makes
 /// this capture comparable to the port's sorted view.
 ///
-/// The four G1.4c arms (`SeqVoltages`, `CplxSeqVoltages`, `VLL`, `puVLL`) are
+/// The four sequence and L-L arms (`SeqVoltages`, `CplxSeqVoltages`, `VLL`, `puVLL`) are
 /// read unconditionally, after the five voltage arms and before the
 /// conditional short-circuit block — group C as well (`DBus.pas:305`, `:536`,
 /// `:588`, `:644` read `Solution.NodeV` only). `VLL`/`puVLL` go through the
@@ -2457,7 +2440,7 @@ pub fn all_properties_dump(engine: &Engine) -> Result<Vec<PropsCap>, EngineError
 /// count, not assumed: 3 and 6 doubles for the sequence arms, and 6 (three
 /// pairs) or 2 (one pair, or the `-99999` marker) for the L-L pair.
 ///
-/// `want_sc` (G1.5, request field `zsc`) appends the six short-circuit arms to
+/// `want_sc` (request field `zsc`) appends the six short-circuit arms to
 /// THIS walk — never a second `SetActiveBus` pass — in the fixed order
 /// `zsc1, zsc0, zsc, ysc, isc, voc`, matching `oracle_server.capture_all_buses`
 /// arm for arm; the fields are always serialized, empty when it is off. They
@@ -2473,7 +2456,7 @@ pub fn all_properties_dump(engine: &Engine) -> Result<Vec<PropsCap>, EngineError
 /// fails the case loudly instead of shipping a short row the comparator would
 /// misread as a value divergence.
 ///
-/// The two G1.4d arms ([`BusCap::all_pce_at_bus`], [`BusCap::all_pde_at_bus`])
+/// The two at-bus arms ([`BusCap::all_pce_at_bus`], [`BusCap::all_pde_at_bus`])
 /// close the walk, unconditionally, in the slot `oracle_server.capture_all_buses`
 /// gives them. They are read LAST because they are the only
 /// [`crate::modes::ModeEffect::Impure`] reads of the block: `getP*atBus` drives
@@ -2501,7 +2484,7 @@ fn capture_all_buses(engine: &Engine, want_sc: bool) -> Result<Vec<BusCap>, Engi
         }
         let nodes = engine.bus_nodes()?;
         let kv_base = engine.bus_kvbase();
-        // G1.4b, group C: `BUSF(5)` returns the stored `DistFromMeter` and
+        // Group C: `BUSF(5)` returns the stored `DistFromMeter` and
         // touches nothing (`DBus.pas:122-128`). Read here, with the bus's other
         // scalar attribute and ahead of the value arrays, so both transports
         // share ONE per-bus read order (`oracle_server.py::capture_all_buses`).
@@ -2528,7 +2511,7 @@ fn capture_all_buses(engine: &Engine, want_sc: bool) -> Result<Vec<BusCap>, Engi
                 )));
             }
         }
-        // G1.4c, still group C (order-free): both sequence arms and the two
+        // Still group C (order-free): both sequence arms and the two
         // L-L arms read `Solution.NodeV` plus the bus object only
         // (`DBus.pas:305`, `:536`, `:588`, `:644`), with no `ComputeIterminal`
         // and no `ActiveCktElement`. The order below is the CONTRACT between
@@ -2615,7 +2598,7 @@ fn capture_all_buses(engine: &Engine, want_sc: bool) -> Result<Vec<BusCap>, Engi
                 }
             }
         }
-        // G1.4d: the two at-bus lists close the per-bus walk on BOTH transports
+        // The two at-bus lists close the per-bus walk on BOTH transports
         // (`oracle_server.py::capture_all_buses` reads them in the same slot,
         // in the same order). They are read LAST because on THIS channel they
         // are the only `ModeEffect::Impure` reads of the block
@@ -2703,7 +2686,6 @@ fn capture_all_bus_vmag_pu(engine: &Engine) -> Result<Vec<f64>, EngineError> {
 /// `Circuit.AllBusDistances` — each bus's `DistFromMeter` (km) in `BusList`
 /// order (`CircuitV(12)`, `DCircuit.pas:566-580` == `CAPI_Circuit.pas:671-688`,
 /// whose comment reads *"in an array that aligns with the buslist"*).
-/// GOLDEN_REBASE_PLAN.md WP-G1 G1.4b.
 ///
 /// Length = `NumBuses`, checked by the caller against the per-bus walk, so this
 /// array and [`capture_all_buses`]' per-bus `distance` cannot drift apart
@@ -2759,19 +2741,12 @@ fn capture_ctrlqueue(engine: &Engine) -> Vec<String> {
 /// `EventStrings[ActiveActor]`), with blank lines dropped.
 ///
 /// This is the same list the other two producers read: the capi transport takes
-/// `ckt.Solution.EventLog` (`tools/oracle/oracle_server.py::capture_eventlog`
-/// -> dss_capi 0.14.5 `src/CAPI/CAPI_Solution.pas:525-540`, the same
-/// `EventStrings` walk) and the port reads its own log in memory. It replaces
-/// the retired Oddie path, which issued `export eventlog` and read the CSV back
-/// (r4133 `Common/ExportResults.pas:3527-3532` =
-/// `EventStrings[ActiveActor].SaveToFile`, named `<CircuitName>_EXP_EventLog.CSV`
-/// at `Executive/ExportOptions.pas:365`): that command made the r4133 channel
-/// write a file into the case directory that neither the capi channel nor the
-/// port creates, which G1.10a's created-file-set surface sees as a divergence on
-/// every event-logging case (coordinator decision **D30**, class A: 59 red
-/// (case, channel) pairs). The two reads were measured byte-identical over a
-/// full 526-case corpus drive (0 mismatches, 83 cases with `evlog=1`), and the
-/// equivalence is pinned by
+/// `ckt.Solution.EventLog` (`tools/oracle/oracle_server.py::capture_eventlog`)
+/// and this engine reads its own log in memory. The bridge never issues
+/// `export eventlog`: that command writes a file into the case directory that
+/// neither the capi channel nor this engine creates, which the created-file-set
+/// surface would see as a divergence on every event-logging case. The in-memory
+/// log equals the exported file, pinned by
 /// `tests/protocol.rs::the_in_memory_event_log_equals_the_exported_file`.
 ///
 /// Upstream's own harness never compared this surface at all — fastdss
@@ -2803,7 +2778,7 @@ mod tests {
     use super::{complex_pair, inc_ints, inc_names, topo_names};
     use crate::guard::path_is_inside;
 
-    /// G1.10c — the DI sidecar must never sit inside the case directory, or the
+    /// The DI sidecar must never sit inside the case directory, or the
     /// copies would be classified as this run's own output and swept away with
     /// the originals. Spelling only: both paths come from the gate, so the test
     /// is a case-insensitive prefix on SEGMENT boundaries, not a sibling whose
@@ -2852,7 +2827,7 @@ mod tests {
         }
     }
 
-    /// The `TopologyV` sentinel decode, and the shape checks around it (G1.7).
+    /// The `TopologyV` sentinel decode, and the shape checks around it.
     ///
     /// `["NONE"]` is r4133's "no entries" reply (`DTopology.pas:271-275` seeds
     /// `TStr[0] := 'NONE'`), so it decodes to an empty list; a qualified name is
@@ -2888,7 +2863,7 @@ mod tests {
         }
     }
 
-    /// The G1.8 `SolutionV` integer shape rule (N2): `[0]` is r4133's
+    /// The `SolutionV` integer shape rule: `[0]` is r4133's
     /// empty/nil sentinel (`DSolution.pas:544-545`, `:642-643`), every real
     /// reply is `3 * NZero` cells, and nothing else is a reply at all.
     #[test]
@@ -2930,7 +2905,7 @@ mod tests {
         }
     }
 
-    /// The G1.8 `SolutionV` name shape rule (N3): `['None']` is the empty-list
+    /// The `SolutionV` name shape rule: `['None']` is the empty-list
     /// sentinel only where upstream's emptiness test can fire
     /// (`DSolution.pas:604-605`, `:635-636`); everywhere else — including the
     /// column list, where a bus may legally be *named* `None` — it is refused,

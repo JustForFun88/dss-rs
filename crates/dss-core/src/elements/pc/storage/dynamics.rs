@@ -9,10 +9,10 @@
 //! predictor/corrector in `SolveDynamic`.
 //!
 //! Scope: the classic GFL path, the grid-forming (GFM) black-start droop
-//! (WPG.17 — `DoDynamicMode`/`IntegrateStates` GFM, `FixPhaseAngle`/`VDelta`/
-//! `ISPDelta`), and the external `DynamicEqObj` / `DynamicExp` integration
-//! (WP7.7 step 3b — the user equation replaces `SolveDynamicStep`), and the
-//! user-written `UserModel`/`DynaModel` (the WASM host, `user_model.rs`, WM.4).
+//! (`DoDynamicMode`/`IntegrateStates` GFM, `FixPhaseAngle`/`VDelta`/
+//! `ISPDelta`), the external `DynamicEqObj` / `DynamicExp` integration
+//! (the user equation replaces `SolveDynamicStep`), and the
+//! user-written `UserModel`/`DynaModel` (the WASM host, `user_model.rs`).
 
 use num_complex::Complex64;
 
@@ -35,7 +35,7 @@ impl Storage {
     /// state from the present power-flow operating point (+ the `DynamicEqObj <> NIL`
     /// derivative zero-out at the tail). Only runs the discharging path (Pascal
     /// `if FState <> STORE_DISCHARGING then Exit`). The `DynaModel` (`DynaDLL=`)
-    /// branch runs first via `dyna_model_finit` (WM.4).
+    /// branch runs first via `dyna_model_finit`.
     pub(super) fn init_state_vars_impl(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         let _ = node_v; // used below via self.cd.node_ref
         self.cd.yprim_invalid = true;
@@ -50,9 +50,8 @@ impl Storage {
         let z_thev = Complex64::new(self.r_thev, self.x_thev);
         self.base.yeq = z_thev.inv();
 
-        // Pascal InitStateVars DynaModel branch (Storage.pas:2777-2789): a loaded
-        // `DynaDLL=` model seeds itself from the present terminal V/I and returns
-        // (WASM_USERMODELS WM.4).
+        // InitStateVars DynaModel branch: a loaded `DynaDLL=` model seeds itself
+        // from the present terminal V/I and returns.
         if self.dyna_model_finit(sys, node_v) {
             return;
         }
@@ -152,15 +151,14 @@ impl Storage {
     /// by one trapezoidal half-step (GFL current tracking or GFM black-start
     /// droop, per `gfm_mode`), dispatching to `integrate_dyn_eq_phase` per phase
     /// when a `DynamicExp` is linked. The `DynaModel` branch runs first via
-    /// `dyna_model_fintegrate` (WM.4); the `DebugTrace` record closes the body
+    /// `dyna_model_fintegrate`; the `DebugTrace` record closes the body
     /// ([`Storage::write_dynamics_trace_record`], `trace.rs`).
     pub(super) fn integrate_states_impl(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         self.compute_iterminal(sys, node_v);
 
-        // Pascal IntegrateStates DynaModel branch (Storage.pas:2859-2863): a loaded
-        // `DynaDLL=` model integrates its own state and returns (WASM_USERMODELS
-        // WM.4). Runs before the it-array guard: a DynaModel storage never sizes
-        // the built-in per-phase arrays.
+        // IntegrateStates DynaModel branch: a loaded `DynaDLL=` model integrates
+        // its own state and returns. Runs before the it-array guard: a DynaModel
+        // storage never sizes the built-in per-phase arrays.
         if self.dyna_model_fintegrate(sys, node_v) {
             return;
         }
@@ -390,17 +388,17 @@ impl Storage {
     }
 
     /// Pascal `TStorageObj.DoDynamicMode` (l.2119) — inject the dynamics-mode
-    /// current. GFL is a controlled current source; GFM (WPG.17) is an internal
+    /// current. GFL is a controlled current source; GFM is an internal
     /// balanced voltage source scaled by the integrated filter current `it[0]`.
-    /// The `DynaModel` (`DynaDLL=`) branch runs first via `do_dyna_model` (WM.4).
+    /// The `DynaModel` (`DynaDLL=`) branch runs first via `do_dyna_model`.
     pub(super) fn do_dynamic_mode(
         &mut self,
         sys: &SysCtx,
         node_v: &[Complex64],
         errors: &mut crate::diag::ErrorLog,
     ) {
-        // Pascal `DoDynamicMode` head (Storage.pas:2140-2144): a loaded
-        // `DynaDLL=` dynamics model runs `DoDynaModel` and returns (WM.4).
+        // `DoDynamicMode` head: a loaded `DynaDLL=` dynamics model runs
+        // `DoDynaModel` and returns.
         if self.do_dyna_model(sys, node_v, errors) {
             return;
         }
@@ -755,8 +753,8 @@ impl Storage {
                 .base
                 .dyn_vars
                 .get_inv_dyn_value(i - NUM_BASE_STORAGE_VARS - 1, nphases),
-            // WASM_USERMODELS WM.4 — i > NumStorageVariables reads the
-            // `UserModel`/`DynaModel` state variable (Pascal Storage.pas:3092-3111).
+            // i > NumStorageVariables reads the `UserModel`/`DynaModel` state
+            // variable.
             _ => self
                 .get_user_model_variable(i, sys, node_v)
                 .unwrap_or(-9999.99),

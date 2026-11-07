@@ -1,4 +1,4 @@
-//! WP7.8 VSConverter targeted gate. A well-conditioned converter operating point —
+//! VSConverter targeted gate. A well-conditioned converter operating point —
 //! a stiff DC source pins `Vdc`, and the AC modulation `m0=0.5` gives a definite
 //! source/grid mismatch so the AC terminal current is large and uniquely
 //! determined. The element is a 2-terminal AC/DC bridge: the first `phases - Ndc`
@@ -12,9 +12,8 @@
 //! `ComplexBuffer` again for the `Pac` power estimate — so the *reported* converter
 //! currents violate KCL (here the oracle reports |I_ac| ≈ 1248 A where the physics
 //! demand ≈ 390 A). The Rust port computes the **physically-correct** current (it
-//! matches the oracle's *source* currents by KCL exactly), and we deliberately do
-//! not reproduce the upstream self-report bug (cf. the WP7.6 `Powers`-before-
-//! `Currents` oracle quirk — "не порти баг эталона"). The converter is therefore
+//! matches the oracle's *source* currents by KCL exactly), and this engine does
+//! not reproduce the OpenDSS self-report bug. The converter is therefore
 //! gated against the oracle's **correctly-reported source currents + KCL**, which
 //! validate its effect on the solved circuit without touching the buggy self-report.
 
@@ -61,7 +60,7 @@ fn vsconverter_circuit_matches_oracle() {
     // reported) source currents — these are the oracle pins. The main 3-phase
     // source's terminal-1 currents (re, im), dss-python 0.15.7 at full f64
     // precision (Rust matches these bit-for-bit — agreement is ~1e-10 rel; pinned
-    // at the project's calibrated 1e-6 faer-vs-KLU current floor, TOLERANCE_NOTES).
+    // at the project's calibrated 1e-6 faer-vs-KLU current floor).
     let main = get("Vsource.source");
     let want_src: [(f64, f64); 3] = [
         (-91.0829860344, 379.5124412447),

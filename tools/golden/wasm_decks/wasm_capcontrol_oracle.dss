@@ -1,4 +1,4 @@
-! WASM_USERMODELS WM.5 — CapControl user-control gate deck (the r4133 ORACLE).
+! WASM user model — CapControl user-control gate deck (the r4133 side).
 ! IDENTICAL to wasm_capcontrol.dss except the CapControl is the built-in VOLTAGE
 ! control with (OnSetting, OffSetting) = the fixture's (vlow, vhigh). Because a
 ! native CapUserControl twin cannot drive the r4133 control queue (it has no

@@ -1,4 +1,4 @@
-! WP-U1.4 (UPGRADE_PLAN §WP-U1.4, Line.pas:430/2113) — Line HeightOffset+HeightUnit.
+! Line HeightOffset+HeightUnit.
 ! An equivalent-spacing line (LineSpacing detailed=no) whose HeightOffset=5 ft is
 ! folded into the LineConstants average conductor heights (SetHeightOffset via
 ! SetUserHeightUnit's re-conversion, applied in UpdateLineGeometryData's

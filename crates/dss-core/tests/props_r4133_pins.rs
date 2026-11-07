@@ -1,78 +1,64 @@
-//! **The expected-value pins `PROPS_ECHO_R4133` owes** (`R4133_PROPS_PLAN.md`
-//! §RP2.3, mechanic (c): "every exclusion whose ours-value has no capi witness
-//! (r4133-only classes/**cases**) carries its own expected-value pin").
+//! **The expected-value pins `PROPS_ECHO_R4133` owes**: every exclusion whose
+//! ours-value has no capi witness (r4133-only classes/**cases**) carries its own
+//! expected-value pin.
 //!
 //! # Why this file exists
 //!
 //! An `EchoRow` stops the r4133 **value** compare of one `(class, prop)` pair.
-//! CLAUDE.md's exclusion discipline is that such a divergence is "excluded
-//! field-by-field **and pinned by its own expected-value test**" — otherwise the
-//! row is a mask with nothing behind it, and a later regression in the port's
-//! own readback would be invisible on exactly the channel the row silences.
+//! Such a divergence is excluded field by field **and pinned by its own
+//! expected-value test**: otherwise the row is a mask with nothing behind it,
+//! and a later regression in this engine's own readback would be invisible on
+//! exactly the channel the row silences.
 //!
-//! `EchoRow::witness` names the holder of the port's value for every row:
+//! `EchoRow::witness` names the holder of this engine's value for every row:
 //! `Capi(n)` (the capi_v0145 channel still value-compares the pair on `n` gating
 //! cases), `Pin(name)` (no capi coverage at all — the capture has no such
 //! property under `PROPS_015X`, a `SKIP_PROPS` row masks it, the capi walk skips
 //! the element whole, or every covered cell sits on a capi-only case), or
-//! `CapiAndPin(n, name)`. **Thirty-two of the tests below are those `name`s**
-//! — the twenty RP2.3 landed, the nine its audit settlement added for the rows
-//! exposed on `engines: "r4133"` cases, RP3.3's `generator.model` and RF-D07-07's
-//! two GIC rows — together covering 66 of the 82 rows — and two more are the deck guard's own
-//! self-tests. The literal list is
-//! pinned from the table's side by
-//! `harness::props_norm::tests::every_live_semantics_row_names_a_pin`, so a row
-//! cannot start pointing at a test that does not exist without moving both
-//! sides in one commit.
+//! `CapiAndPin(n, name)`. Most tests below are those `name`s, and two more are
+//! the deck guard's own self-tests. The literal list is pinned from the table's
+//! side by `harness::props_norm::tests::every_live_semantics_row_names_a_pin`,
+//! so a row cannot start pointing at a test that does not exist without moving
+//! both sides in one commit.
 //!
-//! # The pins that no echo row can name (RP3.1 onwards)
+//! # The pins that no echo row can name
 //!
-//! Eight of the tests below — RP3.1's two, RP3.2's four and RP3.4's two —
-//! belong to no `EchoRow` at all, and could not. RP3.1's
-//! divergence is one r4133 getter reading a field the `Edit` CASE never wires;
-//! RP3.2's is one r4133 getter reading the *wrong* live field — the
-//! dispatched Q where the property documents the base kvar; and RP3.4's is one
-//! r4133 getter **computing** a live value (`Format('%.8g',[1.0/G2])`) off a
-//! field its own `RecalcElementData` mis-derived, so the render is neither a
-//! parse echo nor a wrong *field*, but a correct read of a wrong number. All
-//! three getters are **live**, so an echo row there would be a false statement
-//! about the
-//! mechanism (`R4133_PROPS_PLAN.md` §RP3.1, §RP3.2, §RP3.4). Their exclusion shape is a
-//! per-case `ledger.json` `property` divergence entry, drafted in the sub-step
-//! and landed at RP4.1 by the §1.1(e) staging rule, so between the two there is
-//! a window in which the port's value has no holder anywhere. These pins are
-//! that holder, and they are cited by
-//! `props_r4133_replay::LEDGER_ENTRY_PINS` — the same guard
+//! Some tests below belong to no `EchoRow` at all, and could not: an r4133
+//! getter that reads a field the `Edit` never wires, one that reads the *wrong*
+//! live field, or one that computes a live value off a field it mis-derived.
+//! All these getters are **live**, so an echo row there would be a false
+//! statement about the mechanism. Their exclusion is a per-case `ledger.json`
+//! `property` divergence entry, and these pins hold this engine's value. They
+//! are cited by `props_r4133_replay::LEDGER_ENTRY_PINS` — the same guard
 //! (`every_echo_row_pin_is_a_test_that_exists`) that forbids an un-cited
 //! `#[test]` here reads that list too, so a pin cannot be added, renamed or
 //! deleted without moving its citation with it.
 //!
-//! Three later sub-steps hold pins of the same "no echo row could say this" kind,
-//! each with its own citation list read by that same guard: RP3.8's three
-//! (`props_r4133_replay::RP38_SUPERSEDED` and `RP38_CAPTURE_PIN` — five pairs
-//! whose r4133 getters render live where the 0.14.5 capture is `''`), RP3.9's,
-//! which hold the port's value on the pairs RP2.4's display floor
-//! refuses because the `%.Ng` round trip happened upstream
-//! (`props_r4133_replay::RP39_PINS`; see the block at the end of this file), and
-//! RP3.12's one (`props_r4133_replay::RP312_UPSTREAM_BUG`), which holds the
-//! port's **regulated** `autotrans.wdgcurrents` where r4133's `RegControl` can
-//! never tap an `AutoTrans` at all — an upstream bug, so no exclusion row of any
-//! kind could state the port's value.
+//! Three more groups hold pins of the same "no echo row could say this" kind,
+//! each with its own citation list read by that same guard:
+//! `props_r4133_replay::RP38_SUPERSEDED` and `RP38_CAPTURE_PIN` (five pairs
+//! whose r4133 getters render live where the 0.14.5 capture is `''`),
+//! `props_r4133_replay::RP39_PINS` (the pairs the display floor refuses because
+//! the `%.Ng` round trip happened inside OpenDSS; see the block at the end of
+//! this file), and `props_r4133_replay::RP312_UPSTREAM_BUG`, which holds this
+//! engine's **regulated** `autotrans.wdgcurrents` where r4133's `RegControl` can
+//! never tap an `AutoTrans` at all — an OpenDSS bug, so no exclusion row of any
+//! kind could state this engine's value.
 //!
 //! # The shape of a pin
 //!
-//! Each one compiles **the corpus deck the 2026-08-23 claims census flagged for
+//! Each one compiles **the corpus deck the property claims census flagged for
 //! that pair** (`DSS_PROPS_CENSUS=claims`; the per-cell rows carry the case and
-//! the element), reads the port's live property render with `? Class.Name.Prop`
-//! — the same getter the gate's property walk reads — and asserts it literally.
-//! Where a bare "our render is X" could pass against a getter that is simply
-//! hardwired, the pin adds the **discriminating** second reading (a deck or an
-//! edit where the same getter answers something else), so the assertion is
-//! about the value and not about the constant.
+//! the element), reads this engine's live property render with
+//! `? Class.Name.Prop` — the same getter the gate's property walk reads — and
+//! asserts it literally. Where a bare "our render is X" could pass against a
+//! getter that is simply hardwired, the pin adds the **discriminating** second
+//! reading (a deck or an edit where the same getter answers something else), so
+//! the assertion is about the value and not about the constant.
 //!
 //! The pins are deliberately **not** in the harness crate: they are
 //! expected-value tests of the engine, a `dss-core` integration test like the
-//! other pin binaries, and each runs once. They need no oracle, no
+//! other pin binaries, and each runs once. They need no OpenDSS engine, no
 //! feature flag and no channel, so they are green in both lanes.
 //!
 //! # Deck hygiene
@@ -89,16 +75,13 @@
 //! instead of only adding files. [`the_deck_guard_really_sweeps`] proves it is
 //! not a no-op.
 //!
-//! It also carries `CorpusGuard`'s **shared per-directory snapshot**, and for
-//! the same measured reason: three pins below run decks out of
-//! `electricdss-tst/Test/` and two of those decks write there, so their guards
-//! overlap under `cargo test`'s thread pool. With per-guard snapshots the
-//! interleaving leaks — A snapshots clean, A writes, B snapshots (and sees A's
-//! output as vendored), A sweeps, B writes again, B *keeps* it. One snapshot per
-//! directory plus a reference count means the names set is always the pristine
-//! one and exactly one sweep runs, when the last guard leaves
-//! ([`overlapping_deck_guards_still_sweep`]). On the per-deck copies no two
-//! guards share a folder any more; the registry stays, with its rail.
+//! It also carries `CorpusGuard`'s **shared per-directory snapshot**: guards
+//! over one directory can overlap under `cargo test`'s thread pool, and with
+//! per-guard snapshots the interleaving leaks — A snapshots clean, A writes, B
+//! snapshots (and sees A's output as vendored), A sweeps, B writes again, B
+//! *keeps* it. One snapshot per directory plus a reference count means the
+//! names set is always the pristine one and exactly one sweep runs, when the
+//! last guard leaves ([`overlapping_deck_guards_still_sweep`]).
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -115,7 +98,7 @@ use dss_test_harness::harness::scratch;
 // ---------------------------------------------------------------------------
 
 /// The vendored corpus root — the same tree the live gate reads (never
-/// `.inputs/`, per CLAUDE.md).
+/// `.inputs/`, which only hand-run tools read).
 fn corpus_root() -> PathBuf {
     [env!("CARGO_MANIFEST_DIR"), "..", "..", "tests", "corpus"]
         .iter()
@@ -155,7 +138,7 @@ fn lock_registry() -> std::sync::MutexGuard<'static, DirSnapshots> {
     dir_registry().lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// Keeps the copied deck folder (a scratch copy, RF-I00-01) as it was found:
+/// Keeps the copied deck folder (a scratch copy) as it was found:
 /// files the run created are removed when the **last** guard on that folder
 /// drops, and a *modified* copied file is a loud failure (the decks below only
 /// ever add).
@@ -325,12 +308,9 @@ fn the_deck_guard_really_sweeps() {
     std::fs::remove_dir_all(&root).ok();
 }
 
-/// Two guards on the **same** directory overlap (three pins below run decks out
-/// of `electricdss-tst/Test/`, and two of those decks write there). The
-/// interleaving that per-guard snapshots leak: A snapshots clean → A writes → B
-/// snapshots and sees A's output as vendored → A sweeps → B writes again → B
-/// keeps it. With the shared snapshot B reuses A's pristine names and the sweep
-/// runs once, when the last guard leaves.
+/// Two guards on the **same** directory share one pristine snapshot, so the
+/// sweep runs once, when the last guard leaves, and no guard keeps another's
+/// output as vendored.
 #[test]
 fn overlapping_deck_guards_still_sweep() {
     let root = std::env::temp_dir().join(format!("rp23_pin_overlap_{}", std::process::id()));
@@ -360,21 +340,9 @@ fn overlapping_deck_guards_still_sweep() {
 // The pins, alphabetically by the pair(s) they carry
 // ---------------------------------------------------------------------------
 
-/// `autotrans.bhcurrent` / `autotrans.bhflux` — `EchoCategory::
-/// EmptyCollectionRender`, **pin-only** (`PROPS_015X` drops both from the
-/// 0.14.5 capture, so the capi channel never compares them).
-///
-/// r4133's arms 44/45 are LIVE (`Version8/Source/PDElements/AutoTrans.pas:
-/// 1865-1878`): each emits `'['`, loops `1..NumPointsBH` and closes `']'`, so an
-/// autotransformer that never set `BHpoints` renders `'[]'` where this port
-/// renders `''`. Both mean "no B-H curve"; the row masks the spelling, and this
-/// pin holds the port's half.
-///
-/// Deck: `asymmetric/autotrans/autotrans_gic.dss` (`AutoTrans.t1`; the pair's 9
-/// in-scope cells are the two autotransformers of the `asymmetric:autotrans/*`
-/// cases). `BHpoints` is read first because it is *why* the render is empty —
-/// without it the assertion could pass against a getter that always answers
-/// `''`.
+/// `autotrans.bhcurrent` / `autotrans.bhflux` render an empty array while no
+/// B-H curve is set, since an unset curve has no points. Pin-only: the capi
+/// capture drops both properties.
 #[test]
 fn autotrans_bh_arrays_render_empty_when_unset() {
     let mut deck = Deck::compile("asymmetric/autotrans/autotrans_gic.dss");
@@ -388,23 +356,8 @@ fn autotrans_bh_arrays_render_empty_when_unset() {
     assert_eq!(deck.get("AutoTrans.t1.BHFlux"), "[ 4 5 6]");
 }
 
-/// `energymeter.peakcurrent` — `EchoDefault`, capi-witnessed on 6 cases **and**
-/// pinned (the plan names this pair explicitly).
-///
-/// r4133 has no getter arm for index 7, so the property answers the
-/// `PropertyValue[]` store, which `InitPropertyValues` froze at
-/// `'(400, 400, 400)'` (`Version8/Source/Meters/EnergyMeter.pas:2209`) and the
-/// pre/post blocks re-wrap in parens (`:2640-2643`, `:2660-2663`) —
-/// `'((400, 400, 400))'` — no matter how many phases the metered element has.
-/// The port renders the LIVE array, whose length is the element's phase count.
-///
-/// The row therefore masks two different things and only the second is this
-/// pin's: on a 3-phase meter both sides are three 400s and a `PROPS_NORM_R4133`
-/// `ArrayForm` row claims the cell first (the chain order); the six cells where
-/// the meter is single-phase spell `'[ 400]'`, which no array rule can fold
-/// against three elements. Decks: `.../IEEE-TIA-LV Model/master_small.dss`
-/// (1-phase `EnergyMeter.sub`, 4 in-scope cells) against
-/// `controls/energymeter/energymeter_sym.dss` for the 3-phase render.
+/// `energymeter.peakcurrent` renders the live peak-current array, one element
+/// per phase of the metered terminal, not a frozen three-element default.
 #[test]
 fn energymeter_peakcurrent_renders_the_live_one_element_array() {
     let mut one_phase = Deck::compile(
@@ -418,22 +371,8 @@ fn energymeter_peakcurrent_renders_the_live_one_element_array() {
     );
 }
 
-/// `expcontrol.derlist` — `LiveSemanticsDiffer`, capi-witnessed on 2 cases and
-/// pinned (every row of that category owes a pin: the claim is "ours is the
-/// right value", which capi agreement cannot carry).
-///
-/// r4133's getter answers `ReturnElementsList` for **both** index 1
-/// (`PVSystemList`, the user's typed list) and index 14 (`DERList`, the
-/// resolved DER set) — `Version8/Source/Controls/ExpControl.pas:684`, `:696` —
-/// and `ReturnElementsList` (`:702-715`) is hard-wired to `FPVSystemNameList`,
-/// the bare, class-prefix-stripped names. So r4133 renders the same bare list
-/// twice and loses the distinction. The port keeps it: `PVSystemList` echoes the
-/// typed names, `DERList` the resolved, class-qualified elements — which is what
-/// makes the second property worth having.
-///
-/// Deck: `controls/expcontrol/expcontrol_basic.dss` (`ExpControl.ec`, 10 in-scope
-/// cells). Both properties are read, because the two renders being *different*
-/// is the whole content of the claim.
+/// `expcontrol.derlist` renders the user's typed DER list, the value the
+/// property documents.
 #[test]
 fn expcontrol_derlist_renders_the_der_list() {
     let mut deck = Deck::compile("controls/expcontrol/expcontrol_basic.dss");
@@ -441,20 +380,8 @@ fn expcontrol_derlist_renders_the_der_list() {
     assert_eq!(deck.get("ExpControl.ec.DERList"), "[PVSystem.pv]");
 }
 
-/// `fault.bus2` — `EchoParse`, **pin-only**: the pair's single echo cell sits
-/// on `modes/makeposseq/makeposseq_shunt.dss`, an `engines: "capi_v0145"` case,
-/// so the r4133 compare never reaches it and the capi compare is the only live
-/// witness. Offline (the replay walks the frozen census) this pin is what makes
-/// the row honest.
-///
-/// r4133 has no getter arm for index 2 (`Version8/Source/PDElements/Fault.pas:
-/// 699-717` covers 6 only), so `bus2` answers the store — seeded at `:672` and
-/// re-snapshotted from `GetBus(2)` every time `bus1=` is parsed (`:297`). A later
-/// `MakePosSequence` collapses the fault to one phase without touching that
-/// string, so r4133 keeps the stale 3-phase spelling `'b2.0.0.0'`.
-///
-/// The port renders the live terminal, so `phases` and `bus2` agree — which is
-/// exactly what the two reads below assert.
+/// `fault.bus2` renders the live second terminal of the Fault, which defaults
+/// to bus 1's node-zero connection when not typed.
 #[test]
 fn fault_bus2_renders_the_live_terminal() {
     let mut deck = Deck::compile("modes/makeposseq/makeposseq_shunt.dss");
@@ -463,24 +390,9 @@ fn fault_bus2_renders_the_live_terminal() {
     assert_eq!(deck.get("Fault.flt.bus2"), "b2.0");
 }
 
-/// `generator.d` — `LiveSemanticsDiffer` + pin. **Not an echo**: the store
-/// agrees with r4133's live field, and the field itself is wrong upstream.
-///
-/// Property 32 is `D`, documented "Default is 1.0"
-/// (`Version8/Source/PCElements/generator.pas:467`), and `Edit` writes
-/// `GenVars.Dpu` (`:669`) — but `Create` initialises `GenVars.D := 1.0`
-/// (`:969`) and **never** `Dpu`, so `Dpu` starts at 0 and
-/// `InitPropertyValues` snapshots that zero (`:2585`). `InitStateVars` then
-/// computes `D := Dpu*kVA*1000/w0 = 0` (`:2710`): r4133 runs generator dynamics
-/// with **no damping** on any deck that does not set `D=`, against its own
-/// documented default. dss_capi 0.14.5 fixed it (`Dpu := 1.0`,
-/// `src/PCElements/Generator.pas:1006`) and this port follows.
-///
-/// Under the 2026-08-02 policy an upstream bug is never reproduced, so the port
-/// keeps 1.0 and the divergence is excluded + pinned here. Deck:
-/// `asymmetric/generator/generator_asym.dss` (`Generator.g1`, one of the 136
-/// in-scope cells). The edit half proves the getter tracks `Dpu` rather than
-/// answering a constant.
+/// `generator.d` renders the documented damping default `1.0` and follows an
+/// edit. The OpenDSS documentation gives that default, so a deck that never sets
+/// `D=` runs its dynamics with damping.
 #[test]
 fn generator_d_renders_the_documented_damping_default() {
     let mut deck = Deck::compile("asymmetric/generator/generator_asym.dss");
@@ -489,25 +401,8 @@ fn generator_d_renders_the_documented_damping_default() {
     assert_eq!(deck.get("Generator.g1.D"), "2.5");
 }
 
-/// `generator.dynout` — `LiveSemanticsDiffer`, capi-witnessed on 26 cases and
-/// pinned. The row masks two spellings and this pin holds the second, sharper
-/// one.
-///
-/// r4133's arm 46 is live (`GetDynOutputStr`,
-/// `Version8/Source/PCElements/generator.pas:3034`); on a generator with no
-/// `DynamicEq` it prints `'[]'` where the port prints `''` (the empty-collection
-/// convention, 271 cells). On the two `Dynamic_KundurDynExp*` cases the deck
-/// really does declare `DynOut = [Speed theta]`, and there r4133 answers
-/// `'[speed,dpshaft,]'`: `DynamicExp.pas:411-437` stores the *variable* index
-/// while `:441-465` decodes it as a flat *(variable, derivative slot)* index, so
-/// the second name is read out of the wrong slot and the third is empty. The
-/// port decodes the pair correctly and names the two variables the deck asked
-/// for. Upstream report: `investigations/to_opendss/41-*`.
-///
-/// Deck: `.../Dynamic_Expressions/Dynamic_KundurDynExp-steady-state-only.dss`
-/// (`Generator.g1`; its solving twin `Dynamic_KundurDynExp.dss` is the second of
-/// the two cells). The `DynamicEq` read is the non-vacuity: the names come from
-/// a real dynamic expression, not from a default.
+/// `generator.dynout` renders the names of the dynamic output variables the
+/// deck selected.
 #[test]
 fn generator_dynout_renders_the_named_variables() {
     let mut deck = Deck::compile(
@@ -523,36 +418,9 @@ fn generator_dynout_renders_the_named_variables() {
     assert_eq!(plain.get("Generator.g1.DynOut"), "");
 }
 
-/// `generator.model` — `EchoParse`, **pin-only**, and pin-only in the strongest
-/// sense: both of the pair's census cells sit on `engines: "r4133"` cases
-/// (`modes:ncim/ncim_pv_pq.dss`, `modes:ncim/ncim_midi.dss`), where the capi
-/// channel never runs, so no `Capi(n)` witness could have held the port's value
-/// (`props_norm::ECHO_ROWS_ON_R4133_ONLY_CASES`). RP3.3's row.
-///
-/// r4133's `TGeneratorObj.GetPropertyValue` has **no arm 6**
-/// (`Version8/Source/PCElements/generator.pas:3007-3038` — arms 3,4,5,7,8,9,13,
-/// 19,20,26,27,34,36,37,38,40..46, then `ELSE Result := Inherited`), so `model`
-/// falls through to `General/DSSObject.pas:112-115`
-/// `Result := FPropertyValue[Index]` — the deck's own typed token, stored
-/// unconditionally by the Edit loop at `generator.pas:625` *before* the CASE
-/// assigns the live field at `:643`. Meanwhile NCIM moves the LIVE `GenModel`
-/// 3 → 4 (`Common/Solution.pas:2120`, the Q-band promote; `:1935` is the
-/// zero-Q-limits demote) and never moves it back: `ReversePQ2PV`
-/// (`:1743-1768`), whose body carries the `// Takes it back to model 3` comment,
-/// **has no caller** anywhere in the trunk. So r4133 renders `'3'` for a
-/// generator whose live model is `4`; the port renders the live field
-/// (`obj/props/class_props/value.rs` → `elements/pc/generator/accessors.rs`) and
-/// says `4`. Probed on the live r4133 DLL (RP3.3 part A2): `GeneratorsI(9)` — the
-/// field itself, `DDLL/DGenerators.pas:125-134` — reads 4 on both decks after the
-/// solve while `? Generator.g1.model` renders `'3'`.
-///
-/// Decks: both of the pair's own cases, since `ncim_midi.dss` has no other unit
-/// pin at all. Each ends with its own `Solve`, so the compiled deck is already
-/// converted. The `maxkvar` reading names *which* conversion this is (the
-/// `:2120` Q-band promote, not the `:1935` zero-limits one), and the
-/// edit-then-re-solve round trip is the discriminator: the getter follows the
-/// deck's token back to `3` and the **engine** — not the parser — puts it back
-/// to `4`.
+/// `generator.model` renders the live model after NCIM converts a generator
+/// from PV to PQ, not the token the deck typed. The model that ran the solve is
+/// the one an engineer reads back.
 #[test]
 fn generator_model_renders_the_live_pv2pq_conversion() {
     for (deck, maxkvar) in [
@@ -584,22 +452,8 @@ fn generator_model_renders_the_live_pv2pq_conversion() {
     }
 }
 
-/// `gicsource.spectrum` — `EchoDefault`, capi-witnessed on `gicsource_gic.dss`
-/// and pinned for the 2 cells it masks on `asymmetric:gic/gic_midi.dss`, an
-/// `engines: "r4133"` case since GOLDEN_REBASE G1.4a (RF-D07-07).
-///
-/// r4133 freezes the wrong value by ORDER: `TGICSourceObj.Create` runs
-/// `InitPropertyValues(0)` at `Version8/Source/PCElements/GICsource.pas:327`,
-/// while `Spectrum` still holds `TPCElement.Create`'s `'default'`
-/// (`PCElements/PCElement.pas:119`, copied into the store at `:328`), and only
-/// then forbids the spectrum with `Spectrum := ''` (`GICsource.pas:332`). The
-/// getter has arms 1..3 only (`:567-578`), so the property answers the frozen
-/// `'default'` (vendored census: `gicsource.spectrum | '' | 'default' | 4`,
-/// `examples_full.txt:150`). The port renders the live, forbidden-empty field.
-///
-/// The discriminator is a typed `spectrum=`: the port stores it for the dump
-/// round trip (it never resolves to a live spectrum), so the same getter then
-/// answers the typed name — the `''` above is the field, not a constant.
+/// `gicsource.spectrum` renders the empty spectrum a GICSource carries: a
+/// quasi-DC source has no harmonic spectrum.
 #[test]
 fn gicsource_spectrum_renders_the_live_empty_spectrum() {
     let mut deck = Deck::compile("asymmetric/gic/gic_midi.dss");
@@ -615,22 +469,8 @@ fn gicsource_spectrum_renders_the_live_empty_spectrum() {
     assert_eq!(deck.get("GICsource.seg56.spectrum"), "");
 }
 
-/// `gictransformer.pctperm` — `EchoDefault`, pinned for all 22 cells it masks:
-/// every GICTransformer of the corpus sits on an `engines: "r4133"` case since
-/// GOLDEN_REBASE G1.4a (`gic_midi`, `gictransformer_gic`, `makeposseq_gic`,
-/// `GIC_Example`), so no capi channel compares one (RF-D07-07).
-///
-/// `TGICTransformerObj.Create` starts `PctPerm := 100.0`
-/// (`Version8/Source/PDElements/GICTransformer.pas:467`), but its
-/// `InitPropertyValues` overrides the PD tail's slot with `'0'` (`:708`) and the
-/// getter (`:713-734`) has no PD-tail arm, so the property answers that store
-/// through `General/DSSObject.pas:112-115` (vendored census:
-/// `gictransformer.pctperm | '100' | '0' | 22`, `examples_full.txt:1438`). The
-/// port renders the live 100 — the value `CalcFltRate` multiplies
-/// (`elements/pd/gic_transformer/solve.rs`).
-///
-/// The edit is the discriminator: the same getter follows a typed `pctperm=`,
-/// and a sibling on the same deck keeps the `Create` default.
+/// `gictransformer.pctperm` renders the live `100` the fault-rate computation
+/// uses, and follows an edit.
 #[test]
 fn gictransformer_pctperm_renders_the_live_rating() {
     let mut deck = Deck::compile("asymmetric/gic/gictransformer_gic.dss");
@@ -646,34 +486,8 @@ fn gictransformer_pctperm_renders_the_live_rating() {
     assert_eq!(deck.get("GICTransformer.tg1.pctperm"), "100");
 }
 
-/// `line.conductors` — `EchoDefault`, **pin-only** (`PROPS_015X`'s multi-line
-/// `Line` row drops `Conductors` from the 0.14.5 capture, so capi never compares
-/// it on any of its 75 162 in-scope cells) — **and, since the RP2.3 audit
-/// settlement, its three siblings `line.wires` / `line.cncables` /
-/// `line.tscables` too**.
-///
-/// r4133 has no getter arm for indices 22, 24, 25 or 34
-/// (`Version8/Source/PDElements/Line.pas:1338-1438`), so each answers the store,
-/// which `InitPropertyValues` left `''` (`:1512`, `:1514`, `:1515`, `:1524`) and
-/// only an explicit `wires=`/`cncables=`/`tscables=`/`conductors=` would
-/// overwrite. The port renders the live conductor list from all four.
-///
-/// The three siblings carry a capi witness (233 cases) as well, but that witness
-/// is silent about the 6 234 (`wires`) / 6 235 (`cncables`, `tscables`) cells
-/// each row masks on `engines: "r4133"` cases, where the capi channel does not
-/// run at all — the largest exposure in
-/// `props_norm::ECHO_ROWS_ON_R4133_ONLY_CASES` — so they name this pin too.
-/// The two counts come from different days: the 233 from the 2026-08-23 claims
-/// census, the cells from RF-D07-07's 2026-09-26 re-census. `gic/gic_midi.dss`
-/// gated capi at the first and is `r4133` since G1.4a, so that one case may be
-/// counted on both sides.
-///
-/// Decks: `modes/upgrade/upgrade_spacing_ratings.dss` (`Line.l1`, defined with
-/// `wires=[big small big neut]`) for the populated render — itself one of the
-/// r4133-only cases the census flagged — and
-/// `asymmetric/autotrans/autotrans_gic.dss` for the `'[]'` an impedance-defined
-/// line gives. The pair of readings is what makes this a pin on the *list* and
-/// not on a constant.
+/// `line.conductors` and its siblings `wires` / `cncables` / `tscables` render
+/// the live conductor list of a geometry-built Line.
 #[test]
 fn line_conductors_renders_the_live_conductor_list() {
     let mut geom = Deck::compile("modes/upgrade/upgrade_spacing_ratings.dss");
@@ -690,20 +504,8 @@ fn line_conductors_renders_the_live_conductor_list() {
     }
 }
 
-/// `line.spacing` — `EchoParse`, **pin-only** for the same reason as
-/// `fault.bus2`: the pair's one echo cell is on `modes/makeposseq/
-/// makeposseq_line.dss`, a capi-only case, so it has **0 in-scope cells** and the
-/// row can never fire live (`props_norm::ECHO_ROWS_WITH_NO_IN_SCOPE_CELL`).
-///
-/// r4133 has no arm for index 21 either (`Line.pas:1338-1438`), so `spacing`
-/// answers the store — the deck's own `'sp'` token, written at `:598`.
-/// `MakePosSequence` kills the geometry/spacing state (`:2266-2276`) but never
-/// rewrites that string, so r4133 keeps advertising a spacing the line no longer
-/// has. The port renders the live one, i.e. nothing.
-///
-/// Decks: `makeposseq_line.dss` (`Line.l_spc`, after the deck's own
-/// `MakePosSeq`) against `modes/upgrade/upgrade_spacing_ratings.dss`, where a
-/// spacing IS in force and the same getter names it.
+/// `line.spacing` renders empty once the Line no longer uses a spacing, since
+/// the property states the spacing the Line is built from.
 #[test]
 fn line_spacing_renders_empty_once_the_spacing_is_killed() {
     let mut killed = Deck::compile("modes/makeposseq/makeposseq_line.dss");
@@ -712,24 +514,9 @@ fn line_spacing_renders_empty_once_the_spacing_is_killed() {
     assert_eq!(alive.get("Line.l1.Spacing"), "sp");
 }
 
-/// `load.yearly` — `LiveSemanticsDiffer`, capi-witnessed on 84 cases and
-/// pinned.
-///
-/// r4133's arm 7 is live but answers `Yearlyshape`, the **raw user-typed
-/// string** (`Version8/Source/PCElements/Load.pas:2346`), which stays `''` when
-/// the deck never typed `yearly=` (`:807`). Its `daily=` arm, however, aliases
-/// the yearly *object* to the daily one (`:657`) and `CalcYearlyMult` then
-/// dispatches on that object — so r4133 solves a yearly simulation off a shape
-/// whose name it reports as empty. The port reports the resolved shape.
-///
-/// Deck: `controls/capcontrol/capcontrol_sym.dss` (`Load.l1`, 24 in-scope
-/// cells): it types `daily=day` and no `yearly=`, so the two reads below are the
-/// aliasing itself. `Duty` is read as the discriminator — it is *not* aliased,
-/// so a getter that simply echoed `Daily` everywhere would fail here.
-///
-/// The pair's case-only cells (`'other'` vs `'Other'`, …) are claimed by RP2.3's
-/// own `CaseFold` normalization row before this exclusion is consulted; only the
-/// resolved-vs-empty half is masked.
+/// `load.yearly` renders the name of the LoadShape the Load uses for a yearly
+/// run, which follows `daily=` when `yearly=` is not typed, as the property
+/// documents.
 #[test]
 fn load_yearly_renders_the_resolved_loadshape_name() {
     let mut deck = Deck::compile("controls/capcontrol/capcontrol_sym.dss");
@@ -742,23 +529,8 @@ fn load_yearly_renders_the_resolved_loadshape_name() {
     assert_eq!(deck.get("Load.l1.Duty"), "", "Duty is not aliased");
 }
 
-/// `pvsystem.%pminnovars` / `pvsystem.%pminkvarmax` / `storage.%pminnovars` /
-/// `storage.%pminkvarmax` — four `LiveSemanticsDiffer` rows, capi-witnessed
-/// (99 / 44 cases) and pinned.
-///
-/// All four arms are live on both sides; what differs is the **sentinel** for
-/// "deactivated". r4133's `Create` starts them at `-1.0`
-/// (`Version8/Source/PCElements/PVsystem.pas:1037-1038`,
-/// `Storage.pas:1368-1369`, the latter commented "Deactivated by default"), the
-/// port (with dss_capi 0.14.5) at `0.0`. Behaviour is identical because both
-/// engines test the same way — r4133 `PVsystem.pas:1395-1398`
-/// `if FpctPminNoVars <= 0 then PminNoVars := -1`, the port
-/// `pvsystem/nominal.rs` — so no var limit moves; only the stored input spells
-/// the "off" state differently.
-///
-/// Deck: `asymmetric/der/der_asym.dss` (`PVSystem.pv1`, `Storage.st1`). The
-/// edits are the discriminator: a typed percentage renders back verbatim, so the
-/// `0` above is the default state and not a getter stuck at zero.
+/// `%PminNoVars` / `%PminkvarMax` of PVSystem and Storage render the sentinel
+/// that deactivates the limit while it is not set.
 #[test]
 fn pvsystem_and_storage_pmin_sentinels_deactivate_the_var_limits() {
     let mut deck = Deck::compile("asymmetric/der/der_asym.dss");
@@ -776,20 +548,8 @@ fn pvsystem_and_storage_pmin_sentinels_deactivate_the_var_limits() {
     assert_eq!(deck.get("Storage.st1.%PminkvarMax"), "33");
 }
 
-/// `recloser.eventlog` / `recloser.debugtrace` — `EchoDefault`, **pin-only**:
-/// the capi walk skips every Recloser element whole
-/// (`harness/mod.rs::skip_whole_element`), so no capi cell exists for either.
-///
-/// `InitPropertyValues` writes 1..28 and then jumps straight to 31
-/// (`Version8/Source/Controls/Recloser.pas:1553-1554`), so properties 29
-/// (`EventLog`) and 30 (`DebugTrace`) are **never initialised** and, with no
-/// getter arm for them, echo `''`. The port renders the live boolean.
-///
-/// Decks: `controls/recloser/recloser_perm.dss` (`Recloser.r`, 24 in-scope
-/// cells) for the default, `controls/recloser/recloser_1ph.dss` for a deck that
-/// really turns the event log on — the cells RP2.1's `BoolFold` row claims
-/// before this exclusion is consulted, and the proof that `'No'` is a value and
-/// not a constant.
+/// `recloser.eventlog` / `recloser.debugtrace` render the live flags, `No` by
+/// default.
 #[test]
 fn recloser_eventlog_and_debugtrace_default_to_no() {
     let mut deck = Deck::compile("controls/recloser/recloser_perm.dss");
@@ -799,19 +559,8 @@ fn recloser_eventlog_and_debugtrace_default_to_no() {
     assert_eq!(logging.get("Recloser.r.EventLog"), "Yes");
 }
 
-/// `recloser.switchedobj` — `EchoDefault`, **pin-only** (the whole-element capi
-/// skip again).
-///
-/// Property 3 has no getter arm and `InitPropertyValues` sets it `''`
-/// (`Version8/Source/Controls/Recloser.pas:225`, `:1528`), so a deck that never
-/// types `SwitchedObj=` gets `''` back from r4133 — while the *live*
-/// `ElementName` defaults to the monitored element (`:448`). The port renders
-/// that live default.
-///
-/// Deck: `controls/fuse/indmach_r4133/indmach_snap.dss`, whose four reclosers
-/// each monitor a different line (8 in-scope cells each). Reading `MonitoredObj`
-/// beside `SwitchedObj` is the point: the pin asserts the *defaulting rule*, not
-/// four names.
+/// `recloser.switchedobj` defaults to the monitored element, the element the
+/// Recloser actually switches when `SwitchedObj=` is not typed.
 #[test]
 fn recloser_switchedobj_defaults_to_the_monitored_element() {
     let mut deck = Deck::compile("controls/fuse/indmach_r4133/indmach_snap.dss");
@@ -826,31 +575,8 @@ fn recloser_switchedobj_defaults_to_the_monitored_element() {
     }
 }
 
-/// `regcontrol.idle` / `.idleforward` / `.idlereverse` / `.fwdthreshold` /
-/// `.revthreshold` — five `EchoDefault` rows, all **pin-only**.
-///
-/// Four of them (`Idle`, `IdleForward`, `IdleReverse`, `FwdThreshold`) are
-/// absent from the 0.14.5 capture and dropped by `PROPS_015X`'s multi-line
-/// `RegControl` row — probe-confirmed: the pinned oracle reports 35 RegControl
-/// property names, the port 39. The fifth, `RevThreshold`, is masked on capi by
-/// its own `SKIP_PROPS` row (a changed 0.14.5 default). So the capi channel
-/// witnesses none of the five.
-///
-/// `InitPropertyValues` writes 1..32 only (`Version8/Source/Controls/
-/// RegControl.pas:1444-1459`) and `GetPropertyValue` overrides index 28 alone
-/// (`:820-827`), so properties 33..36 echo `''` while the live fields hold
-/// `False`/`False`/`False`/100. `RevThreshold` is the sharper one: `:1448`
-/// freezes `'100'` while `Create` sets `kWRevPowerThreshold := -100.0` (`:627`),
-/// and a deck's `revThreshold=800` leaves the store at `'800'` while `:503-505`
-/// makes the live value `-800`.
-///
-/// Decks: `controls/regcontrol/regcontrol_sym.dss` for the defaults (RP0.2's
-/// re-census measured **888 cells / 733 in scope** for `FwdThreshold`, split
-/// `'100'` 864/709 and `'800'` 24/24 — re-derived with `DSS_PROPS_CENSUS=claims`
-/// on 2026-08-23, since the frozen extracts predate the pair);
-/// `regcontrol_reverse.dss` for the 24 `'800'`/`-800` cells; and
-/// `regcontrol_idle.dss`, the one corpus deck that actually idles a regulator,
-/// so `'No'` is proven to be a reading rather than a constant.
+/// The RegControl idle flags and forward/reverse thresholds render the live
+/// values the controller acts on.
 #[test]
 fn regcontrol_idle_flags_and_thresholds_render_the_live_values() {
     let mut sym = Deck::compile("controls/regcontrol/regcontrol_sym.dss");
@@ -872,26 +598,8 @@ fn regcontrol_idle_flags_and_thresholds_render_the_live_values() {
     assert_eq!(idle.get("RegControl.rg.Idle"), "Yes");
 }
 
-/// `relay.action` / `relay.distreverse` / `relay.reset` — three rows
-/// (`EchoDefault`, `EchoDefault`, `EchoParse`), all **pin-only**: the capi
-/// walk skips every Relay element whole.
-///
-/// * `Action` (property 19, DEPRECATED) has no arm and `:1577` freezes
-///   `'closed'`; the port renders the live — empty — pending action.
-/// * `DistReverse` (property 38): `InitPropertyValues` jumps 37 → 39
-///   (`Version8/Source/Controls/Relay.pas:1595-1596`), so it is never written
-///   and echoes `''`.
-/// * `Reset` (property 54) is the `EchoParse` one. `:1611` defaults it `'n'`
-///   (those cells fold under `BoolFold` and never reach this row), but the
-///   distance-relay decks literally type `reset=0.20` — an old "reset time"
-///   usage. `:504` stores the raw token and arm 54 (`:566-570`) rewrites the
-///   store to `'n'` **only** when `InterpretYesNo` says yes, so `'0.20'`
-///   survives as a property value that means nothing.
-///
-/// Decks: `electricdss-tst/Test/TD21RelayTest.DSS` (`Relay.21src`; the deck
-/// types `reset=0.20` at `:14`/`:58`) and its reverse twin
-/// `ReverseTD21RelayTest.DSS`, where `DistReverse` is really on. Both decks end
-/// in `show eventlog`, hence [`DeckDirGuard`].
+/// `relay.action`, `relay.distreverse` and `relay.reset` render the live
+/// state: no pending action, the live reverse flag, no pending reset.
 #[test]
 fn relay_action_distreverse_and_reset_render_the_live_values() {
     let mut deck = Deck::compile("electricdss-tst/Test/TD21RelayTest.DSS");
@@ -906,15 +614,8 @@ fn relay_action_distreverse_and_reset_render_the_live_values() {
     assert_eq!(reverse.get("Relay.21src.DistReverse"), "Yes");
 }
 
-/// `relay.switchedobj` — `EchoDefault`, **pin-only** (whole-element capi skip).
-///
-/// Same mechanism as the recloser: property 3 has no getter arm and is `''` from
-/// `InitPropertyValues` (`Version8/Source/Controls/Relay.pas:320`, `:1561`),
-/// while the live `ElementName` defaults to the monitored element (`:582`).
-///
-/// Deck: `electricdss-tst/Test/DistanceRelayTest.DSS` (`Relay.21src`, 16
-/// in-scope cells over the four distance-relay cases). `MonitoredObj` is read
-/// beside it so the assertion is about the defaulting rule.
+/// `relay.switchedobj` defaults to the monitored element, the element the Relay
+/// actually switches when `SwitchedObj=` is not typed.
 #[test]
 fn relay_switchedobj_defaults_to_the_monitored_element() {
     let mut deck = Deck::compile("electricdss-tst/Test/DistanceRelayTest.DSS");
@@ -922,25 +623,8 @@ fn relay_switchedobj_defaults_to_the_monitored_element() {
     assert_eq!(deck.get("Relay.21src.SwitchedObj"), "Line.thev");
 }
 
-/// `storage.dynadll` — `LiveSemanticsDiffer`, capi-witnessed on 2 cases and
-/// pinned. **This pin asserts the PORT's render only**, deliberately.
-///
-/// r4133's arm is live and answers `DynaModel.Name`
-/// (`Version8/Source/PCElements/Storage.pas:1576`), and
-/// `TStoreDynaModel.Set_Name` assigns `FName` **only after a successful
-/// `LoadLibrary`** (`StoreUserModel.pas:195-240`). The deck's
-/// `C:\Users\prdu001\…\Dess1.DLL` does not exist on this machine, so r4133
-/// answers `''` — i.e. the divergence is *environment-dependent*: on a box that
-/// has that DLL, r4133 would print the path and the cell would not diverge at
-/// all (RP2.3 part A, finding F6). Pinning r4133's absence would therefore pin
-/// the machine, not the engine.
-///
-/// The port's side is not environment-dependent: safe Rust never loads a Windows
-/// DLL (user models are wasm — `WASM_USERMODELS_PLAN.md`), so it warns #1570,
-/// falls back to the built-in model, and keeps the typed path as the property
-/// value. That is what is asserted, together with the warning that explains it.
-///
-/// Deck: `electricdss-tst/Test/SimpleStorageTest-1ph.dss` (`Storage.store1`).
+/// `storage.dynadll` renders the path the deck typed, whether or not the user
+/// model loaded.
 #[test]
 fn storage_dynadll_renders_the_typed_path() {
     let mut deck =
@@ -955,22 +639,8 @@ fn storage_dynadll_renders_the_typed_path() {
     );
 }
 
-/// `storagecontroller.modedischarge` — `LiveSemanticsDiffer`, capi-witnessed on
-/// 1 case and pinned.
-///
-/// Both engines hold the same mode. r4133's `GetModeString` has no case for
-/// `MODESCHEDULE` in its `propMODEDISCHARGE` arm and falls through to
-/// `ELSE Result := 'UNKNOWN'` (`Version8/Source/Controls/
-/// StorageController.pas:1200-1214`) — a **non-injective catch-all**, which is
-/// why the pair can never become an `EnumSynonym` row: `'UNKNOWN'` is not
-/// another spelling of `Schedule`, it is the absence of one. The port names the
-/// mode.
-///
-/// Deck: `.../StorageControllerTechNote/Schedule/ScheduleRun.dss`
-/// (`StorageController.sc`, the pair's single cell); it ends in nine `Export`
-/// commands, hence [`DeckDirGuard`]. `controls/storagecontroller/
-/// storagectrl_peakshave.dss` is the discriminator — a mode r4133 *does* name,
-/// so the port is answering the mode rather than a constant.
+/// `storagecontroller.modedischarge` renders `Schedule` for the schedule mode
+/// the controller runs, not `UNKNOWN`.
 #[test]
 fn storagecontroller_modedischarge_renders_schedule() {
     let mut deck = Deck::compile(
@@ -985,32 +655,7 @@ fn storagecontroller_modedischarge_renders_schedule() {
     );
 }
 
-/// `swtcontrol.action` — `EchoParse`, **pin-only**. The capi channel covers
-/// only this pair's 18 out-of-scope cells; all 16 cells the row masks on the
-/// r4133 side are on `engines: "r4133"` cases, so nothing but this test holds
-/// the port's value there.
-///
-/// Property 3 has no getter arm (`Version8/Source/Controls/SwtControl.pas:
-/// 573-620`), and the Edit arm stores the raw token **unconditionally** before
-/// the CASE that would act on it (`:192-193`); `InterpretSwitchState` then exits
-/// without doing anything when the control is `Locked` (`:417`). So r4133's
-/// `Action` is a record of what was last *typed*, abbreviations and all
-/// (`'c'`, `'o'`), and can contradict the switch. The port renders the live
-/// pending action, spelled in full.
-///
-/// Deck: `.../civinlar model/civanlar.dss` — 13 `close` and 3 `open` in-scope
-/// cells across its sixteen tie switches. `State` is read beside `Action` so the
-/// pin says what "live" means here: the action the port reports is the one the
-/// switch is actually in.
-///
-/// **RP3.7 moved the `State` side of that reading, not the claim** (2026-09-02):
-/// `State` is now the per-phase render r4133 has always had — one token per
-/// controlled-element phase (`SwtControl.pas:600-610`) — so a 3-phase tie answers
-/// `[closed, closed, closed, ]` instead of the port's old scalar `closed`. Both
-/// values below were read off the r4133 DLL on this very deck
-/// (`tmp/rp37/out_b2_r4133b.txt`, RP3.7 B2), which is what makes the `Action`
-/// claim sharper rather than weaker: `Action` still renders one word while the
-/// state it is compared against is a per-phase array, and the two still agree.
+/// `swtcontrol.action` renders the live switch state the SwtControl holds.
 #[test]
 fn swtcontrol_action_renders_the_live_switch_state() {
     let mut deck =
@@ -1024,17 +669,8 @@ fn swtcontrol_action_renders_the_live_switch_state() {
     assert_eq!(deck.get("SwtControl.10_14.State"), "[open, open, open, ]");
 }
 
-/// `transformer.bhcurrent` / `transformer.bhflux` — `EchoCategory::
-/// EmptyCollectionRender`, **pin-only** (`PROPS_015X` drops both, as for
-/// AutoTrans).
-///
-/// r4133's arms 51/52 are live and loop `1..NumPointsBH`
-/// (`Version8/Source/PDElements/Transformer.pas:1820-1834`), so an unset B-H
-/// curve renders `'[]'` against the port's `''` — the same convention difference,
-/// on 20 716 in-scope cells (the corpus is full of transformers).
-///
-/// Deck: `controls/regcontrol/regcontrol_sym.dss` (`Transformer.tr`).
-/// `BHpoints` is read first for the same reason as the AutoTrans pin.
+/// `transformer.bhcurrent` / `transformer.bhflux` render an empty array while
+/// no B-H curve is set, since an unset curve has no points.
 #[test]
 fn transformer_bh_arrays_render_empty_when_unset() {
     let mut deck = Deck::compile("controls/regcontrol/regcontrol_sym.dss");
@@ -1046,18 +682,7 @@ fn transformer_bh_arrays_render_empty_when_unset() {
     assert_eq!(deck.get("Transformer.tr.BHFlux"), "[ 9 10]");
 }
 
-/// `windgen.dynout` — `EchoCategory::EmptyCollectionRender`, **pin-only** for a
-/// reason none of the others share: **no capi-gating case holds a WindGen at
-/// all**. All five `modes:windgen/*` decks are `engines: "r4133"`, so the capi
-/// channel has nothing to say about this pair, ever.
-///
-/// r4133's arm 22 is live (`GetDynOutputStr`,
-/// `Version8/Source/PCElements/WindGen.pas:2906`, `:1119`) and prints `'[]'` for
-/// a machine with no dynamic expression, where the port prints `''`.
-///
-/// Deck: `modes/windgen/windgen_snap.dss` (`WindGen.w1`, one of the pair's five
-/// in-scope cells — one per windgen deck). `DynamicEq` is read as the reason the
-/// list is empty.
+/// `windgen.dynout` renders empty while no dynamic output is selected.
 #[test]
 fn windgen_dynout_renders_empty_when_unset() {
     let mut deck = Deck::compile("modes/windgen/windgen_snap.dss");
@@ -1066,42 +691,20 @@ fn windgen_dynout_renders_empty_when_unset() {
 }
 
 // ---------------------------------------------------------------------------
-// Pins added by the RP2.3 audit settlement (2026-08-23): the rows whose masked
-// cells sit on `engines: "r4133"` cases
+// Pins for the rows whose masked cells sit on `engines: "r4133"` cases
 // ---------------------------------------------------------------------------
 //
-// Plan §1.2 mechanic (c) asks for a pin wherever an exclusion's ours-value has
-// "no capi witness (r4133-only classes/**cases**)". Part B2 read that as
-// classes and applied the *cases* half to one row by hand
-// (`swtcontrol.action`). The settlement measured the whole population with the
-// claims census crossed against each case's `engines` flag —
-// `props_norm::ECHO_ROWS_ON_R4133_ONLY_CASES`, 57 rows / 34 969 cells at the
-// time — and the 31 rows that had only a `Capi(n)` witness get one here. (RP3.3
-// added the 58th row and its two cells; its pin sits above with the pairs it
-// belongs to.)
-//
-// Each pin below reads the port's live render on a deck the census named for
-// that pair (an r4133-only one wherever the pair has such a case), and adds the
-// discriminating second reading wherever the property can be written back — the
-// same shape as the twenty pins above. Two of them cannot: `action=` on an
-// EnergyMeter and `reset=` on a CapControl are one-shot COMMANDS whose re-read
-// is empty by construction, which is itself the thing being pinned.
+// An exclusion whose ours-value has no capi witness on the cases it masks
+// (`props_norm::ECHO_ROWS_ON_R4133_ONLY_CASES`) gets a pin here. Each pin reads
+// this engine's live render on a deck the census named for that pair (an
+// r4133-only one wherever the pair has such a case), and adds the
+// discriminating second reading wherever the property can be written back.
+// Two of them cannot: `action=` on an EnergyMeter and `reset=` on a CapControl
+// are one-shot COMMANDS whose re-read is empty by construction, which is itself
+// the thing being pinned.
 
-/// `pvsystem.amplimit` / `pvsystem.amplimitgain` / `storage.amplimit` /
-/// `storage.amplimitgain` — four `EchoDefault` rows, capi-witnessed (99 / 47
-/// cases) and pinned for the 61 + 43 cells each masks on r4133-only cases.
-///
-/// r4133 has no getter arm and no `InitPropertyValues` entry for either property
-/// on either class (`Version8/Source/PCElements/PVsystem.pas:392-393`, the
-/// CASE's ELSE at `:1174`, the init block `:1074-1124`; `Storage.pas` props
-/// 60/61 and `:1446-1521`), so the store answers `''` for all four. The port
-/// renders the live pair: the current limit's "off" sentinel `-1` and the
-/// controller gain `0.8` both classes start from.
-///
-/// Decks: `controls/invcontrol/invcontrol_vv_delta.dss` (`PVSystem.pv1`) and
-/// `controls/gfm/gfm_micro.dss` (`Storage.batt`), both `engines: "r4133"`. The
-/// edits are the discriminator — a typed limit renders back verbatim, so the
-/// sentinel above is the default state and not a getter stuck on a constant.
+/// `AmpLimit` / `AmpLimitGain` of PVSystem and Storage render the live
+/// deactivated sentinel and the live gain.
 #[test]
 fn der_amp_limits_render_the_live_sentinel_and_gain() {
     let mut pv = Deck::compile("controls/invcontrol/invcontrol_vv_delta.dss");
@@ -1122,23 +725,8 @@ fn der_amp_limits_render_the_live_sentinel_and_gain() {
     assert_eq!(st.get("Storage.batt.AmpLimitGain"), "0.25");
 }
 
-/// `generator.shaftdata` / `generator.userdata` / `pvsystem.dynout` /
-/// `pvsystem.userdata` / `storage.dynadata` / `storage.userdata` — six
-/// `EmptyCollectionRender` rows, capi-witnessed (26 / 99 / 47 cases) and pinned
-/// for the 43 + 61 + 49 cells each masks on r4133-only cases.
-///
-/// r4133's arms are live and paren-wrap (or bracket) whatever the user-model
-/// data string holds — `generator.pas:3023-3025`, `PVsystem.pas:1158` / `:1171`,
-/// `Storage.pas:1574` / `:1577` — so an element with no user model renders
-/// `'()'` (or `'[]'` for `DynOut`) where this port renders `''`. Same state,
-/// different empty convention.
-///
-/// Decks: `controls/relay/relay_doc.dss` (`Generator.g1`),
-/// `controls/invcontrol/invcontrol_vv_delta.dss` (`PVSystem.pv1`) and
-/// `controls/gfm/gfm_micro.dss` (`Storage.batt`), all `engines: "r4133"`. The
-/// edits are the discriminator: a typed data string renders back verbatim on
-/// every one of these getters, so the `''` above is the empty state and not a
-/// dead arm.
+/// The user-model data arrays of Generator, PVSystem and Storage render empty
+/// while no user model is set.
 #[test]
 fn der_user_model_arrays_render_empty_when_unset() {
     let mut machine = Deck::compile("controls/relay/relay_doc.dss");
@@ -1163,28 +751,8 @@ fn der_user_model_arrays_render_empty_when_unset() {
     assert_eq!(st.get("Storage.batt.DynaData"), "c=3");
 }
 
-/// `energymeter.action` / `capcontrol.reset` — two `EchoDefault` rows,
-/// capi-witnessed (67 / 31 cases) and pinned for the 45 / 3 cells they mask on
-/// r4133-only cases.
-///
-/// Both properties are one-shot COMMANDS, and r4133 answers neither of them from
-/// a getter: `EnergyMeter` has no arm for index 3 (`Meters/EnergyMeter.pas:482`,
-/// `:2645-2658`) so it echoes the `'clear'` its `InitPropertyValues` froze at
-/// `:2205`, and `CapControl`'s init writes slots 20, 21 and 23 but never 22
-/// (`Controls/CapControl.pas:196`, `:1254-1282`), leaving `''` there. The port
-/// renders the state after the command ran: nothing pending on the meter, and
-/// the CapControl's own `Reset` flag back to `No`.
-///
-/// Decks: `controls/combo/combo_protection.dss` (`EnergyMeter.em`) and
-/// `.../EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss`
-/// (`CapControl.cap1_ctrl` — the only r4133-only case that holds a CapControl),
-/// both `engines: "r4133"`.
-///
-/// **No discriminating edit exists here, and that is the point**: re-issuing the
-/// command (`action=clear`, `reset=yes`) leaves the render exactly where it was,
-/// because these getters report a state and not the last word typed — which is
-/// precisely how they differ from r4133's frozen store. Both readings below are
-/// asserted before AND after the command for that reason.
+/// `energymeter.action` and `capcontrol.reset` are one-shot commands, so they
+/// render no pending command.
 #[test]
 fn energymeter_action_and_capcontrol_reset_render_no_pending_command() {
     let mut meter = Deck::compile("controls/combo/combo_protection.dss");
@@ -1208,20 +776,8 @@ fn energymeter_action_and_capcontrol_reset_render_no_pending_command() {
     );
 }
 
-/// `fuse.switchedobj` — `EchoDefault`, capi-witnessed on 1 case and pinned for
-/// the 20 cells it masks on the two `controls/fuse/indmach_r4133/*` cases, which
-/// are `engines: "r4133"`.
-///
-/// The same shape as the Recloser and Relay pins above: r4133 has no arm for
-/// index 3 (`Version8/Source/Controls/Fuse.pas:183`, `:680-720`) and its
-/// `InitPropertyValues` leaves the slot `''` (`:801ff`), while the live
-/// `ElementName` defaults to the MONITORED element when the deck does not type a
-/// `switchedobj=` (`:292`). The port renders that live default.
-///
-/// Deck: `controls/fuse/indmach_r4133/indmach_snap.dss` (`Fuse.f1` on a Line,
-/// `Fuse.f2` on a Transformer — two different monitored classes, so the
-/// assertion is about the defaulting and not about one string). The edit is the
-/// discriminator.
+/// `fuse.switchedobj` defaults to the monitored element, the element the Fuse
+/// actually switches when `SwitchedObj=` is not typed.
 #[test]
 fn fuse_switchedobj_defaults_to_the_monitored_element() {
     let mut deck = Deck::compile("controls/fuse/indmach_r4133/indmach_snap.dss");
@@ -1237,26 +793,9 @@ fn fuse_switchedobj_defaults_to_the_monitored_element() {
     assert_eq!(deck.get("Fuse.f1.SwitchedObj"), "Line.l1");
 }
 
-/// `invcontrol.lpftau` / `risefalllimit` / `vsetpoint` / `pvsystemlist` /
-/// `monvoltagecalc` / `mode` — six `EchoDefault` rows, capi-witnessed (86-87 /
-/// 23 cases) and pinned for the 18 / 8 / 1 cells they mask on r4133-only cases.
-///
-/// Two mechanisms, both `PropertyValue[]` echoes. `lpftau` and `risefalllimit`
-/// have `InitPropertyValues` entries that contradict `Create`
-/// (`Version8/Source/Controls/InvControl.pas:2828-2829` freeze `'0.0'` and
-/// `'-1.0'` while `:1166-1167` set both live fields to `0.001`) and no getter
-/// arm (`:3232-3285`); `vsetpoint`, `pvsystemlist` and `monvoltagecalc` have
-/// neither an arm nor an init entry (`:505`, `:512`, `:513`), so they answer
-/// `''`; `mode`'s arm is commented out (`:3234-3239`) over an init that froze
-/// `'VOLTVAR'` (`:2809`) while `Create` starts at `NONE_MODE` (`:1135`).
-///
-/// Decks, all `engines: "r4133"`:
-/// `controls/gfm/gfm_invcontrol.dss` (`InvControl.ic`, controlling a Storage)
-/// for the five defaults, and `.../MonitoredVoltage/
-/// Mon_voltage_MAX_Mix_avg_VVDRC-2.dss` (`InvControl.vv_drc`) for `mode`, which
-/// is where the census found the pair's one r4133-only cell: that deck drives
-/// the control through `CombiMode`, so the live `Mode` really is unset. The
-/// edits are the discriminators.
+/// The InvControl defaults (`LPFTau`, `RiseFallLimit`, `VSetPoint`,
+/// `PVSystemList`, `monVoltageCalc`, `Mode`) render the live values the control
+/// acts on.
 #[test]
 fn invcontrol_defaults_render_the_live_values() {
     let mut deck = Deck::compile("controls/gfm/gfm_invcontrol.dss");
@@ -1285,20 +824,7 @@ fn invcontrol_defaults_render_the_live_values() {
     assert_eq!(combi.get("InvControl.vv_drc.Mode"), "Voltvar");
 }
 
-/// `load.zipv` — `EmptyCollectionRender`, capi-witnessed on 221 cases (the
-/// 2026-08-23 claims census) and pinned for the 4 071 cells it masks on 59
-/// r4133-only cases (RF-D07-07's 2026-09-26 re-census). None of the three decks
-/// G1.4a moved off the capi channel between the two counts is among the 59, so
-/// no case is counted on both sides.
-///
-/// r4133's arm 33 is live but loops `nZIPV` (`Version8/Source/PCElements/
-/// Load.pas:2354-2357`), so a load that never typed `zipv=` renders `''` where
-/// the port renders the materialised seven-element vector the ZIP model is
-/// evaluated from.
-///
-/// Deck: `controls/gfm/gfm_micro.dss` (`Load.isl`), `engines: "r4133"`. The edit
-/// is the discriminator — and it is the one that matters most for this pair,
-/// because a getter stuck on seven zeros would satisfy the first reading.
+/// `load.zipv` renders the live seven-element ZIPV vector.
 #[test]
 fn load_zipv_renders_the_live_seven_element_vector() {
     let mut deck = Deck::compile("controls/gfm/gfm_micro.dss");
@@ -1307,28 +833,8 @@ fn load_zipv_renders_the_live_seven_element_vector() {
     assert_eq!(deck.get("Load.isl.ZIPV"), "[ 1 2 3 4 5 6 0.5]");
 }
 
-/// `transformer.pctperm` / `transformer.repair` / `autotrans.pctperm` /
-/// `autotrans.repair` / `fault.pctperm` — five `EchoDefault` rows, capi-witnessed
-/// (133 / 9 / 13 cases) and pinned for the 799 / 2 / 347 cells they mask on
-/// r4133-only cases.
-///
-/// All five are the same `DSSObject.pas:112-115` fallthrough over an
-/// `InitPropertyValues` line the engine never refreshes: `'100'`/`'36'` for the
-/// two PD classes (`Version8/Source/PDElements/Transformer.pas:1918-1919`,
-/// `AutoTrans.pas:1958-1959`, whose PD tails re-render slots 1..2 only —
-/// `:1840-1844`, `:1883-1888`) and `'0'` for `Fault` (`Fault.pas:687`). The port
-/// renders the live reliability data, which for these decks is the class default
-/// the elements were created with.
-///
-/// Note the two classes disagree in opposite directions, which is what makes the
-/// readings worth having: a Transformer created without reliability data has
-/// `%perm = 0` where r4133 advertises 100, and a Fault has `%perm = 100` where
-/// r4133 advertises 0.
-///
-/// Decks, all `engines: "r4133"`: `controls/gfm/gfm_micro.dss`
-/// (`Transformer.tsto`), `asymmetric/autotrans/autotrans_xfmrcode.dss`
-/// (`AutoTrans.t1`) and `controls/fuse/fuse_blow_3ph.dss` (`Fault.f`). The edits
-/// are the discriminators.
+/// `pctperm` / `repair` of Transformer, AutoTrans and Fault render the live
+/// reliability values the fault-rate computation uses.
 #[test]
 fn pd_element_perm_and_repair_render_the_live_ratings() {
     let mut xf = Deck::compile("controls/gfm/gfm_micro.dss");
@@ -1354,28 +860,8 @@ fn pd_element_perm_and_repair_render_the_live_ratings() {
     assert_eq!(flt.get("Fault.f.pctperm"), "13");
 }
 
-/// `reactor.kvar` — `EchoDefault`, capi-witnessed on 65 cases (the 2026-08-23
-/// claims census) and pinned for the 110 cells it masks on nine r4133-only cases
-/// (RF-D07-07's 2026-09-26 re-census). G1.4a moved `gic/gic_midi.dss`,
-/// `gic/gictransformer_gic.dss` and `GIC_Example.dss` from `both` to `r4133`
-/// between the two counts, and all three are among the nine, so up to three
-/// cases may be counted on both sides.
-///
-/// r4133 has no getter arm for index 4 (`Version8/Source/PDElements/
-/// Reactor.pas:1090-1103`), so the property answers the `'1200'` its
-/// `InitPropertyValues` froze at `:1113` while `Create` starts `kvarRating` at
-/// 100.0 (`:585`). The port renders the live rating.
-///
-/// Decks: `controls/fuse/midi_fuse.dss` (`Reactor.rser`, `engines: "r4133"`) for
-/// the default and the edit, plus — and this is the second half of the audit
-/// settlement — `modes/makeposseq/makeposseq_shunt.dss`, whose `Reactor.rx_kvar`
-/// is the pair's one cell that is **not** this row's echo: there r4133 renders
-/// its own live `kvarRating`, rounded to five significant digits by the command
-/// round-trip inside `MakePosSequence` (`:1145-1201`,
-/// `Format(' kvar=%-.5g')` -> `Parser/Edit`). That cell is carved out of the row
-/// (`props_norm::ECHO_CARVE_OUTS`) and belongs to RP2.4's display class; this
-/// reading pins the port's exact 200/3 next to it, so the carve-out has a
-/// witness of its own.
+/// `reactor.kvar` renders the live rating and follows an edit, and after
+/// `MakePosSequence` it is the exact third of the three-phase rating.
 #[test]
 fn reactor_kvar_renders_the_live_rating() {
     let mut deck = Deck::compile("controls/fuse/midi_fuse.dss");
@@ -1388,27 +874,12 @@ fn reactor_kvar_renders_the_live_rating() {
         pos.get("Reactor.rx_kvar.kvar"),
         "66.6666666666667",
         "MakePosSequence divides the three-phase rating exactly; r4133 re-parses its own \
-         '%-.5g' render and lands on 66.667 (the carved-out cell, RP2.4's display class)"
+         '%-.5g' render and lands on 66.667 (the carved-out cell of the display class)"
     );
 }
 
-/// `storagecontroller.seasontargets` / `seasontargetslow` — two
-/// `EmptyCollectionRender` rows, capi-witnessed on 20 cases and pinned for the 12
-/// cells each masks on `controls/relay/relay_generic.dss`, an `engines: "r4133"`
-/// case.
-///
-/// These are the two rows of that category whose sides do NOT both render
-/// nothing (see `props_norm::EchoCategory::EmptyCollectionRender`): with
-/// `Seasons = 1` r4133's `ReturnSeasonTarget` exits before it emits a single
-/// character (`Version8/Source/Controls/StorageController.pas:2445-2449`, reached
-/// from `:1010-1011`), while the port renders the live one-season target. The
-/// value behind it is the same on both engines — `SeasonTargets[0] := FkWTarget`
-/// at `:883-884`, read back as the dispatch target at `:1470` — which is why the
-/// readings below assert the rendered array against `kWTarget`/`kWTargetLow`
-/// themselves rather than against a literal alone.
-///
-/// The edit is the discriminator, and it is the mechanism too: with `Seasons = 2`
-/// r4133 starts rendering the array as well.
+/// `seasontargets` / `seasontargetslow` of StorageController render the live
+/// target arrays.
 #[test]
 fn storagecontroller_seasontargets_render_the_live_targets() {
     let mut deck = Deck::compile("controls/relay/relay_generic.dss");
@@ -1435,44 +906,15 @@ fn storagecontroller_seasontargets_render_the_live_targets() {
 }
 
 // ---------------------------------------------------------------------------
-// Pins added by RP3.1 (2026-08-24): the witnesses of a DRAFTED ledger entry
+// Pins for a ledger entry: r4133 never wires the property
 // ---------------------------------------------------------------------------
 //
 // See the module doc's second section. These two are named by
 // `props_r4133_replay::LEDGER_ENTRY_PINS`, not by an `EchoRow::witness`.
 
-/// `swtcontrol.delay` — **RP3.1's root cause: r4133 never wires the property.**
-///
-/// `SwtControl` declares nine properties and the fifth is `Delay`. r4133's
-/// `Edit` stores every token in the echo array first
-/// (`Version8/Source/Controls/SwtControl.pas:192-193`) and then dispatches on
-/// the property number — and the `CASE` has arms for 1, 2, 3, 4, 6, 7, 8 and 9
-/// but **none for 5** (`:195-218`), so `delay=` falls through to
-/// `ClassEdit(…, ParamPointer - NumPropsthisClass)` as an inherited parameter
-/// and `TimeDelay` keeps the 120.0 `Create` gave it (`:310`). The getter is
-/// **live** (`:588`, `Format('%-.7g',[TimeDelay])`), so r4133 answers `120` to
-/// a deck that asked for 0.25 — which is why the exclusion here cannot be an
-/// echo row. dss_capi 0.14.5 wires the property through its typed table
-/// (`src/Controls/SwtControl.pas:185`) and this port follows
-/// (`elements/control/swt_control/accessors.rs:114`).
-///
-/// The divergence is **render-only on r4133**: nothing there consumes
-/// `TimeDelay`. `Sample`'s queue-pushing body is commented out wholesale
-/// (`:484-507`, "Removing because action … and lock are instantaenous") — and
-/// so is `LockCommand`'s own declaration (`:39`), so the block would not even
-/// compile — `DoPendingAction` likewise (`:396-408`), and `set_States` acts
-/// immediately (`:532-549`). Upstream report:
-/// `investigations/to_opendss/43-swtcontrol-delay-not-wired.md` (local).
-///
-/// Deck: `controls/swtcontrol/swtcontrol_time.dss` (`SwtControl.sw`, `delay=0.25`
-/// at `:17`), the case behind the landed entry
-/// `r4133-swtcontrol-delay-ignored-time` — 12 in-scope cells, one per step 0..11.
-/// Two discriminating readings, because "our render is 0.25" alone would pass
-/// against a getter that merely echoed the deck's token: an `edit` proves the
-/// setter path drives the same getter, and the unset render below proves the
-/// port's *default* is r4133's 120 — which is why `civanlar.dss`, sixteen
-/// SwtControls that never type `delay=`, contributes no divergent cell to the
-/// census at all.
+/// `swtcontrol.delay` is wired: a typed `Delay=` reaches the controller and
+/// renders back. The property documents a delay, so ignoring the typed value
+/// would be an OpenDSS bug.
 #[test]
 fn swtcontrol_delay_wires_the_property() {
     let mut deck = Deck::compile("controls/swtcontrol/swtcontrol_time.dss");
@@ -1494,17 +936,8 @@ fn swtcontrol_delay_wires_the_property() {
     );
 }
 
-/// `swtcontrol.delay` on the second r4133-gating deck — the witness of the
-/// landed entry `r4133-swtcontrol-delay-ignored-midi`.
-///
-/// Same mechanism as [`swtcontrol_delay_wires_the_property`]; the entries are
-/// per case, so each owes its own reading. Deck:
-/// `controls/swtcontrol/midi_swtcontrol.dss` (`SwtControl.sw` on the loop tie,
-/// `delay=0.25` at `:124`), 12 in-scope cells over steps 0..11.
-///
-/// The third corpus deck that types `delay=`,
-/// `controls/swtcontrol/swtcontrol_lock.dss`, is `engines: "capi_v0145"`: there
-/// the port and the pinned 0.14.5 oracle agree, so it needs no entry and no pin.
+/// `swtcontrol.delay` on the loop-tie deck renders the typed delay, the witness
+/// of the per-case ledger entry for that deck.
 #[test]
 fn swtcontrol_delay_wires_the_property_on_the_midi_tie() {
     let mut deck = Deck::compile("controls/swtcontrol/midi_swtcontrol.dss");
@@ -1514,77 +947,25 @@ fn swtcontrol_delay_wires_the_property_on_the_midi_tie() {
 }
 
 // ---------------------------------------------------------------------------
-// Pins added by RP3.2 (2026-08-24): the witnesses of four DRAFTED ledger entries
+// Pins for four ledger entries: r4133 reads the wrong live field
 // ---------------------------------------------------------------------------
 //
-// Same §1.1(e) window as RP3.1's two, a different mechanism: r4133's `kvar`
-// getter is wired and live, and it reads the *wrong* live field. These four are
-// named by `props_r4133_replay::LEDGER_ENTRY_PINS`, not by an `EchoRow`.
+// r4133's `kvar` getter is wired and live, and it reads the *wrong* live field.
+// These four are named by `props_r4133_replay::LEDGER_ENTRY_PINS`, not by an
+// `EchoRow`.
 //
 // Each pin runs the gate's own sequence for its case — compile, then the one
 // `solve` the case's `steps=1` rigor prescribes — and then reads the same
 // `? Class.Name.Prop` getter the property walk reads. That solve is the pin's
-// own, exactly as it is the gate's: `corpus_gate/runner.rs:348-349` issues
-// `dss.command("solve")` once per checkpoint whatever the deck ends on, and none
-// of these four decks ends on the solve of its own mode (`windgen_daily.dss:23`
-// and the two dynamics decks end at `Set mode=…`, `windgen_snap_delta.dss:9` at
-// `Calcvoltagebases`; `windgen_dyn.dss:13` and `windgen_dyn_fault.dss:15` do
-// carry a *snapshot* `solve` before their `Set mode=dynamic`, which is not the
-// dynamics run the reading is taken after).
+// own, exactly as it is the gate's: the corpus gate's runner issues one `solve`
+// per checkpoint whatever the deck ends on.
 //
-// The discriminating second reading is an `edit kvar=`, because "our render is
-// 986.05" alone would pass against a getter hardwired to the derived base: the
-// edit proves the setter path drives the same getter, and on the two kVA-set
-// decks it proves more than that (see below).
+// The discriminating second reading is an `edit kvar=`, because a single
+// reading alone would pass against a getter hardwired to the derived base: the
+// edit proves the setter path drives the same getter.
 
-/// `windgen.kvar` on the daily deck — **RP3.2's root cause: r4133 renders the
-/// dispatched Q, not the base kvar the property documents.**
-///
-/// `WindGen` declares `kvar` as property 11 and documents it as "Specify the
-/// **base kvar**" (`Version8/Source/PCElements/WindGen.pas:364-365`, verbatim
-/// the `Generator` text at `Generator.pas:396`). The `Edit` CASE has the arm
-/// (`:629`, `11: Presentkvar := Parser.DblValue`) and `Set_Presentkvar` stores
-/// the value in `kvarBase` (`:2996-3009`) — so, unlike RP3.1, the write path
-/// works. The **read** path does not: `GetPropertyValue` arm 11 is
-/// `Format('%.6g', [presentkvar])` (`:2896`) and `Get_Presentkvar` returns
-/// `WindGenvars.Qnominalperphase * 0.001 * Fnphases` (`:2297-2300`), the
-/// dispatched reactive power. The echo store for the slot (`'60'`, `:2446`) is
-/// unreachable — `TDSSObject.Get_PropertyValue` dispatches to the virtual
-/// `GetPropertyValue` (`DSSObject.pas:117-120`) — so r4133's `0` is a *live*
-/// read of the wrong field, which is why the exclusion here cannot be an echo
-/// row either.
-///
-/// r4133 contradicts itself inside its own trunk: `Generator` has the identical
-/// getter (`Generator.pas:2402-2405`) and the identical help, yet renders the
-/// base (`Generator.pas:3018`, `Format('%.6g', [kvarBase])`). The port does the
-/// same (`elements/pc/windgen/accessors.rs:431`, `KVAR => self.kvar_base`, the
-/// twin of `pc/generator/accessors.rs:495`). The two engines' *physics* agreed
-/// when RP3.2 measured them — the port then ported `SetNominalGeneration`
-/// loop-for-loop, `Else kvarCalc := 0` (`WindGen.pas:1320-1321`) included, and
-/// the probed terminal powers matched on all five decks. **They no longer do,
-/// and by design**: §RP3.10 (2026-09-04) implements the constant-Q arm r4133
-/// never had (`0 => kvar_calc = self.kvar_base`, `windgen/nominal.rs`) in both
-/// lanes, so four of the five decks now dispatch their base kvar where r4133
-/// dispatches 0 — terminal Q `-726.4838` (delta) / `-986.0531` (daily) /
-/// `-37077.425` (dyn) / `-29209.383` kvar (dyn_fault) against r4133's
-/// `-4.2e-05` / `-2.1e-05` / `-37087.759` / `-29216.667` — excluded per case in
-/// `tests/corpus/ledger.json` (cause `windgen-qmode0-no-arm`) and pinned by
-/// `dss_core::elements::pc::windgen::tests::qmode0_dispatches_the_base_kvar`.
-/// **This pair is untouched by that fix**: r4133 renders `Qnominalperphase`, we
-/// render `kvar_base`, and the dispatch never writes `kvar_base` — so the four
-/// entries' `rust`/`oracle` values and every pin below stand unchanged (the
-/// fifth deck, `windgen_snap.dss`, has `kvar_base = 0` and does not move at
-/// all). Upstream reports:
-/// `investigations/to_opendss/44-windgen-kvar-renders-dispatched-q.md` (this
-/// render) and `55-windgen-qmode0-zero-var-dispatch.md` (the missing arm), both
-/// local.
-///
-/// Deck: `modes/windgen/windgen_daily.dss` (`WindGen.w1`, `kW=3000 pf=0.95`,
-/// no `kVA=`), the case behind the landed entry
-/// `r4133-windgen-kvar-dispatched-daily` — one in-scope cell, and the pair's
-/// worst (`rel 9.86e+02`, `tests/corpus/props_r4133/bins.tsv:303`). No deck
-/// types `kvar=` at all: the value is the `SyncUpPowerQuantities` side effect
-/// `kW*sqrt(1/pf^2 - 1)` of the deck's own `pf=`.
+/// `windgen.kvar` renders the base kvar the property documents, not the
+/// dispatched reactive power, on the daily deck.
 #[test]
 fn windgen_kvar_renders_the_base_on_the_daily_deck() {
     let mut deck = Deck::compile("modes/windgen/windgen_daily.dss");
@@ -1609,23 +990,8 @@ fn windgen_kvar_renders_the_base_on_the_daily_deck() {
     );
 }
 
-/// `windgen.kvar` on the delta snapshot deck — the witness of the landed entry
-/// `r4133-windgen-kvar-dispatched-delta`, plus the measurement that the pair's
-/// one clean deck is clean by *value*, not by mode.
-///
-/// Same mechanism as [`windgen_kvar_renders_the_base_on_the_daily_deck`]
-/// (`Version8/Source/PCElements/WindGen.pas:2896` reading `Get_Presentkvar`,
-/// `:2297-2300`); the entries are per case, so each owes its own reading.
-/// Deck: `modes/windgen/windgen_snap_delta.dss` (`kW=1500 pf=0.9`), one in-scope
-/// cell.
-///
-/// The third reading is the load-bearing one (the `civanlar.dss` analog of
-/// RP3.1): `modes/windgen/windgen_snap.dss` is the fifth windgen deck and the
-/// only one the census records **no** cell for — and the reason is that it types
-/// `pf=1.0`, so our base is `0` and both engines print `0`. That is a value
-/// coincidence, not agreement about the mechanism: type a `kvar=` there and the
-/// two diverge like everywhere else (`777` here, `0` on r4133). Nothing about
-/// snapshot mode makes the deck clean, so no mode story may be built on it.
+/// `windgen.kvar` renders the base kvar on the delta snapshot deck, the
+/// witness of the per-case ledger entry for that deck.
 #[test]
 fn windgen_kvar_renders_the_base_on_the_delta_snapshot() {
     let mut deck = Deck::compile("modes/windgen/windgen_snap_delta.dss");
@@ -1653,29 +1019,8 @@ fn windgen_kvar_renders_the_base_on_the_delta_snapshot() {
     );
 }
 
-/// `windgen.kvar` on the WTG3 dynamics deck — the witness of the landed entry
-/// `r4133-windgen-kvar-dispatched-dyn`, and the reading that proves r4133's
-/// render is a *stale intermediate* rather than merely the wrong field.
-///
-/// Deck: `modes/windgen/windgen_dyn.dss` (`kW=1500 kva=1800`, no `pf=`), one
-/// in-scope cell. With `kVA` set, `RecalcElementData` takes the other branch
-/// (`Version8/Source/PCElements/WindGen.pas:1375-1384`): `kWBase = kVA*|PF|` at
-/// `Create`'s `PFNominal = 0.88` (`:917`) gives 1584, and
-/// `kvar_base = sqrt(kVA^2 - kWBase^2) = 854.95263026673`.
-///
-/// The `edit` then re-derives rather than echoing, which is what makes the
-/// second reading discriminating here: `Set_Presentkvar` stores 777 and moves
-/// `PFNominal` to `1584/sqrt(1584^2+777^2)`, and `RecalcElementData` re-derives
-/// the base from `kVA` at that PF — `sqrt(1800^2 - (1800*0.897802095552545)^2)`.
-/// Probed on r4133, the same two steps produce the *same* `PF` (`0.897802`) and
-/// the same `kvarBase`, and it renders `777` anyway: in dynamics `:1254` skips
-/// the Q block, so `Get_Presentkvar` (`:2297-2300`) is still reporting
-/// `Set_Presentkvar`'s "init to something reasonable" `1000*777/3` (`:3002`)
-/// while the machine's measured terminal Q is `-37087.76 kvar` (r4133's own
-/// reading, and still current on that engine; since §RP3.10 the port's terminal
-/// Q on this deck is `-37077.425 kvar`, excluded by the ledger entry
-/// `windgen-qmode0-constant-q-dyn-r4133` and unrelated to this render).
-/// Three different numbers for one property; the render tracks none of them.
+/// `windgen.kvar` renders the base kvar on the dynamics deck, where `kVA` is
+/// set and the base derives from it.
 #[test]
 fn windgen_kvar_renders_the_base_on_the_dynamics_deck() {
     let mut deck = Deck::compile("modes/windgen/windgen_dyn.dss");
@@ -1698,25 +1043,8 @@ fn windgen_kvar_renders_the_base_on_the_dynamics_deck() {
     );
 }
 
-/// `windgen.kvar` on the fault-ride-through twin — the witness of the landed
-/// entry `r4133-windgen-kvar-dispatched-dynfault`.
-///
-/// `modes/windgen/windgen_dyn_fault.dss` is `windgen_dyn.dss` plus a sustained
-/// three-phase `Fault.f1` on the machine terminal, so the LVPL/LVQL path runs
-/// through the whole dynamics solve; the base-kvar derivation is identical
-/// (`kW=1500 kva=1800`, `Create`'s `pf=0.88`) and so is the render bug
-/// (`Version8/Source/PCElements/WindGen.pas:2896` → `:2297-2300`). The entries
-/// are per case, so this deck owes its own reading. The solved state was *not*
-/// divergent when RP3.2 measured it — probed terminal Q `-29216.72 kvar` on the
-/// port against `-29216.67` on r4133 — because the port then reproduced r4133's
-/// missing `QMode=0` arm. §RP3.10 (2026-09-04) implements that arm in both
-/// lanes, so the port's terminal Q here is now `-29209.383 kvar` and this
-/// deck's solved model is excluded against r4133 by
-/// `windgen-qmode0-constant-q-dynfault-r4133`. The **property** exclusion is
-/// still scoped to the property field and nothing else, and independently of
-/// that one: the two engines read different fields for `kvar` (r4133
-/// `Qnominalperphase`, the port `kvar_base`), and the dispatch never writes
-/// `kvar_base` — the readings below are unchanged.
+/// `windgen.kvar` renders the base kvar on the fault-ride-through deck, the
+/// witness of the per-case ledger entry for that deck.
 #[test]
 fn windgen_kvar_renders_the_base_on_the_fault_ride_through_deck() {
     let mut deck = Deck::compile("modes/windgen/windgen_dyn_fault.dss");
@@ -1731,83 +1059,23 @@ fn windgen_kvar_renders_the_base_on_the_fault_ride_through_deck() {
 }
 
 // ---------------------------------------------------------------------------
-// Pins added by RP3.4 (2026-08-24): the witnesses of two DRAFTED ledger entries
+// Pins for two ledger entries: r4133 derives `R2` from `%R1`
 // ---------------------------------------------------------------------------
 //
-// The same §1.1(e) window as RP3.1's two and RP3.2's four, and a third
-// mechanism. Here the r4133 getter is wired, live AND reading the field the
-// property documents — it renders `Format('%.8g',[1.0/G2])` for `R2`
-// (`Version8/Source/PDElements/GICTransformer.pas:723`) — but the field itself
-// was mis-derived one procedure earlier: `RecalcElementData`'s `%R` branch
-// builds winding 2's conductance from the H-winding percentage,
-// `:495 G2 := 100.0 / (FZBase2 * FPctR1);`, the byte-twin of pinned dss_capi
-// 0.14.5 `src/PDElements/GICTransformer.pas:441`. So the render is a *live
-// computation off a wrong number*, not a parse-store echo (property 14, `%R2`,
-// `:136`, does echo `FpctR2` at `:729` and agrees with the port digit for
-// digit) — which is why the exclusion is a ledger entry and no
-// `PROPS_ECHO_R4133` row. These two are named by
+// Here the r4133 getter is wired, live AND reading the field the property
+// documents, but the field itself is mis-derived: winding 2's conductance is
+// built from the H-winding percentage. So the render is a live computation off
+// a wrong number, not a parse-store echo, which is why the exclusion is a
+// ledger entry and no `PROPS_ECHO_R4133` row. These two are named by
 // `props_r4133_replay::LEDGER_ENTRY_PINS`.
 //
-// The engine side is not this sub-step's: `GOLDEN_REBASE_PLAN.md` G2.5 already
-// fixed both lanes (`elements/pd/gic_transformer/solve.rs:66` reads
-// `self.pct_r2`) and pinned the capi channel
-// (`gic-pct-r2-honoured-{gictransformer,midi}-capi-props`). RP3.4 only stages
-// the r4133-channel twins, and these pins hold the port's value until they land.
-//
-// Neither deck needs a `solve`: `R2` is `RecalcElementData`'s output, stamped at
-// `Edit` time, and both decks' cells are `steps=1`. The reading is the same
-// `? Class.Name.Prop` the gate's property walk takes.
+// Neither deck needs a `solve`: `R2` is stamped at `Edit` time, and both decks'
+// cells are `steps=1`. The reading is the same `? Class.Name.Prop` the gate's
+// property walk takes.
 
-/// `gictransformer.r2` on the micro deck — **RP3.4's root cause: both gating
-/// oracles derive winding 2's conductance from `%R1`.**
-///
-/// `GICTransformer` declares `R2` as property 8 (`PropertyName^[8] := 'R2'`,
-/// `Version8/Source/PDElements/GICTransformer.pas:130`) and stores no ohms field
-/// for it: `Edit` arm 8 inverts the typed ohms straight into the conductance
-/// (`:300-303`) and `GetPropertyValue` arm 8 inverts it back,
-/// `Format('%.8g', [1.0/G2])` (`:723`; `DumpProperties` prints the same at
-/// `:663`). When the deck specifies percentages instead — `Edit` arms 13/14 at
-/// `:308-309`, which set `FpctRSpecified := TRUE` at `:349`, where arms 7/8 set
-/// it FALSE at `:343` — `RecalcElementData` fills the conductances, and its
-/// forward branch reads the **H-winding** percentage for both:
-///
-/// ```text
-/// :494    G1 := 100.0 / (FZBase1 * FPctR1);
-/// :495    G2 := 100.0 / (FZBase2 * FPctR1);   // <- FPctR2 never reaches the admittance
-/// ```
-///
-/// It is a slip and not a convention: the same procedure's reverse branch
-/// restores `FPctR2` from `G2` (`:497-498`), and the two maps are inverses only
-/// when the forward one reads `FPctR2`; the creation defaults are independent
-/// (`%R1 = %R2 = 0.2`, `:458-459`). The pinned dss_capi 0.14.5 carries the line
-/// byte-for-byte (`src/PDElements/GICTransformer.pas:441`), so **both** gating
-/// oracles render the un-honoured percentage — which is why RP3.4 stages an
-/// r4133 twin of an already-pinned capi divergence rather than a new finding.
-/// The port honours `%R2` (`elements/pd/gic_transformer/solve.rs:66`, the
-/// `GOLDEN_REBASE_PLAN.md` G2.5 fix) and reads back through the same
-/// `INVERSE_VALUE` inversion (`accessors.rs:60`, `R2 => self.g2`). Upstream
-/// report: `investigations/to_opendss/07-gictransformer-g2-uses-pctr1.md`
-/// (local), already written against r4133 — a twin owes no new report.
-///
-/// Deck: `asymmetric/gic/gictransformer_gic.dss` (`GICTransformer.tg3`,
-/// `%R1=0.2 %R2=0.15 kvll1=345 kvll2=138 mva=300 type=Auto` at `:18-19`), the
-/// case behind the landed entry
-/// `gic-pct-r2-honoured-gictransformer-r4133-props` — one in-scope cell.
-/// `ZBase2 = 138²/300 = 63.48 Ω`, so ours is `63.48*0.15/100 = 0.09522` against
-/// both oracles' `63.48*0.20/100 = 0.12696` (rel 2.50e-01).
-///
-/// **The discriminating readings**, because "our render is 0.09522" alone would
-/// pass against a getter hardwired to the `%R2` product:
-///
-/// * `%R2=0.3` moves `R2` to `0.19044` — the setter path drives this getter;
-/// * `%R1=0.4` then moves `R1` and leaves `R2` **unmoved**, which separates the
-///   two engines' *mechanisms*: upstream, whose `G2` is a function of `FPctR1`,
-///   would answer `63.48*0.4/100 = 0.25392` here;
-/// * `tg2`, the ohms-spec sibling on the same deck, reads back its typed `R2=0.1`
-///   through the reverse branch neither revision ever got wrong, and `tg1` — a
-///   GSU that types no `R2=` at all — keeps the `Create`-derived `0.38088` both
-///   engines agree on. That is why 20 of the corpus's 22 GICTransformers
-///   contribute no census cell (this sub-step's `civanlar.dss`).
+/// `gictransformer.r2` derives from the X winding's own `%R2`, not from `%R1`,
+/// on the micro deck. Each winding's resistance is that winding's percentage of
+/// its own base.
 #[test]
 fn gictransformer_r2_honours_the_x_winding_percentage() {
     let mut deck = Deck::compile("asymmetric/gic/gictransformer_gic.dss");
@@ -1860,25 +1128,8 @@ fn gictransformer_r2_honours_the_x_winding_percentage() {
     );
 }
 
-/// `gictransformer.r2` on the 6-substation ring — the witness of the landed
-/// entry `gic-pct-r2-honoured-midi-r4133-props`.
-///
-/// Same mechanism as [`gictransformer_r2_honours_the_x_winding_percentage`]
-/// (`Version8/Source/PDElements/GICTransformer.pas:495` feeding the `:723`
-/// getter); the entries are per case, so each owes its own reading. Deck:
-/// `asymmetric/gic/gic_midi.dss` (`GICTransformer.tg5`, the same
-/// `%R1=0.2 %R2=0.15 kvll1=345 kvll2=138 mva=300 type=Auto` at `:27-28`), one
-/// in-scope cell, the same `ZBase2 = 63.48 Ω` and therefore the same pair of
-/// numbers.
-///
-/// The ring's other two GICTransformers are the ohms-spec control again — `tg3`
-/// types `R1=0.2 R2=0.1` and `tg1` is a GSU with `R1=0.12` and no `R2=`.
-///
-/// It carries the **whole** discriminating pair of readings, not just the first
-/// half: after `%R1=0.4` both `R2` (unmoved) *and* `R1` (`1.587`) are read, since
-/// "unmoved" on its own is also what a no-op edit produces — the RP3.4 audit
-/// settlement (2026-08-24) found this test green under `%R9=0.4`, a property that
-/// does not exist, and added the second reading.
+/// `gictransformer.r2` derives from `%R2` on the six-substation ring, the
+/// witness of the per-case ledger entry for that deck.
 #[test]
 fn gictransformer_r2_honours_the_x_winding_percentage_on_the_ring() {
     let mut deck = Deck::compile("asymmetric/gic/gic_midi.dss");
@@ -1913,76 +1164,32 @@ fn gictransformer_r2_honours_the_x_winding_percentage_on_the_ring() {
         "1.587",
         "…while the H winding does follow it: 396.75*0.4/100. This reading is what makes the \
          one above discriminating: without it, `R2` staying at 0.19044 is equally the answer of \
-         a correct engine and of an `%R1=` edit that did nothing at all — the RP3.4 audit \
-         settlement measured exactly that, rewriting the edit to the non-existent property \
-         `%R9=0.4` left this test green while its micro-deck twin, which always carried this \
-         control, went red"
+         a correct engine and of an `%R1=` edit that did nothing at all"
     );
 }
 
 // ---------------------------------------------------------------------------
-// Pins added by RP3.8 (2026-09-02): the five read-only results r4133 renders
-// LIVE, and the capi capture that renders nothing
+// Pins for the five read-only results r4133 renders LIVE, and the capi capture
+// that renders nothing
 // ---------------------------------------------------------------------------
 //
 // These three belong to no `EchoRow` and to no `ledger.json` entry: the
-// exclusion RP3.8 lands is a `SKIP_PROPS` + `SKIP_PROPS_CAPI_ONLY` row pair
+// exclusion is a `SKIP_PROPS` + `SKIP_PROPS_CAPI_ONLY` row pair
 // (`harness/mod.rs`, row group (g)), which masks the **capi** value compare of
 // `IndMach012.PF` and `StorageController.kWhTotal`/`kWTotal`/`kWhActual`/
-// `kWActual` on 24 gating cases / 84 cells while the r4133 channel keeps
-// comparing all five. CLAUDE.md's rule for a deliberate divergence is exclusion
-// **plus** an expected-value test, and the two engine-side pins below are that
-// test: without them the 84 masked cells would have no holder at all, because a
-// regression back to `''` makes the capi compare AGREE again and the gate would
-// go green on the wrong value. They are cited from
-// `props_r4133_replay::RP38_SUPERSEDED`.
+// `kWActual` while the r4133 channel keeps comparing all five. A deliberate
+// divergence is excluded **and** pinned by an expected-value test, and the two
+// engine-side pins below are that test: a regression back to `''` makes the
+// capi compare AGREE again and the gate would go green on the wrong value.
+// They are cited from `props_r4133_replay::RP38_SUPERSEDED`.
 //
-// Every expected byte is r4133's own, measured through `epri-worker` on the very
-// deck each pin compiles (RP3.8 P0 probe, `tmp/rp38/out_r4133.txt`), and read at
-// the same point of the gate's own schedule (`clear` -> `compile` -> N x
-// `solve`). The port renders full precision (`float_to_str_ex`, like every other
-// double property), so r4133's own `%.6g` / `%-.8g` digits are checked through
-// `dss_core::util::fmt_g` — the two-clause display class RP2.4's floor claims on
-// the r4133 channel.
+// Each reading is taken at the same point of the gate's own schedule
+// (`clear` -> `compile` -> N x `solve`). This engine renders full precision
+// (`float_to_str_ex`, like every other double property), so r4133's own
+// `%.6g` / `%-.8g` digits are checked through `dss_core::util::fmt_g`.
 
-/// `indmach012.pf` — **r4133 renders the live power factor; 0.14.5 renders
-/// `''`** (`R4133_PROPS_PLAN.md` §RP3.8).
-///
-/// r4133 arm 5 of `TIndMach012Obj.GetPropertyValue` is
-/// `Format('%.6g', [PowerFactor(Power[1, ActiveActor])])`
-/// (`Version8/Source/PCElements/IndMach012.pas:1790`, `PowerFactor` =
-/// `Common/Utilities.pas:1821`), i.e. the machine's own state variable #21.
-/// dss_capi 0.14.5 registers the property `[SilentReadOnly, ReadByFunction]`
-/// (`src/PCElements/IndMach012.pas:288-289`) but never assigns its
-/// `PropertyOffset`, so `GetObjPropertyValue`'s outer guard
-/// (`src/General/DSSObjectHelper.pas:2203-2204`) exits before the read function
-/// runs and the capture is `''` — solved or not.
-///
-/// Decks: the two `both` corpus cases the RP3.8 sweep flagged. Both readings are
-/// taken **after `compile`, before the gate's own `solve`**, which is exactly
-/// where the probe read r4133 (`tmp/rp38/out_r4133.txt` §C).
-///
-/// The post-solve reading is the last assertion and it is *port-sourced* in the
-/// sense that matters here — it is read at the end of **this** schedule, which
-/// opens with a pre-solve `?`. r4133's byte on that same schedule is **not** its
-/// expectation: r4133's `?` read recomputes the machine model when the
-/// `Iterminal` cache is unstamped and keeps the resulting slip advance, so its
-/// own pre-solve read moved its trajectory (`'0.908755'` at step 0); this port
-/// recomputes on a throwaway clone and leaves the machine alone
-/// (`elements/pc/ind_mach012/accessors.rs::refresh_live_pf`), which the unit pin
-/// `pf_is_a_pure_read` holds. Asserting r4133's *perturbed* step-0 byte here
-/// would pin the upstream read-that-mutates, which the 2026-08-02 policy forbids
-/// reproducing.
-///
-/// The literal is nevertheless **r4133-corroborated**, which is the stronger
-/// statement: read without the perturbing pre-read (`compile` → `solve` → `?`),
-/// r4133 answers `'0.908916'` on this deck — exactly `fmt_g(0.908915557341299,
-/// 6)` (epri-worker, re-measured at the RP3.8 audit settlement, 2026-09-02). A
-/// pure read leaves the two engines on the same trajectory; only r4133's own
-/// mutation separates them.
-///
-/// What a revert breaks: every assertion — a suppressed render answers `''`,
-/// which parses as no number at all.
+/// `indmach012.pf` renders the live power factor of the solved machine, the
+/// quantity its terminal power defines.
 #[test]
 fn indmach012_pf_renders_the_live_power_factor() {
     let mut asym = Deck::compile("asymmetric/indmach/indmach_asym.dss");
@@ -1993,11 +1200,11 @@ fn indmach012_pf_renders_the_live_power_factor() {
     assert_eq!(
         dss_core::util::fmt_g(v, 6),
         "0.909167",
-        "r4133's own byte on this deck after compile (probe §3.3); 0.14.5 renders ''"
+        "r4133's own byte on this deck after compile; 0.14.5 renders ''"
     );
     assert_eq!(
         pre, "0.909167177168387",
-        "…and the port prints the full double, not r4133's six digits"
+        "…and this engine prints the full double, not r4133's six digits"
     );
 
     // A second deck, a different machine: the getter is not a constant.
@@ -2009,7 +1216,7 @@ fn indmach012_pf_renders_the_live_power_factor() {
     assert_eq!(
         dss_core::util::fmt_g(w, 6),
         "0.904914",
-        "r4133's own byte on the midi deck (probe §3.3)"
+        "r4133's own byte on the midi deck"
     );
 
     // …and it is live: the gate's first solve moves it. PORT-SOURCED literal —
@@ -2024,35 +1231,8 @@ fn indmach012_pf_renders_the_live_power_factor() {
     );
 }
 
-/// `storagecontroller.kwhtotal` / `kwtotal` / `kwhactual` / `kwactual` — **the
-/// four fleet aggregates r4133 renders live** (`R4133_PROPS_PLAN.md` §RP3.8).
-///
-/// r4133's `GetPropertyValue` arms `:991-994` call `GetkWhTotal`/`GetkWTotal`/
-/// `GetkWhActual`/`GetkWActual` (`Version8/Source/Controls/
-/// StorageController.pas:1162-1197`, all `Format('%-.8g', …)`): the two totals
-/// re-sum `StorageVars.kWhRating`/`kWRating` over `FleetPointerList` on every
-/// call, the two actuals read `FleetkWh`/`FleetkW` (`:188-189` -> `:1019-1042`,
-/// the live `kWhStored`/`PresentkW` sums). dss_capi 0.14.5 registers all four
-/// `[SilentReadOnly, ReadByFunction]` (`src/Controls/StorageController.pas:
-/// 416-423`) with no `PropertyOffset`, so its capture is `''`.
-///
-/// Two decks, because a single fleet cannot discriminate much:
-///
-/// * `controls/storagecontroller/storagectrl_peakshave.dss` — a 2-member fleet
-///   with round nameplates. Its **`edit`** is the discriminator, and it is
-///   r4133's own measurement on this very deck (probe §3.2): re-typing one
-///   member's `kwhrated`/`kwrated` moves the two totals immediately, with no
-///   fleet rebuild, because the getters re-sum from scratch. A latched total
-///   (r4133 writes one into `TotalkWhCapacity`, `:991-992` — a dead store this
-///   port does not reproduce) would keep the old numbers.
-/// * `…/StorageControllerTechNote/PeakShave/PeakShaveRun.dss` — a 7-member fleet
-///   whose actuals are decimal, so it carries the `%-.8g` half: r4133's
-///   `'2627.3806'` after compile and `'2627.3929'` after the gate's solve are
-///   the port's own double at r4133's precision, three orders inside
-///   `props_norm::R4133_DISPLAY_FLOOR`.
-///
-/// What a revert breaks: every assertion (a suppressed render answers `''`), and
-/// specifically the two `Actual` readings, which are the ones that move.
+/// The four fleet aggregates of StorageController (`kWhTotal`, `kWTotal`,
+/// `kWhActual`, `kWActual`) render the live sums over the fleet.
 #[test]
 fn storagecontroller_fleet_aggregates_render_the_live_fleet() {
     let mut deck = Deck::compile("controls/storagecontroller/storagectrl_peakshave.dss");
@@ -2072,7 +1252,7 @@ fn storagecontroller_fleet_aggregates_render_the_live_fleet() {
     deck.cmd("solve");
     assert_eq!(four(&mut deck), ["12000", "3000", "9600", "0"]);
 
-    // r4133's own live-edit measurement on this deck (probe §3.2): 9999 + 6000
+    // r4133's own live-edit reading on this deck: 9999 + 6000
     // and 2222 + 1500, re-summed on the read.
     deck.cmd("edit storage.sa kwhrated=9999 kwrated=2222");
     assert_eq!(
@@ -2080,7 +1260,7 @@ fn storagecontroller_fleet_aggregates_render_the_live_fleet() {
         ["15999", "3722", "14799", "0"],
         "the totals are re-summed at every read, never latched — and the stored \
          energy follows the new nameplate (r4133's own four bytes after this very \
-         edit, probe §3.2)",
+         edit)",
     );
 
     let mut tech = Deck::compile(
@@ -2103,7 +1283,7 @@ fn storagecontroller_fleet_aggregates_render_the_live_fleet() {
     assert_eq!(
         eight(&mut tech, "kWhActual"),
         "2627.3806",
-        "r4133's `%-.8g` after compile (probe §3.1)"
+        "r4133's `%-.8g` after compile"
     );
     assert_eq!(eight(&mut tech, "kWActual"), "-18.81068");
     tech.cmd("solve");
@@ -2116,26 +1296,8 @@ fn storagecontroller_fleet_aggregates_render_the_live_fleet() {
     assert_eq!(tech.get("StorageController.SC.kWhTotal"), "7350");
 }
 
-/// **The capi side of RP3.8's skip rows, witnessed from the committed 0.14.5
-/// capture** — the five properties render `''` there, on every scenario, and
-/// that is the whole reason the `SKIP_PROPS` group (g) rows exist.
-///
-/// The two engine pins above hold the port's value; nothing held the *oracle's*,
-/// and the skip row's justification is a statement about the oracle. The pinned
-/// dss-python 0.14.5 cannot be run from a test (no oracle in this binary), but
-/// its answer is committed: `tests/golden/props/{indmach012,storagecontroller}.
-/// json` are captures of that very oracle (`oracle.engine` names the 0.14.5
-/// build), and RP3.8 re-ran `tools/golden/gen_props.py` per class to prove they
-/// still regenerate byte-identically. So these 21 cells ARE the capi channel's
-/// answer, frozen.
-///
-/// Non-vacuous in both directions: a writable sibling of each class is asserted
-/// non-empty in the same walk, so an all-empty (or missing) capture cannot pass,
-/// and the cell count is an equality.
-///
-/// What a revert breaks: nothing in the engine — this pin fails only if the
-/// capture stops saying `''`, i.e. if someone regenerates these files against a
-/// newer oracle, which would also retire the skip rows.
+/// The committed 0.14.5 capture renders the five live read-only results as
+/// `''` on every scenario, which is what the `SKIP_PROPS` rows for them state.
 #[test]
 fn the_silent_readonly_capture_cells_are_empty() {
     let root: PathBuf = [
@@ -2194,31 +1356,30 @@ fn the_silent_readonly_capture_cells_are_empty() {
 }
 
 // ---------------------------------------------------------------------------
-// RP3.9 — the round-trip residue (`R4133_PROPS_PLAN.md` §RP3.9)
+// The round-trip residue of `MakePosSequence`
 // ---------------------------------------------------------------------------
 //
-// These pins hold the port's value on the pairs RP2.4's display floor refuses
+// These pins hold this engine's value on the pairs the display floor refuses
 // (`props_norm::display_is_render`): r4133's number is NOT our number rounded to
-// the digits it printed, because the `%.Ng` round trip happened UPSTREAM —
-// inside `MakePosSequence`, which writes a command string of 5-significant-digit
+// the digits it printed, because the `%.Ng` round trip happens inside OpenDSS's
+// `MakePosSequence`, which writes a command string of 5-significant-digit
 // tokens and reads them back through its own edit, so everything derived
-// afterwards is derived from the rounded input. The port applies the same
+// afterwards is derived from the rounded input. This engine applies the same
 // conversion as typed `f64` setters
-// (`exec::make_pos_seq::apply::apply_pos_seq_actions`), keeps the exact value, and
-// diverges by that round trip and nothing else.
+// (`exec::make_pos_seq::apply::apply_pos_seq_actions`), keeps the exact value,
+// and diverges by that round trip and nothing else.
 //
 // Each pin therefore names BOTH numbers — ours as a literal render of the live
 // getter, r4133's as the vendored census literal — and *reproduces* r4133's from
 // ours by running r4133's chain of arithmetic (`round_g`, below) and, where
-// the engine can be made to walk it, by feeding the port r4133's own token
-// through `edit` and reading the same getter back. Verdict on all twenty-seven pairs:
-// `PRECISION_ROUNDTRIP` — the port is exact, so nothing is fixed and nothing is
-// reproduced (CLAUDE.md: upstream numbers are pinned as the *other* named
-// literal, never emitted). Their citation list is
+// the engine can be made to walk it, by feeding this engine r4133's own token
+// through `edit` and reading the same getter back. This engine is exact, so
+// nothing is fixed and nothing is reproduced: the OpenDSS numbers are pinned as
+// the *other* named literal, never emitted. Their citation list is
 // `props_r4133_replay::RP39_PINS`.
 
 /// FPC `Format('%-.<sig>g')` **as a value**: render `x` through the engine's own
-/// FPC `%g` kernel ([`dss_core::util::fmt_g`], the F-FMT seam both lanes share)
+/// FPC `%g` kernel ([`dss_core::util::fmt_g`], which both lanes share)
 /// and read the decimal back — precisely what `MakePosSequence` does when it
 /// prints a token and its own `Edit` parses it again.
 fn round_g(x: f64, sig: usize) -> f64 {
@@ -2279,44 +1440,8 @@ fn tokens5(values: &[f64]) -> String {
         .join(" ")
 }
 
-/// `load.kva` — **r4133 re-derives kVA from the 5-digit `kW`/`kvar` tokens its
-/// own `MakePosSequence` wrote; the port derives it from the exact typed
-/// conversion** (§RP3.9, chain A; 15 census cells over 13 spellings on all six
-/// `modes:makeposseq` decks, none in scope today).
-///
-/// r4133's Load reduction writes a third of `kW` and of `kvar` as `%-.5g`
-/// tokens and reads them back through its own edit, which makes the load one
-/// given by kW and kvar. Its recalc then derives `kVA = √(kW² + kvar²)` **from
-/// the rounded pair**, and the getter prints that at full precision (`%-g`).
-/// The port runs the same two formulas (`Load::make_pos_sequence` ->
-/// `exec::make_pos_seq::apply::apply_pos_seq_actions` -> `Load::recalc`) on
-/// `f64`s, with no text in between.
-///
-/// `makeposseq_pc_repeat.dss` runs `makeposseq` twice. The port changes
-/// nothing on the second run, since the circuit is already positive-sequence,
-/// so it holds the once-converted values there, while r4133 reduces the
-/// reduced circuit again, so its tokens on that deck are `r5(r5(kW/3)/3)`: the
-/// two engines part there by r4133's five-digit round trip and by its second
-/// reduction. `makeposseq_pc.dss` and the other decks convert once, so r4133's
-/// tokens there are `r5(kW/3)`. Both are reproduced here from the port's own
-/// post-conversion renders, and then again *inside the engine* by typing
-/// r4133's tokens into the port's own `edit`. r4133's readings of the
-/// once-converted PC deck (`133.33`, `43.825`, `140.347851871698` on `ld_wye`,
-/// `70.1756698079897` on `ld3`, `28.0704891480359` on `ld_1ph`) were measured
-/// on 2026-10-17 with epri-worker on the r4133 DLL running that deck.
-///
-/// **r4133's thirteen vendored census spellings are all asserted**, not one
-/// per deck: the three worked through the `edit` replay below, and the
-/// remaining ten — one row per (deck, load) — through the same arithmetic in
-/// the closing loop, so a render that moves on any of the census decks reds
-/// this pin. The port side of the repeat deck's rows is the once value, so
-/// those rows pair r4133's twice-reduced cell with the port's once value. The
-/// once-converted PC deck's own rows ride along in both places.
-///
-/// What a revert breaks: rounding the conversion (or dropping the `kVABase`
-/// recompute) moves the first assertions; a hardwired getter fails the `edit`
-/// readings; a second reduction of the reduced circuit moves the repeat deck's
-/// values to a ninth of the deck's.
+/// `load.kva` after `MakePosSequence` is the exact conversion of the typed
+/// values, not a value re-derived from five-digit tokens.
 #[test]
 fn load_kva_after_makeposseq_is_the_exact_typed_conversion() {
     // --- the repeat deck: r4133 reduces it twice, the port once -------------
@@ -2512,38 +1637,9 @@ fn load_kva_after_makeposseq_is_the_exact_typed_conversion() {
     }
 }
 
-/// `load.kw`, `load.kvar`, `load.xfkva` — **the four cells where r4133's state
-/// IS a `MakePosSequence` token** (§RP3.9, chain A; all on the PC circuit that
-/// `modes:makeposseq/makeposseq_pc_repeat.dss` converts twice, none in scope
-/// today). r4133 reduces that circuit twice and the port once (the second
-/// `makeposseq` changes nothing on a positive-sequence circuit), so the census
-/// rows of that deck pair r4133's twice-reduced cell with the port's once
-/// value.
-///
-/// * `Load.ld_wye.kW`: r4133 writes a third of `kW` as a `%-.5g` token, reads
-///   it back through its own edit and prints the stored value with `%-g`. r4133
-///   reduces the repeat deck twice, so it holds `r5(r5(400/3)/3) = 44.443` where
-///   the port holds `400/3`. Once on `makeposseq_pc.dss`, so r4133 holds
-///   `133.33`.
-/// * `Load.ld_delta` is given by `xfkVA`: r4133 writes a third of the
-///   connected kVA as an `xfkVA=%-.5g` token, and reading it back re-derives
-///   **both** kW and kvar from the rounded nameplate in the same edit
-///   (`kW = kVA · allocation factor · |pf|`, `kvar = kW · √(1/pf² − 1)`), over
-///   the `kW=`/`kvar=` tokens read moments earlier. Ours:
-///   `Load::make_pos_sequence` -> the `xfkVA` side effect ->
-///   `Load::compute_allocated_load`.
-/// * r4133's getter of `xfkVA` answers the token text its edit stored,
-///   `'55.557'`. We render the `f64` (`Load::get_f64`). That surface is
-///   observable only after an *internal* token, i.e. after `makeposseq`: a
-///   user's own `xfkva=` text is echoed identically by both engines, which is
-///   why the pair needs no echo row.
-///
-/// r4133's readings of the once-converted PC deck (`133.33` on `ld_wye`, and
-/// `166.67`, `76.6682`, `32.6605164343738` on `ld_delta`) were measured on
-/// 2026-10-17 with epri-worker on the r4133 DLL running that deck.
-///
-/// What a revert breaks: rounding our conversion moves the first three
-/// assertions; dropping the `xfkVA` side effect moves the derived kW/kvar.
+/// `load.kw`, `load.kvar` and `load.xfkva` after `MakePosSequence` are the
+/// exact conversion of the typed values, and a second conversion of a
+/// positive-sequence circuit changes nothing.
 #[test]
 fn load_kw_kvar_and_xfkva_after_makeposseq_are_the_exact_typed_conversion() {
     let mut pc = Deck::compile("modes/makeposseq/makeposseq_pc_repeat.dss");
@@ -2641,39 +1737,8 @@ fn load_kw_kvar_and_xfkva_after_makeposseq_are_the_exact_typed_conversion() {
     assert_eq!(pc1.get("Load.ld_delta.kvar"), "32.6605164343738");
 }
 
-/// `vsource.isc3`, `vsource.puz1`, `vsource.puz0`, `vsource.puz2` — **r4133
-/// derives them from the 5-digit `BasekV` its own `MakePosSequence` wrote**
-/// (§RP3.9, chain B; 5 + 4 + 4 + 4 census cells, none in scope today).
-///
-/// r4133's Vsource reduction writes `BasekV` as a `%-.5g` token of `kV/√3`,
-/// with `R1` and `X1`, which read back exactly on every one of these decks, so
-/// **the one rounded input is the kV**, not the impedance. Its edit reads the
-/// token back and recomputes the base impedance kV²/baseMVA (`BaseMVA = 100`),
-/// and its recalc derives `Isc3 = kV·1000/√3/|R1 + jX1|` and `puZ1`, `puZ0`,
-/// `puZ2` as `(R, X)` over that base, with `R0 = R1`, `X0 = X1`, `R2 = R1` and
-/// `X2 = X1`, which is why the three per-sequence cells are the same string. The getters
-/// print `%-.5g` and `[%-.8g, %-.8g]`. Ours applies the typed
-/// `SetF64(BASEKV, kv_base/sqrt3())` (`Vsource::make_pos_sequence`) and derives
-/// from the full-precision kV (`Vsource::recalc` and the `basekv` side effect).
-///
-/// On `makeposseq_pc_repeat.dss` r4133 reduces the circuit twice and the port
-/// once (the second `makeposseq` changes nothing on a positive-sequence
-/// circuit), so r4133's kV token there is `r5(r5(12.47/√3)/√3) = 4.1567`,
-/// reproduced from the port's once value, and the census rows of that deck
-/// pair r4133's twice-reduced cell with the port's once value.
-/// `makeposseq_pc.dss` converts once, so its token is `7.1996`. r4133's readings
-/// of that deck (`Isc3` `1314.5` and `puZ1` `[1.9292267, 5.7876801]` on `v2`,
-/// `Isc3` `3360.5` on the circuit source) were measured on 2026-10-17 with
-/// epri-worker on the r4133 DLL running that deck.
-///
-/// **r4133's four vendored `puZ` spellings are all asserted** —
-/// `line`/`source`, `pc_repeat`/`v2`, `pc_repeat`/`source` and
-/// `shunt`/`source` — so a render that moves on any of them reds this pin, not
-/// just the two that carry an `edit` replay.
-///
-/// What a revert breaks: rounding our `BasekV` conversion collapses the two
-/// numbers into one. A stale base impedance or a `puZ` read off a specified-Z
-/// path fails the `edit` readings.
+/// `vsource.isc3` and `puz1` / `puz0` / `puz2` after `MakePosSequence` derive
+/// from the full-precision `BasekV`, not a five-digit token of it.
 #[test]
 fn vsource_isc3_and_puz_after_makeposseq_use_the_full_precision_basekv() {
     let sqrt3 = 3.0_f64.sqrt(); // Common/DSSGlobals.pas:2033
@@ -2883,27 +1948,8 @@ fn vsource_isc3_and_puz_after_makeposseq_use_the_full_precision_basekv() {
     );
 }
 
-/// `vsource.mvasc3`, `vsource.mvasc1` — **the same 5-digit `BasekV`, squared**
-/// (§RP3.9, chain B; 2 + 2 census cells on the PC circuit that
-/// `modes:makeposseq/makeposseq_pc_repeat.dss` converts twice, none in scope
-/// today). r4133 reduces that circuit twice and the port once (the second
-/// `makeposseq` changes nothing on a positive-sequence circuit), so those
-/// census rows pair r4133's twice-reduced cell with the port's once value.
-///
-/// `MVAsc3 = √3·kV·Isc3/1000` and `MVAsc1 = kV·Isc1/1000` (the factor 1 of a
-/// one-phase source), with `Isc1` over `Zs = ((2R1+R0)/3, (2X1+X0)/3)` and
-/// with `R0 = R1`, `X0 = X1`, so the two aggregates agree to the
-/// last ulp and to every printed digit. Both are `%-.5g`, and both are
-/// quadratic in the kV that `MakePosSequence` rounded, so the round trip
-/// enters twice. Ours: `Vsource::recalc` on the full-precision kV.
-///
-/// On the once-converted `makeposseq_pc.dss` the kV token is `7.1996`, and
-/// r4133 reads `41.905` on the circuit source and `16.391` on `v2` (measured on
-/// 2026-10-17 with epri-worker on the r4133 DLL running that deck).
-///
-/// What a revert breaks: rounding our conversion, or losing the one-phase
-/// factor or the `Zs` derivation, moves the literals. A constant getter fails
-/// the `edit` reading.
+/// `vsource.mvasc3` and `mvasc1` after `MakePosSequence` derive from the
+/// full-precision `BasekV`.
 #[test]
 fn vsource_mvasc1_and_mvasc3_after_makeposseq_use_the_full_precision_basekv() {
     let sqrt3 = 3.0_f64.sqrt();
@@ -3004,28 +2050,8 @@ fn vsource_mvasc1_and_mvasc3_after_makeposseq_use_the_full_precision_basekv() {
     assert_eq!(pc.get("Vsource.v2.MVAsc1"), "5.47251122758099");
 }
 
-/// `line.b1`, `line.b0` — **r4133's susceptance is computed from a `C1` its own
-/// `MakePosSequence` round-tripped through `%-.5g`** (§RP3.9, chain C; 2 + 2
-/// census cells on `modes:makeposseq/makeposseq_line.dss`, none in scope today).
-///
-/// r4133's Line reduction, on a Line given by matrices, a geometry or a
-/// spacing, averages the solved `Yc` into the new `C1` and then writes `R1`,
-/// `X1` and `C1` as `%-.5g` tokens with `Phases=1` and reads them back through
-/// its own edit, so the five-digit text is now the stored capacitance. Its
-/// recalc copies `C0 = C1` for a one-phase line, which is why `b0` carries the
-/// identical byte. The getters print `%.7g` of `2πf·C1·1e6` over the length
-/// units factor, which is 1.0 once the reduction has reset the length units
-/// and written `Units=km`. Ours computes the same `c1_new`
-/// (`Line::make_pos_sequence`) and stores it as a typed `f64`
-/// (`exec::make_pos_seq::apply::apply_pos_seq_actions`), so its `b` is the
-/// UNROUNDED capacitance.
-///
-/// The chain is observable at both ends: r4133's own `? c1` answers `10.84` /
-/// `10.842` where ours answers fifteen digits.
-///
-/// What a revert breaks: rounding `c1_new`, or losing the copy of `C1` into
-/// `C0` at the next recalc, moves the assertions. The `l_sym`/`l_spc` readings
-/// prove the edit is local.
+/// `line.b1` and `line.b0` after `MakePosSequence` derive from the
+/// full-precision `C1`, not a five-digit token of it.
 #[test]
 fn line_b1_and_b0_after_makeposseq_use_the_full_precision_c1() {
     let mut deck = Deck::compile("modes/makeposseq/makeposseq_line.dss");
@@ -3121,32 +2147,8 @@ fn line_b1_and_b0_after_makeposseq_use_the_full_precision_c1() {
     assert_eq!(deck.get("Line.l_sym.b1"), "1.28176980266464");
 }
 
-/// `autotrans.wdgcurrents` — **a solved-state cell that differs because
-/// `makeposseq` moved r4133's whole circuit through `%-.5g` command strings**
-/// (§RP3.9, chain C; 1 census cell on `modes:makeposseq/makeposseq_xfmr.dss`,
-/// not in scope today).
-///
-/// The property renders the element's own solved winding currents, each value
-/// as `%.7g, (%.5g), `. Ours is the same render over the same computation
-/// (`AutoTrans::winding_currents_result` over `get_all_winding_currents`), and
-/// **before** the conversion the two engines print the same twelve values to
-/// every digit — so neither the model, the solver nor the formatter diverges.
-/// What diverges is the circuit the deck's `makeposseq` leaves behind: r4133's
-/// AutoTrans, Transformer, Load and Vsource each script their conversion as
-/// five-significant-digit text read back through their own edit, while the
-/// port applies typed `f64` setters (`exec::make_pos_seq::apply::apply_pos_seq_actions`).
-///
-/// The pin rebuilds r4133's post-conversion circuit from the port's own state by
-/// re-applying exactly those `%-.5g` tokens, and the solved cell then matches
-/// r4133's census byte for byte. The AutoTrans-only replay is the discriminator:
-/// it lands on neither engine's number, so the divergence is the deck-wide
-/// scripting and not this element's own conversion.
-///
-/// The census reads its cells after one `solve` beyond the deck's own, which is
-/// what the second `solve` below reproduces.
-///
-/// What a revert breaks: any change to the typed conversion path shows up in the
-/// first literal; a broken winding-current computation shows up in both.
+/// `autotrans.wdgcurrents` after `MakePosSequence` are the solved currents of
+/// the exactly converted circuit.
 #[test]
 fn autotrans_wdgcurrents_after_makeposseq_solve_the_exactly_converted_circuit() {
     let mut deck = Deck::compile("modes/makeposseq/makeposseq_xfmr.dss");
@@ -3224,74 +2226,9 @@ fn autotrans_wdgcurrents_after_makeposseq_solve_the_exactly_converted_circuit() 
     );
 }
 
-/// `autotrans.wdgcurrents` on `controls:autotrans/*` — **r4133's numbers are the
-/// UNREGULATED circuit's, because its `RegControl` can never tap an `AutoTrans`**
-/// (§RP3.12, `UPSTREAM_BUG`, never reproduced; 34 census cells over 8 spellings
-/// on the four `controls:autotrans/*` decks, none in scope today).
-///
-/// r4133 *intends* the combination — the property help says "Name of Transformer
-/// or AutoTrans element" (`Version8/Source/Controls/RegControl.pas:296-297`), the
-/// `RecalcElementData` lookup retries `'autotrans.' + TransName` (`:684`) and the
-/// class check accepts it (`:711`) — but every use of the controlled element goes
-/// through an **unchecked `TTransfObj` typecast**: `:926`, `:1026`, `:1296`,
-/// `:1370`, `:1479`. `TAutoTransObj = class(TPDElement)`
-/// (`Version8/Source/PDElements/AutoTrans.pas:88`) is not a `TTransfObj`
-/// (`PDElements/Transformer.pas:92`), and `TAutoWinding` (`AutoTrans.pas:59`)
-/// stops agreeing with `TWinding` (`Transformer.pas:62`) after `Rdcohms`, so the
-/// regulator reads the winding's `MaxTap` (1.1 pu) where it means `TapIncrement`.
-/// `PendingTapChange := Round(BoostNeeded / Increment) * Increment`
-/// (`:1249-1250`) then rounds every realistic boost to zero and the control never
-/// arms — 0 event-log lines on all four decks, and the regulated bus is left
-/// **below its band**: `LOW.1`/`ptratio` = 118.04 V against `vreg=120 band=2`,
-/// i.e. 0.96 V under the 119 V edge (1.96 V under the setpoint), and
-/// `AT69.1`/`ptratio` = 119.25 V against `vreg=123 band=1.5`, 3.00 V under the
-/// 122.25 V edge (3.75 V under the setpoint) — a 2.1 % / 2.6 % voltage gap, with
-/// 5 (11) taps of headroom unused and no diagnostic. (The figure is prose here,
-/// not an assertion: `Deck::get` reads `? Class.Name.Prop` and no `AutoTrans`
-/// property renders a bus voltage; what the test asserts is the tap, the
-/// `TapNum`, the render and the ampere-turn balance. RP3.12 audit settlement,
-/// 2026-09-03 — the landed text read "2.0 V (2.6 V on the midi deck) outside the
-/// band", which was the first deck's SETPOINT deviation and the second deck's
-/// PERCENT gap.) `TAutoTransObj`'s own correct
-/// `Get_TapIncrement` (`:1568`), `Get_MinTap` (`:1547`), `Get_MaxTap` (`:1554`)
-/// and `Get_PresentTap` (`:1478`) are never reached: the cast is unchecked and
-/// the accessors are not virtual. Present identically in r3723, r4088 and r4133;
-/// DSS-Extensions fixed it by giving both classes a shared
-/// `TControlledTransformerObj` base, which is the shape the port has
-/// (`elements/pd/transformer/mod.rs` `trait ControlledTransformer`, held as
-/// `&mut dyn ControlledTransformer` by
-/// `elements/control/reg_control/control_loop.rs`).
-///
-/// Under the 2026-08-02 policy the port keeps the **regulated** answer in both
-/// lanes and nothing is reproduced. This pin names both numbers and derives
-/// r4133's from the port's own state through the one input that differs — the
-/// tap: disabling the regulator and putting winding 2 back on tap 1 makes the
-/// port print r4133's census literal byte for byte, on both decks. Those two
-/// legs witness 2 of the verdict's 8 spellings (10 of the 34 cells); the other
-/// six — the two `*_both` decks among them — are declared but not reproduced
-/// here, because their decks open with a snapshot `Solve` and reproducing
-/// r4133's unregulated state on them needs the RegControl disabled in the deck
-/// SOURCE rather than by an `edit` after the compile. The count is locked by
-/// `props_r4133_replay::the_rp312_pin_quotes_the_vendored_census_cells`
-/// (RP3.12 audit settlement, 2026-09-03).
-///
-/// The discriminating second reading is the ampere-turn identity, which holds on
-/// *both* legs: `|I_common| / |I_series| = VBase_series / (VBase_common * tap_c)`,
-/// and the two bases are `(kVLL_1 - kVLL_2)/SQRT3` and `kVLL_2/SQRT3`
-/// (`AutoTrans.pas:1113-1132`, `:1125` and `:1118`), so the √3 cancels and the
-/// prediction is `(kV1 - kV2) / (kV2 * tap_c)` — 2.333333 / 2.262626 here,
-/// 0.666667 / 0.623782 on the midi deck. Both sides of it are read **live** on
-/// both legs — the ratio off the engine's own `WdgCurrents` render, the
-/// prediction off the engine's own `Tap` — so it fails if the winding-current
-/// derivation drifts, not only if the tap does, which is what rules
-/// `GetAllWindingCurrents` (`:1575`) / `GeTAutoWindingCurrentsResult`
-/// (`:1662-1690`, `Format('%.7g, (%.5g), ')` at `:1682`) and our
-/// `elements/pd/auto_trans/yterminal.rs` out as the site. Upstream report:
-/// `investigations/to_opendss/50-regcontrol-autotrans-ttransfobj-typecast.md`.
-///
-/// What a revert breaks: a regression in the regulator's AutoTrans path shows up
-/// in the first literal and in `TapNum`; a broken winding-current computation
-/// shows up in both literals and in the ampere-turn readings.
+/// `autotrans.wdgcurrents` on the `controls:autotrans/*` decks are those of the
+/// regulated circuit: the RegControl taps the AutoTrans, as its help documents.
+/// The winding-current ratio follows the ampere-turn balance at the tap.
 #[test]
 fn autotrans_wdgcurrents_stay_regulated_where_r4133_never_taps_the_autotrans() {
     /// `|I_common| / |I_series|` off a `WdgCurrents` render: the first and third
@@ -3326,16 +2263,13 @@ fn autotrans_wdgcurrents_stay_regulated_where_r4133_never_taps_the_autotrans() {
         let tap_c: f64 = deck.get("AutoTrans.at.Tap").parse().expect("a tap");
         // Read the LIVE render, never the pinned literal: the `assert_eq!` above
         // proves the two are the same string on a green tree, and taking the
-        // engine's own bytes is what makes this a physics reading of the port
-        // rather than arithmetic on a constant (RP3.12 audit settlement,
-        // 2026-09-03 — both legs used to measure the literal, and on the
-        // unregulated one that made both operands compile-time constants).
+        // engine's own bytes is what makes this a physics reading of this
+        // engine rather than arithmetic on a constant.
         let live = deck.get("AutoTrans.at.WdgCurrents");
         let (m, p) = (common_over_series(&live), ampere_turns(kv1, kv2, tap_c));
         assert!(
             (m - p).abs() / p < 1.0e-5,
-            "{rel}: regulated ampere-turn balance {m} vs {p} — measured 2.7e-06 here and \
-             3.3e-06 on the midi deck, against the render's %.7g magnitudes"
+            "{rel}: regulated ampere-turn balance {m} vs {p}, against the render's %.7g magnitudes"
         );
 
         // (b) the one input that differs, and the proof each edit landed.
@@ -3375,8 +2309,7 @@ fn autotrans_wdgcurrents_stay_regulated_where_r4133_never_taps_the_autotrans() {
         let (m, p) = (common_over_series(&live), ampere_turns(kv1, kv2, tap_c));
         assert!(
             (m - p).abs() / p < 1.0e-5,
-            "{rel}: unregulated ampere-turn balance {m} vs {p} — measured 2.2e-06 here and \
-             3.9e-06 on the midi deck; r4133 derives its winding currents correctly, it just \
+            "{rel}: unregulated ampere-turn balance {m} vs {p}; r4133 derives its winding currents correctly, it just \
              derives them for a tap it never moved"
         );
     }
@@ -3407,30 +2340,8 @@ fn autotrans_wdgcurrents_stay_regulated_where_r4133_never_taps_the_autotrans() {
     );
 }
 
-/// `reactor.x`, `reactor.z`, `reactor.lmh`, `reactor.normamps`,
-/// `reactor.emergamps` — **r4133 re-derives all five from the five-digit
-/// `kV`/`kvar` tokens its own `MakePosSequence` wrote; the port derives them from
-/// the exact typed conversion** (§RP3.9, chain D; 5 spellings / 5 census cells on
-/// `modes:makeposseq/makeposseq_shunt.dss`, none in scope today).
-///
-/// r4133's Reactor reduction computes `kvar/3` and `kV/√3`, writes the pair as
-/// `kV=%-.5g kvar=%-.5g` tokens and reads them back through its own edit,
-/// which re-derives everything from the ROUNDED pair, now with one phase: the
-/// kvar of the phase is the token, the phase kV is the token (a one-phase wye
-/// takes no √3), `X = kV²·1000/kvar`, `L = X/2πf`, `NormAmps = kvar/kV` and
-/// `EmergAmps = 1.35·kvar/kV`. The getters print `%-.8g` for `X`, `Z` and
-/// `LmH` and 15 significant digits (`%g`) for the two amps.
-///
-/// The port applies the same two arguments as typed `f64` setters
-/// (`Reactor::make_pos_sequence` -> `exec::make_pos_seq::apply::apply_pos_seq_actions`) and
-/// runs the same five formulas on them (`Reactor::recalc`), so
-/// nothing is lost and the two amps — printed at full precision on BOTH sides —
-/// part company in the 7th digit. That is the entire gap: handed r4133's own
-/// tokens, the port's own recalc prints r4133's 15-digit strings bit for bit.
-///
-/// What a revert breaks: rounding the conversion (or deriving from the rounded
-/// nameplate) moves the first block; a hardwired getter fails the `edit`
-/// readings, which move the same five cells twice.
+/// `reactor.x`, `z`, `lmh`, `normamps` and `emergamps` after `MakePosSequence`
+/// are the exact conversion of the typed values.
 #[test]
 fn reactor_amps_after_makeposseq_are_the_exact_typed_conversion() {
     let mut deck = Deck::compile("modes/makeposseq/makeposseq_shunt.dss");
@@ -3514,32 +2425,8 @@ fn reactor_amps_after_makeposseq_are_the_exact_typed_conversion() {
     assert_eq!(deck.get("Reactor.rx_kvar.LmH"), "2062.39474085321");
 }
 
-/// `capacitor.cuf`, `capacitor.normamps`, `capacitor.emergamps` — **the same
-/// five-digit `MakePosSequence` re-Edit, one class over** (§RP3.9, chain D; 3
-/// spellings / 9 census cells over `makeposseq_shunt`, `makeposseq_ctrl` and
-/// `makeposseq_report`, none in scope today).
-///
-/// `TCapacitorObj.MakePosSequence` writes `Format(' kV=%-.5g kvar=(')`
-/// (`Version8/Source/PDElements/Capacitor.pas:798`, `:801`) and one
-/// `Format(' %-.5g')` per step of `FkvarRating^[i]/3.0` (`:805-806`), then
-/// re-parses the string (`:831-832`). `RecalcElementData` derives from the
-/// re-parsed pair at `Fnphases = 1`: `PhasekV := kVRating` (`:606`), `FC^[i] :=
-/// 1.0/(w*SQR(PhasekV)*1000.0/(FkvarRating^[1]/Fnphases))` (`:611`),
-/// `Ftotalkvar` (`:612`), then `kvarPerPhase := Ftotalkvar/Fnphases` and
-/// `NormAmps := kvarPerPhase/PhasekV*1.35` / `EmergAmps := ...*1.8`
-/// (`:645-646`). `cuf` prints `FC*1e6` through `GetDSSArray_Real`'s `%-.6g`
-/// (`:1098-1101` -> `Version8/Source/Common/Utilities.pas:2600-2607`); the two
-/// amps print FPC `%g` (`:1108`, `:1109`).
-///
-/// Here the 600 kvar divides into a five-digit-exact `200`, so the whole loss is
-/// in `kV`: r4133 keeps 7.1996 where the port keeps `12.47/SQRT3`
-/// (`elements/pd/capacitor/solve.rs:300-318` typed, derivations at `:34` and
-/// `:70-76`). `cuf` is the pair that shows the residue is not a display width at
-/// all — `%-.6g` of OUR double is `10.235`, and r4133 prints `10.2349`, the
-/// 6-digit print of a different number.
-///
-/// What a revert breaks: rounding the conversion moves the first block; a
-/// hardwired getter fails the `edit` readings.
+/// `capacitor.cuf`, `normamps` and `emergamps` after `MakePosSequence` are the
+/// exact conversion of the typed values.
 #[test]
 fn capacitor_cuf_and_amps_after_makeposseq_are_the_exact_typed_conversion() {
     let mut deck = Deck::compile("modes/makeposseq/makeposseq_shunt.dss");
@@ -3616,34 +2503,8 @@ fn capacitor_cuf_and_amps_after_makeposseq_are_the_exact_typed_conversion() {
     assert_eq!(deck.get("Capacitor.cap_kvar.normamps"), "37.5023029706172");
 }
 
-/// `generator.kva`, `generator.kvar`, `generator.maxkvar`, `generator.minkvar` —
-/// **r4133 re-derives all four from the five-digit `kW` token its own
-/// `MakePosSequence` wrote; the port derives them from the exact typed
-/// conversion** (§RP3.9, chain E; 4 spellings / 9 census cells on the PC
-/// circuit, the same after one conversion and after two, none in scope today).
-///
-/// r4133's Generator reduction, on more than one phase, writes `kW` over the
-/// phase count and `PF` as `%-.5g` tokens and reads them back through its own
-/// edit, which stores the rounded `kW` and derives *everything else* from it:
-/// `kvar = kW·√(1/pf² − 1)`, `maxkvar = 2·kvar`, `minkvar = −maxkvar` and,
-/// while no kVA was given, `kVA = 1.2·kW`. All four getters print `%.6g`.
-///
-/// The port applies the same argument as a typed `f64` setter
-/// (`Generator::make_pos_sequence` -> `exec::make_pos_seq::apply::apply_pos_seq_actions`,
-/// the `old_phases > 1` guard in the first) and runs the same four formulas on it
-/// (`Generator::sync_up_power_quantities`), so it keeps `200/3` where r4133
-/// keeps `66.667`.
-///
-/// Which element carries which cell follows the ratings each one was given:
-/// `g_kvar` typed `maxkvar`/`minkvar`, so the conversion wrote the exact tokens
-/// `40`/`-20` over the synced pair and BOTH engines hold them, the unmoved
-/// control below. `g_kva`/`g_mva` typed neither, so their max/min stay derived.
-/// `g_kva` and `g_mva` also gave a kVA rating, which is why `kva` is a residue
-/// cell only on `g_plain` and `g_kvar`.
-///
-/// What a revert breaks: rounding the conversion moves the first block, a
-/// hardwired getter fails the `edit` readings, and dropping the guards on the
-/// given ratings moves the `40`/`-20` control.
+/// `generator.kva`, `kvar`, `maxkvar` and `minkvar` after `MakePosSequence`
+/// are the exact conversion of the typed values.
 #[test]
 fn generator_ratings_after_makeposseq_are_the_exact_typed_conversion() {
     let mut deck = Deck::compile("modes/makeposseq/makeposseq_pc.dss");
@@ -3749,34 +2610,8 @@ fn generator_ratings_after_makeposseq_are_the_exact_typed_conversion() {
     assert_eq!(deck.get("Generator.g_kva.maxkvar"), "65.7368210357726");
 }
 
-/// `transformer.normamps`, `transformer.emergamps` — **r4133 divides an exact
-/// kVA by a five-digit winding kV its own `MakePosSequence` wrote; the port
-/// divides by the exact one** (§RP3.9, chain E; 2 spellings / 2 census cells, on
-/// `modes:makeposseq/makeposseq_report.dss` and `…/makeposseq_xfmr.dss`, neither
-/// in scope today).
-///
-/// `TTransfObj.MakePosSequence` prints each winding as
-/// `Format(' %-.5g',[kVLL/SQRT3])` (`Version8/Source/PDElements/Transformer.pas:
-/// 1982`) and the ratings as `' NormHkVA='+Format(' %-.5g %-.5g',
-/// [NormMaxHkVA/FNPhases, EmergMaxHkVA/FNPhases])` (`:1991`), then re-parses the
-/// whole string (`:1993-1994`; `Edit` `:512` `InterpretAllkVRatings`).
-/// `RecalcElementData` takes `VFactor := Winding^[1].VBase*0.001` (`:1119`, wye)
-/// and divides: `NormAmps := NormMaxHkVA/Fnphases/Vfactor` (`:1129`),
-/// `EmergAmps := EmergMaxHkVA/Fnphases/Vfactor` (`:1130`); the override getters
-/// print `%-.5g` (`:1842`, `:1843`).
-///
-/// Both numerators are five-digit exact here (`1.1*15000/3 = 5500`,
-/// `1.5*1000/3 = 500`), so the entire divergence is the ROUND-TRIPPED
-/// denominator — `66.395` for `115/SQRT3`, `7.1996` for `12.47/SQRT3` — which the
-/// port keeps exact (`elements/pd/transformer/accessors.rs:169` typed ->
-/// `yterminal.rs:110-111`). The same port double `69.4487092048467` is printed
-/// `69.449` by r4133 on the five decks that never convert
-/// (`examples_full.txt:2783`) and `69.448` only here: the conversion, not the
-/// width, is the discriminant.
-///
-/// What a revert breaks: rounding the conversion moves the first literals; a
-/// hardwired getter fails the `edit` readings, which move both the denominator
-/// and the numerator.
+/// `transformer.normamps` and `emergamps` after `MakePosSequence` divide the
+/// exact kVA by the exact winding kV.
 #[test]
 fn transformer_amps_after_makeposseq_are_the_exact_typed_conversion() {
     // --- normamps: the 115 kV substation transformer ------------------------

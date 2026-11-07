@@ -4,10 +4,9 @@
 //! fundamental-voltage save/restore (`savePresentVoltages` /
 //! `RetrieveSavedVoltages`).
 //!
-//! Scope (WP7.6): the current-source harmonic family (VSource + Load; Isource is
-//! not ported in this crate) landed in step 1, and the
+//! Scope: the current-source harmonic family (VSource, Load, Isource) and the
 //! voltage-source-behind-reactance DERs (Generator / PVSystem / Storage —
-//! `InitHarmonics` / `DoHarmonicMode`) in step 2. Their per-element harmonic
+//! `InitHarmonics` / `DoHarmonicMode`). Their per-element harmonic
 //! injection runs through the shared `init_harmonics` / `inj_currents` hooks; no
 //! solve-mode-level special-casing remains.
 
@@ -63,8 +62,8 @@ pub(crate) fn initialize_for_harmonics(ckt: &mut Circuit, env: &mut SolveEnv) ->
 /// rebuild (via `Set_Frequency`), and every non-fundamental frequency is solved
 /// directly and sampled into the monitors. The `finally`'s `MonitorClass.
 /// SaveAll()` runs unconditionally — including the early "saved results do not
-/// match" exit, since a Pascal `Exit` inside `try` still runs `finally` (WPG.2:
-/// `mod.rs`'s `flushed_records` doc explains why this now matters).
+/// match" exit, since a Pascal `Exit` inside `try` still runs `finally`
+/// (`mod.rs`'s `flushed_records` doc explains why this matters).
 pub(super) fn solve_harmonic(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     let result = solve_harmonic_body(ckt, env);
     crate::solution::monitors::save_all_monitors(ckt, env);
@@ -105,8 +104,8 @@ fn solve_harmonic_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
 /// harmonics — one fundamental power-flow step, then the harmonic sweep, with
 /// `EndOfTimeStepCleanup` per frequency and a final `IncrementTime`. The
 /// `finally`'s `MonitorClass.SaveAll()` runs unconditionally, on every exit
-/// path (WPG.2: `mod.rs`'s `flushed_records` doc explains why this now
-/// matters). `interval_hrs` is set outside the wrapped body — Pascal sets it
+/// path (`mod.rs`'s `flushed_records` doc explains why this matters).
+/// `interval_hrs` is set outside the wrapped body — Pascal sets it
 /// before the `try`, so it is not part of the guaranteed-`finally` region.
 pub(super) fn solve_harmonic_t(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     ckt.solution.interval_hrs = ckt.solution.h / 3600.0; // for energy meters / storage

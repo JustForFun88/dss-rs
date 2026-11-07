@@ -1,4 +1,4 @@
-"""Vendor the `electricdss-tst` corpus into the repository (CORPUS_TEST_PLAN.md §1).
+"""Vendor the `electricdss-tst` corpus into the repository.
 
 Copies `.inputs/electricdss-tst` -> `tests/corpus/electricdss-tst` **verbatim**,
 preserving every relative path so the copy is self-contained (the engine resolves
@@ -138,19 +138,20 @@ def main() -> None:
     n_dss = sum(1 for rel, _ in copied if rel.lower().endswith(".dss"))
     readme = f"""# Vendored `electricdss-tst` corpus
 
-Verbatim copy of the OpenDSS test corpus, used by the live oracle-comparison gate
-(`crates/dss-core/tests/corpus_live.rs`) and as the in-repo replacement for the
-temporary `.inputs/electricdss-tst`. See `CORPUS_TEST_PLAN.md`.
+Verbatim copy of the OpenDSS test corpus, used by the corpus gate
+(`crates/dss-core/tests/corpus_gate.rs`), which compares this engine with the
+OpenDSS engines, and as the in-repo replacement for the temporary
+`.inputs/electricdss-tst`.
 
 **Do not edit these files by hand.** Re-vendor with `python tools/corpus/vendor.py
 --force` and review the `SHA256SUMS` diff.
 
-**Note:** running the live gate (now part of `cargo test`) or the classifier
-(`DSS_LIVE_CLASSIFY=1`) executes cases *in place*, so OpenDSS writes outputs
+**Note:** no test writes here: a case whose deck writes files runs from a scratch
+copy. A manual run of a vendored deck executes it *in place*, so OpenDSS writes outputs
 (EnergyMeter `DI_*.csv`, exports, `LineConstantsCode.dss`, …) into this tree.
-Re-run `python tools/corpus/vendor.py --force` (it copies the source and prunes
-any extra files) to restore the pristine mirror before committing or before
-running the always-on `corpus_manifest` gate.
+Probe a copy of a deck instead, or restore the pristine mirror with
+`git restore tests/corpus` and a path-limited `git clean` before committing or
+before running the always-on `corpus_manifest` gate.
 
 | field | value |
 |---|---|

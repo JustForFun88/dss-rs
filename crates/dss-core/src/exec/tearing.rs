@@ -1,13 +1,12 @@
 //! Circuit tearing: `Create_MeTIS_graph`, `Create_MeTIS_Zones`, and the
-//! `Num_SubCircuits`/`LinkBranches`/`UseMyLinkBranches` executive surface
-//! (`DIAKOPTICS_PSTCALC_PLAN.md` WP-AD.2 Stage B).
+//! `Num_SubCircuits`/`LinkBranches`/`UseMyLinkBranches` executive surface.
 //!
-//! Behavioral spec = **official r3723 Delphi** (plan D10):
+//! Behavioral spec = **official r3723 Delphi**:
 //! `.inputs/electricdss-code-r3723-trunk/Version8/Source/Common/Circuit.pas`
 //! (`Create_MeTIS_graph` 1213, `Create_MeTIS_Zones` 1350) and `Solution.pas`
 //! (`get_IncMatrix_Row/Col`, `get_PDE_Bus1_Location`). The in-process
 //! partitioner substitution and file round-trip live in
-//! [`crate::support::partition`] (plan D2; `NOTE(subst-metis)` there).
+//! [`crate::support::partition`] (`NOTE(subst-metis)` there).
 
 use crate::circuit::{AdTearing, Circuit};
 use crate::exec::Dss;
@@ -75,8 +74,8 @@ fn other_terminal_col(data: &[[i32; 3]], jj: usize) -> i32 {
         // jj == 0 with no same-row successor. Unreachable for a well-formed
         // incidence matrix (a 2-terminal PDE's entries are stored as a
         // consecutive pair, so entry 0 is always the first of its pair and
-        // takes the `jj+1` branch). Guarded against `data[-1]` UB (D5 philosophy:
-        // do not reproduce an out-of-bounds read) — fall back to this column.
+        // takes the `jj+1` branch). Guarded against `data[-1]` UB (an
+        // out-of-bounds read is not reproduced) — fall back to this column.
         data[jj][1]
     }
 }
@@ -160,12 +159,12 @@ pub enum TearError {
 }
 
 /// Pascal `TDSSCircuit.Create_MeTIS_Zones` (official Circuit.pas:1350): partition
-/// the graph (here in-process via `dss-metis`, plan D2) and translate the
+/// the graph (here in-process via `dss-metis`) and translate the
 /// per-vertex zone labels into the `Locations`/`BusZones` boundary lists.
 ///
 /// Writes the `<graph>.part.<N>` file (kmetis output format) for
 /// fidelity/diagnostics, then applies the parse 1:1:
-///  - the D5 first-line swap (`NOTE(upstream-quirk)` below);
+///  - the first-line swap (`NOTE(upstream-quirk)` below);
 ///  - the ≥2-consecutive-bus zone rule;
 ///  - the final `inc(Locations[j])` coordinate adjustment.
 ///
@@ -251,7 +250,7 @@ fn interpret_yes_no(value: &str) -> bool {
 
 /// Handle `set` of an A-Diakoptics option not present in the vendored
 /// `EXEC_OPTIONS` table (they are compiled out of the pinned oracle build,
-/// plan §0.2 — so registering them is a deliberate, recorded departure and they
+/// so registering them is a deliberate, recorded departure and they
 /// are intercepted here rather than added to the oracle-pinned option table /
 /// `Dump commands` golden). Returns `true` when `param_name` names an AD option
 /// (so the caller suppresses the "Unknown parameter" error), even when the
@@ -294,8 +293,8 @@ pub(crate) fn try_set_ad_option(
             //
             // NOTE(upstream): the `myList.Count <= CPU_Cores-3` guard (error
             // 7009) is deliberately NOT ported — it makes the setter
-            // core-count-dependent, which plan D6 forbids for reproducible AD
-            // tests. The placeholder is the count-affecting behavior.
+            // core-count-dependent, and the AD tests must reproduce on any
+            // machine. The placeholder is the count-affecting behavior.
             let items = parse_element_list(param);
             let mut lb = Vec::with_capacity(items.len() + 1);
             lb.push(String::new());
@@ -314,7 +313,7 @@ pub(crate) fn try_set_ad_option(
             if interpret_yes_no(param) {
                 ckt.ad.pending_ad_init = true;
             } else {
-                ckt.solution.adiakoptics = false; // clear = flag only (plan §WP-AD.3)
+                ckt.solution.adiakoptics = false; // clear = flag only
             }
             true
         }
@@ -371,7 +370,7 @@ pub(crate) fn try_get_ad_option(ckt: &Circuit, param_name: &str, result: &mut St
 }
 
 impl Dss {
-    /// Pascal command `Tear_Circuit` (ExecCommand[111]) → `ADiakoptics_Tearing(
+    /// Pascal command `Tear_Circuit` (`ExecCommand[111]`) → `ADiakoptics_Tearing(
     /// AddISrc=False)` (Diakoptics.pas:506): tear the circuit into sub-circuits
     /// without A-Diakoptics ISources, then emit the on-disk `Torn_Circuit/`
     /// project tree. Sets `GlobalResult` to `"Sub-Circuits Created: N"` on
@@ -533,8 +532,8 @@ impl Dss {
     /// (a |V| difference across the branch, Circuit.pas:1967–1984) but never
     /// reads the result — the meter terminal is hard-coded to 1 and the PConn bus
     /// is always the link line's bus 2. The vestigial |V| read is a defined,
-    /// side-effect-free dead computation, so it is not reproduced (plan D5:
-    /// allocated-but-never-read scaffolding stays absent).
+    /// side-effect-free dead computation, so it is not reproduced
+    /// (allocated-but-never-read scaffolding stays absent).
     fn place_zone_meters(&mut self) -> Result<i32, TearError> {
         // Prior-solve gate: the loop reads `Solution.NodeV` at each point of
         // connection (Circuit.pas reads it blindly), but a torn circuit whose
@@ -611,13 +610,13 @@ impl Dss {
             // (Circuit.pas:1167–1208): a non-Line link (e.g. a Transformer) is not
             // found → error 5008 and no point-of-connection bus. Reproduced: the
             // honest "Line not found" surfaces here (the ZLL 3-phase-Line cut
-            // constraint is otherwise enforced downstream at AD init, D5).
+            // constraint is otherwise enforced downstream at AD init).
             //
             // NOTE: on the not-found path official `get_Line_Bus` falls through to
             // `Result := ActiveCktElement.GetBus(NBus)` of the *restored*
             // previously-active element (Circuit.pas:1204–1206) — a stale,
             // wrong-but-non-empty bus name that depends on prior traversal state.
-            // Per D5 that state-dependent read is NOT reproduced; the port yields
+            // That state-dependent read is NOT reproduced: this engine yields
             // an empty point of connection (and the 5008 error) instead.
             let bare = pde.split_once('.').map(|(_, n)| n).unwrap_or(pde.as_str());
             let raw_bus = match line_bus(&self.classes, bare, 2) {

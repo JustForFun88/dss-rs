@@ -8,10 +8,10 @@
 //! `New "Class.name" <name>=<value> …` line per object carrying **only the
 //! explicitly-set properties, in the order they were set** (Pascal
 //! `GetNextPropertySet` over `PrpSequence`; Rust [`DssObjData::
-//! next_property_set`]). Shared by `Save <class>` (WP8.5 step 4) and
-//! `Save circuit` (`Circuit.Save`, WP8.5 step 5).
+//! next_property_set`]). Shared by `Save <class>` and `Save circuit`
+//! (`Circuit.Save`).
 //!
-//! # What `Save` prints, and why (R4133_PROPS RP3.11, 2026-09-03)
+//! # What `Save` prints, and why
 //!
 //! Pascal's loop body reads `PropertyValue[iProp]`, which is **not** a parse
 //! store: it is `Get_PropertyValue` → the **virtual** `GetPropertyValue`
@@ -32,10 +32,10 @@
 //!   Pascals route all of theirs through their one virtual getter). Never a
 //!   value the engine knows to be superseded: matching r4133's `model=3` on
 //!   `modes:ncim/ncim_pv_pq.dss` would mean printing `3` while `gen_model == 4`
-//!   in the same process, which CLAUDE.md's 2026-08-02 policy forbids. The
-//!   surviving divergence from r4133's serializer is *pinned*, both bytes
-//!   quoted, by [`crate::exec::tests::report`]`::
-//!   save_renders_the_live_model_after_ncim_pv2pq` and its `dump_…` twin.
+//!   in the same process. The surviving divergence from r4133's serializer is
+//!   *pinned*, both bytes quoted, by
+//!   `exec::tests::report::save_renders_the_live_model_after_ncim_pv2pq` and
+//!   its `dump_…` twin.
 //! * **membership + order** — the explicitly-set chain (`GetNextPropertySet`
 //!   over `PrpSequence` / [`DssObjData::next_property_set`]), *including*
 //!   0.14.5's property-tracking seeds, which r4133 has no counterpart for
@@ -47,7 +47,7 @@
 //!   `save_omits_the_tapwinding_that_r4133_stamps`, and the two literal tests
 //!   that carry the seeded spelling —
 //!   `golden_reports.rs::save_class_disabled_load_writes_enabled_no` (`PF=0.88`
-//!   on two never-typed loads, the oracle's own bytes) and the RP3.6 `Save` leg
+//!   on two never-typed loads, the oracle's own bytes) and the `Save` leg
 //!   in `exec::tests::line_fetch` (`R1=…` on a `switch=yes` line) — are its
 //!   *sequence* witnesses, not render ones.
 //! * **structure and ordering guards** — the **union** of both upstreams'
@@ -186,8 +186,8 @@ fn write_sizer_once(out: &mut String, name: &str, value: &str) {
 /// set after one of its arrays — so the only class rule left here is r4133's
 /// own.
 ///
-/// **`LoadShape` — the npts-first branch** (RP3.11 P2,
-/// `R4133:General/DSSObject.pas:139-150` + `:163-172`, *"created to guarantee
+/// **`LoadShape` — the npts-first branch**
+/// (`R4133:General/DSSObject.pas:139-150` + `:163-172`, *"created to guarantee
 /// that the npts property will be the first to be declared when saving
 /// LoadShapes"*): the walk starts at `NPts` **even when the deck never set it**,
 /// restarts the chain from the beginning and ignores that index when it comes
@@ -197,9 +197,8 @@ fn write_sizer_once(out: &mut String, name: &str, value: &str) {
 /// (`CAPI:General/LoadShape.pas:2376-2380`) — so on this class both upstreams
 /// agree and the port matches both. The hoist cannot give this rule, because it
 /// moves only a sizer the deck set. The five other curve classes (`TCC_Curve`,
-/// `GrowthShape`, `PriceShape`, `TShape`, `Spectrum`), which the RP3.11
-/// settlement P7 guarded here by name, are now covered by the table-derived
-/// hoist; their pinned lines are unchanged
+/// `GrowthShape`, `PriceShape`, `TShape`, `Spectrum`) are covered by the
+/// table-derived hoist
 /// (`exec::tests::report::save_puts_the_sizing_property_first_for_every_curve_class`).
 ///
 /// **One deliberate deviation from the letter of the Pascal, measured against the
@@ -212,14 +211,14 @@ fn write_sizer_once(out: &mut String, name: &str, value: &str) {
 /// r4133: New "LoadShape.ls4" npts=4 npts=4 interval=2   port: New "LoadShape.ls4" NPts=4 Interval=2
 /// ```
 ///
-/// (epri-worker, `OpenDSSDirect.dll` 11.0.0.1 rev r4133, RP3.11 settlement.) The
+/// (epri-worker, `OpenDSSDirect.dll` 11.0.0.1 rev r4133.) The
 /// double token appears exactly when no array property was parsed, because
 /// r4133's *"Keep Properties in order for save command"* re-stamp —
 /// `Set_NumPoints` re-stamping `PropertyValue[npts]` **and then** the array
 /// property (`R4133:General/LoadShape.pas:631-636`, `PriceShape.pas:303` +
 /// `:910-916`, `TempShape.pas:302`, `XYcurve.pas:317`) — never fires, so `npts`
-/// stays at the head of the chain. This port has no such re-stamp (RP3.11 §4
-/// adds and removes no sequence site; STATUS open item (g)), so it applies the
+/// stays at the head of the chain. This engine has no such re-stamp, so it
+/// applies the
 /// `NptsRdy` skip to the restart as well: one `npts`, always first. That is
 /// 0.14.5's rule (`PrpSequence[npts] := -999` puts it first and leaves it there)
 /// expressed through r4133's structure, and it reproduces r4133 byte for byte on
@@ -339,7 +338,7 @@ struct Hoist {
     lead: Vec<usize>,
 }
 
-/// The **sizing-property hoist** (RF-D01-04): how [`write_dss_object`] writes
+/// The **sizing-property hoist**: how [`write_dss_object`] writes
 /// an object's set properties ([`Hoist`]).
 ///
 /// Every property is parsed against the **live** value of its sizer
@@ -678,7 +677,7 @@ pub fn write_dss_object(
 
 /// The `WriteClassFile` object loop (`Utilities.pas:1170-1189`) with
 /// `saveFlags = []` (the only reachable set on both the `Save <class>` and the
-/// command-path `Save circuit` routes — PHASE8_PLAN §WP8.5 step 5): build the
+/// command-path `Save circuit` routes): build the
 /// class file text and count the records actually written. The caller decides
 /// the filename, creates the file, and deletes it again when `nrecords == 0`
 /// (`:1191-1198`).

@@ -5,13 +5,12 @@
 //! integrated by the trapezoidal predictor/corrector in `SolveDynamic`.
 //!
 //! Scope: the built-in shaft model (`DynamicEqObj = NIL`), the external
-//! `DynamicExp` integration (`DynamicEqObj <> NIL`, WP7.7 step 3b), and the
+//! `DynamicExp` integration (`DynamicEqObj <> NIL`), and the
 //! user-written `UserModel`/`ShaftModel` models, which are now ported over the
-//! sandboxed WASM ABI (`WASM_USERMODELS_PLAN.md` §WP-WM.3 — a `.wasm` resolved
-//! from `UserModel=`/`ShaftModel=` runs through `dss-usermodel`; native-DLL
-//! names still warn-and-fall-back per §2.4). The synchronous Generator has no
-//! grid-forming mode — GFM is an inverter-based (PVSystem/Storage) feature
-//! (`generator.pas` carries no GFM code, WPG.13).
+//! sandboxed WASM ABI (a `.wasm` resolved from `UserModel=`/`ShaftModel=` runs
+//! through `dss-usermodel`, native-DLL names still warn-and-fall-back). The
+//! synchronous Generator has no grid-forming mode — GFM is an inverter-based
+//! (PVSystem/Storage) feature.
 
 use num_complex::Complex64;
 
@@ -92,9 +91,8 @@ impl Generator {
                 // `integrate_states` would divide by `m_mass = 0` (NaN) — worse than
                 // Pascal's clean abort, but unreachable: the vendored dynamics corpus
                 // is all 1-/3-phase, and `do_dynamic_mode` records the >3-phase error
-                // at inject time. On-demand (retagged at the WP8.8 sweep): surface a
-                // real abort (init_state_vars needs an error channel) if a >3-phase
-                // dynamics case appears.
+                // at inject time. Open: surface a real abort (init_state_vars
+                // needs an error channel) if a >3-phase dynamics case appears.
                 return;
             }
         }
@@ -257,7 +255,7 @@ impl Generator {
             // #5671 and sets `DSS.SolutionAbort := TRUE`. Both are surfaced: the
             // `inj_currents` caller drains `errors` into the solution ErrorLog and
             // lifts the `abort` flag onto `SolutionAbort` — a loud typed error, not
-            // a silent fallback (§2.9-5).
+            // a silent fallback (`docs/wasm/USERMODEL_ABI.md` §6).
             if !self.user_model_fcalc(sys, node_v, errors) && self.user_model_name.is_empty() {
                 // Genuine GenModel=6 dynamics with NO `UserModel=` source. When a
                 // source WAS designated but is not loaded (native-DLL name the
@@ -444,7 +442,7 @@ impl Generator {
     /// Pascal `NumGenVariables` (`generator.pas`): the count of the classic
     /// built-in Generator state variables (the 6 named below). The public
     /// `num_variables()` accessor adds the `UserModel`/`ShaftModel` counts on top
-    /// (WASM_USERMODELS WM.3, `accessors.rs`).
+    /// (`accessors.rs`).
     pub(super) fn num_gen_variables(&self) -> usize {
         6
     }

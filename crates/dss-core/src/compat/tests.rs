@@ -1,4 +1,4 @@
-//! Per-kernel tests of the Stage F lane split. Both `*_impl`s are compiled in
+//! Per-kernel tests of the lane split. Both `*_impl`s are compiled in
 //! every build, so these run — and pin the documented parity-vs-default
 //! bounds — in **both** lanes.
 
@@ -27,10 +27,10 @@ const DIV_CASES: [(Complex64, Complex64); 6] = [
 const DIV_REL_BOUND: f64 = 1.0e-15;
 
 // ---------------------------------------------------------------------------
-// Alias selection per lane (F.3 flips one kernel family per commit)
+// Alias selection per lane
 // ---------------------------------------------------------------------------
 
-/// The dense-inverse row is a **no-split** row (F.3i): `invert` and
+/// The dense-inverse row is a **no-split** row: `invert` and
 /// `etk_invert` resolve to the Pascal kernel in *whichever* lane this test
 /// runs, so the existing gate (byte goldens, checkpoint Y, corpus floors) is
 /// unchanged in the default build too. The module header records the two
@@ -62,7 +62,7 @@ fn invert_is_one_shared_kernel_in_both_lanes() {
     assert!(etk_invert(&mut a, 2).is_err());
 }
 
-/// The measured *reason* the dense-inverse row is a no-split row (F.3i), pinned
+/// The measured *reason* the dense-inverse row is a no-split row, pinned
 /// with literals so it cannot rot into folklore: on the ideal-switch impedance
 /// matrix that `Test/AutoTrans/Auto1bus-step1.dss` builds for a
 /// `switch=yes r1=1e-6` line — `Z = 1e-9·I`, whose exact binary value is
@@ -106,7 +106,7 @@ fn dense_inverse_kernels_differ_by_one_ulp_on_an_ideal_switch() {
     );
 }
 
-/// The **no-split** row (F.3e): `cdiv` is one shared kernel, so it must resolve
+/// The **no-split** row: `cdiv` is one shared kernel, so it must resolve
 /// to Smith's division in *whichever* lane this test runs — asserted on an
 /// operand pair where the two impls differ bitwise, so it cannot pass
 /// vacuously.
@@ -375,19 +375,11 @@ fn inverse_residual(a: &CMatrix, inv: &CMatrix) -> f64 {
 }
 
 /// Documented parity-vs-default bound for the dense complex inverse on a
-/// well-conditioned matrix, **re-measured 2026-08-01**: max |Δ| / max |A⁻¹| =
-/// **1.93e-16** (≈ 1 ULP; the residuals ‖A·A⁻¹ − I‖ are **2.30e-16** for the
-/// parity kernel and **1.31e-16** for the partial-pivoting one). Asserted with
+/// well-conditioned matrix: about 1 ULP of max |Δ| / max |A⁻¹|, asserted with
 /// a decade of headroom.
 ///
-/// The earlier record (2.15e-16 / 2.30e-16 / 1.27e-16) described the kernel
-/// *before* F.3i, which switched `invert_partial_pivot_impl`'s pivot-row
-/// normalization from `num_complex`'s `/` to Smith's `cdiv` (see the row's doc
-/// in `compat.rs`). Feeding the naive division back into that kernel reproduces
-/// the old pair exactly, which is what pins the cause — the parity residual is
-/// unchanged because its kernel was not touched. Re-measure here whenever
-/// either kernel moves: this triple is the evidence for the row's *no-split*
-/// verdict, and the plan requires that verdict stay measured rather than
+/// Re-measure here whenever either kernel moves: this bound is the evidence
+/// for the row's *no-split* verdict, which stays measured rather than
 /// narrated.
 const INVERT_REL_BOUND: f64 = 5.0e-15;
 

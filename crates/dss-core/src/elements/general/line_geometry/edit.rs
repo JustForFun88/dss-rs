@@ -279,10 +279,10 @@ impl LineGeometryObj {
     /// `true` when at least one conductor was valid (the caller flags
     /// `data_changed`; Pascal `Exit`s before the `dataChanged` block on rejection).
     ///
-    /// Since the 0.15.x-adoption sweep, class-prefixed text items resolve
-    /// case-insensitively (`parse_conductor_proxy`, r4133 parity), so this
-    /// per-conductor dispatch is now the live text path AND the JSON-import path;
-    /// the all-`none` reject path stays live too (r4133 #303-AVs on that input —
+    /// Class-prefixed text items resolve case-insensitively
+    /// (`parse_conductor_proxy`, as r4133 does), so this per-conductor dispatch
+    /// is the live text path AND the JSON-import path. The all-`none` reject
+    /// path is live too (r4133 #303-AVs on that input —
     /// UB, not reproduced). Both are gated by the whitebox equivalence tests
     /// `tests::conductors_array_matches_mixed_capi015` /
     /// `conductors_array_derives_ratings_from_the_phase_conductors`, which drive the

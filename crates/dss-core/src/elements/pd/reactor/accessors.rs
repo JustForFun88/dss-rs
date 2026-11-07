@@ -9,8 +9,7 @@ use crate::obj::base::{DssObjData, DssObject};
 
 impl Reactor {
     /// Pascal `TReactorObj.Z` (the series impedance complex). Read-only accessor
-    /// for the CIM export (`SeriesCompensator.r`/`.x`/`.r0`/`.x0`, GAPS_PLAN
-    /// WPG.18 Stage D).
+    /// for the CIM export (`SeriesCompensator.r`/`.x`/`.r0`/`.x0`).
     pub fn z(&self) -> Complex64 {
         self.z
     }

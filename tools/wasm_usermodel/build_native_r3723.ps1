@@ -1,5 +1,5 @@
 # build_native_r3723.ps1 — build the 0.14.5-ABI NATIVE TWIN of the wasm
-# reference fixture (WM.3 D2 follow-up).
+# reference fixture.
 #
 # Sibling of build_native.ps1 (the r4133 twin). This variant compiles the
 # SAME vendored IndMach012a example, but from the r3723 tree, whose
@@ -12,13 +12,14 @@
 # the IndMach012a model files (IndMach012Model / MainUnit / ParserDel / .dpr)
 # are byte-identical r3723 -> r4133 (sha256-verified; USERMODEL_ABI.md P8) —
 # ONLY GeneratorVars.pas differs (deltaQNom, 244 vs 252 B). So this build gives
-# the IDENTICAL machine math on the 0.14.5 record layout: the single controlled
-# variable for the D2 three-way experiment is the engine version, not the model.
+# the IDENTICAL machine math on the 0.14.5 record layout: across the r3723 twin,
+# the r4133 twin and the wasm guest the one controlled variable is the engine
+# version, not the model.
 #
 # Compiles VENDORED Delphi as-is (zero source edits, search paths only):
 # .inputs/electricdss-code-r3723-trunk/Version8/Source/IndMach012a/IndMach012a.dpr
 # with FPC 3.2.2 ppcrossx64 -Mdelphi -O2 (PIN.txt toolchain), same flags as the
-# r4133 build. Built ON DEMAND for the D2 probe; NEVER committed.
+# r4133 build. Built ON DEMAND for probing. NEVER committed.
 #
 # Usage:
 #   pwsh tools/wasm_usermodel/build_native_r3723.ps1 [-OutDir <dir>] [-Fpc <ppcrossx64.exe>]
@@ -35,7 +36,7 @@ $Src = Join-Path $RepoRoot ".inputs\electricdss-code-r3723-trunk\Version8\Source
 $Dpr = Join-Path $Src "IndMach012a\IndMach012a.dpr"
 
 if (-not (Test-Path $Dpr)) {
-    throw "Vendored source missing: $Dpr — re-vendor .inputs/electricdss-code-r3723-trunk (ritual step 0)."
+    throw "Vendored source missing: $Dpr — re-vendor .inputs/electricdss-code-r3723-trunk."
 }
 if (-not (Test-Path $Fpc)) {
     throw "FPC cross-compiler not found at $Fpc (PIN: fpc==3.2.2 ppcrossx64). Pass -Fpc."
@@ -43,7 +44,7 @@ if (-not (Test-Path $Fpc)) {
 
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 
-# Exact flags from the WP-WM.0 P2 probe (p2_indmach_fpc_build.txt), r3723 tree.
+# Exact flags from the build probe (docs/wasm/probes/p2_indmach_fpc_build.txt), r3723 tree.
 & $Fpc -Mdelphi -O2 `
     ("-Fu" + (Join-Path $Src "IndMach012a")) `
     ("-Fu" + (Join-Path $Src "Shared")) `

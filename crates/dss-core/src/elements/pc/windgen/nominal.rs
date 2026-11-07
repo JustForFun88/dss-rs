@@ -285,8 +285,8 @@ impl WindGen {
                 // `WindGen.pas:1276-1322` has **no `0:` arm**: mode 0 falls through
                 // to `Else kvarCalc := 0` (`:1320-1321`), so a default-configured
                 // WindGen injects zero vars however its `kvar=`/`pf=` reads. That is
-                // an upstream slip, not a design, and CLAUDE.md's 2026-08-02 policy
-                // fixes it in both lanes instead of reproducing it: the property
+                // an OpenDSS bug, not a design, and this engine fixes it in both
+                // lanes instead of reproducing it: the property
                 // help documents `0:Q` (`:429-430`), the dynamics model spells the
                 // same mode `QMode := 0; // 0 -> Constant Q` (`WTG3_Model.pas:252`)
                 // and implements it as `Qord := Qref` (`:1059-1061`), models 4/5
@@ -311,9 +311,8 @@ impl WindGen {
                 // `kvarBase` to 1 ulp whenever the wind caps `Pg`, and its
                 // saturation fallback is `kvarBase` in any case (`:1284`).
                 //
-                // The SIGN, and why the arm splits on `kVANotSet`
-                // (`R4133_PROPS_PLAN.md` §RP3.10 audit settlement, finding
-                // RP310-CODE-1). The `pf` convention is "kW and kvar carry
+                // The SIGN, and why the arm splits on `kVANotSet`. The `pf`
+                // convention is "kW and kvar carry
                 // OPPOSITE signs when `PFNominal < 0`". With `kVA=` unset
                 // `kvarBase` already carries exactly that sign, for every
                 // combination of `kW`/`pf` signs — `sync_up_power_quantities`
@@ -336,8 +335,7 @@ impl WindGen {
                 // (Upstream's own arm 2 and models 4/5 read the stripped base
                 // and so keep the injecting sign there — `model=4` on those
                 // tokens reports terminal `Q = -523.0475290915948`; separate
-                // upstream defects, recorded in the RP3.10 record, reproduced
-                // by neither this arm nor any pin.)
+                // OpenDSS bugs, reproduced by neither this arm nor any pin.)
                 //
                 // `Factor` (`GenMultiplier`) still applies: `:1325` sits OUTSIDE
                 // the `case` (probed: `Set genmult=0.5` halves the dispatch,

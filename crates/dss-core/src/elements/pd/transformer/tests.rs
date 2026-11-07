@@ -182,7 +182,7 @@ fn set_present_tap_clamps_to_winding_limits() {
     t.set_present_tap(9, 1.0);
 }
 
-// --- WPG.21 — TTransfObj.MakePosSequence (Transformer.pas:1685-1752) ----------
+// --- TTransfObj.MakePosSequence -----------------------------------------------
 
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
 use crate::util::sqrt3;
@@ -287,16 +287,10 @@ fn make_pos_sequence_1ph_off_phase1_disables() {
     assert!(!plan.run_base, "disable path skips `inherited`");
 }
 
-/// WP-U1.2 D6: dss_capi 0.15.x (`Transformer.pas:1058`, SVN r4033) dropped the
-/// spurious `1.1 *` factor from the seasonal AmpRatings —
-/// `AmpRatings[i] = kVARatings[i] / Fnphases / Vfactor`. The separate
-/// `NormMaxHkVA = 1.1 * Winding[1].kVA` (the 110% default norm rating) is
-/// UNCHANGED upstream. This is not yet reachable via the overload report (the
-/// seasonal-rating override is NOT_PORTED — WP-U1.5 E2), so it is pinned on the
-/// computed `amp_ratings` field. Feature-sensitive: with `kVARatings[0]` equal
-/// to winding-1 kVA, `norm_amps == norm_max_hkva/np/vfactor == 1.1 * (kva/np/
-/// vfactor)`, so post-D6 `amp_ratings[0] == norm_amps / 1.1` — pre-D6 it was
-/// `== norm_amps` (both carried the 1.1), so the `/1.1` assertion flips.
+/// The seasonal AmpRatings carry no `1.1` factor (`AmpRatings[i] =
+/// kVARatings[i] / Fnphases / Vfactor`), while `NormMaxHkVA` keeps its own 110%
+/// default norm rating. With `kVARatings[0]` equal to winding-1 kVA,
+/// `amp_ratings[0] == norm_amps / 1.1`, which fails if the factor comes back.
 #[test]
 fn seasonal_amp_ratings_drop_the_1_1_factor() {
     let t = edited(&[
@@ -324,9 +318,9 @@ fn seasonal_amp_ratings_drop_the_1_1_factor() {
     }
     // Reconstruct `np/vfactor` from the (unchanged) NormAmps relation
     // `norm_amps = norm_max_hkva / np / vfactor`, so
-    // `amp_ratings[i] == kVARatings[i] * norm_amps / norm_max_hkva` post-D6.
-    // Pre-D6 (with the `1.1 *`) each amp_ratings[i] was 1.1× this — so the
-    // assertion is feature-sensitive to the dropped factor.
+    // `amp_ratings[i] == kVARatings[i] * norm_amps / norm_max_hkva`.
+    // With a `1.1 *` each amp_ratings[i] would be 1.1× this, so the
+    // assertion is feature-sensitive to the factor.
     for (i, &kva) in t.kva_ratings.iter().enumerate() {
         let want = kva * rating(t.norm_amps) / t.norm_max_hkva;
         let got = rating(t.amp_ratings[i]);
@@ -362,7 +356,7 @@ fn a_kva_rating_of_minus_one_derives_a_set_rating_of_minus_one_ampere() {
     assert_eq!(t.amp_ratings, [Rating::Set(-1.0), Rating::Set(-1.01)]);
 }
 
-/// WP-U1.5 E2 (dss_capi 0.15.x `55400a29`): the seasonal `GetRatings` override
+/// The seasonal `GetRatings` override (dss_capi 0.15.x `55400a29`)
 /// applies to a Transformer too (0.14.5's `DI_Overloads` path restricted it to
 /// lines). With `Seasons=2 Ratings=[1000 1200]`, `get_ratings(1)` returns the
 /// derived `amp_ratings[1]` for both norm and emerg; an out-of-range/`-1` index
@@ -401,19 +395,9 @@ fn get_ratings_applies_seasonal_index_on_transformer() {
     assert_eq!(t.get_ratings(2), (t.norm_amps, t.emerg_amps));
 }
 
-/// WP-U1.2 D8: dss_capi 0.15.x added the `TrapZero` FLAG to the 3-winding
-/// reactances `X12`/`X13`/`X23` (`Transformer.pas` DefineProperties, commit
-/// 69fca934), so a parsed `0` is replaced by the property default (7/35/30 %).
-/// The Rust port ALREADY traps these (the `PropertyTrapZero` values 7/35/30 were
-/// ported onto `XHL`/`XHT`/`XLT` and `setters.rs` applies `trap_zero`
-/// unconditionally), so it matches the 0.15.x side. Settle 2026-07-12: probing
-/// `X13=0` on a 3-winding transformer gives the **bit-identical** solve on
-/// 0.14.5 AND capi015 (`? XHT == "3500"`; `AllBusVmagPu` Vmin=0.124819 both) —
-/// i.e. **D8 is not an observable delta for our port** in the reachable scalar
-/// path; both engines reach the same trapped default. (The `XSCArray` `NonZero`
-/// STRICT-error flag added alongside is the C2/L2 strict surface we deliberately
-/// do NOT adopt.) This test pins that the trap fires (feature-sensitive: without
-/// it `xht` would be 0, a degenerate transformer).
+/// A parsed `0` on the 3-winding reactances `X12`/`X13`/`X23` is replaced by
+/// the property default (the dss_capi `TrapZero` flag). Without the trap `xht`
+/// would be 0, a degenerate transformer.
 #[test]
 fn three_winding_x13_x23_trap_zero_to_default() {
     let t = edited(&[

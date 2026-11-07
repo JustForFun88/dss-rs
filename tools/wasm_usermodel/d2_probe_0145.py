@@ -5,7 +5,7 @@ dss-python 0.15.7 (backend dss_capi 0.14.5) with @FIXTURE@ substituted by the
 emit the SAME golden schema (variable_names/values + node_voltages) the r4133
 bridge golden uses (crates/dss-epri/tests/gen_wasm_usermodels.rs).
 
-This is the missing 0.14.5 channel of the WM.3 D2 three-way experiment. The
+This is the 0.14.5 channel of the three-way first-step dynamics experiment. The
 r3723 twin has the 244-byte TGeneratorVars (no deltaQNom) so it is ABI-correct
 for the 0.14.5 engine; its machine math is byte-identical to the r4133 twin
 (sha256-verified, USERMODEL_ABI.md P8) — the sole controlled variable is the

@@ -6,7 +6,7 @@
 //! before locking out. The first `NumFast` operations use the *fast* curves, the
 //! rest the *slow* curves.
 //!
-//! **r4133 rewrite (WP-U2.2, delta_r4088_r4133 rows B3/B4/C2/D2/D3/E2/E3):**
+//! **Behaviour:**
 //! - **Per-phase state machine.** `FPresentState`/`FNormalState` are per-phase
 //!   arrays (`StateArray[1..RECLOSERCONTROLMAXDIM=6]`); `OperationCount`,
 //!   `LockedOut`, `ArmedForOpen/Close`, `PhaseTarget`, `RecloserTarget` are
@@ -15,24 +15,23 @@
 //!   `SinglePhLockout`): the phase index rides the control-queue proxy handle.
 //! - **Fast/slow pickup split** (`PhFastPickup`/`PhSlowPickup`,
 //!   `GndFastPickup`/`GndSlowPickup`); legacy `PhaseTrip`/`GroundTrip` set both.
-//! - **Breaking default (D2):** the `A`/`D` default curves are removed — a
-//!   default-constructed recloser is **inert** (all four curves NIL/`none`).
-//! - **Inst-trip delay single-count (D3):** the instantaneous trip time is a bare
-//!   `0.01` (the `MechanicalDelay` is added once, at the queue push), so inst
-//!   operations fire one `MechanicalDelay` earlier than r4088.
+//! - **Inert default:** there are no default curves, so a default-constructed
+//!   recloser is **inert** (all four curves NIL/`none`).
+//! - **Inst-trip delay single-count:** the instantaneous trip time is a bare
+//!   `0.01`, and the `MechanicalDelay` is added once, at the queue push.
 //! - `MaxOperatingCount` curve selection over non-locked-out phases; sampling
-//!   continues while ≥1 phase is closed (B4); state resync from
+//!   continues while ≥1 phase is closed; state resync from
 //!   `ControlledElement.Closed[i]` at the top of `Sample`.
-//! - **Property table 24 → 46** with deprecated aliases (`PhaseFast→PhFastCurve`,
+//! - **Property table** with deprecated aliases (`PhaseFast→PhFastCurve`,
 //!   `PhaseDelayed→PhSlowCurve`, `Reset→ResetTime`, `Delay→MechanicalDelay`, TD
 //!   renames…), plus `Lock`/`Reset` actions, `EventLog`/`DebugTrace`,
 //!   `RatedCurrent`/`InterruptingRating`, `Normal`/`State` per-phase arrays.
-//! - **Event-log wording overhaul (E2/E3):** per-phase `'Phase %d opened on %s
+//! - **Event-log wording:** per-phase `'Phase %d opened on %s
 //!   (…trip) & locked out (…lockout)'` / `'Phase %d closed (…reclosing)'` /
 //!   `'Phase ALL reset (3ph reset)'`, and the `[closed, closed, closed, ]`
 //!   render for `Normal`/`State`.
 //!
-//! `GetTccCurve('none')` returns NIL silently (r4133 C5): the four curve names
+//! `GetTccCurve('none')` returns NIL silently: the four curve names
 //! default to `none`, resolving to no curve without error.
 //!
 //! Concern split mirrors the other controls: this file holds the property
@@ -136,7 +135,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::integer("SwitchedTerm"),
         PropDef::integer("NumFast"),
         // The four TCC curves. `GetTccCurve('none')` -> NIL silently; the default
-        // names are `none` (constructor NIL curves — the D2 inert default).
+        // names are `none` (constructor NIL curves, the inert default).
         PropDef::object_ref_class("TCC_Curve", "PhFastCurve"),
         PropDef::object_ref_class("TCC_Curve", "PhSlowCurve"),
         PropDef::object_ref_class("TCC_Curve", "GndFastCurve"),
@@ -216,7 +215,7 @@ pub struct Recloser {
     gnd_fast_name: String,
     gnd_slow_name: String,
     /// Resolved curve clones (resolved by the executive from the names). A `None`
-    /// curve never trips its branch (the D2 inert default).
+    /// curve never trips its branch (the inert default).
     ph_fast: Option<TccCurveObj>,
     ph_slow: Option<TccCurveObj>,
     gnd_fast: Option<TccCurveObj>,
@@ -279,7 +278,7 @@ pub struct Recloser {
     /// `DebugTrace` — write extra `Debug Sample:` lines to the event log.
     debug_trace: bool,
 
-    /// Deferred parse-time element forces (the `RecalcElementData` Closed[i] sync).
+    /// Deferred parse-time element forces (the `RecalcElementData` `Closed[i]` sync).
     pending_ref_actions: Vec<RefAction>,
 }
 
@@ -303,7 +302,7 @@ impl Recloser {
             mon_snap: None,
             ctrl_snap: None,
             monitored_element_terminal: 1,
-            // D2: default curves removed -> NIL/`none` -> inert.
+            // No default curves -> NIL/`none` -> inert.
             ph_fast_name: "none".to_string(),
             ph_slow_name: "none".to_string(),
             gnd_fast_name: "none".to_string(),
@@ -398,7 +397,7 @@ impl Recloser {
         self.state_side_effect();
     }
 
-    /// Queue the per-phase `RecalcElementData` Closed[i] sync (Pascal
+    /// Queue the per-phase `RecalcElementData` `Closed[i]` sync (Pascal
     /// `ControlledElement.Closed[i] := …` per phase). Deferred as a [`RefAction`]
     /// since the property engine holds no mutable view of the target.
     fn queue_switch_force(&mut self) {
@@ -620,7 +619,7 @@ impl Recloser {
             // branches log DISTINCT DebugTrace lines — inst uses raw `Cmag`, curve
             // uses `Cmag/GroundCurveMultiplier` and the curve-type label.
             if self.gnd_inst > 0.0 && cmag >= self.gnd_inst && max_op == 1 {
-                ground_time = 0.01; // D3: bare inst trip, delay added once at push
+                ground_time = 0.01; // bare inst trip, delay added once at push
                 if self.debug_trace {
                     self.dbg(
                         ctx,
@@ -684,7 +683,7 @@ impl Recloser {
             if let Some(pc) = &mut pc_clone {
                 let cmag = cur(i + cond_offset).norm();
                 if self.ph_inst > 0.0 && cmag >= self.ph_inst && self.operation_count[i] == 1 {
-                    phase_time = 0.01; // D3: bare inst
+                    phase_time = 0.01; // bare inst
                     if self.debug_trace {
                         self.dbg(
                             ctx,
@@ -794,7 +793,7 @@ impl Recloser {
             for i in (1 + cond_offset)..=(nphases + cond_offset) {
                 let cmag = cur(i).norm();
                 if self.ph_inst > 0.0 && cmag >= self.ph_inst && self.operation_count[g] == 1 {
-                    phase_time = 0.01; // D3: bare inst
+                    phase_time = 0.01; // bare inst
                     if self.debug_trace {
                         self.dbg(
                             ctx,

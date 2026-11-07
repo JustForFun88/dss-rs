@@ -1,13 +1,12 @@
-//! MULTITHREADING_PLAN M1 baseline / DE_PASCALIZE P15 proof: isolated
+//! Benchmark: isolated
 //! `build_y_matrix` on the IEEE-8500 node feeder.
 //!
 //! Setup compiles + solves the case once (so buses/nodes/YPrims exist), then
 //! the measured routine forces a full whole-matrix Y rebuild via
-//! [`Dss::rebuild_system_y`]. This is where P15 item 1 (reuse the `SparseSet`
-//! across rebuilds, retain the symbolic factorization) and items 2-4 (dedup
-//! mapping cache, direct column-major stamping, `build_scaled` reuse) show up:
-//! the baseline re-allocates the sparse set and re-hashes the dedup map on
-//! every rebuild, the reworked path re-accumulates into cached buffers.
+//! [`Dss::rebuild_system_y`]. It measures the rebuild path that reuses the
+//! `SparseSet` (retained symbolic factorization, cached dedup mapping, direct
+//! column-major stamping, `build_scaled` reuse) and re-accumulates into cached
+//! buffers.
 //!
 //! Run: `cargo bench --bench ybuild_8500`.
 

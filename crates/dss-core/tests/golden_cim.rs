@@ -1,14 +1,14 @@
-//! Golden gate for the CIM100 XML export (GAPS_PLAN WPG.18): thin driver over
+//! Golden gate for the CIM100 XML export: thin driver over
 //! `tools/golden/gen_cim.py`'s recipe — replay the same deck (`tools/golden/
 //! cim_decks/<circuit>.dss`), preload every UUID via `uuids file=<fixture>`
 //! (the same `<circuit>_fixture.csv` the generator produced), issue `export
 //! cim100 fil=<tmp>`, and byte-compare the produced file against `tests/
 //! golden/cim/<circuit>.xml` — **exact bytes** (CRLF-normalized only), zero
-//! tolerance (decision 2: with the fixture preloaded, the oracle and the Rust
-//! port must produce bit-identical text, since every UUID and every `%.8g`/
-//! `%d`/enum rendering is now fully determined).
+//! tolerance (with the fixture preloaded, the pinned dss-python and this engine
+//! must produce bit-identical text, since every UUID and every `%.8g`/
+//! `%d`/enum rendering is fully determined).
 //!
-//! Add a Stage B-F case by dropping `<name>.dss` + `<name>_fixture.csv` in
+//! Add a case by dropping `<name>.dss` + `<name>_fixture.csv` in
 //! `tools/golden/cim_decks/`, `<name>.xml` in `tests/golden/cim/` (regenerate
 //! both via `python tools/golden/gen_cim.py`), and a `run_case("<name>")` call
 //! below.
@@ -86,34 +86,28 @@ const B0CH_ZERO: &str = "<cim:ACLineSegment.b0ch>0</cim:ACLineSegment.b0ch>";
 // `grounded` node is compared under the class the wye arm names, in both lanes.
 // LANE-EXCLUSION(CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH): the second of two
 // consecutive `b0ch` nodes is compared as `g0ch`, in both lanes.
-/// The CIM writer's two **deliberate divergences from the oracle**, as an
-/// expected-value transform of the oracle golden — applied in *both* lanes since
-/// `GOLDEN_REBASE_PLAN.md` G2.2c.
+/// The CIM writer's two **deliberate divergences from the pinned capture**, as
+/// an expected-value transform of the golden — applied in *both* lanes.
 ///
-/// The CIM XML goldens are byte-compared in both lanes (`harness::lane`:
-/// their writer renders no number through the F-FMT seam, so nothing in Stage F
-/// may move them wholesale). Two single-site upstream mistakes move exactly one
-/// line each, and both are pure **element-name** fixes — no value, count, or
-/// ordering changes. Rather than re-baselining those goldens (which would drop
-/// the oracle as their source of truth), the engine is compared against the
-/// oracle text with these two enumerated rewrites applied: everything else stays
-/// byte-exact vs the pinned oracle.
+/// The CIM XML goldens are byte-compared in both lanes (`harness::lane`: their
+/// writer renders no number through the print seam). Two single-site OpenDSS
+/// bugs move exactly one line each, and both are pure **element-name** fixes —
+/// no value, count, or ordering changes. Rather than re-baselining those
+/// goldens, the engine is compared against the captured text with these two
+/// enumerated rewrites applied: everything else stays byte-exact.
 ///
 /// * **the delta shunt's class prefix** — the delta arm of the
 ///   shunt-compensator writer emits `grounded` under the
-///   `LinearShuntCompensator.` prefix (`ExportCIMXML.pas:3706`; r4133 `:3187`);
-///   the wye arm uses `ShuntCompensator.`, which is where CIM100 declares the
-///   property (`issue-24`).
+///   `LinearShuntCompensator.` prefix; the wye arm uses `ShuntCompensator.`,
+///   which is where CIM100 declares the property (`issue-24`).
 /// * **the missing `g0ch`** — the line writer's `bch`/`gch`/`b0ch`/`g0ch`
-///   quartet ends with `b0ch` written twice (`ExportCIMXML.pas:4367`; r4133
-///   `:3756`); the second one is the `g0ch` its `PerLengthSequenceImpedance`
-///   sibling spells (`issue-25`).
+///   quartet ends with `b0ch` written twice; the second one is the `g0ch` its
+///   `PerLengthSequenceImpedance` sibling spells (`issue-25`).
 ///
 /// **A third deliberate divergence from the goldens' source exists and is
 /// deliberately NOT rewritten here, because it has no footprint on these decks.**
-/// Since RP3.6(b) the LineCode units back-fill matches the line's `CondCode`
-/// STRING like r4133 (`ExportCIMXML.pas:3872-3884`) instead of 0.14.5's live
-/// object (`:4501`), so a line that names a code and then overrides it donates
+/// The LineCode units back-fill matches the line's `CondCode` string like r4133
+/// instead of 0.14.5's live object, so a line that names a code and then overrides it donates
 /// its `FUserLengthUnits` to a `Units = UNITS_NONE` LineCode where 0.14.5 — which
 /// generated these goldens (`tools/golden/gen_cim.py`) — does not. It moves no
 /// byte here: every `New LineCode` in `tools/golden/cim_decks/*.dss` declares its
@@ -359,8 +353,7 @@ const FRAGMENT_PROFILES: [&str; 7] = ["FUN", "GEO", "TOPO", "SSH", "CAT", "EP", 
 
 /// Fragments-mode gate: replay `<circuit>.dss`, preload its fixture, run `Export
 /// CIM100Fragments`, and byte-compare each produced `<circuit>_CIM100_<PRF>.xml`
-/// against the golden `<circuit>_<PRF>.xml` (GAPS_PLAN WPG.18 Stage F decision 3,
-/// applied per profile).
+/// against the golden `<circuit>_<PRF>.xml`, per profile.
 fn run_case_fragments(circuit: &str) {
     let compile_path = decks_dir().join(format!("{circuit}.dss"));
     let fixture = decks_dir().join(format!("{circuit}_fixture.csv"));
@@ -421,23 +414,9 @@ fn run_feeder(circuit: &str, master_rel: &str, post: &[&str]) {
 // EXPECTED-VALUE-PIN(CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH): the expected text
 // carries no two consecutive `ACLineSegment.b0ch` nodes — the second is `g0ch` —
 // in both lanes.
-/// The expected-value pin of the CIM writer's two corrected attribute names,
-/// unconditional in **both** lanes since `GOLDEN_REBASE_PLAN.md` G2.2c.
-///
-/// It walks every committed CIM golden and pins three things at once:
-///
-/// 1. **Non-vacuity of the oracle side** — the committed goldens still carry
-///    exactly one delta `LinearShuntCompensator.grounded` node and exactly two
-///    duplicated `ACLineSegment.b0ch` nodes. If a golden is ever regenerated
-///    without them, the transform becomes dead code and this fails instead of
-///    silently passing.
-/// 2. **Non-vacuity of the transform** — [`expected_cim`] rewrites *exactly*
-///    those lines, one and two of them, and no others.
-/// 3. **Direction** — after the transform the expectation carries the fixed
-///    names and none of the upstream ones. The engine is then held to that
-///    expectation byte-for-byte by every `run_case`/`run_feeder` below, in both
-///    lanes, so a writer that went back to the upstream spelling fails whichever
-///    lane it was built in.
+/// The committed CIM goldens still carry the two OpenDSS attribute-name bugs,
+/// [`expected_cim`] rewrites exactly those lines and no others, and the result
+/// carries only the corrected names, in both lanes.
 #[test]
 fn cim_writer_divergences_are_pinned() {
     let mut oracle_quirks = [0usize; 2];
@@ -568,65 +547,11 @@ fn only_grounded(xml: &str, owner: &str) -> bool {
 // a bank earthed on some phases and live on the rest reads `false` too, which
 // pins the aggregation as `all` and not `any`; and a wye load reads the
 // transformer writer's whole wye ladder over its own terminal and `rneut`.
-/// The CIM `grounded` flag of a wye capacitor and a wye load reads the
-/// **neutral**, in *both* lanes.
-///
-/// Upstream writes `grounded = TRUE` unconditionally for every wye capacitor
-/// (`.inputs/dss_capi/src/Common/ExportCIMXML.pas:3700`; r4133
-/// `Version8/Source/Common/ExportCIMXML.pas:3183`) and every wye load (`:4478`;
-/// r4133 `:3854`), each under its own `// TODO - check bus 2` — so a wye with an
-/// isolated or impedance-earthed neutral leaves the export as solidly grounded,
-/// which is a qualitatively different machine for anyone computing earth-fault
-/// currents from the exported model. Both gating oracles carry it; neither lane
-/// reproduces it (`GOLDEN_REBASE_PLAN.md` G2.1g; `issue-23`).
-///
-/// The answer is not invented here — it is the one the **same unit's**
-/// transformer writer already gives: `XfmrTankPhasesAndGround` (`:1531-1570`)
-/// writes `grounded = true` when `NodeRef[j2] = 0`, "last conductor is grounded
-/// solidly". Applied where each shunt class keeps its
-/// neutral: the capacitor's is its second terminal (the "bus 2" the TODO names),
-/// the load's is its terminal's `Nphases+1`-th conductor, which the load reads
-/// together with the rest of that writer's wye ladder (its reversed first
-/// conductor and its own `Rneut`).
-///
-/// Four decks, so this pins the *reading* — which value comes out, and how the
-/// per-conductor answers are aggregated — and not a flipped constant:
-///
-/// * the **probe** deck ties both neutrals to real nodes — the capacitor's
-///   second terminal to a live bus, the load's 4th conductor (its `rneut` left
-///   at the open default) to a grounding reactor's node — where both lanes must
-///   now answer `false`;
-/// * the **control** deck is the same circuit with the default (ground)
-///   neutrals, where both lanes must answer `true`;
-/// * the **mixed** deck is what separates `all` from `any`, the one choice the
-///   uniform decks above cannot see. Its capacitor is earthed on two phases and
-///   live on the third (`bus2=nb.1.0.0`) — the impedance-earthed-on-one-phase
-///   shape — and must read `false`: a bank is solidly grounded only when *every*
-///   phase returns to ground, so one live return disqualifies it (an `any`
-///   aggregation would call it grounded). Its load is single-phase with a live
-///   neutral, which is also the only deck exercising the load reading's derived
-///   index `node_ref[nphases]` off the 3-phase path;
-/// * the **ladder** deck walks the load's wye ladder, one load per rung, each
-///   on its own neutral node.
-///
-/// The ladder is the one `cim::power_xfmr::xfmr_tank_phases_and_ground` reads
-/// for a wye winding, over the load's one terminal, first rung that answers
-/// wins:
-///
-/// 1. the neutral (`Nphases+1`-th) conductor on the ground node: `true`;
-/// 2. the first conductor on the ground node, a reversed connection: `true`;
-/// 3. `rneut < 0`, the open neutral and the Load default: `false`;
-/// 4. otherwise the neutral is earthed — solidly at `rneut = xneut = 0`, where
-///    the Load stamps its `1.0e6` S neutral shunt, else through
-///    `rneut + j·xneut`: `true`.
-///
-/// The r4133 DLL (11.0.0.1) writes `EnergyConsumer.grounded = true` for all
-/// five ladder loads, measured with the ladder deck through
-/// `tools/opendss/epri_worker.py` (`export cim100`, 2026-10-03): its load writer
-/// hard-codes the value, so `ldopen` (`false` here, `true` there) is the
-/// divergence and the other four agree with it. No CIM golden and no gated
-/// corpus deck has a wye load with a non-ground neutral, so rungs 2-4 move no
-/// compared byte.
+/// The CIM `grounded` flag of a wye capacitor and a wye load reads the neutral
+/// through the transformer writer's wye ladder, true only when every phase
+/// returns to ground, in both lanes. An export that called an isolated or
+/// impedance-earthed neutral solidly grounded would change every earth-fault
+/// current computed from it, so the OpenDSS constant `true` is a bug (`issue-23`).
 #[test]
 fn cim_wye_grounded_reads_the_neutral() {
     let build = |circuit: &str, cap: &str, load: &str| -> String {
@@ -805,20 +730,20 @@ fn grounded_by_name(xml: &str, owner: &str) -> std::collections::BTreeMap<String
     out
 }
 
-/// Stage A: writer core + skeleton + EnergySource (Vsource + buscoords only).
+/// Writer core + skeleton + EnergySource (Vsource + buscoords only).
 #[test]
 fn cim_src() {
     run_case("cim_src");
 }
 
-/// Stage B: EnergyConsumer sweep + AttachLoadPhases/AttachSecondaryPhases +
+/// EnergyConsumer sweep + AttachLoadPhases/AttachSecondaryPhases +
 /// EnergyConnectionProfile (wye/delta/secondary loads + a daily-shape ECP).
 #[test]
 fn cim_load() {
     run_case("cim_load");
 }
 
-/// Stage C: ACLineSegment/LoadBreakSwitch sweep (coded sym + coded matrix +
+/// ACLineSegment/LoadBreakSwitch sweep (coded sym + coded matrix +
 /// sym-inline + matrix-inline PUZ + geometry + spacing + CN/TS cable lines +
 /// a Fuse switch), AttachLinePhases/AttachSwitchPhases, and the LineCode /
 /// WireData / TSData / CNData / LineGeometry / LineSpacing catalog.
@@ -827,7 +752,7 @@ fn cim_lines() {
     run_case("cim_lines");
 }
 
-/// Stage D: LinearShuntCompensator sweep (wye + delta + 1-phase caps, the
+/// LinearShuntCompensator sweep (wye + delta + 1-phase caps, the
 /// `AttachCapPhases` per-phase breakdown, the SSH `sections`/`aVRDelay`),
 /// CapControl → RegulatingControl (a voltage-mode + a current-mode control,
 /// `MonitoredPhaseNode`/`RegulatingControlEnum`/target value/deadband), and the
@@ -837,7 +762,7 @@ fn cim_shunt() {
     run_case("cim_shunt");
 }
 
-/// Stage E: transformers + autotransformers + banks + RegControl. The three
+/// Transformers + autotransformers + banks + RegControl. The three
 /// transformer cases (`PowerTransformerEnd`+mesh/core with no code; a
 /// `TransformerTank`+`TransformerTankInfo` XfmrCode; a synthesized
 /// `CIMXfmrCode_<name>` for a no-code non-3-phase unit), a 3-winding delta
@@ -849,7 +774,7 @@ fn cim_xfmr() {
     run_case("cim_xfmr");
 }
 
-/// Stage F: the DER sweeps (Generator → `SynchronousMachine`, PVSystem →
+/// The DER sweeps (Generator → `SynchronousMachine`, PVSystem →
 /// `PowerElectronicsConnection` + `PhotovoltaicUnit`, Storage → `BatteryUnit`) +
 /// the IEEE1547 controller (InvControl volt-var catB + ExpControl → `DERIEEEType1`
 /// nameplate + settings) + the DER `EnergyConnectionProfile` rows. Combined mode.
@@ -858,14 +783,14 @@ fn cim_der() {
     run_case("cim_der");
 }
 
-/// Stage F fragments mode: the same `cim_der` deck exported via `Export
+/// Fragments mode: the same `cim_der` deck exported via `Export
 /// CIM100Fragments` — the seven per-profile files each byte-exact vs the oracle.
 #[test]
 fn cim_der_fragments() {
     run_case_fragments("cim_der");
 }
 
-/// Stage E corpus feeder: the vendored IEEE 13-node master, CIM-exported whole.
+/// Corpus feeder: the vendored IEEE 13-node master, CIM-exported whole.
 /// Exercises case 1 (the substation + `XFM1` transformers), case 3 (the three
 /// single-phase regulators → synthesized `cimxfmrcode_reg*`), RegControl →
 /// `RatioTapChanger`, and 37 `ACLineSegment`s over the real Stage-C catalog —
@@ -879,7 +804,7 @@ fn cim_ieee13() {
     );
 }
 
-/// Stage E corpus feeder: the vendored IEEE 123-node master (definitions only, so
+/// Corpus feeder: the vendored IEEE 123-node master (definitions only, so
 /// a post-compile `solve` is issued; buscoords omitted → 0,0 positions). 7
 /// regulators (case-3 synthesized codes), `XFM1`, 16 `LoadBreakSwitch`es, and
 /// 359 `ACLineSegment`s — full-file byte-exact vs the pinned oracle.
@@ -918,36 +843,10 @@ fn conductor_lengths(xml: &str) -> std::collections::BTreeMap<String, String> {
     out
 }
 
-/// `Conductor.length` converts with `FUserLengthUnits`, which an impedance
-/// override does **not** erase.
-///
-/// `TLineObj.ResetLengthUnits` clears `LengthUnits` and `FUnitsConvert` and
-/// deliberately keeps `FUserLengthUnits` — r4133
-/// `Version8/Source/PDElements/Line.pas:2326-2331` and dss_capi 0.14.5
-/// `src/PDElements/Line.pas:2080-2085` carry the identical statement pair under
-/// the identical comment, "but do not erase FUserLengthUnits, in case of CIM
-/// export". That comment names this export: the writer reads the field at
-/// r4133 `Common/ExportCIMXML.pas:3707` (`v1 := To_Meters(pLine.
-/// UserLengthUnits)`), `:3735` and `:3877`, and it is the **only** consumer in
-/// either tree — no property renders it and no later `units=` conversion reads
-/// it, which is exactly why the divergence had no census cell.
-///
-/// The port cleared it as well (RP3.5, 2026-08-28) — a port-authored divergence
-/// from *both* oracles. Probed live: on this deck `mtx1` exports
-/// `Conductor.length = 609.6` on the r4133 DLL and on the pinned dss_capi 0.14.5
-/// oracle, against `2` here.
-///
-/// Three segments make the pin a reading rather than a constant:
-///
-/// * `mtx1` types `units=kft` **before** its matrices, so the `12..14` side
-///   effect resets `LengthUnits` afterwards — `? line.mtx1.units` is `none` on
-///   all three engines — and `FUserLengthUnits` is the only field that still
-///   remembers `kft`. 2 kft = **609.6 m**;
-/// * `mtx2` types `units=kft` **last**, so nothing resets it: the control that
-///   proves the conversion itself is not what moved. 3 kft = **914.4 m**;
-/// * `mtx3` types no `units=` at all, so `To_Meters(UNITS_NONE)` is 1.0 and the
-///   length passes through as **5** — the discriminator against "always multiply
-///   by 304.8".
+/// `Conductor.length` converts with the user's length units, which an
+/// impedance override does not erase: a length means the distance the user
+/// typed. A line with `units=` before its matrices, one with `units=` last and
+/// one with no `units=` separate the conversion from its reset.
 #[test]
 fn cim_conductor_length_uses_the_users_length_units() {
     let deck = [
@@ -1025,49 +924,10 @@ fn per_length_seq_r(xml: &str) -> std::collections::BTreeMap<String, String> {
     out
 }
 
-/// The `Units=UNITS_NONE` LineCode back-fill matches the line's **`CondCode`
-/// string**, which outlives `FLineCodeSpecified`.
-///
-/// r4133 `Common/ExportCIMXML.pas:3872-3884` walks every enabled `Line` and
-/// takes the first whose `CondCode` equals the code's name — no flag test and no
-/// object test:
-///
-/// ```pascal
-/// if pLine.CondCode = pLnCd.LocalName then begin
-///   pLnCd.Units := pLine.UserLengthUnits;
-///   break;
-/// ```
-///
-/// `CondCode` is written by `FetchLineCode` (`PDElements/Line.pas:387`) and
-/// cleared only by the constructor (`:825`), so it survives every
-/// `FLineCodeSpecified := FALSE`. dss_capi 0.14.5 has no `CondCode`: it matches
-/// the live object (`(pLine.LineCodeObj <> NIL) and (pLine.LineCodeObj.Name =
-/// pLnCd.LocalName)`, `src/Common/ExportCIMXML.pas:4501`) and therefore skips a
-/// line whose code was superseded. r4133 is the behavioral authority
-/// (CLAUDE.md 2026-08-02), so the port follows r4133 (RP3.6(b)) and this pin
-/// carries the r4133 numbers, not the 0.14.5 ones.
-///
-/// The `lckill`, `lcsw`, `lcgeo` and `lcnoline` values were measured on the two
-/// DLLs (RP3.6 probe decks D and E, 2026-08-29) — `0.301 / 304.8 =
-/// 0.00098753281` against `0.301`; `lcmi`'s on the r4133 DLL:
-///
-/// * `lckill` — referenced by one line that then overrides `r1=` (side-effect
-///   arm 6, `Line.pas:685`, kills the flag). **Discriminator**: r4133 and the
-///   port back-fill `kft`; 0.14.5 leaves `UNITS_NONE` and writes `0.301`.
-/// * `lcsw` — referenced only by a *switched* line, whose flag r4133 never
-///   clears (`:694-700`, RP3.6(a)). Same discriminator through the other arm.
-/// * `lcgeo` — referenced by a line that then takes a `geometry=`
-///   (`FetchGeometryCode`, `:2131`, also a flag kill). Same again.
-/// * `lcmi` — declares `units=mi` itself and is named by the `units=kft` line
-///   `qkft`, so the back-fill loop never runs for it (`if pLnCd.Units =
-///   UNITS_NONE`, `:3872`) and it keeps its miles: `0.301 / 1609.344 =
-///   0.00018703273`, measured on the r4133 DLL (11.0.0.1) with this deck through
-///   `tools/opendss/epri_worker.py` (`export cim100`, 2026-10-03).
-///   **Discriminator** against a rule that back-fills a code whatever units it
-///   declares, which would write the line's kft value `0.00098753281`.
-/// * `lcnoline` — declared with no units and referenced by nobody, so nothing is
-///   found and `To_per_Meter(UNITS_NONE) = 1.0` passes `0.301` through.
-///   **Invariance control** against "always divide by 304.8".
+/// A unit-less LineCode takes the units of the first line that names it, even
+/// when that line later overrides the code, and a code that declares its own
+/// units or that no line names keeps what it has. The export semantics are left
+/// open by the documentation and follow r4133.
 #[test]
 fn cim_linecode_units_backfill_matches_the_condcode_string() {
     let deck = [
@@ -1085,11 +945,11 @@ fn cim_linecode_units_backfill_matches_the_condcode_string() {
         "new linecode.lcnoline nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6",
         // Declares its own units, unlike its line's: the loop is skipped for it.
         "new linecode.lcmi nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6 units=mi",
-        // The code is superseded by `r1=` (arm 6) — the flag falls, `CondCode` stays.
+        // The code is superseded by `r1=`: the flag falls, the code name stays.
         "new line.qkill bus1=src bus2=a phases=3 linecode=lckill units=kft length=2 r1=0.301",
-        // `switch=` leaves the flag standing (RP3.6(a)) — the other arm of the rule.
+        // `switch=` leaves the flag standing: the other arm of the rule.
         "new line.qsw bus1=a bus2=b phases=3 linecode=lcsw units=kft Switch=True",
-        // `geometry=` supersedes the code through `FetchGeometryCode` (`:2131`).
+        // `geometry=` supersedes the code.
         "new line.qgeo bus1=b bus2=c phases=3 linecode=lcgeo units=kft length=2 geometry=geo1",
         // A code in miles on a line in kft, never superseded.
         "new line.qkft bus1=c bus2=d phases=3 linecode=lcmi units=kft length=2",
@@ -1194,27 +1054,6 @@ fn instance_ids(xml: &str, root: &str, name: &str) -> Vec<String> {
 /// The `ACLineSegment` impedance branch follows the line's spacing **flag**,
 /// not the spacing objects the line still holds, while the per-phase conductor
 /// data keeps reading those objects.
-///
-/// The writer picks the branch by the LineCode, geometry and spacing flags, in
-/// that order, else writes the symmetrical components. `linecode=` drops the
-/// spacing flag but keeps the spacing and its wires, and the `r1=` after it then
-/// finds no flag to kill, so `lflag` still answers `? line.lflag.spacing` =
-/// `sp1` — on the r4133 DLL and here — while its impedance is the code's with
-/// `r1` overridden. It takes the symmetrical-components branch: `Conductor.length`
-/// 1 (the physical length is unknown there), the total-ohm `r`/`x`/`r0`/`x0` =
-/// 0.5 / 0.2 / 0.3 / 0.6, and no `WireSpacingInfo`. `lsp` keeps its flag and is
-/// the converse: 1 kft = 304.8 m and a `WireSpacingInfo` reference, no `r`.
-///
-/// The second deck, `spmat`, holds the conductor-data half. Its line `lm` drops
-/// the flag the same way but ends on a phase matrix (`rmatrix=`), so the writer
-/// emits its per-phase breakdown: `lm` itself gets a `PerLengthImpedance`
-/// reference and `Conductor.length` 304.8 with no `WireSpacingInfo`, and each of
-/// `lm_A`/`lm_B`/`lm_C` (sequence numbers 1/2/3) still references the
-/// `OverheadWireInfo` of `w1`, the wire the line holds.
-///
-/// Every literal below was measured on the r4133 DLL (11.0.0.1) with these two
-/// decks through `tools/opendss/epri_worker.py` (`export cim100`, 2026-10-03),
-/// the `? line.*` answers included.
 #[test]
 fn cim_aclinesegment_branch_follows_the_spacing_flag() {
     let deck = [

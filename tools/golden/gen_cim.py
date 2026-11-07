@@ -1,13 +1,12 @@
-"""Generate the CIM100 XML export goldens from the pinned oracle (GAPS_PLAN
-WPG.18).
+"""Generate the CIM100 XML export goldens from the pinned oracle.
 
 Every UUID `Export CIM100` prints is either a lazy random-v4 `TNamedObject.UUID`
 or a hashed `GetDevUuid` (also bottoming out in a random v4 on first creation,
 `NamedObject.pas:47-52`) -- neither can ever be oracle-pinned directly. So the
-gate instead preloads *every* UUID the export touches via the WP8.6 `uuids
+gate instead preloads *every* UUID the export touches via the `uuids
 file=<fixture>` command before exporting, on both engines, making two runs
 bit-identical and the golden compare **exact bytes** (CRLF-normalized), zero
-tolerance (GAPS_PLAN WPG.18 decision 1-2).
+tolerance.
 
 Recipe per case (`CASES` below), all on the pinned oracle:
   1. compile the deck -> solve -> `export cim100` (output discarded, but it
@@ -41,23 +40,23 @@ DECKS_DIR = REPO_ROOT / "tools" / "golden" / "cim_decks"
 OUT_DIR = REPO_ROOT / "tests" / "golden" / "cim"
 CORPUS = REPO_ROOT / "tests" / "corpus" / "electricdss-tst"
 
-# One case per Stage (A-F); each names a deck file under `cim_decks/` and the
+# One case per deck; each names a deck file under `cim_decks/` and the
 # circuit name that deck declares (`New Circuit.<name>` -- also the
 # `<name>_CIM100x.xml`/`<name>_EXP_UUIDS.csv` filename prefix, Pascal
-# `CircuitName_`). Stage A: `cim_src.dss` (Vsource + buscoords only).
+# `CircuitName_`). `cim_src.dss` holds a Vsource + buscoords only.
 CASES = [
     {"deck": "cim_src.dss", "circuit": "cim_src"},
     {"deck": "cim_load.dss", "circuit": "cim_load"},
     {"deck": "cim_lines.dss", "circuit": "cim_lines"},
     {"deck": "cim_shunt.dss", "circuit": "cim_shunt"},
     {"deck": "cim_xfmr.dss", "circuit": "cim_xfmr"},
-    # Stage F: the DER sweeps + IEEE1547 controller + fragments mode. `fragments`
+    # The DER sweeps + IEEE1547 controller + fragments mode. `fragments`
     # additionally emits the seven `_FUN/_GEO/_TOPO/_SSH/_CAT/_EP/_DYN.xml` goldens
     # from `export cim100fragments` (same preloaded fixture, byte-exact per file).
     {"deck": "cim_der.dss", "circuit": "cim_der", "fragments": True},
-    # Corpus feeder cases (Stage E): compile the vendored master, CIM-export the
+    # Corpus feeder cases: compile the vendored master, CIM-export the
     # whole real feeder. IEEE13 = case-1 (sub/XFM1) + case-3 (3 single-phase
-    # regulators) + RegControl + 37 ACLineSegments (Stage C catalog).
+    # regulators) + RegControl + 37 ACLineSegments (the line catalog).
     {
         "master": "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
         "circuit": "IEEE13Nodeckt",

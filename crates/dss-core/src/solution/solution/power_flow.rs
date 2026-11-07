@@ -140,9 +140,7 @@ fn get_pc_inj_curr_filtered(ckt: &mut Circuit, env: &mut SolveEnv, gfm_only: boo
             // still rescales in a varying-loadshape time series) and the inherited
             // add-into-Currents (now the caller scatter below). The non-flag-checking
             // overrides (VCCS/UPFC/VSConverter) recompute unconditionally, so a
-            // force on those is inert upstream and here. (0.15.x-adoption sweep
-            // a3a5(b,c); an earlier central force-branch here lost the preamble and
-            // honored the flag for every PCE.)
+            // force on those is inert upstream and here.
             let y_changed = elem.compute_inj_currents(&sys, &sol.node_v, &mut cctx);
             sol.system_y_changed |= y_changed;
             let cd = elem.cd();
@@ -236,7 +234,7 @@ fn sum_all_currents(ckt: &mut Circuit, env: &mut SolveEnv) {
 /// `DoNormalSolution`'s convergence/budget clause; `dV` (`ReAllocMem(dV, NumNodes+1)`) is the
 /// per-step scratch inside `solve_system_newton_step`. Two departures from r4133: the exit
 /// drops the `Iterminal` stamps the last `SumAllCurrents` formed at the pre-update guess
-/// ([`drop_stale_newton_iterminal_stamps`], CLAUDE.md upstream bug 5), on the converged
+/// ([`drop_stale_newton_iterminal_stamps`], an OpenDSS bug), on the converged
 /// and the iteration-limit exit alike; and the sum evaluates every PC model even right
 /// after a direct solve ([`sum_all_currents`]).
 pub(crate) fn do_newton_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
@@ -535,7 +533,7 @@ pub(crate) fn solve_snap(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
 }
 
 /// Pascal `TSolutionObj.SolveAD(ActorID, Initialize)` (Solution.pas:1263): the
-/// **child** side of one A-Diakoptics stage. Under plan D3 the parent context is
+/// **child** side of one A-Diakoptics stage. The parent context is
 /// passed explicitly (no `ActiveCircuit[1]` global): the child solves its own
 /// `hY` with its own injection currents **into the coordinator's NodeV**
 /// (`parent_node_v`) at its `LocalBusIdx[0]` offset; `parent_ic` is the
@@ -545,7 +543,7 @@ pub(crate) fn solve_snap(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
 ///   when `adiak_pcinj`, or in dynamics/harmonics), Y check.
 /// - `Initialize = false` (SOLVE_AD2): `UpdateISrc` — add the coordinator's
 ///   boundary-current correction, then re-solve.
-// Wired by `Solve_Diakoptics` in WP-AD.3 Stage 2b (the coordinator drive loop).
+// Called by `Solve_Diakoptics` (the coordinator drive loop).
 #[allow(dead_code)]
 pub(crate) fn solve_ad(
     ckt: &mut Circuit,
@@ -586,11 +584,11 @@ pub(crate) fn solve_ad(
 ///
 /// NOTE(upstream-quirk): the Pascal `Found` flag is initialized ONCE before the
 /// outer loop (Solution.pas:3125), not per bus — so an `AD_ISrcIdx` that is
-/// absent from `Ic` (its contour product was dropped by the D5 `re≠0 AND im≠0`
+/// absent from `Ic` (its contour product was dropped by the `re≠0 AND im≠0`
 /// filter) reuses the previous iteration's `idx`, reading a stale/out-of-range
-/// `Ic` entry. That is the UB class (plan D5): we do a fresh per-bus lookup and
+/// `Ic` entry. That is UB: we do a fresh per-bus lookup and
 /// skip a miss (the boundary buses of a well-formed tear are always present).
-#[allow(dead_code)] // wired by `solve_ad` (WP-AD.3 Stage 2b).
+#[allow(dead_code)] // called by `solve_ad`.
 fn update_isrc(ckt: &mut Circuit, parent_ic: &SparseComplex) {
     let sol = &mut ckt.solution;
     for (i, &ibus) in sol.ad_ibus.iter().enumerate() {
@@ -625,8 +623,8 @@ fn update_isrc(ckt: &mut Circuit, parent_ic: &SparseComplex) {
 /// `PConn_Voltages`). Official therefore FREEZES the child, and its floor is
 /// `1.318e-4` (worst near the real source).
 ///
-/// **The re-seed is provably correct** (WP-AD.3 audit finding #2, settled by
-/// decomposition — not a tolerance sweep). A-Diakoptics is an EXACT decomposition,
+/// **The re-seed is provably correct** (proved by decomposition — not a
+/// tolerance sweep). A-Diakoptics is an EXACT decomposition,
 /// so the fixed-point stitch must land on the interconnected-coordinator solution.
 /// That interconnected solution is available independently: a `Set algorithm=Newton`
 /// AD deck runs a full-system Newton on the closed coordinator (Solution.pas:1018,
@@ -637,8 +635,8 @@ fn update_isrc(ckt: &mut Circuit, parent_ic: &SparseComplex) {
 /// re-seed recovers the exact interconnected answer. The AD-vs-**normal** "floor"
 /// (midi `3.25e-5`, macro `1.32e-4`) is therefore NOT a stitch approximation: it is
 /// the interconnected-coordinator-deck-vs-original-deck difference, shared by the
-/// fixed-point AND Newton AD paths and matched to the r3723 oracle
-/// (`tests/TOLERANCE_NOTES.md` §AD); it stays tolerance-**stable** because it is a
+/// fixed-point AND Newton AD paths and matched to r3723. It stays
+/// tolerance-**stable** because it is a
 /// deck-structure difference, not an iteration residual.
 ///
 /// A byte-faithful freeze does NOT hold in this port: with the child frozen, the
@@ -656,9 +654,9 @@ fn update_isrc(ckt: &mut Circuit, parent_ic: &SparseComplex) {
 /// linearisation error at its source (the loads see the boundary-corrected voltage),
 /// so the reference-free solve tracks the true voltage and recovers the exact answer
 /// above. This is an explicit, documented compensation — NOT a silent Y
-/// regularization (§ forbidden).
+/// regularization.
 ///
-/// Open item (auditors / WP-AD.4): bit-level confirm the freeze-divergence cause by
+/// Open item: bit-level confirm the freeze-divergence cause by
 /// running the exact frozen reference-free child system through both faer and KLU
 /// (and measuring its condition number); if it is faer-vs-KLU as hypothesised, make
 /// that solve match KLU so a faithful freeze suffices and the re-seed can be dropped.
@@ -668,7 +666,7 @@ fn update_isrc(ckt: &mut Circuit, parent_ic: &SparseComplex) {
 /// this port **scatters** each child node `j+1` into its mapped slot
 /// `LocalBusIdx[j]` — equal to the contiguous write when the run is contiguous,
 /// but robust to the interconnected node ordering.
-#[allow(dead_code)] // wired by `solve_ad` (WP-AD.3 Stage 2b).
+#[allow(dead_code)] // called by `solve_ad`.
 fn ad_solve_into_parent(ckt: &mut Circuit, parent_node_v: &mut [Complex64]) -> SolveResult {
     let n = ckt.num_nodes;
     let mut x = vec![Complex64::ZERO; n];
@@ -721,9 +719,9 @@ pub(crate) fn solve_direct(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult
 }
 
 /// Drop the `Iterminal` stamps the Newton loop's last `SumAllCurrents` left on
-/// every element whose terminal current is not its own model state — CLAUDE.md
-/// upstream bug 5, repaired at its root (`RETRO_FIXES_PLAN.md` RF-D00-01) so
-/// that no reader needs a special case.
+/// every element whose terminal current is not its own model state — the
+/// Newton stale `Iterminal` upstream bug, repaired at its root so that no
+/// reader needs a special case.
 ///
 /// r4133 `DoNewtonSolution` (`Common/Solution.pas:1165-1230`) increments
 /// `SolutionCount` at the top of every iteration (`:1199`), sums every

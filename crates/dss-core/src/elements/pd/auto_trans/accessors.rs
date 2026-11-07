@@ -564,7 +564,7 @@ impl DssObject for AutoTrans {
             // (`DSSObject.pas:112-115`) while the port renders the live field —
             // the two agree whenever the deck wrote the name in the case the
             // registry holds it in. Echo-vs-live cells are excluded, never
-            // imitated (R4133_PROPS_PLAN §1.1).
+            // imitated.
             XFMRCODE => self.xfmr_code.clone(),
             WDGCURRENTS => self.winding_currents_result(),
             _ => unreachable!("AutoTrans has no string property {idx}"),
@@ -709,9 +709,9 @@ impl DssObject for AutoTrans {
     ///
     /// The r4133 arm at `:567` — `DoSimpleMsg('XFmrCode Property not used with
     /// AutoTrans object.', 100131)`, fired unconditionally right after the code
-    /// has been applied — is **not** reproduced: it is an upstream bug (report
+    /// has been applied — is **not** reproduced: it is an OpenDSS bug (report
     /// `investigations/to_opendss/36-autotrans-xfmrcode-not-used-message.md`),
-    /// and upstream bugs are never reproduced in any lane (CLAUDE.md). Measured
+    /// and OpenDSS bugs are never reproduced in any lane. Measured
     /// 2026-08-22 on the epri-worker: the message is non-fatal inside a
     /// `Compile`, so its absence moves no gated surface — the corpus deck
     /// `asymmetric:autotrans/autotrans_xfmrcode.dss` compiles clean on the

@@ -1,6 +1,6 @@
-! makeposseq_gic.dss — GICTransformer MakePosSequence coverage (WPG.21), r4133-gated.
-! Split out of makeposseq_shunt.dss by GOLDEN_REBASE G1.4a (coordinator decisions D12/D14,
-! 2026-09-04): the pinned dss_capi 0.14.5 oracle is NONDETERMINISTIC across fresh processes
+! makeposseq_gic.dss — GICTransformer MakePosSequence coverage, r4133-gated.
+! Kept apart from makeposseq_shunt.dss (measured
+! 2026-09-04): dss_capi 0.14.5 is NONDETERMINISTIC across fresh processes
 ! on any deck that instantiates a GICTransformer (7 bad runs of 60 with the element, 0 of 40
 ! without), while EPRI r4133 is deterministic (80/80 bit-identical), so this coverage lives on
 ! the r4133 channel and makeposseq_shunt.dss keeps its full-precision capi gating.

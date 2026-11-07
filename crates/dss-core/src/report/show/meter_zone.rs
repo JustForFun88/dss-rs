@@ -1,6 +1,6 @@
 //! `Show Loops` / `Show Zone` (Pascal `ShowResults.pas` `ShowLoops` /
 //! `ShowMeterZone`): the two reports that walk an EnergyMeter's built zone tree
-//! (`BranchList`). Both read the tree the WP6.4 zone build already populated —
+//! (`BranchList`). Both read the tree the zone build already populated —
 //! its `First`/`GoForward` walk order is the persisted `sequence_list`, and each
 //! branch's `PresentBranch` loop/parallel flags + shunt-object list are on the
 //! matching tree node (`sequence_nodes[i]`). Read-only, no cursor mutation.

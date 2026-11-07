@@ -1,5 +1,5 @@
-// Reduce coverage (PHASE8_PLAN WP8.7): the LATERALS strategy
-// (DoRemoveAll_1ph_Laterals, ReduceAlgs.pas:449): every 1-phase lateral
+// Reduce coverage: the LATERALS strategy
+// (DoRemoveAll_1ph_Laterals): every 1-phase lateral
 // whose to-bus carries a single node is eliminated; with the default
 // `Set KeepLoad=Yes` (ReduceLateralsKeepLoad) its loads are re-parented
 // onto the lateral's head bus with `Bus1=<head> kV=<head kVLN>`

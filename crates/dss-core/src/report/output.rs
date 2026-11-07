@@ -1,4 +1,4 @@
-//! Output-path machinery for Phase-8 reports (Pascal `DoExportCmd`'s filename
+//! Output-path machinery for the reports (Pascal `DoExportCmd`'s filename
 //! resolution + `DSS.OutputDirectory` / `DSS.CircuitName_`).
 //!
 //! Pascal builds the default report path as

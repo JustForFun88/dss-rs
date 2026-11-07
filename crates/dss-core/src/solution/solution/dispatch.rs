@@ -16,8 +16,7 @@ use super::time_series::{
 };
 use super::{SolveEnv, SolveMode, SolveResult};
 
-/// Pascal `TSolutionObj.Solve`: the mode dispatcher (Phase 3: Snapshot and
-/// Direct; the rest report error 481/482 style messages).
+/// Pascal `TSolutionObj.Solve`: the mode dispatcher.
 pub fn solve(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     ckt.is_solved = false;
     ckt.solution_was_attempted = true;
@@ -40,8 +39,8 @@ pub fn solve(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     crate::solution::meters::sync_seasonal_rating_idx(ckt, env.store);
 
     // Grid-forming inverter mode is fully ported: power-flow / time-series /
-    // direct / harmonic (WPG.13) plus the dynamic-model GFM branch
-    // (`DoDynamicMode`/`IntegrateStates` GFM, WPG.17). `is_dynamic_model` is TRUE
+    // direct / harmonic plus the dynamic-model GFM branch
+    // (`DoDynamicMode`/`IntegrateStates` GFM). `is_dynamic_model` is TRUE
     // for Dynamic AND FaultStudy AND MonteFault (Pascal `Set_Mode`, Solution.pas
     // l.2088-2094); all three now drive the real GFM injection, so there is no
     // refusal. (MonteFault with an *empty* Faults list is an upstream NIL-deref
@@ -149,7 +148,7 @@ pub fn set_voltage_bases(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         // solved L-N magnitude into an L-L kV estimate, snap that to the
         // nearest legal base, and store the matched base back as an L-N value.
         // The scale is upstream's own `√3/1000` written truncated —
-        // `compat::kv_base_search_scale` is its Stage F lane row (the divide
+        // `compat::kv_base_search_scale` is its lane row (the divide
         // below is the full-precision `SQRT3` of the same Pascal statement,
         // identical in both lanes).
         let vref = ckt.buses[b].get_ref(0);
@@ -180,7 +179,7 @@ mod tests {
     const TIE_BASES: [f64; 2] = [12.47, 13.2];
     const TIE_SOURCE_KV: f64 = 12.8248;
 
-    /// The Stage F `kv_base_search_scale` row at the argmin it feeds.
+    /// The `kv_base_search_scale` lane row at the argmin it feeds.
     ///
     /// The truncated literal is 2.93e-5 relative below the `SQRT3/1000` the
     /// same Pascal statement names, and `nearestBasekV` is a *relative*-distance

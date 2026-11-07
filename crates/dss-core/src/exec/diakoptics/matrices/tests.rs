@@ -1,6 +1,6 @@
 //! Unit tests for the four A-Diakoptics matrix builders (`Calc_C_Matrix`,
-//! `Calc_ZLL`, `Calc_ZCC`, `Calc_Y4`) with the D1 structural invariants
-//! recomputed in-test and the D5 drop quirks asserted explicitly. Driven on a
+//! `Calc_ZLL`, `Calc_ZCC`, `Calc_Y4`) with the structural invariants
+//! recomputed in-test and the drop quirks asserted explicitly. Driven on a
 //! tiny hand-checkable 3-phase feeder built inline (no file, no partitioner):
 //! one `Line` acts as the "link" so the contour/ZLL/ZCC/Y4 algebra is exercised
 //! end-to-end. The full-feeder fixture goldens land with the init machine.
@@ -50,7 +50,7 @@ fn to_dense_rc(m: &SparseComplex, nrows: usize, ncols: usize) -> Vec<Complex64> 
     d
 }
 
-// The D5 drop quirks (`zct_keep`/`y4_keep`) pinned directly on the predicates:
+// The drop quirks (`zct_keep`/`y4_keep`) pinned directly on the predicates:
 // the fixture topology (3-phase R+jX lines) never yields a drop-eligible entry,
 // so an integration-level assertion holds vacuously — these exercise the exact
 // keep/drop decision the reproduction turns on.
@@ -106,7 +106,7 @@ fn contours_have_one_plus_and_one_minus_per_column() {
     assert_eq!(contours.ncols(), 3, "contour columns");
     assert_eq!(contours.nzero(), 6, "two entries per column");
 
-    // D1 invariant: each column has exactly one +1 and one -1.
+    // Invariant: each column has exactly one +1 and one -1.
     for col in 0..3 {
         let entries: Vec<_> = contours.cdata.iter().filter(|cd| cd.col == col).collect();
         assert_eq!(entries.len(), 2, "column {col} entry count");
@@ -171,7 +171,7 @@ fn zll_block_is_inverted_link_yprim_self_block() {
 
     let ckt = dss.circuit().unwrap();
     let zll = &ckt.ad.zll;
-    // D1 invariant: ZLL is 3×3 (single link), block-diagonal at offset 0, and
+    // Invariant: ZLL is 3×3 (single link), block-diagonal at offset 0, and
     // equals the inverted self-block placed row-major.
     assert_eq!(zll.nzero(), 9, "3×3 dense block");
     for cd in &zll.cdata {
@@ -208,9 +208,9 @@ fn y4_is_zcc_inverse_modulo_d5_drops() {
     // ZCC = Contoursᵀ·ZCT + ZLL is square with the same order.
     assert_eq!(ckt.ad.zcc.ncols() as usize, n);
 
-    // D1 invariant (a): ZCC assembly re-derived INDEPENDENTLY of the builder's
+    // Invariant (a): ZCC assembly re-derived INDEPENDENTLY of the builder's
     // own SparseComplex.transpose/multiply/add — a dense `Contoursᵀ·ZCT + ZLL`
-    // recomputed from the stored (already D5-dropped) Contours/ZCT/ZLL. This
+    // recomputed from the stored (already dropped) Contours/ZCT/ZLL. This
     // catches a wrong transpose, wrong per-column RHS, or wrong ZLL addition
     // that the circular `Y4·ZCC≈I` (Y4 := invert(ZCC)) cannot.
     let c_dense = to_dense_rc(&ckt.ad.contours, nn, n); // nn×3
@@ -234,8 +234,8 @@ fn y4_is_zcc_inverse_modulo_d5_drops() {
         }
     }
 
-    // D1 invariant (b): Y4·ZCC ≈ I (dense; avoids the SparseComplex.multiply drop
-    // quirk so we test the invert itself). The D5 Y4 drop only removes entries
+    // Invariant (b): Y4·ZCC ≈ I (dense; avoids the SparseComplex.multiply drop
+    // quirk so we test the invert itself). The Y4 drop only removes entries
     // with re == 0, of which a real impedance inverse has none — so the dense
     // product is the identity to invert precision.
     let y4 = to_dense(&ckt.ad.y4, n);
@@ -251,13 +251,10 @@ fn y4_is_zcc_inverse_modulo_d5_drops() {
         }
     }
 
-    // The D5 Y4 keep predicate is pinned directly by `d5_y4_keep_ignores_imag_part`;
+    // The Y4 keep predicate is pinned directly by `d5_y4_keep_ignores_imag_part`;
     // here we confirm the built matrix is consistent with it (every stored entry
     // has re ≠ 0 — a real-impedance inverse has no pure-imaginary entry to drop).
     for cd in &ckt.ad.y4.cdata {
-        assert!(
-            y4_keep(cd.value),
-            "every stored Y4 entry satisfies y4_keep (D5)"
-        );
+        assert!(y4_keep(cd.value), "every stored Y4 entry satisfies y4_keep");
     }
 }

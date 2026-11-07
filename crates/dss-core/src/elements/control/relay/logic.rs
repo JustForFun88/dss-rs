@@ -3,14 +3,12 @@
 //! solved state (currents / terminal voltages / terminal power), evaluates its
 //! protection characteristic, and arms/queues `OPEN`/`CLOSE`/`RESET` actions.
 //!
-//! **r4133 (WP-U2.3):** the overcurrent logic is a per-phase state machine with a
-//! single-phase (`SinglePhTrip`) and a three-phase (ganged) branch, closed-phase
-//! sampling-gate (B4), `MaxOperatingCount` curve selection, single-count inst trip
-//! (D3), and descriptive relay targets (E2). The other sub-types are ganged-only:
-//! they drive the `IdxMultiPh` slot of the per-phase arrays (B1) but their sensing
-//! logic is unchanged from r4088 (verified by the r4088↔r4133 method diff — only
-//! the `^[IdxMultiPh]` indexing + property renames moved). `VoltageLogic` gains
-//! closed-phase-only OV/UV extrema (B2).
+//! The overcurrent logic is a per-phase state machine with a single-phase
+//! (`SinglePhTrip`) and a three-phase (ganged) branch, a closed-phase sampling
+//! gate, `MaxOperatingCount` curve selection, a single-count inst trip, and
+//! descriptive relay targets. The other sub-types are ganged-only: they drive
+//! the `IdxMultiPh` slot of the per-phase arrays. `VoltageLogic` takes its OV/UV
+//! extrema over closed phases only.
 
 use num_complex::Complex64;
 
@@ -81,7 +79,7 @@ impl Relay {
         // Pascal `cBuffer` is 1-based (`cBuffer^[i+CondOffset]`); keep 1-based math.
         let cur = |i: usize| cbuffer.get(i - 1).copied().unwrap_or(Complex64::ZERO);
 
-        // B4: continue sampling if ≥1 phase closed, else exit.
+        // Continue sampling if ≥1 phase closed, else exit.
         if !(1..=n).any(|i| self.present_state[i] == ControlAction::Close) {
             return;
         }
@@ -114,7 +112,7 @@ impl Relay {
             }
             let cmag = csum.norm();
             if self.ground_inst > 0.0 && cmag >= self.ground_inst && max_op == 1 {
-                ground_time = 0.01; // D3: bare inst on first operation
+                ground_time = 0.01; // bare inst on first operation
                 self.dbg_sample(
                     ctx,
                     &format!("Gnd Instantaneous Trip: Mag={cmag:.3}, Time={ground_time:.3}"),
@@ -171,7 +169,7 @@ impl Relay {
                 let cmag = cur(i + cond_offset).norm();
                 if self.phase_inst > 0.0 && cmag >= self.phase_inst && self.operation_count[i] == 1
                 {
-                    phase_time = 0.01; // D3: bare inst
+                    phase_time = 0.01; // bare inst
                     self.dbg_sample(
                         ctx,
                         &format!(
@@ -285,7 +283,7 @@ impl Relay {
                 let cmag = cur(i).norm();
                 if self.phase_inst > 0.0 && cmag >= self.phase_inst && self.operation_count[g] == 1
                 {
-                    phase_time = 0.01; // D3: bare inst
+                    phase_time = 0.01; // bare inst
                     self.dbg_sample(
                         ctx,
                         &format!(
@@ -387,7 +385,7 @@ impl Relay {
     }
 
     /// Pascal `TRelayObj.VoltageLogic` (r4133) — definite-time over/under voltage
-    /// (27/59) with a voltage-recovery reclose. **B2:** the OV/UV trip evaluates the
+    /// (27/59) with a voltage-recovery reclose. The OV/UV trip evaluates the
     /// extrema over *closed* phases only (`Vmax_closed`/`Vmin_closed`); the reclose
     /// voltage check still uses all-phase `Vmax`. Ganged-only (drives `IdxMultiPh`).
     pub(super) fn voltage_logic(&mut self, mon: &mut dyn CktElement, ctx: &mut CtrlCtx) {
@@ -1075,7 +1073,7 @@ impl Relay {
         let g = self.idx_multi_ph;
         let (cond_offset, nphases) = self.mon_offset(mon);
         let n = self.state_size();
-        // B4: continue sampling if ≥1 phase closed, else exit.
+        // Continue sampling if ≥1 phase closed, else exit.
         if !(1..=n).any(|i| self.present_state[i] == ControlAction::Close) {
             return;
         }

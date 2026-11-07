@@ -8,19 +8,18 @@
 //! concrete subclasses embed [`InvBasedPceData`] the way [`Generator`] flattens
 //! `GenVars`, and dispatch the virtual hooks through the [`InvBasedPce`] trait.
 //!
-//! Scope (WP7.3 step 1): the base **data** record, the [`InvDynamicVars`]
-//! scalar sub-record (the scalars back PVSystem/Storage properties — `kVDC`,
-//! `kP`, `PITol`, `SafeVoltage`, `AmpLimit`, `AmpLimitGain`, `SafeMode` — so they
-//! must exist before those classes land), and the power-flow-relevant shared
-//! methods (`StickCurrInTerminalArray`, `Get_Presentkvar`, `UsingCIMDynamics`).
-//! The GFL dynamics machinery — the `TInvDynamicVars` arrays +
-//! `SolveDynamicStep`/`SolveModulation`/`InitDynArrays`, the `PICtrl`
-//! PI-controller array, and (WP7.7 step 3b) the embedded [`DynEqPceData`] memory
-//! that integrates a user `DynamicExp` — landed in WP7.7. The grid-forming-mode
-//! (GFM) power-flow model — `CalcGFMYprim`/`CalcGFMVoltage`, the `GetCurrents`
-//! override, `CheckAmpsLimit` — landed in WPG.13 (snapshot/daily/direct). The
-//! **dynamics-mode** GFM branch (`DoDynamicMode`/`IntegrateStates` GFM,
-//! `FixPhaseAngle`/`VDelta`/`ISPDelta` black-start droop) landed in WPG.17.
+//! Scope: the base **data** record, the [`InvDynamicVars`] scalar sub-record
+//! (the scalars back PVSystem/Storage properties — `kVDC`, `kP`, `PITol`,
+//! `SafeVoltage`, `AmpLimit`, `AmpLimitGain`, `SafeMode`), and the
+//! power-flow-relevant shared methods (`StickCurrInTerminalArray`,
+//! `Get_Presentkvar`, `UsingCIMDynamics`). The GFL dynamics machinery: the
+//! `TInvDynamicVars` arrays + `SolveDynamicStep`/`SolveModulation`/`InitDynArrays`,
+//! the `PICtrl` PI-controller array, and the embedded [`DynEqPceData`] memory
+//! that integrates a user `DynamicExp`. The grid-forming-mode (GFM) power-flow
+//! model (snapshot/daily/direct): `CalcGFMYprim`/`CalcGFMVoltage`, the
+//! `GetCurrents` override, `CheckAmpsLimit`. The **dynamics-mode** GFM branch:
+//! `DoDynamicMode`/`IntegrateStates` GFM, `FixPhaseAngle`/`VDelta`/`ISPDelta`
+//! black-start droop.
 //!
 //! [`Generator`]: crate::elements::pc::generator::Generator
 
@@ -53,7 +52,7 @@ pub enum Connection {
 
 /// Pascal `TInvDynamicVars` (`Shared/InvDynamics.pas`) — the per-inverter
 /// dynamics/GFM state record. Scalars back catalog properties; per-phase arrays
-/// and methods are the GFL dynamics machinery (WP7.7 step 2b).
+/// and methods are the GFL dynamics machinery.
 #[derive(Debug, Clone)]
 pub struct InvDynamicVars {
     /// `iMaxPPhase` — max amps per phase (dynamics target).
@@ -101,7 +100,7 @@ pub struct InvDynamicVars {
     /// `SafeMode` — inverter entered safe mode (property `SafeMode`).
     pub safe_mode: bool,
 
-    // --- per-phase array fields (WP7.7 step 2b; GFL dynamics) ---
+    // --- per-phase array fields (GFL dynamics) ---
     // `VDelta` (GFM-only) is intentionally absent.
     /// `Vgrid` — grid voltage at the point of connection per phase (polar).
     pub vgrid: Vec<Polar>,
@@ -116,7 +115,7 @@ pub struct InvDynamicVars {
     /// `VDelta` — GFM black-start voltage delta per phase (droop control).
     pub v_delta: Vec<f64>,
     /// `ISPDelta` — GFM current-target delta per phase (black-start / droop;
-    /// ramped by the dynamics-mode GFM `IntegrateStates`, WPG.17).
+    /// ramped by the dynamics-mode GFM `IntegrateStates`).
     pub isp_delta: Vec<f64>,
     /// `AngDelta` — phase-angle correction (GFM `FixPhaseAngle`).
     pub ang_delta: Vec<f64>,
@@ -446,7 +445,7 @@ pub struct InvBasedPceData {
     /// `varMode` — constant PF vs kvar-specified ([`VarMode`]).
     pub var_mode: VarMode,
 
-    // InvControl/ExpControl mode flags (set by the controls, WP7.5).
+    // InvControl/ExpControl mode flags (set by the controls).
     /// `VWMode` — under volt-watt control (InvControl).
     pub vw_mode: bool,
     /// `VVMode` — under volt-var control (InvControl).
@@ -483,7 +482,7 @@ pub struct InvBasedPceData {
     /// `Connection` — wye/delta.
     pub connection: Connection,
 
-    // Shape references (snapshot-clone + typed Idx, the WP4.2/WP5.3 pattern).
+    // Shape references (snapshot-clone + typed Idx).
     /// `YearlyShapeObj` name.
     pub yearly_shape: String,
     /// `DailyShapeObj` name.
@@ -559,11 +558,11 @@ pub struct InvBasedPceData {
     pub current_limited: bool,
 
     /// `UserModelNameStr` — user model name; a `.wasm` value loads through the
-    /// sandboxed WASM ABI (`WASM_USERMODELS_PLAN.md` §WP-WM.4, §2.4), a native-DLL
-    /// name warns-and-falls-back. Stored for the dump + deferred load.
+    /// sandboxed WASM ABI, a native-DLL name warns-and-falls-back. Stored for the
+    /// dump + deferred load.
     pub user_model_name: String,
     /// `UserModelEditStr` — user model edit string, forwarded to the loaded WASM
-    /// model's `edit` (WASM_USERMODELS §WP-WM.4).
+    /// model's `edit`.
     pub user_model_edit: String,
 
     /// `FirstSampleAfterReset`.
@@ -712,7 +711,7 @@ impl Default for InvBasedPceData {
 }
 
 /// The `TInvBasedPCE` virtual hooks the concrete inverter PC elements override.
-/// Implemented by PVSystem (WP7.3 step 2) and Storage (WP7.4); the base
+/// Implemented by PVSystem and Storage; the base
 /// `Is*`/`GetPFPriority` defaults mirror the Pascal base bodies (all `False`).
 /// The abstract behavioral hooks (`SetPFPriority`/`CheckOLInverter`/
 /// `SetNominalDEROutput`) are added with the concrete classes that implement

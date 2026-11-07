@@ -15,7 +15,7 @@ define_properties! {
         .flags(PropFlags::NO_DEFAULT | PropFlags::UNITS_OHM_PER_LENGTH);
     // dss_capi 0.15.x new prop (CNData.pas `SemiconLayer = 5`): selects the CN
     // capacitance formula. Default `true` = the classic `ln(RadOut/RadIn)`,
-    // preserving 0.14.5 numerics (UPGRADE_PLAN.md WP-U1.4).
+    // preserving 0.14.5 numerics.
     5  SEMICONLAYER => PropDef::boolean("SemiconLayer");
     6  EPSR         => PropDef::double("EpsR");
     7  INSLAYER     => PropDef::double("InsLayer")

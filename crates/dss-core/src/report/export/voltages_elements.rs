@@ -73,7 +73,7 @@ fn write_element_voltages(
     // Pascal increments it before use, so the printed value is 1-based).
     let mut k = 0usize;
     // Pascal writes `pElem.FullName` (`Class.Name`) unquoted; the comparator
-    // matches identifiers case-insensitively (PHASE8_PLAN §2.3).
+    // matches identifiers case-insensitively.
     s.push_str(&format!("{name},{nterm}"));
     for j in 0..nterm {
         s.push_str(&format!(",{},", j + 1)); // Terminal

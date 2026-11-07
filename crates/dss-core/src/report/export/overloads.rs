@@ -15,7 +15,7 @@ use crate::support::mathutil::SymComp;
 
 /// Build the `Export Overloads` body (Pascal `ExportOverloads`). Walks the
 /// PDElements (terminal 1 only) calling the mutating `GetCurrents`/`Power`
-/// getters (PHASE8_PLAN §2.1); capacitors are skipped (Pascal
+/// getters; capacitors are skipped (Pascal
 /// `(CLASSMASK and DSSObjType) <> CAP_ELEMENT`).
 pub(crate) fn export_overloads(
     classes: &mut [DssClass],
@@ -39,7 +39,7 @@ pub(crate) fn export_overloads(
             return;
         }
         elem.compute_iterminal(sys, node_v);
-        // Seasonal ratings (dss_capi 0.15.x `55400a29`, WP-U1.5 E2): Pascal
+        // Seasonal ratings (dss_capi 0.15.x `55400a29`): Pascal
         // `PdElem.GetRatings(iNormal, iEmerg)` — the globally-synced season
         // index overrides norm/emerg for any PDElement with `NumAmpRatings > 1`.
         let (norm_amps, emerg_amps) = elem.loading_ratings(seasonal_idx);

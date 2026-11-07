@@ -13,8 +13,8 @@ use crate::report::format;
 
 /// Build the `Export Unserved` body (Pascal `ExportUnserved`). Walks the Loads
 /// calling the mutating `Unserved`/`ExceedsNormal` criteria (they recompute the
-/// per-phase voltage from the present solution and latch `EEN_Factor`/`UE_Factor`
-/// — PHASE8_PLAN §2.1). `ue_only` selects `Unserved` (emergency criterion) over
+/// per-phase voltage from the present solution and latch `EEN_Factor`/`UE_Factor`).
+/// `ue_only` selects `Unserved` (emergency criterion) over
 /// `ExceedsNormal` (normal criterion). The circuit voltage minimums seed the
 /// criteria when a load defines none of its own.
 pub(crate) fn export_unserved(

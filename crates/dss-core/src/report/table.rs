@@ -1,5 +1,5 @@
-//! F-FMT step 2 (`DE_PASCALIZE_PLAN.md` Part IV.2 §F-FMT): the fixed-width
-//! `Show` reports assembled as **row data**, rendered by the lane.
+//! The fixed-width `Show` reports assembled as **row data**, rendered by the
+//! lane.
 //!
 //! Pascal's `ShowResults.pas` writes its tables by hand — `Pad(S, W)`,
 //! `PadDots(S, W)` and `Format('%W.Df', …)` interleaved with literal spaces and
@@ -21,7 +21,7 @@
 //!   each column from its own content.
 //!
 //! Both are always compiled; `crate::compat::render_rows` selects one
-//! (the Stage F mechanism — see `compat`'s module doc).
+//! (see `compat`'s module doc).
 //!
 //! # Why the default kernel cannot lose a token
 //!
@@ -42,7 +42,7 @@
 //! What remains lane-visible is padding — and the one case where padding is
 //! *not* cosmetic: a text that overflows its Pascal width glues onto its
 //! neighbour when the separator is empty (`Show BusFlow`'s
-//! `Pad(name, 0 + 2) + IntToStr(term)`, F.4b). The parity kernel reproduces the
+//! `Pad(name, 0 + 2) + IntToStr(term)`). The parity kernel reproduces the
 //! glue; the default kernel's columns are sized from content, so it never glues.
 //! That difference is a *lane row*, already enumerated at the goldens that
 //! observe it, and `tests::overflow_glue_is_the_only_token_difference` pins
@@ -212,8 +212,7 @@ pub fn render_rows_pad_impl(rows: &[Row]) -> String {
 }
 
 /// Size every column from its own content — the **default kernel** of the
-/// `Show` table layout ([`crate::compat::render_rows`]), F-FMT step 2's table
-/// crate.
+/// `Show` table layout ([`crate::compat::render_rows`]).
 ///
 /// `comfy-table` 7 with the `NOTHING` preset: no borders, no separator lines, no
 /// colour, and [`ContentArrangement::Disabled`] so a wide cell widens its column

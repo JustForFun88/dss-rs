@@ -1,4 +1,4 @@
-//! Exec-layer integration tests for the PVSystem element (WP7.3 step 2):
+//! Exec-layer integration tests for the PVSystem element:
 //! the power-flow solve path and the deferred-behavior guards.
 
 use crate::exec::Dss;
@@ -55,7 +55,7 @@ fn pvsystem_gfm_mode_solves() {
 /// "must be a power conversion element (Load or Generator)!" error + the singular
 /// Y it left behind (the `Test/PVSystemTest.dss` failure; that case stays in
 /// `skipped_unsupported` only because of its later Export/Plot commands, so it
-/// does not guard this fix) — audit-tests follow-up.
+/// does not guard this fix).
 #[test]
 fn pvsystem_accepts_mode3_monitor() {
     let mut dss = Dss::new();

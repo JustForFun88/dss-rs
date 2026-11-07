@@ -62,7 +62,7 @@ impl ClassProps {
         // `Dss::refresh_render_caches_for_save` before a `Save`). The 0.14.5
         // suppression stays for
         // the JSON export/load and the schema (`PropFlags::SILENT_READ_ONLY`,
-        // which documents all four readers). RP3.8.
+        // which documents all four readers).
         if pd.flags.contains(PropFlags::SILENT_READ_ONLY)
             && !pd.flags.contains(PropFlags::RENDERS_LIVE_RESULT)
         {

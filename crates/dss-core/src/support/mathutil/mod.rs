@@ -66,8 +66,9 @@ impl SymComp {
     /// truncated `sin 60°` literal plus a numerically *inverted* `Ap2s`, which
     /// together reproduce official OpenDSS's rounding.
     ///
-    /// **Not a compat site, and not selected in either lane** (Stage F row 3,
-    /// resolved as *no split*): `mathutil.pas:548` ends its initialization with
+    /// **Not a compat site, and not selected in either lane** (the *sym
+    /// components* row of the `compat` inventory, resolved as *no split*):
+    /// `mathutil.pas:548` ends its initialization with
     /// `SelectAs2pVersion(False)`, so the pinned dss_capi 0.14.5 oracle uses
     /// [`Self::precise`], that pair is reachable there only through the
     /// `DSSCompatFlag.BadPrecision` env flag (`CAPI_DSS.pas:315`) which no gating
@@ -81,12 +82,11 @@ impl SymComp {
     /// *numerically inverting* that matrix (`:562-564`). So r4133 transforms
     /// phase quantities with a measurably different matrix, and every 012
     /// quantity the live corpus gate compares against that channel carries an
-    /// extra **absolute** floor term for it (`GOLDEN_REBASE_PLAN.md` G1.3b; the
-    /// derivation and the measured constant live in `tests/TOLERANCE_NOTES.md`
-    /// §G1.3b and are re-derived on every run by `harness::seq_floors`, which
-    /// recovers the matrix difference by pushing the three unit basis vectors
-    /// through both variants). `tests::sym_comp_official_vs_precise_gap_is_the_
-    /// truncated_sin60_constant` pins the 4.50e-10 relative gap on one vector —
+    /// extra **absolute** floor term for it (re-derived on every run by
+    /// `harness::seq_floors`, which recovers the matrix difference by pushing
+    /// the three unit basis vectors through both variants).
+    /// `tests::sym_comp_official_vs_precise_gap_is_the_truncated_sin60_constant`
+    /// pins the 4.50e-10 relative gap on one vector —
     /// the same analytic constant seen on a single input. Deleting this variant
     /// would delete the model of a gating oracle; see `dss_core::compat`'s
     /// module header.
@@ -190,10 +190,9 @@ pub fn parallel_z(z1: Complex64, z2: Complex64) -> Complex64 {
 }
 
 /// In-place inversion of a real square matrix in column-major order (Pascal
-/// `ETKInvert`), through the Stage F lane seam: the parity kernel is the same
-/// no-row-exchange algorithm as [`CMatrix::invert`], the default kernel pivots
-/// partially — see [`compat::etk_invert`]. Pascal error code 2 (singular) maps
-/// to `Err`.
+/// `ETKInvert`) through [`compat::etk_invert`]: the same no-row-exchange
+/// algorithm as [`CMatrix::invert`], one shared kernel in both lanes. Pascal
+/// error code 2 (singular) maps to `Err`.
 pub fn etk_invert(a: &mut [f64], norder: usize) -> Result<(), super::cmatrix::SingularMatrix> {
     compat::etk_invert(a, norder)
 }

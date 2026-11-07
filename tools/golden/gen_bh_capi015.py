@@ -1,10 +1,10 @@
 """Pin the default BH-curve props (Transformer/AutoTrans) against **capi015**.
 
-dss_capi 0.15.x r4064 (commit `90962ae8`, WP-U1.6 C6) adds three `Unused`
+dss_capi 0.15.x r4064 (commit `90962ae8`) adds three `Unused`
 GICharm data props — `BHpoints`/`BHcurrent`/`BHflux` — to both transformer
 classes. Only the DEFAULT state is oracle-probable: parsing a non-empty
-`BHcurrent`/`BHflux` **segfaults** the capi015 backend (an upstream crash in the
-`Unused` DoubleVArray parse path — UB, not reproduced; the port parses safely
+`BHcurrent`/`BHflux` **segfaults** the capi015 backend (an OpenDSS crash in the
+`Unused` DoubleVArray parse path — UB, not reproduced. This engine parses safely
 and is pinned for the set-state by the Rust unit tests
 `transformer::tests::bh_curve_props_parse_and_store` + the AutoTrans sibling).
 
@@ -75,7 +75,7 @@ def main() -> None:
         full = run_scenario(d, sc)
         # Keep only the three BH props (the rest are 0.14.5-identical, pinned by
         # the class's own default-oracle golden). Match the oracle's canonical
-        # case (AllPropertyNames), then relabel to the porting-plan casing.
+        # case (AllPropertyNames), then relabel to this engine's casing.
         by_lower = {k.lower(): (k, v) for k, v in full["properties"].items()}
         full["properties"] = {name: by_lower[name.lower()][1] for name in BH}
         OUT_DIR.joinpath(f"{cls}.json").write_text(

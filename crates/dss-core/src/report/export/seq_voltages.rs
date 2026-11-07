@@ -1,7 +1,7 @@
 //! `Export SeqVoltages` (Pascal `ExportResults.pas` `ExportSeqVoltages`): per-bus
 //! symmetrical-component voltages — `V1`, p.u., base kV (line-to-line), `V2`,
 //! `%V2/V1`, `V0`, `%V0/V1`, residual voltage, and `%NEMA` unbalance. Read-only
-//! over the solved circuit (PHASE8_PLAN §2.1).
+//! over the solved circuit.
 
 use num_complex::Complex64;
 

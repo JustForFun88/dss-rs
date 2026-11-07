@@ -1,6 +1,6 @@
 use crate::exec::*;
 
-/// The micro radial of PHASE6_PLAN §1.2 `meter_zone_micro`: one meter on the
+/// The micro radial `meter_zone_micro`: one meter on the
 /// head line walks the whole feeder. Zone branches/ends/PCE transcribed from
 /// the oracle (dss-python 0.15.7 `Meters.AllBranchesInZone` /
 /// `AllEndElements` / `ZonePCE`).
@@ -261,22 +261,9 @@ fn branch_customers(dss: &Dss, full: &str) -> (i32, i32) {
     panic!("element {full} not found");
 }
 
-/// `MakeBusList` must not cost the circuit its meter zones (GOLDEN_REBASE
-/// G1.6b/D9). `TDSSCircuit.ReProcessBusDefs` rebuilds them in its own tail —
-/// r4133 `Common/Circuit.pas:2411` `DoResetMeterZones(ActorID);  // Fix up meter
-/// zones to correspond`, capi `Common/Circuit.pas:2246` — immediately before
-/// `BusNameRedefined := False`. The port used to hoist that reset into
-/// `build_y_matrix`, so the `MakeBusList` verb
-/// (`ExecCommands.pas` → [`Dss::do_make_bus_list_cmd`]) consumed the flag and
-/// the following `solve` skipped the rebuild: every meter kept the empty zone it
-/// was created with. `Test/indmachtest/Master.DSS` (`Redirect EnergyMeter.DSS` →
-/// `MakeBusList` → `Buscoords`) is the corpus case that exposed it.
-///
-/// Both oracles on this five-command circuit report `Line.l1` `Numcustomers` 1 /
-/// `Totalcustomers` 2 and `Line.l2` `Numcustomers` 1 / `Totalcustomers` 1 with
-/// `ParentPDElement` = `Line.l1`; the port reported 0 / 0 and no parent with
-/// `MakeBusList` in the script, and the oracle numbers without it. The assertion
-/// is that both scripts now agree with the oracles.
+/// `MakeBusList` must not cost the circuit its meter zones. The zones are reset
+/// in the tail of [`crate::circuit::Circuit::reprocess_bus_defs`], so the script
+/// with `MakeBusList` reports the same zone customers and parents as without it.
 #[test]
 fn makebuslist_keeps_the_meter_zones() {
     fn build(make_bus_list: bool) -> Dss {

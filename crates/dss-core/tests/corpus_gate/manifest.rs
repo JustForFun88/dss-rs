@@ -1,12 +1,11 @@
 //! Manifest schema + loading for the unified corpus gate.
 //!
-//! Schema **v2** (`UNIFIED_GATE_PLAN.md` §1.2 / Phase C): the retired `oracle`
-//! target-rev field is replaced by `engines: "capi_v0145" | "r4133" | "both"`
-//! (default `"both"`) naming the gating channel(s). `capi_v0145` = the pinned
-//! dss-python 0.15.7 / dss_capi 0.14.5 oracle (`oracle_server.py`, persistent
-//! pool); `r4133` = the official EPRI `OpenDSSDirect.dll` via the in-house
-//! `epri-worker` bridge. `ORACLE_SPECS` is gone. `isolate` (throwaway one-shot
-//! worker; §1.2/§4 Phase B) and `note` (read to enforce `isolate ⇒ note`) remain.
+//! A case's `engines: "capi_v0145" | "r4133" | "both"` (default `"both"`) names
+//! the gating channel(s). `capi_v0145` is the pinned dss-python 0.15.7 /
+//! dss_capi 0.14.5 (`oracle_server.py`, persistent pool). `r4133` is the
+//! official EPRI `OpenDSSDirect.dll` through the `epri-worker` bridge.
+//! `isolate` runs the case on a throwaway one-shot worker, and `note` is read
+//! to enforce `isolate ⇒ note`.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -16,7 +15,7 @@ use serde::Deserialize;
 use crate::harness;
 
 // ---------------------------------------------------------------------------
-// Manifest structs (schema unchanged; `isolate`/`note` additive).
+// Manifest structs.
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
@@ -26,7 +25,7 @@ pub(crate) struct SolvableManifest {
 }
 
 /// One element-specific property-probe spec: compare `element`'s listed
-/// property values (oracle `Properties(p).Val` vs the Rust `?` query).
+/// property values (OpenDSS `Properties(p).Val` against the Rust `?` query).
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct ProbeSpec {
     pub(crate) element: String,
@@ -35,12 +34,11 @@ pub(crate) struct ProbeSpec {
 
 /// One manifest case.
 ///
-/// `deny_unknown_fields` (G1.0 audit settlement): every field below is
-/// `#[serde(default)]`, so without it a misspelled key — `compare_zsc_`,
-/// `compare_zsC` — deserializes cleanly to `false`, the unwired-flag gate never
-/// fires, the lock records the flag as off and the author believes the surface
-/// is on. That is exactly the silent vacuity the G1.0 rails exist to close, so
-/// an unknown key is a load error naming the case.
+/// `deny_unknown_fields`: every field below is `#[serde(default)]`, so without
+/// it a misspelled key (`compare_zsc_`, `compare_zsC`) deserializes cleanly to
+/// `false`, the unwired-flag gate never fires, the lock records the flag as off
+/// and the author believes the surface is on. An unknown key is therefore a
+/// load error naming the case.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct SolvableCase {
@@ -66,7 +64,7 @@ pub(crate) struct SolvableCase {
     /// are not compared (their bare-snapshot sampling is ill-defined).
     #[serde(default)]
     pub(crate) check_meters_monitors: bool,
-    /// Element-specific state channels (CONTROL_COVERAGE_PLAN.md), all opt-in:
+    /// Element-specific state channels, all opt-in:
     /// property probes, PC-element state variables, the cumulative event log,
     /// and the pending control-action queue — compared per step.
     #[serde(default)]
@@ -77,209 +75,141 @@ pub(crate) struct SolvableCase {
     pub(crate) compare_eventlog: bool,
     #[serde(default)]
     pub(crate) compare_ctrlqueue: bool,
-    /// WP8.5b corpus property parity: compare EVERY element's EVERY property
-    /// value (Rust `?`-surface vs oracle `Properties(p).Val`) per step, on top
-    /// of the full-model compare. Off by default (heavy); flipped `true` only on
-    /// families proven fully clean by the `corpus_live_properties` pilot triage.
+    /// Compare every element's every property value (Rust `?` surface against
+    /// OpenDSS `Properties(p).Val`) per step, on top of the full-model compare.
+    /// Off by default (heavy).
     #[serde(default)]
     pub(crate) compare_all_properties: bool,
-    /// WPG.5: compare `DSS.GlobalResult` (`Text.Result`) per step — the AutoAdd
+    /// Compare `DSS.GlobalResult` (`Text.Result`) per step: the AutoAdd
     /// winner + improvement figure. Tokenized via `compare_export`.
     #[serde(default)]
     pub(crate) compare_global_result: bool,
-    /// WPG.5: compare the `<CircuitName_>AutoAddLog.csv` the AutoAdd solve writes.
+    /// Compare the `<CircuitName_>AutoAddLog.csv` the AutoAdd solve writes.
     #[serde(default)]
     pub(crate) compare_autoadd_log: bool,
-    // -- WP-G1 compare-depth surface flags (`GOLDEN_REBASE_PLAN.md` §1.1(d),
-    //    sub-step G1.0). Declared here ONCE for the whole work package so the
-    //    population lock's rigor fingerprint gains its ten tokens in a single
-    //    regen instead of one per surface sub-step (a flag absent from
-    //    `population_lock.rs::rigor()` is invisible to the anti-shrink guard).
+    // -- Compare-depth surface flags. A flag absent from
+    //    `population_lock.rs::rigor()` is invisible to the anti-shrink guard.
     //    Every one is `#[serde(default)]` ⇒ `false`, and none may be set by a
-    //    manifest before its sub-step wires the request + comparator — see
+    //    manifest before its request + comparator are wired: see
     //    [`G1_SURFACE_FLAGS`] and `no_unwired_g1_surface_flag_is_set_in_any_manifest`.
-    /// G1.3a–c: the per-element **derived** channels of the fastdss facade —
+    /// The per-element **derived** channels: `Enabled`,
     /// `VoltagesMagAng`/`CurrentsMagAng`/`Residuals`, `SeqVoltages`/`SeqCurrents`/
-    /// `SeqPowers`, `CplxSeqVoltages`/`CplxSeqCurrents`, `TotalPowers`
-    /// (`.inputs/DSS-Python` `origin/fastdss` `dss/ICktElement.py:53,58-69`
-    /// `_columns`; r4133 transport `DDLL/DCktElement.pas` `CktElementV`).
-    ///
-    /// **Live since G1.3a** (`wired: true` in [`G1_SURFACE_FLAGS`]): the flag
-    /// today carries all **thirteen** fields — `Enabled` + the three polar
-    /// channels (G1.3a, `DDLL/DCktElement.pas:1058`/`:1082`/`:827`), the three
-    /// symmetrical components (G1.3b) and, since G1.3c (2026-09-06), the two
-    /// `CplxSeq*` plus `TotalPowers`; every sub-step extended this same flag, so
-    /// a case that opts in now gains all of them at once.
+    /// `SeqPowers`, `CplxSeqVoltages`/`CplxSeqCurrents` and `TotalPowers`.
+    /// A case that opts in compares all of them.
     #[serde(default)]
     pub(crate) compare_derived: bool,
-    /// G1.3d: the per-element **discrete extras** — `PhaseLosses`, `NodeOrder`,
+    /// The per-element **discrete extras**: `PhaseLosses`, `NodeOrder`,
     /// `EnergyMeter`, `OCPDevType`/`OCPDevIndex`, `HasVoltControl`/
     /// `HasSwitchControl`, `NumControls`, `NumTerminals`/`NumPhases`/
-    /// `NumConductors` (`origin/fastdss` `dss/ICktElement.py:35-38,46-52,56,69`;
-    /// r4133 `DDLL/DCktElement.pas` `CktElementI`/`CktElementS`).
-    ///
-    /// **Live since G1.3d(i)** (`wired: true` in [`G1_SURFACE_FLAGS`]), and
-    /// **complete since G1.3d(ii)** (2026-09-05). G1.3d(i) brought the four pure
-    /// scalars `NumTerminals`/`NumConductors`/
-    /// `NumPhases` (r4133 `DDLL/DCktElement.pas:139`/`:144`/`:149`, `CktElementI`
-    /// arms 0..2; capi `CAPI/CAPI_CktElement.pas:182-211`) and `EnergyMeter`
-    /// (`:442`, `CktElementS(4)`; capi `:672-687`), plus `NodeOrder`
-    /// (`:1032-1056`, `CktElementV(17)`; capi `CAPI/CAPI_CktElement.pas:885-917`) on
-    /// elements that are `Enabled` **and** carry `NumTerminals > 0` — the two
-    /// conditions under which neither transport dereferences a nil `NodeRef`.
-    /// G1.3d(ii) widened this same flag with `PhaseLosses`
-    /// (`CktElementV(6)`; capi `CAPI/CAPI_Alt.pas:449-467`) and the
-    /// control-derived extras `OCPDevType`/`OCPDevIndex`,
-    /// `HasVoltControl`/`HasSwitchControl` and `NumControls`
-    /// (`CktElementI` arms 7..11) rather than adding its own, so the flag now
-    /// carries the whole surface and the forced population never moved.
+    /// `NumConductors`. `NodeOrder` is read only on elements that are `Enabled`
+    /// and carry `NumTerminals > 0`, the two conditions under which neither
+    /// OpenDSS transport dereferences a nil `NodeRef`.
     #[serde(default)]
     pub(crate) compare_element_extras: bool,
-    /// G1.4: the **bus** surface — `origin/fastdss` `dss/IBus.py:19-53`
-    /// `_columns`; r4133 `DDLL/DBus.pas`, capi `CAPI/CAPI_Alt.pas`.
-    ///
-    /// **Wired by G1.4a (2026-09-04, settlement D8):** `puVoltages`
-    /// (`DBus.pas:399-430` == `CAPI_Alt.pas:2251-2280`), `VMagAngle`
-    /// (`:659-689` == `:2573-2597`), `puVmagAngle` (`:690-723` == `:2540-2571`),
-    /// the per-bus `Nodes`/`kVBase` (`:319-345` == `:2143-2163`) and the
-    /// circuit-level `AllBusVmagPu` (`DCircuit.pas:481-500` ==
-    /// `CAPI_Circuit.pas:521-548`) — the arms both oracles run identically.
-    /// **Wired by G1.4c (2026-09-05, settlement D21):** `SeqVoltages`
-    /// (`DBus.pas:284-317` == `CAPI_Alt.pas:2165-2200`), `CplxSeqVoltages`
-    /// (`:520-547` == `:2367-2398`), `VLL` (`:549-602` == `:2473-2537`) and
-    /// `puVLL` (`:603-658` == `:2400-2470`) — the arms the two oracles do NOT
-    /// run alike (capi clamps `Nvalues > 3`, r4133 does not; both poll
-    /// `FindIdx(jj)` before the `jj > 3` wrap, where capi bails after three
-    /// tries and r4133 loops forever). They ride THIS flag and add none of
-    /// their own: no new capture slot, no new force rule, no
-    /// `population.lock.json` move (`harness::compare_bus_seq_and_vll`).
-    /// **Wired by G1.4b (2026-09-05, settlement D29):** `Distance`
-    /// (`DBus.pas:122-128` == `CAPI_Bus.pas:419-427`) plus the circuit-level
-    /// `AllBusDistances` (`DCircuit.pas:566-580` == `CAPI_Circuit.pas:671-688`)
-    /// and `AllNodeDistances` (`:582-604` == `:697-722`) —
-    /// `harness::compare_bus_distances`.
-    /// **Wired by G1.4d (2026-09-06, settlement D26):** `AllPCEatBus`
-    /// (`DBus.pas:840-866` == `CAPI_Bus.pas:773-788`) and `AllPDEatBus`
-    /// (`:867-898` == `:790-805`), read LAST in the walk because they are its
-    /// only `ModeEffect::Impure` reads on the r4133 channel —
-    /// `harness::compare_bus_at_bus`. They ride this flag too: no capture slot,
-    /// no force rule, no `population.lock.json` move.
-    /// **Nothing is owed on this flag any more**; a further bus quantity would
-    /// extend this list, not the flag set.
+    /// The **bus** surface: `puVoltages`, `VMagAngle`, `puVmagAngle`, the
+    /// per-bus `Nodes`/`kVBase` and the circuit-level `AllBusVmagPu`; the
+    /// sequence and line-to-line voltages `SeqVoltages`, `CplxSeqVoltages`,
+    /// `VLL` and `puVLL` (`harness::compare_bus_seq_and_vll`); `Distance` with
+    /// the circuit-level `AllBusDistances` and `AllNodeDistances`
+    /// (`harness::compare_bus_distances`); and `AllPCEatBus`/`AllPDEatBus`
+    /// (`harness::compare_bus_at_bus`), read last in the walk because they are
+    /// its only `ModeEffect::Impure` reads on the r4133 channel. A further bus
+    /// quantity extends this flag, not the flag set.
     #[serde(default)]
     pub(crate) compare_bus: bool,
-    /// G1.5: the bus **short-circuit** surface — `Zsc1`/`Zsc0`/`ZscMatrix`/
-    /// `YscMatrix`/`Isc`/`Voc` (`origin/fastdss` `dss/IBus.py:30,39,41-44`;
-    /// r4133 `DDLL/DBus.pas`). Split from [`Self::compare_bus`] because it needs
+    /// The bus **short-circuit** surface: `Zsc1`/`Zsc0`/`ZscMatrix`/
+    /// `YscMatrix`/`Isc`/`Voc`. Split from [`Self::compare_bus`] because it needs
     /// a fault study, not just a solve.
     #[serde(default)]
     pub(crate) compare_zsc: bool,
-    /// G1.6: the **meter extras + per-bus reliability** surface — `CalcCurrent`,
+    /// The **meter extras + per-bus reliability** surface: `CalcCurrent`,
     /// `AllocFactors`, `SAIFI`/`SAIFIKW`/`SAIDI`/`CustInterrupts`, the ordered
-    /// zone vectors, the active-section fields and `Meters.Totals`
-    /// (`origin/fastdss` `dss/IMeters.py:13-42` `_columns`; r4133
-    /// `DDLL/DMeters.pas`). **Wired 2026-09-04 by G1.6(i)**; the per-bus
+    /// zone vectors, the active-section fields, `Meters.Totals` and the per-bus
     /// reliability columns (`Bus.Lambda`/`N_interrupts`/`N_Customers`/
     /// `Cust_Interrupts`/`Cust_Duration`/`Int_Duration`/`TotalMiles`/
-    /// `SectionID`, `dss/IBus.py:25-36`) join the same payload at G1.6(ii).
+    /// `SectionID`).
     ///
     /// It is the ONLY flag that also DRIVES an executive command: no vendored
-    /// deck runs `RelCalc` (measured: the two that do are `expect_solve_abort`),
+    /// deck runs `RelCalc` (the decks that do are `expect_solve_abort`),
     /// so without driving it the whole reliability half would compare `0 == 0`.
     /// The gate therefore runs it once per case on the LAST step, on all three
     /// engines (`corpus_gate/runner.rs`); it is not idempotent, so never per
     /// step.
     ///
-    /// Set by the MANIFESTS, never scheduler-forced — and the absence of a
-    /// `force_reliability` beside [`super::scheduler::force_pdelements`] is a
-    /// decision, not an omission: the predicate is "this deck defines an
-    /// EnergyMeter", which is not a manifest field, and forcing the flag
-    /// circuit-wide would fire the executive's `28724 No EnergyMeter Objects
-    /// Defined` on the ~340 meterless cases on three engines. The population is
+    /// Set by the MANIFESTS, never scheduler-forced. There is no
+    /// `force_reliability` beside [`super::scheduler::force_pdelements`]: the
+    /// predicate is "this deck defines an EnergyMeter", which is not a manifest
+    /// field, and forcing the flag circuit-wide would fire the executive's
+    /// `28724 No EnergyMeter Objects Defined` on every meterless case on three
+    /// engines. The population is
     /// therefore the manifest set, which `population.lock.json` records through
     /// `population_lock::rigor`'s `rel=` token; `harness::
     /// assert_reliability_compare_ran` is the fail-on-nothing-ran half.
     #[serde(default)]
     pub(crate) compare_reliability: bool,
-    /// G1.6b: the **PDElements** interface walk — all THIRTEEN
-    /// `IPDElements._columns` fields (`Name`, `AccumulatedL`,
-    /// `ParentPDElement`, `FromTerminal`, `IsShunt`, `Numcustomers`,
-    /// `SectionID`, `FaultRate`, `RepairTime`, `TotalMiles`, `Totalcustomers`,
-    /// `pctPermanent`, `Lambda` — `origin/fastdss` `dss/IPDElements.py:26-40`;
-    /// r4133 `DDLL/DPDELements.pas`) plus the parent's full name, which the
-    /// `ParentPDElement` active-element hijack hands out for free. **Wired
-    /// 2026-09-04**; forced on every live non-`large` case by
+    /// The **PDElements** interface walk: all thirteen `IPDElements` fields
+    /// (`Name`, `AccumulatedL`, `ParentPDElement`, `FromTerminal`, `IsShunt`,
+    /// `Numcustomers`, `SectionID`, `FaultRate`, `RepairTime`, `TotalMiles`,
+    /// `Totalcustomers`, `pctPermanent`, `Lambda`) plus the parent's full name,
+    /// which the `ParentPDElement` active-element hijack hands out for free.
+    /// Forced on every live non-`large` case by
     /// `scheduler::force_pdelements`, so no manifest sets it (the
     /// `compare_all_properties` shape).
     #[serde(default)]
     pub(crate) compare_pdelements: bool,
-    /// G1.7: the **topology** interface — `NumLoops`, `NumIsolatedBranches`/
+    /// The **topology** interface: `NumLoops`, `NumIsolatedBranches`/
     /// `NumIsolatedLoads`, `AllLoopedPairs`, `AllIsolatedBranches`/
-    /// `AllIsolatedLoads` (`origin/fastdss` `dss/ITopology.py:10-20` `_columns`;
-    /// r4133 `DDLL/DTopology.pas`).
+    /// `AllIsolatedLoads`.
     #[serde(default)]
     pub(crate) compare_topology: bool,
-    /// G1.8: the **incidence-matrix** surface — `IncMatrix`, `IncMatrixCols`,
-    /// `IncMatrixRows`, `Laplacian`: the fastdss-branch-only Solution additions
-    /// (`origin/fastdss` `tests/save_outputs.py:187`, fed by the `CalcIncMatrix`
-    /// at `:117`; r4133 `DDLL/DSolution.pas`).
+    /// The **incidence-matrix** surface: `IncMatrix`, `IncMatrixCols`,
+    /// `IncMatrixRows`, `Laplacian`, after a `CalcIncMatrix`.
     #[serde(default)]
     pub(crate) compare_inc_matrix: bool,
-    /// G1.10a: the **run-produced file SET** — the filesystem entries the run
+    /// The **run-produced file SET**: the filesystem entries the run
     /// (`clear → compile → post → n_steps × solve`) creates under the case
     /// directory, as `/`-joined case-dir-relative names, ASCII-case-folded, a
-    /// trailing `/` marking a created directory; contents are NOT read here
-    /// (G1.10b/c). Monitor CSVs contribute their NAMES — discrete metadata
-    /// (circuit, monitor, channel index) — while their data stays out of the
-    /// gate (TESTING.md's unsampled-monitor rule). Upstream never gated this:
-    /// `origin/fastdss` `tests/save_outputs.py:597-609` archives every `*.csv`
-    /// under the run dir and `tests/compare_outputs.py:412-421` *skips* a name
-    /// missing on the other side — new coverage, not catch-up. `save circuit`
-    /// has no corpus surface (no `save` command in the reachable corpus); its
-    /// gate stays the fixture `save_roundtrip.rs::save_forms_structural_file_set`.
+    /// trailing `/` marking a created directory. The same flag compares the
+    /// contents of the files `dss_epri::guard::RUN_FILE_CONTENTS_PATTERNS`
+    /// selects (`harness::run_file_contents`). Monitor CSVs contribute their
+    /// NAMES (circuit, monitor, channel index), while their data stays out of
+    /// the gate: a monitor the run never sampled has no defined content.
+    /// `save circuit` has no corpus surface (no `save` command in the reachable
+    /// corpus); its gate is the fixture `save_roundtrip.rs::save_forms_structural_file_set`.
     #[serde(default)]
     pub(crate) compare_run_files: bool,
-    /// G1.10c: the CONTENTS of the run-created **demand-interval tree**
-    /// (`<OutputDirectory><CaseName>/DI_yr_<year>/*.csv`, r4133
-    /// `Meters/EnergyMeter.pas:3804` `OpenAllDIFiles` → `MakeDIFileName`), the
-    /// subset of the created-file SET above that only a deck enabling
-    /// `Set DemandInterval=` writes (r4133 `Executive/ExecOptions.pas:104`,
-    /// `:812`; capi 0.14.5 `src/Executive/ExecOptions.pas:80`, `:581`). Split
-    /// off from `compare_run_files` because its population is different (four
-    /// of the five producers are `kind=large`, which that surface's force rule
-    /// excludes) and because its cells are compared by quantity class, not as
-    /// a set (`harness::di::compare_di`). Upstream never gated it either:
-    /// `origin/fastdss` `tests/save_outputs.py:64,597` archives the tree and
-    /// `tests/compare_outputs.py:416-421` skips a name the other side lacks.
+    /// The CONTENTS of the run-created **demand-interval tree**
+    /// (`<OutputDirectory><CaseName>/DI_yr_<year>/*.csv`), the subset of the
+    /// created-file SET above that only a deck enabling `Set DemandInterval=`
+    /// writes. Split off from `compare_run_files` because its population is
+    /// different (most producers are `kind=large`, which that surface's force
+    /// rule excludes) and because its cells are compared by quantity class, not
+    /// as a set (`harness::di::compare_di`).
     #[serde(default)]
     pub(crate) compare_di: bool,
-    /// The feature this case covers is not ported yet (GAPS_PLAN.md §2.3/§3.1):
+    /// The feature this case covers is not ported yet:
     /// the gate asserts the Rust engine errors loudly instead of live-comparing.
     #[serde(default)]
     pub(crate) pending: bool,
     /// This deck aborts the solve on BOTH engines; the value is the error
-    /// substring both must produce (see the original `corpus_live.rs` field doc:
-    /// malformed input → Pascal `DSS.SolutionAbort`, or control non-settling →
-    /// `#485 Max Control Iterations Exceeded`). Mutually exclusive with `pending`.
+    /// substring both must produce (malformed input → `DSS.SolutionAbort`, or
+    /// control non-settling → `#485 Max Control Iterations Exceeded`). Mutually
+    /// exclusive with `pending`.
     #[serde(default)]
     pub(crate) expect_solve_abort: Option<String>,
-    /// Work package that ports this case's feature. Mandatory while `pending`
-    /// or `defer_ledger`.
+    /// Names the work that ports this case's feature. Mandatory while
+    /// `pending` or `defer_ledger`.
     #[serde(default)]
     pub(crate) wp: Option<String>,
-    /// Schema v2 (§4 Phase C ladder step c / §5 R9): this case's validated
-    /// behavior was pinned against the **retired capi015 (0.15.0b4)** engine line
-    /// and reproduces on NEITHER surviving channel (0.14.5 lacks the feature or
-    /// differs; r4133-11.0 diverges). It is PARKED from live oracle comparison
-    /// pending its **Phase D ledger** entry (which will re-gate it against r4133
-    /// / capi_v0145 within a pinned envelope). The value is the Phase-D-ledger
-    /// seed cause (mandatory); `wp` names the follow-up. The Rust engine is still
-    /// smoke-run (compile + solve, must converge with no new errors) so a Rust
-    /// *convergence/error* regression never hides here — but a *numeric* regression
-    /// that still converges is NOT caught (no physical value is compared; that
-    /// coverage returns with the Phase D ledger). Membership is preserved — this
-    /// NEVER drops a case (the population lock records the `defer` flag). Mutually
-    /// exclusive with `pending` / `expect_solve_abort`.
+    /// This case reproduces on neither channel (0.14.5 lacks the feature or
+    /// differs, r4133 diverges), so it is parked from the live comparison until
+    /// it has a ledger entry. The value is the cause (mandatory), and `wp` names
+    /// the follow-up. The Rust engine is still smoke-run (compile + solve, must
+    /// converge with no new errors), so a convergence or error regression never
+    /// hides here, but a numeric regression that still converges is NOT caught.
+    /// Membership is preserved: this never drops a case (the population lock
+    /// records the `defer` flag). Mutually exclusive with `pending` /
+    /// `expect_solve_abort`.
     #[serde(default)]
     pub(crate) defer_ledger: Option<String>,
     /// Non-fatal messages this deck's compile produces on the engine and the
@@ -291,30 +221,27 @@ pub(crate) struct SolvableCase {
     /// actual error must match one, and every listed substring must actually
     /// appear. Checked after the compile on the live path and, before the
     /// `post` commands, on the abort path. A non-empty list also sends
-    /// `warn_and_continue` to both oracle channels on the live path. Empty ⇒ zero errors are
+    /// `warn_and_continue` to both OpenDSS channels on the live path. Empty ⇒ zero errors are
     /// tolerated.
     #[serde(default)]
     pub(crate) expect_warnings: Vec<String>,
-    /// Schema v2 (UNIFIED_GATE_PLAN.md §1.2): which live channel(s) gate this
-    /// case. `"capi_v0145"` = the pinned dss-python 0.15.7 / dss_capi 0.14.5
-    /// oracle (persistent `oracle_server.py` pool); `"r4133"` = the official
-    /// EPRI `OpenDSSDirect.dll` r4133 via the in-house `epri-worker` bridge;
-    /// `"both"` (the default) gates on both channels (Phase D). Replaces the
-    /// retired `oracle` target-rev field.
+    /// Which live channel(s) gate this case. `"capi_v0145"` = the pinned
+    /// dss-python 0.15.7 / dss_capi 0.14.5 (persistent `oracle_server.py` pool),
+    /// `"r4133"` = the official EPRI `OpenDSSDirect.dll` r4133 through the
+    /// `epri-worker` bridge, `"both"` (the default) gates on both channels.
     #[serde(default = "default_engines")]
     pub(crate) engines: String,
-    /// WP-AD.4 A-Diakoptics disposition (mandatory on every family-manifest case).
+    /// A-Diakoptics disposition (mandatory on every family-manifest case).
     #[serde(default)]
     pub(crate) ad: Option<String>,
-    /// UNIFIED_GATE Phase B (§1.2/§4): run every engine execution of this case on
-    /// a throwaway one-shot worker process instead of a persistent pool worker.
-    /// Seeded only for a PROVEN worker-state-contamination case (the AutoAdd
-    /// exit-segfault deck is the expected seed); must carry a `note`. Default
-    /// false — absent in every manifest until the contamination proof demands it.
+    /// Run every engine execution of this case on a throwaway one-shot worker
+    /// process instead of a persistent pool worker. Set only for a proven
+    /// worker-state-contamination case, and it must carry a `note`. Default
+    /// false.
     #[serde(default)]
     pub(crate) isolate: bool,
-    /// Free-text provenance. Read (no longer silently dropped) only to enforce
-    /// the `isolate ⇒ note` structural rule; otherwise ignored by the gate.
+    /// Free-text provenance. Read only to enforce the `isolate ⇒ note`
+    /// structural rule, otherwise ignored by the gate.
     #[serde(default)]
     pub(crate) note: Option<String>,
 }
@@ -329,13 +256,13 @@ pub(crate) fn default_engines() -> String {
     "both".to_string()
 }
 
-/// The three legal `engines` channel selectors (schema v2, §1.2).
+/// The three legal `engines` channel selectors.
 pub(crate) const ENGINES_SPECS: &[&str] = &["capi_v0145", "r4133", "both"];
 
 /// One live gating channel a case is compared against.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum EngineChannel {
-    /// Pinned dss-python 0.15.7 / dss_capi 0.14.5 via `oracle_server.py`.
+    /// Pinned dss-python 0.15.7 / dss_capi 0.14.5 through `oracle_server.py`.
     CapiV0145,
     /// Official EPRI `OpenDSSDirect.dll` r4133 via `epri-worker`.
     R4133,
@@ -343,16 +270,16 @@ pub(crate) enum EngineChannel {
 
 impl EngineChannel {
     /// The eventlog-mask spec key for this channel (`harness::compare_eventlog`):
-    /// the pinned oracle needs no masking (`None`); r4133 selects its per-rev row.
+    /// the pinned dss_capi needs no masking (`None`), r4133 selects its per-rev row.
     pub(crate) fn eventlog_spec(self) -> Option<&'static str> {
         match self {
             EngineChannel::CapiV0145 => None,
             EngineChannel::R4133 => Some("r4133"),
         }
     }
-    /// Iteration policy: the pinned oracle is an exact 1:1 contract; r4133 (a
-    /// different engine line) allows the port to converge in FEWER iterations —
-    /// never more (`rust_le_oracle`, the former target-rev precedent, §4 Phase C).
+    /// Iteration policy: the pinned dss_capi must match the iteration count
+    /// exactly. r4133 (a different engine line) allows this engine to converge
+    /// in FEWER iterations, never more (`rust_le_oracle`).
     pub(crate) fn iterations_exact(self) -> bool {
         matches!(self, EngineChannel::CapiV0145)
     }
@@ -360,7 +287,7 @@ impl EngineChannel {
     ///
     /// `EngineChannel` is `pub(crate)` to this one test binary, and the harness
     /// library cannot name a type of it, so the property comparator cannot take it
-    /// (`R4133_PROPS_PLAN.md` §1.2, the channel-threading trap). Every corpus_gate
+    /// (the channel-threading trap). Every corpus_gate
     /// call site maps through here — one mapping, not one per call site.
     pub(crate) fn props_channel(self) -> harness::PropsChannel {
         match self {
@@ -378,20 +305,18 @@ impl SolvableCase {
             "r4133" => vec![EngineChannel::R4133],
             "both" => vec![EngineChannel::CapiV0145, EngineChannel::R4133],
             other => panic!(
-                "{}: unknown engines spec {other:?} — expected one of {ENGINES_SPECS:?} (§1.2)",
+                "{}: unknown engines spec {other:?} — expected one of {ENGINES_SPECS:?}",
                 self.path
             ),
         }
     }
     /// Does this case gate the pinned dss_capi 0.14.5 channel?
     ///
-    /// **No longer a property-forcing predicate.** It used to select the cases
-    /// whose property table was compared (§1.2 kept `compare_all_properties` on
-    /// the capi_v0145 channel only); R4133_PROPS RP4.1 (2026-09-03) unmasked the
-    /// r4133 channel and [`crate::scheduler::force_properties`] now forces
-    /// properties on every live non-`large` case regardless of `engines`. What is
-    /// left is the `DSS_LIVE_PROPS` pilot in `corpus_gate.rs`, which drives the
-    /// pinned oracle directly and therefore still has to skip r4133-only cases.
+    /// Not a property-forcing predicate:
+    /// [`crate::scheduler::force_properties`] forces properties on every live
+    /// non-`large` case regardless of `engines`. The reader is the
+    /// `DSS_LIVE_PROPS` pilot in `corpus_gate.rs`, which drives the pinned
+    /// dss_capi directly and therefore skips r4133-only cases.
     pub(crate) fn gates_capi(&self) -> bool {
         matches!(self.engines.as_str(), "capi_v0145" | "both")
     }
@@ -498,12 +423,12 @@ pub(crate) struct Family {
     pub(crate) required: &'static [&'static str],
     /// Per-family structural invariant, applied to every case.
     pub(crate) check_case: fn(&SolvableCase),
-    /// WP8.5b: gate EVERY element's EVERY property value on every live case in
-    /// this family (only vs the pinned capi oracle).
+    /// Gate every element's every property value on every live case in this
+    /// family.
     pub(crate) compare_all_properties: bool,
 }
 
-/// Oracle-free structural guard shared by the families: deck dir ↔ manifest
+/// Engine-free structural guard shared by the families: deck dir ↔ manifest
 /// bijection, the pinned coverage floor, `wp` present on every pending case,
 /// valid `ad`/`engines`/`isolate` fields, and the family's per-case invariant.
 pub(crate) fn family_manifest_is_complete(fam: &Family) {
@@ -541,21 +466,21 @@ pub(crate) fn family_manifest_is_complete(fam: &Family) {
         if c.pending {
             assert!(
                 c.wp.is_some(),
-                "{}: pending case must name the WP that ports it (GAPS_PLAN.md §3.1)",
+                "{}: pending case must name in `wp` the work that ports it",
                 c.path
             );
         }
         assert_defer_ledger_is_valid(&format!("{}:{}", fam.name, c.path), c);
         assert!(
             ENGINES_SPECS.contains(&c.engines.as_str()),
-            "{}: unknown engines spec {:?} — expected one of {ENGINES_SPECS:?} (§1.2)",
+            "{}: unknown engines spec {:?} — expected one of {ENGINES_SPECS:?}",
             c.path,
             c.engines
         );
         assert_isolate_carries_note(&format!("{}:{}", fam.name, c.path), c);
         let ad = c.ad.as_deref().unwrap_or_else(|| {
             panic!(
-                "{}:{}: missing mandatory `ad` disposition (WP-AD.4 — one of \
+                "{}:{}: missing mandatory `ad` disposition (one of \
                  full|pf|off:<reason>)",
                 fam.name, c.path
             )
@@ -570,17 +495,17 @@ pub(crate) fn family_manifest_is_complete(fam: &Family) {
     }
 }
 
-/// Schema v2 structural rule (§4 Phase C step c): a `defer_ledger` case carries a
-/// non-empty cause + a `wp`, and never also claims `pending`/`expect_solve_abort`.
+/// Structural rule: a `defer_ledger` case carries a non-empty cause + a `wp`,
+/// and never also claims `pending`/`expect_solve_abort`.
 pub(crate) fn assert_defer_ledger_is_valid(label: &str, c: &SolvableCase) {
     if let Some(cause) = &c.defer_ledger {
         assert!(
             !cause.trim().is_empty(),
-            "{label}: `defer_ledger` requires a non-empty Phase-D-ledger-seed cause (§4 Phase C)"
+            "{label}: `defer_ledger` requires a non-empty cause"
         );
         assert!(
             c.wp.is_some(),
-            "{label}: `defer_ledger` requires a `wp` naming the Phase D follow-up"
+            "{label}: `defer_ledger` requires a `wp` naming the follow-up"
         );
         assert!(
             !c.pending && c.expect_solve_abort.is_none(),
@@ -589,159 +514,152 @@ pub(crate) fn assert_defer_ledger_is_valid(label: &str, c: &SolvableCase) {
     }
 }
 
-/// UNIFIED_GATE Phase B structural rule (§1.2): an `isolate: true` case must
+/// Structural rule: an `isolate: true` case must
 /// carry a `note` documenting the proven contamination that justifies it.
 pub(crate) fn assert_isolate_carries_note(label: &str, c: &SolvableCase) {
     if c.isolate {
         assert!(
             c.note.as_deref().is_some_and(|n| !n.trim().is_empty()),
             "{label}: `isolate: true` requires a non-empty `note` documenting the \
-             proven worker-state contamination (UNIFIED_GATE_PLAN §1.2/§4 Phase B)"
+             proven worker-state contamination"
         );
     }
 }
 
 // ---------------------------------------------------------------------------
-// WP-G1 compare-depth surface flags (`GOLDEN_REBASE_PLAN.md` §1.1(d), G1.0).
+// Compare-depth surface flags.
 // ---------------------------------------------------------------------------
 
-/// One WP-G1 compare-depth surface flag: the manifest field name, the sub-step
-/// that owns it, whether its request + comparator are wired yet, and the reader
+/// One compare-depth surface flag: the manifest field name, a short name of
+/// its surface, whether its request + comparator are wired yet, and the reader
 /// that pulls it off a case.
 ///
-/// `wired` is the structural half of the rails. A flag whose surface is not
-/// wired yet is a field the loader accepts and the runtime ignores: the request
-/// builder would not send it, the oracle would return nothing, and the case
-/// would "compare" an empty capture against an empty capture — green, silently
-/// vacuous. Each surface sub-step flips its own row to `true` **in the same
-/// commit** that adds the request field and the comparator (the
+/// A flag whose surface is not wired yet is a field the loader accepts and the
+/// runtime ignores: the request builder would not send it, the OpenDSS engine
+/// would return nothing, and the case would "compare" an empty capture against
+/// an empty capture, green and silently vacuous. A row flips to `true` **in
+/// the same commit** that adds the request field and the comparator (the
 /// `pending ⇒ wp` / `isolate ⇒ note` structural-gate pattern of
 /// [`family_manifest_is_complete`]).
 pub(crate) struct G1Flag {
     /// The `serde` field name, exactly as a manifest spells it.
     pub(crate) name: &'static str,
-    /// The `GOLDEN_REBASE_PLAN.md` sub-step that owns the surface.
+    /// A short name of the surface, named by the refusal.
     pub(crate) sub_step: &'static str,
     /// Is the capture request + comparator in the tree yet?
     pub(crate) wired: bool,
     pub(crate) get: fn(&SolvableCase) -> bool,
 }
 
-/// The whole WP-G1 flag vocabulary, declared once (G1.0). Order matches the
+/// The whole compare-depth flag vocabulary, declared once. Order matches the
 /// declaration order in [`SolvableCase`] and the token order in
 /// `population_lock.rs::rigor()`.
 pub(crate) const G1_SURFACE_FLAGS: &[G1Flag] = &[
-    // Wired by G1.3a (2026-09-04) — request key `derived` in
-    // `engines::build_run_request`, capture in `tools/oracle/oracle_server.py`
-    // + `crates/dss-epri/src/capture.rs`, comparator
-    // `harness::compare_element_derived` behind
-    // `capture_guard::require_capture` in `runner::compare_capture`. G1.3b/c
-    // widen the same flag's surface; the row stays as it is.
+    // Request key `derived` in `engines::build_run_request`, capture in
+    // `tools/oracle/oracle_server.py` + `crates/dss-epri/src/capture.rs`,
+    // comparator `harness::compare_element_derived` behind
+    // `capture_guard::require_capture` in `runner::compare_capture`.
     G1Flag {
         name: "compare_derived",
-        sub_step: "G1.3a-c",
+        sub_step: "element derived channels",
         wired: true,
         get: |c| c.compare_derived,
     },
-    // Wired by G1.3d(i) (2026-09-04) — request key `element_extras` in
-    // `engines::build_run_request`, capture in `tools/oracle/oracle_server.py`
-    // + `crates/dss-epri/src/capture.rs` (`Engine::element_extras` in `dss.rs`
-    // for the four pure scalars; the conditional `NodeOrder` read stays at the
-    // call site), comparator `harness::compare_element_extras` behind
-    // `capture_guard::require_capture` in `runner::compare_capture`. G1.3d(ii)
-    // widens the same flag's surface (`PhaseLosses`, the control-derived
-    // extras); the row stays as it is.
+    // Request key `element_extras` in `engines::build_run_request`, capture in
+    // `tools/oracle/oracle_server.py` + `crates/dss-epri/src/capture.rs`
+    // (`Engine::element_extras` in `dss.rs` for the four pure scalars, the
+    // conditional `NodeOrder` read at the call site), comparator
+    // `harness::compare_element_extras` behind `capture_guard::require_capture`
+    // in `runner::compare_capture`.
     G1Flag {
         name: "compare_element_extras",
-        sub_step: "G1.3d",
+        sub_step: "element discrete extras",
         wired: true,
         get: |c| c.compare_element_extras,
     },
     G1Flag {
         name: "compare_bus",
-        sub_step: "G1.4",
+        sub_step: "bus surface",
         wired: true,
         get: |c| c.compare_bus,
     },
     G1Flag {
         name: "compare_zsc",
-        sub_step: "G1.5",
+        sub_step: "bus short-circuit surface",
         wired: true,
         get: |c| c.compare_zsc,
     },
     G1Flag {
         name: "compare_reliability",
-        sub_step: "G1.6",
+        sub_step: "meter extras and reliability",
         wired: true,
         get: |c| c.compare_reliability,
     },
     G1Flag {
         name: "compare_pdelements",
-        sub_step: "G1.6b",
+        sub_step: "PDElements walk",
         wired: true,
         get: |c| c.compare_pdelements,
     },
     G1Flag {
         name: "compare_topology",
-        sub_step: "G1.7",
+        sub_step: "topology interface",
         wired: true,
         get: |c| c.compare_topology,
     },
     G1Flag {
         name: "compare_inc_matrix",
-        sub_step: "G1.8",
+        sub_step: "incidence matrix",
         wired: true,
         get: |c| c.compare_inc_matrix,
     },
-    // Wired by G1.10a (2026-09-05) — request key `run_files` in
-    // `engines::build_run_request`, capture on both transports from the very
-    // `CorpusGuard` that sweeps the case dir (`tools/oracle/corpus_guard.py`'s
-    // `CorpusGuard.created` + its Rust twin `crates/dss-epri/src/guard.rs`,
-    // read strictly last of the run), comparator
+    // Request key `run_files` in `engines::build_run_request`, capture on both
+    // transports from the very `CorpusGuard` that sweeps the case dir
+    // (`tools/oracle/corpus_guard.py`'s `CorpusGuard.created` + its Rust twin
+    // `crates/dss-epri/src/guard.rs`, read strictly last of the run), comparator
     // `harness::run_files::compare_run_files` behind
     // `capture_guard::require_capture_opt` in `runner::compare_with_result`
     // (an empty created set is a legitimate answer, a missing capture is not).
-    // G1.10b/c read the CONTENTS of what this row lists; the row stays as it is.
-    // G1.10b wired those contents on 2026-09-12 (`harness::run_file_contents`,
-    // selection `dss_epri::guard::RUN_FILE_CONTENTS_PATTERNS`) on this same
-    // flag — no sub-flag, no force-rule change; `compare_di` stays G1.10c's.
+    // The same flag compares the contents of the selected files
+    // (`harness::run_file_contents`, selection
+    // `dss_epri::guard::RUN_FILE_CONTENTS_PATTERNS`). The demand-interval tree
+    // is `compare_di`'s.
     G1Flag {
         name: "compare_run_files",
-        sub_step: "G1.10a",
+        sub_step: "run-produced file set",
         wired: true,
         get: |c| c.compare_run_files,
     },
-    // Wired by G1.10c (2026-09-11, coordinator decision D42) — request key `di`
-    // in `engines::build_run_request`, captured on BOTH transports from the very
-    // `CorpusGuard` classification G1.10a compares as a SET
-    // (`dss_epri::guard::CorpusGuard::created_di_files` + its Python twin
-    // `tools/oracle/corpus_guard.py`), copied into the gate's own per-(case,
-    // channel) sidecar and compared cell by cell against the port's tree by
-    // `harness::di::compare_di` behind `capture_guard::require_capture_opt` in
-    // `runner::compare_with_result`. An EMPTY tree is a legitimate answer — the
-    // corpus's sixth `closedi` deck (`Storage-Quasi-Static-Example/Run_Demo1.dss`)
-    // never enables `DemandInterval`, so all three producers write nothing — and
-    // a missing capture is not.
+    // Request key `di` in `engines::build_run_request`, captured on BOTH
+    // transports from the very `CorpusGuard` classification `compare_run_files`
+    // compares as a SET (`dss_epri::guard::CorpusGuard::created_di_files` + its
+    // Python twin `tools/oracle/corpus_guard.py`), copied into the gate's own
+    // per-(case, channel) sidecar and compared cell by cell against this
+    // engine's tree by `harness::di::compare_di` behind
+    // `capture_guard::require_capture_opt` in `runner::compare_with_result`. An
+    // EMPTY tree is a legitimate answer (`Storage-Quasi-Static-Example/Run_Demo1.dss`
+    // runs `closedi` but never enables `DemandInterval`, so all three engines
+    // write nothing), and a missing capture is not.
     G1Flag {
         name: "compare_di",
-        sub_step: "G1.10c",
+        sub_step: "demand-interval tree",
         wired: true,
         get: |c| c.compare_di,
     },
 ];
 
 /// Refuse a manifest case that sets a [`G1_SURFACE_FLAGS`] flag whose surface is
-/// not wired yet (G1.0 rails). Shared by the manifest walk below and its
+/// not wired yet. Shared by the manifest walk below and its
 /// synthetic non-vacuity drive.
 pub(crate) fn assert_no_unwired_g1_flag(label: &str, c: &SolvableCase) {
     for f in G1_SURFACE_FLAGS {
         assert!(
             !((f.get)(c) && !f.wired),
-            "{label}: sets `{}`, but that surface is not wired yet ({} owns it). \
+            "{label}: sets `{}`, but that surface ({}) is not wired yet. \
              The request builder would not send it and the comparator does not \
              exist, so the case would compare an empty capture against an empty \
              capture and pass. Flip `G1Flag::wired` in the SAME commit that adds \
-             the capture request + the comparator (GOLDEN_REBASE_PLAN.md §1.1(d)/(f)).",
+             the capture request + the comparator.",
             f.name,
             f.sub_step
         );
@@ -828,8 +746,7 @@ const ASYMMETRIC_REQUIRED: &[&str] = &[
     "autotrans/autotrans_snap.dss",
     "autotrans/midi_autotrans_asym.dss",
     "autotrans/autotrans_gic.dss",
-    // R4133_PROPS RP1.2: the only deck in the corpus that drives an AutoTrans
-    // from an `XfmrCode` (r4133 property 39).
+    // The only deck in the corpus that drives an AutoTrans from an `XfmrCode`.
     "autotrans/autotrans_xfmrcode.dss",
     "gic/gicline_gic.dss",
     "gic/gictransformer_gic.dss",
@@ -901,7 +818,7 @@ const CONTROLS_REQUIRED: &[&str] = &[
     "sensor/sensor_map.dss",
     "upfc/upfc_vreg.dss",
     "upfc/upfc_doubleref.dss",
-    // OG-1.7 orphaned-gaps: UPFC modes 2 (StatCOM) / 3 (Dual) / 5 (DoubleRef Dual).
+    // UPFC modes 2 (StatCOM) / 3 (Dual) / 5 (DoubleRef Dual).
     "upfc/upfc_statcom.dss",
     "upfc/upfc_dual.dss",
     "upfc/upfc_doubleref_dual.dss",
@@ -990,9 +907,9 @@ const MODES_REQUIRED: &[&str] = &[
     "makeposseq/makeposseq_line.dss",
     "makeposseq/makeposseq_xfmr.dss",
     "makeposseq/makeposseq_shunt.dss",
-    // GOLDEN_REBASE G1.4a (D12/D14, 2026-09-04): the GICTransformer arm of the
-    // shunt deck, split into its own `engines: "r4133"` case because capi 0.14.5
-    // is nondeterministic on any deck that instantiates a GICTransformer.
+    // The GICTransformer arm of the shunt deck, its own `engines: "r4133"` case
+    // because capi 0.14.5 is nondeterministic on any deck that instantiates a
+    // GICTransformer.
     "makeposseq/makeposseq_gic.dss",
     "makeposseq/makeposseq_pc.dss",
     "makeposseq/makeposseq_pc_repeat.dss",
@@ -1012,8 +929,7 @@ const MODES_REQUIRED: &[&str] = &[
     "windgen/windgen_dyn.dss",
     "windgen/windgen_dyn_fault.dss",
     "upgrade/upgrade_linecs_eqspacing.dss",
-    // GOLDEN_REBASE G1.5 (2026-09-05, lane `lane-b`): the micro-tier witness
-    // for the bus short-circuit surface. The corpus' four vendored
+    // The micro-tier witness for the bus short-circuit surface. The corpus' vendored
     // fault-study decks are all `kind: "feeder"`, so this is the only case
     // that compares `Zsc1`/`Zsc0`/`ZscMatrix`/`YscMatrix`/`Isc`/`Voc` at the
     // `micro` band — and the only one whose `b2` has an insertion node order
@@ -1056,8 +972,8 @@ pub(crate) const AD_OFF_REASONS: &[&str] = &[
     "ad-nonconvergent",
     // The AD probe has no *baseline*: the normal arm itself (`compile; set
     // controlmode=off; solve mode=snap`, `ad_solve_normal`) does not converge —
-    // and does not converge upstream either, so there is nothing to compare AD
-    // against and nothing to fix in the port. Distinct from `ad-nonconvergent`,
+    // and does not converge on OpenDSS either, so there is nothing to compare AD
+    // against and nothing to fix in this engine. Distinct from `ad-nonconvergent`,
     // which is about the AD arm failing on a singular torn zone.
     "ad-baseline-nonconvergent",
     "ad-singular-zone",
@@ -1076,7 +992,7 @@ pub(crate) fn ad_disposition_is_valid(s: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Oracle-free structural tests (fast; no engine spawned).
+// Engine-free structural tests (fast, no engine spawned).
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -1084,7 +1000,7 @@ fn solvable_now_engines_specs_are_valid() {
     for c in load_solvable() {
         assert!(
             ENGINES_SPECS.contains(&c.engines.as_str()),
-            "{}: unknown engines spec {:?} — expected one of {ENGINES_SPECS:?} (§1.2)",
+            "{}: unknown engines spec {:?} — expected one of {ENGINES_SPECS:?}",
             c.path,
             c.engines
         );
@@ -1133,12 +1049,12 @@ fn modes_manifest_is_complete() {
     family_manifest_is_complete(&MODES);
 }
 
-/// G1.0 rails: no manifest may switch on a WP-G1 surface flag before the
-/// sub-step that owns it has wired the capture request and the comparator.
+/// No manifest may switch on a compare-depth surface flag before its capture
+/// request and comparator are wired.
 ///
 /// Walks all four manifests (`solvable_now` + the three synthetic families), so
-/// the moment a surface sub-step's flag appears in a deck's JSON without its
-/// `G1Flag::wired` flip, the gate names the case and the flag.
+/// the moment a flag appears in a deck's JSON without its `G1Flag::wired` flip,
+/// the gate names the case and the flag.
 #[test]
 fn no_unwired_g1_surface_flag_is_set_in_any_manifest() {
     for c in load_solvable() {
@@ -1151,12 +1067,11 @@ fn no_unwired_g1_surface_flag_is_set_in_any_manifest() {
     }
 }
 
-/// Non-vacuity for the rail above (§1.1(f)): only `compare_topology` is declared
-/// in the manifests today (G1.7, on its seven witness decks —
-/// `scheduler::TOPOLOGY_DECLARED_IN_MANIFEST`), so for the other nine flags the
-/// walk passes on an empty premise. Drive each flag on a synthetic case and
-/// assert the refusal actually fires — and that a wired flag (simulated by
-/// reading the row's own `wired`) is the only thing that lets one through.
+/// Non-vacuity for the rail above: few flags are declared in the manifests
+/// (`compare_topology` on its witness decks,
+/// `scheduler::TOPOLOGY_DECLARED_IN_MANIFEST`), so for the others the walk
+/// passes on an empty premise. Each flag is driven on a synthetic case: the
+/// refusal fires, and only a wired row lets one through.
 #[test]
 fn an_unwired_g1_surface_flag_on_a_case_is_refused() {
     for f in G1_SURFACE_FLAGS {
@@ -1187,7 +1102,7 @@ fn an_unwired_g1_surface_flag_on_a_case_is_refused() {
             let msg = crate::runner::panic_msg(payload);
             assert!(
                 msg.contains(f.name) && msg.contains(f.sub_step) && msg.contains("synthetic"),
-                "{}: refusal must name the flag, its sub-step and the case; got {msg:?}",
+                "{}: refusal must name the flag, its surface and the case; got {msg:?}",
                 f.name
             );
         }
@@ -1215,8 +1130,8 @@ fn set_g1_flag(c: &mut SolvableCase, name: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// GICTransformer decks gate on r4133 alone (GOLDEN_REBASE G1.4a, coordinator
-// decisions D12/D14, 2026-09-04 — see `DIVERGENCES.md` and `TESTING.md`).
+// GICTransformer decks gate on r4133 alone: dss_capi 0.14.5 is nondeterministic
+// on them.
 // ---------------------------------------------------------------------------
 
 /// Every corpus deck that `new`s a `GICTransformer`, relative to
@@ -1225,11 +1140,10 @@ fn set_g1_flag(c: &mut SolvableCase, name: &str) {
 /// Pinned as a closed set, not merely walked, because the per-case scan below
 /// reads only the deck a case names: a GICTransformer hidden one `Redirect`
 /// deeper would slip past it. A new deck here fails this test and forces the
-/// channel review — the element makes the pinned dss_capi 0.14.5 oracle
-/// **nondeterministic across processes** (7 bad runs of 60 with one in the deck,
-/// 0 of 40 without; the whole no-load solve lands elsewhere and `Bus.kVBase` is
-/// punted to 0), while EPRI r4133 is deterministic (80/80 bit-identical), so
-/// such a deck may gate on `r4133` only.
+/// channel review. The element makes the pinned dss_capi 0.14.5
+/// **nondeterministic across processes** (some runs land the whole no-load
+/// solve elsewhere and punt `Bus.kVBase` to 0), while EPRI r4133 is
+/// deterministic, so such a deck may gate on `r4133` only.
 const GICTRANSFORMER_DECKS: &[&str] = &[
     "asymmetric/gic/gic_midi.dss",
     "asymmetric/gic/gictransformer_gic.dss",
@@ -1305,16 +1219,14 @@ fn assert_gictransformer_case_gates_r4133(label: &str, engines: &str) {
     assert_eq!(
         engines, "r4133",
         "{label}: this deck instantiates a GICTransformer, so it must gate on the r4133 channel \
-         ALONE (`engines: \"r4133\"`), not `{engines}`. The pinned dss_capi 0.14.5 oracle \
-         disagrees with ITSELF across fresh processes on such decks (7 bad runs of 60 with the \
-         element, 0 of 40 without — the whole no-load solve lands elsewhere and Bus.kVBase is \
-         punted to 0), and an oracle channel that disagrees with itself cannot gate; r4133 is \
-         deterministic (80/80). GOLDEN_REBASE G1.4a, coordinator decisions D12/D14 — see \
-         DIVERGENCES.md."
+         ALONE (`engines: \"r4133\"`), not `{engines}`. The pinned dss_capi 0.14.5 \
+         disagrees with ITSELF across fresh processes on such decks (some runs land the whole \
+         no-load solve elsewhere and punt Bus.kVBase to 0), and a nondeterministic channel \
+         cannot gate. r4133 is deterministic."
     );
 }
 
-/// **No capi-gated case instantiates a GICTransformer** (D12/D14).
+/// **No capi-gated case instantiates a GICTransformer.**
 ///
 /// Two rails in one test: the corpus-wide census pins WHICH decks carry the
 /// element ([`GICTRANSFORMER_DECKS`]), and the manifest walk pins that every
@@ -1328,7 +1240,7 @@ fn no_capi_gated_case_instantiates_a_gictransformer() {
     assert_eq!(
         found, GICTRANSFORMER_DECKS,
         "the set of corpus decks that `new` a GICTransformer moved. Every one of them must gate \
-         on the r4133 channel alone (capi 0.14.5 is nondeterministic on them — D12/D14); update \
+         on the r4133 channel alone (capi 0.14.5 is nondeterministic on them). Update \
          GICTRANSFORMER_DECKS in the same commit that adds or removes one."
     );
 
@@ -1358,14 +1270,14 @@ fn no_capi_gated_case_instantiates_a_gictransformer() {
     );
 }
 
-/// Non-vacuity for the guard above (§1.1(f)): the scanner must separate a prose
+/// Non-vacuity for the guard above: the scanner must separate a prose
 /// mention from an instantiation, and the refusal must fire on both capi-gating
 /// spellings.
 #[test]
 fn the_gictransformer_channel_guard_refuses_a_capi_gated_deck() {
     // The scanner, driven on a MUTATED COPY of a real deck (never written to
-    // disk): `makeposseq_shunt.dss` mentions the element in prose since G1.4a
-    // split it out, and must read as clean until a `new` line is appended.
+    // disk): `makeposseq_shunt.dss` mentions the element in prose, and must
+    // read as clean until a `new` line is appended.
     let shunt =
         std::fs::read_to_string(corpus_root().join("modes/makeposseq/makeposseq_shunt.dss"))
             .expect("read makeposseq_shunt.dss");
@@ -1411,8 +1323,10 @@ fn the_gictransformer_channel_guard_refuses_a_capi_gated_deck() {
         .expect_err("a capi-gated GICTransformer case must be refused");
         let msg = crate::runner::panic_msg(payload);
         assert!(
-            msg.contains("mutated_gic.dss") && msg.contains("r4133") && msg.contains("D12/D14"),
-            "the refusal must name the case, the channel and the decision; got {msg:?}"
+            msg.contains("mutated_gic.dss")
+                && msg.contains("r4133")
+                && msg.contains("nondeterministic"),
+            "the refusal must name the case, the channel and the reason; got {msg:?}"
         );
     }
     assert!(
@@ -1422,46 +1336,37 @@ fn the_gictransformer_channel_guard_refuses_a_capi_gated_deck() {
 }
 
 // ---------------------------------------------------------------------------
-// Which decks enable demand-interval metering (GOLDEN_REBASE G1.10c, 2026-09-11)
-// — the derivation behind `scheduler::DI_DECLARED_IN_MANIFEST`, so a new DI deck
+// Which decks enable demand-interval metering: the derivation behind
+// `scheduler::DI_DECLARED_IN_MANIFEST`, so a new DI deck
 // cannot arrive in the corpus without a `compare_di` declaration.
 // ---------------------------------------------------------------------------
 
 /// Does this deck text turn **demand-interval metering on**?
 ///
-/// The option is `DemandInterval` (r4133
-/// `Version8/Source/Executive/ExecOptions.pas:104`, applied at `:812`
-/// `EnergyMeterClass.SaveDemandInterval := InterpretYesNo(Param)`; capi 0.14.5
-/// `src/Executive/ExecOptions.pas:80`/`:581`), and the executive matches an
-/// option name by **shortest unique prefix**: `TCommandList.Getcommand` falls
-/// back to `THashList.FindAbbrev` (r4133 `Shared/Command.pas:79-89`,
-/// `Shared/HashList.pas:335-356`), a LINEAR scan returning the first entry whose
-/// leading characters match. The corpus uses both spellings — `set demand=true`
-/// (`EPRITestCircuits/ckt5/Run_ckt5.dss:53`, `ckt7/RunDSS_ckt7.dss:52`,
-/// `IEEETestCases/123Bus/Run_YearlySim.dss:36`) and `DemandInterval=True/yes`
-/// inside a multi-option `set` (`Examples/StoCtrl_Current_PeakShave/master.dss:28`,
-/// `Examples/StoCtrl_SeasonTarget/Run_example.dss:7`).
+/// The option is `DemandInterval`, and the executive matches an option name by
+/// **shortest unique prefix**: a LINEAR scan of the option list returning the
+/// first entry whose leading characters match. The corpus uses both spellings:
+/// `set demand=true` (`EPRITestCircuits/ckt5/Run_ckt5.dss`,
+/// `IEEETestCases/123Bus/Run_YearlySim.dss`) and `DemandInterval=True/yes`
+/// inside a multi-option `set` (`Examples/StoCtrl_Current_PeakShave/master.dss`,
+/// `Examples/StoCtrl_SeasonTarget/Run_example.dss`).
 ///
 /// Three characters is the shortest prefix that reaches this option: the option
-/// list declares `Defaultdaily` (`:90`), `Defaultyearly` (`:91`) and
-/// `DefaultBaseFrequency` (`:117`) BEFORE it, so the linear scan resolves `de`
-/// and shorter to `Defaultdaily` — a scanner that accepted them would read a
-/// default-loadshape line as demand-interval metering.
+/// list declares `Defaultdaily`, `Defaultyearly` and `DefaultBaseFrequency`
+/// BEFORE it, so the linear scan resolves `de` and shorter to `Defaultdaily`. A
+/// scanner that accepted them would read a default-loadshape line as
+/// demand-interval metering.
 ///
 /// Comment-stripped on the DSS rules (`!` to end of line anywhere, `//` when it
 /// opens the statement) so the many decks that carry the commented-out demand
-/// interval block — `IEEETestCases/LVTestCase/Master.dss:27-39` is the corpus's
-/// example — read as what they are: off.
+/// interval block (`IEEETestCases/LVTestCase/Master.dss` is the corpus's
+/// example) read as what they are: off.
 ///
-/// The VALUE is read exactly as the executive reads it: `InterpretYesNo` takes
-/// the first character and answers TRUE only for `y` and `t` — `n`, `f` and
-/// **everything else, `1` included**, are FALSE in both engines (r4133
-/// `Version8/Source/Common/Utilities.pas:501-513`, capi 0.14.5
-/// `src/Common/Utilities.pas:400-411`: the same `case` with the same `ELSE
-/// Result := FALSE`). The scanner accepted `1` until the G1.10c audit
-/// settlement (finding AT3-2) — a deck spelled `set demand=1` writes no DI tree
-/// on any of the three engines, so demanding a `compare_di` declaration for it
-/// would pin an empty surface.
+/// The VALUE is read exactly as the executive reads a yes/no option: the first
+/// character answers TRUE only for `y` and `t`. `n`, `f` and **everything
+/// else, `1` included**, are FALSE in both OpenDSS engines, so a deck spelled
+/// `set demand=1` writes no DI tree and demanding a `compare_di` declaration
+/// for it would pin an empty surface.
 pub(crate) fn deck_enables_demand_interval(text: &str) -> bool {
     for line in text.lines() {
         for (name, value) in option_pairs(line) {
@@ -1479,8 +1384,8 @@ pub(crate) fn deck_enables_demand_interval(text: &str) -> bool {
 /// The `name=value` pairs of one comment-stripped, lower-cased deck line.
 ///
 /// The DSS parser takes `name=value`, `name =value`, `name= value` and
-/// `name = value` alike (r4133 `Parser.pas::NextParam` splits on `=` after
-/// skipping white space), and a `set` line may carry several of them
+/// `name = value` alike (it splits on `=` after skipping white space), and a
+/// `set` line may carry several of them
 /// (`set mode=yearly DemandInterval=yes overloadreport=yes`), so the scan is
 /// over pairs rather than over the line's text.
 fn option_pairs(line: &str) -> Vec<(String, String)> {
@@ -1512,9 +1417,8 @@ fn option_pairs(line: &str) -> Vec<(String, String)> {
 /// A deck reaches its options through the files it pulls in, so "does this CASE
 /// enable demand-interval metering" is a question about the whole closure, not
 /// about the entry file. Relative paths resolve against the **including file's**
-/// directory: `DoRedirect` changes the current directory to the file it is
-/// about to run (r4133 `Version8/Source/Executive/ExecHelper.pas:681`, `:753`)
-/// and restores it afterwards for a redirect but not for a compile (`:809`).
+/// directory: the executive changes the current directory to the file it is
+/// about to run and restores it afterwards for a redirect but not for a compile.
 /// The distinction does not matter here — the walk resolves every name against
 /// its own file's directory and visits every reachable file once — and a name
 /// that does not resolve is skipped rather than guessed at, because this scan
@@ -1549,8 +1453,8 @@ fn deck_closure(entry: &Path) -> Vec<(PathBuf, String)> {
 
 /// The file name a `Redirect`/`Compile` line names, if it is one.
 ///
-/// Both verbs are abbreviatable like every executive command (`FindAbbrev`,
-/// above), and the corpus writes the argument bare, `[bracketed]` or
+/// Both verbs are abbreviatable like every executive command (shortest
+/// prefix, above), and the corpus writes the argument bare, `[bracketed]` or
 /// `"quoted"` — `Compile [Master_ckt5.dss]`,
 /// `Compile "IEEE123Master.dss"`, `Redirect Vsource.dss`. Four characters is
 /// the shortest prefix accepted here: it is past every collision in the command
@@ -1587,10 +1491,10 @@ pub(crate) fn case_enables_demand_interval(entry: &str) -> bool {
         .any(|(_, text)| deck_enables_demand_interval(text))
 }
 
-/// Non-vacuity for the scanner above (§1.1(f)): it must read the abbreviation
-/// the corpus actually uses, refuse the prefixes the executive resolves to a
-/// DIFFERENT option, refuse every value `InterpretYesNo` reads as FALSE (an
-/// explicit `no`, and `1`/`0` — finding AT3-2), and refuse both comment forms.
+/// The scanner reads the abbreviation the corpus actually uses, and refuses the
+/// prefixes the executive resolves to a DIFFERENT option, every value the
+/// executive reads as FALSE (an explicit `no`, and `1`/`0`) and both comment
+/// forms.
 #[test]
 fn the_demand_interval_scanner_reads_the_option_and_its_abbreviation() {
     for on in [
@@ -1612,8 +1516,8 @@ fn the_demand_interval_scanner_reads_the_option_and_its_abbreviation() {
         "! set demand=true",
         "// set demand=true",
         "// ! Set \"DemandInterval\" to true so that energy quantities are recorded",
-        // `de` and shorter resolve to `Defaultdaily` (ExecOptions.pas:90), which
-        // the linear `FindAbbrev` scan reaches first.
+        // `de` and shorter resolve to `Defaultdaily`, which the linear prefix
+        // scan reaches first.
         "set de=true",
         "set d=true",
         "set defaultdaily=true",
@@ -1621,11 +1525,9 @@ fn the_demand_interval_scanner_reads_the_option_and_its_abbreviation() {
         // A prose mention is not a setting.
         "! demand interval files are closed below",
         "closedi",
-        // `InterpretYesNo` answers TRUE for `y`/`t` only: `1`, `0` and every
-        // other spelling fall through its `ELSE Result := FALSE` in BOTH
-        // engines (r4133 `Common/Utilities.pas:501-513`, capi `:400-411`), so a
-        // deck spelled this way writes no DI tree and must not be required to
-        // declare `compare_di` (G1.10c audit settlement, finding AT3-2).
+        // A yes/no option is TRUE for `y`/`t` only: `1`, `0` and every other
+        // spelling are FALSE in BOTH OpenDSS engines, so a deck spelled this
+        // way writes no DI tree and must not be required to declare `compare_di`.
         "set dem=1",
         "set demandinterval=0",
     ] {
@@ -1688,10 +1590,8 @@ fn the_demand_interval_scanner_reads_the_option_and_its_abbreviation() {
 }
 
 // ---------------------------------------------------------------------------
-// A MERGING `Reduce` renames elements, so its deck cannot gate on r4133
-// (GOLDEN_REBASE G1.4b, coordinator decision D29 step 3 — `TESTING.md`
-// §"the bus distance surface"; the machine form of that rule is this section,
-// added by the G1.4b audit settlement, finding AT-5).
+// A MERGING `Reduce` renames elements on r4133, so its deck cannot gate on
+// r4133.
 // ---------------------------------------------------------------------------
 
 /// Every corpus deck whose `Reduce` runs a strategy that MERGES lines,
@@ -1700,16 +1600,13 @@ fn the_demand_interval_scanner_reads_the_option_and_its_abbreviation() {
 /// Pinned as a closed set for the reason [`GICTRANSFORMER_DECKS`] is: the
 /// per-case scan below reads only the deck a case names, so a `Reduce` hidden
 /// one `Redirect` deeper would slip past it. A new deck here fails this test and
-/// forces the channel review — r4133's `TLineObj.MergeWith` renames the
-/// surviving object in place (`Version8/Source/PDElements/Line.pas:1684`)
-/// without updating `TDSSCircuit.DeviceList`, so `SetElementActive` finds
-/// nothing, leaves `ActiveCktElement` where it was
-/// (`Common/Circuit.pas:2195-2214`) and the DDLL silently captures ANOTHER
-/// element; gating such a deck on r4133 would ledger a mis-addressed capture as
-/// if it were a divergence (measured in G1.4b F2, reported upstream as
-/// `investigations/to_opendss/68-mergewith-rename-leaves-devicelist-stale.md`).
-/// capi 0.14.5 does not share the rename bug, so these decks gate on
-/// `capi_v0145` alone until upstream fixes it.
+/// forces the channel review. r4133's line merge renames the surviving object
+/// in place without updating the circuit's device list, so activating it by
+/// name finds nothing, leaves the active element where it was and the DDLL
+/// silently captures ANOTHER element. Gating such a deck on r4133 would ledger
+/// a mis-addressed capture as if it were a divergence. This OpenDSS bug has an
+/// OpenDSS report. capi 0.14.5 does not share it, so these decks gate on
+/// `capi_v0145` alone until OpenDSS fixes it.
 const REDUCE_MERGE_DECKS: &[&str] = &[
     "modes/reduce/midi_reduce.dss",
     "modes/reduce/reduce_default.dss",
@@ -1719,22 +1616,16 @@ const REDUCE_MERGE_DECKS: &[&str] = &[
     "modes/reduce/reduce_switches.dss",
 ];
 
-/// Does this `Set ReduceOption=` value select a strategy that calls
-/// `TLineObj.MergeWith` (and therefore renames)?
+/// Does this `Set ReduceOption=` value select a strategy that merges lines
+/// (and therefore renames)?
 ///
-/// r4133 decides on the option's FIRST LETTER only
-/// (`Executive/ExecHelper.pas:3089-3129` `DoSetReduceStrategy`), and the
-/// merging arms of `TEnergyMeterObj.ReduceZone`
-/// (`Meters/EnergyMeter.pas:2299-2312`) are `rsShortlines`
-/// (`Meters/ReduceAlgs.pas:214`, `:258`), `rsMergeParallel` (`:54`),
-/// `rsSwitches` (`:319`) and the `rsDefault` fall-through (`:361`) — i.e. `D`,
-/// `M`, `S` (both `SWITCH…` and `SHORTLINES`). `B` (breakloop), `E` (ends /
-/// dangling) and `L` (laterals) disable or re-parent branches and never merge.
-/// An EMPTY or UNKNOWN option is merging too: `DoSetReduceStrategy` assigns
-/// `rsDefault` BEFORE the case statement and only warns
-/// (`ExecHelper.pas:3098`, `:3126`), and a circuit that was never given the
-/// option starts at `rsDefault` (`Common/Circuit.pas:588`), so a bare `Reduce`
-/// merges.
+/// r4133 decides on the option's FIRST LETTER only. The merging strategies are
+/// shortlines, mergeparallel, switches and the default, i.e. `D`, `M`, `S`
+/// (both `SWITCH…` and `SHORTLINES`). `B` (breakloop), `E` (ends / dangling)
+/// and `L` (laterals) disable or re-parent branches and never merge. An EMPTY
+/// or UNKNOWN option is merging too: r4133 sets the default strategy before it
+/// reads the option and only warns on an unknown one, and a circuit that was
+/// never given the option starts at the default, so a bare `Reduce` merges.
 fn reduce_strategy_merges(option: &str) -> bool {
     !matches!(
         option.trim().to_ascii_uppercase().chars().next(),
@@ -1807,18 +1698,16 @@ fn collect_reduce_merge_decks(dir: &Path, base: &Path, out: &mut Vec<String>) {
 fn assert_reduce_merge_case_gates_capi(label: &str, engines: &str) {
     assert_eq!(
         engines, "capi_v0145",
-        "{label}: this deck's `Reduce` MERGES lines, and r4133's `TLineObj.MergeWith` renames the \
-         surviving object (`Version8/Source/PDElements/Line.pas:1684`) without updating \
-         `TDSSCircuit.DeviceList`, so every later `SetElementActive` on a merged line silently \
-         leaves the PREVIOUS element active (`Common/Circuit.pas:2195-2214`) and the DDLL captures \
-         another element. Such a deck must gate on `capi_v0145` ALONE, not `{engines}`, until \
-         upstream fixes the rename — otherwise the ledger would carry a mis-addressed capture as \
-         if it were a divergence. GOLDEN_REBASE G1.4b, coordinator decision D29 — see TESTING.md \
-         and investigations/to_opendss/68."
+        "{label}: this deck's `Reduce` MERGES lines, and r4133's line merge renames the \
+         surviving object without updating the circuit's device list, so every later activation \
+         of a merged line by name silently leaves the PREVIOUS element active and the DDLL \
+         captures another element. Such a deck must gate on `capi_v0145` ALONE, not `{engines}`, \
+         until OpenDSS fixes the rename bug: otherwise the ledger would carry a mis-addressed \
+         capture as if it were a divergence."
     );
 }
 
-/// **No r4133-gated case reduces by merging** (D29 step 3).
+/// **No r4133-gated case reduces by merging.**
 ///
 /// Two rails in one test, the [`no_capi_gated_case_instantiates_a_gictransformer`]
 /// shape: the corpus-wide census pins WHICH decks merge
@@ -1833,7 +1722,7 @@ fn no_r4133_gated_case_reduces_by_merging() {
     assert_eq!(
         found, REDUCE_MERGE_DECKS,
         "the set of corpus decks whose `Reduce` merges lines moved. Every one of them must gate on \
-         capi_v0145 alone (r4133's MergeWith rename leaves DeviceList stale — D29); update \
+         capi_v0145 alone (r4133's line-merge rename leaves its device list stale). Update \
          REDUCE_MERGE_DECKS in the same commit that adds or removes one."
     );
 
@@ -1863,12 +1752,12 @@ fn no_r4133_gated_case_reduces_by_merging() {
     );
 }
 
-/// Non-vacuity for the guard above (§1.1(f)): the scanner must separate a
+/// Non-vacuity for the guard above: the scanner must separate a
 /// merging strategy from a non-merging one, a command from a property, and the
 /// refusal must fire on both r4133-gating spellings.
 #[test]
 fn the_reduce_merge_channel_guard_refuses_an_r4133_gated_deck() {
-    // The strategy rule, letter by letter (`ExecHelper.pas:3101-3127`).
+    // The strategy rule, letter by letter.
     for merging in [
         "default",
         "d",
@@ -1930,8 +1819,10 @@ fn the_reduce_merge_channel_guard_refuses_an_r4133_gated_deck() {
         .expect_err("an r4133-gated merging-reduce case must be refused");
         let msg = crate::runner::panic_msg(payload);
         assert!(
-            msg.contains("mutated_reduce.dss") && msg.contains("capi_v0145") && msg.contains("D29"),
-            "the refusal must name the case, the channel and the decision; got {msg:?}"
+            msg.contains("mutated_reduce.dss")
+                && msg.contains("capi_v0145")
+                && msg.contains("rename bug"),
+            "the refusal must name the case, the channel and the reason; got {msg:?}"
         );
     }
     assert!(

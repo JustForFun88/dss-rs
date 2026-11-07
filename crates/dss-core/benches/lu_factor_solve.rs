@@ -1,4 +1,4 @@
-//! MULTITHREADING_PLAN M1 baseline / DE_PASCALIZE P15 proof: `dss-sparse` LU
+//! Benchmark: `dss-sparse` LU
 //! factor + triangular solve at 8500-node scale.
 //!
 //! Setup compiles + solves the IEEE-8500 case and reads back the assembled,
@@ -6,9 +6,8 @@
 //! `SparseSet` through the per-step cycle the engine performs when Y changes:
 //! `zero()` -> restamp every nonzero -> `factor()` (assemble + row-equilibrate +
 //! symbolic + numeric LU) -> triangular `solve()`. Reusing one `SparseSet`
-//! across iterations is exactly what P15 item 1 targets: the reworked path
-//! retains the symbolic factorization and the dedup skeleton across rebuilds,
-//! the baseline re-analyzes and re-hashes every time.
+//! across iterations exercises the reuse path: the set retains the symbolic
+//! factorization and the dedup skeleton across rebuilds.
 //!
 //! Run: `cargo bench --bench lu_factor_solve`.
 

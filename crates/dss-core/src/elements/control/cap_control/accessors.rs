@@ -106,8 +106,7 @@ impl CapControl {
         // shares the omission (`Version8/Source/Controls/CapControl.pas:410-465`,
         // field `myShapeObj` declared `:76`) and additionally copies the whole
         // `PropertyValue` array (`:460`), so there the clone even *reports* a
-        // signal name it has no reference to. Neither lane reproduces it
-        // (GOLDEN_REBASE G2.1b; `issue-15`).
+        // signal name it has no reference to. Neither lane reproduces it.
         self.control_signal_name = other.control_signal_name.clone();
         self.ctrl_signal_shape = other.ctrl_signal_shape.clone();
 
@@ -128,16 +127,14 @@ impl CapControl {
         self.voverride_bus_name = other.voverride_bus_name.clone();
         self.fpct_minkvar = other.fpct_minkvar;
         self.ccd.show_event_log = other.ccd.show_event_log;
-        // WM.5 — Pascal `MakeLike` (`CapControl.pas:452-453`): `UserModel.Name :=
-        // Other.UserModel.Name` is a `Set_Name`, i.e. an EAGER free + `FNew` of a
-        // fresh instance, so the copy gets a live model of its own. It must NOT
+        // Copying the model name loads a fresh instance, so the copy gets a live
+        // model of its own. It must NOT
         // clone the donor's slot: `ClassArena::make_like_within` hands `make_like`
         // an owned `clone()` and the slot's `Clone` drops the live wasmi
         // instance, so the copy would report `exists() == false` and every call
-        // site would silently skip it (RP1.3 audit settlement — measured on the
-        // WindGen and Generator twins of this defect). Queue a real load instead;
-        // the executive resolves it before `end_edit`. `IsUserModel` is copied
-        // from the donor as Pascal does (`:453`) and then re-derived from the
+        // site would silently skip it. Queue a real load instead.
+        // The executive resolves it before `end_edit`. `IsUserModel` is copied
+        // from the donor and then re-derived from the
         // actual load result by the drain, which is where a failed load must not
         // leave a USERCONTROL with no model behind.
         self.user_model_name = other.user_model_name.clone();
@@ -259,7 +256,7 @@ impl DssObject for CapControl {
             CAPACITOR => self.controlled_name.clone(),
             VBUS => self.voverride_bus_name.clone(),
             CONTROLSIGNAL => self.control_signal_name.clone(),
-            // WM.5 — the `.wasm` path / `UserData=` string exactly as written.
+            // The `.wasm` path / `UserData=` string exactly as written.
             USERMODEL => self.user_model_name.clone(),
             USERDATA => self.user_model_edit.clone(),
             _ => unreachable!("CapControl has no string property {idx}"),
@@ -270,8 +267,7 @@ impl DssObject for CapControl {
         match idx {
             VBUS => self.voverride_bus_name = value,
             // `UserModel=`/`UserData=` store the string; the deferred load/edit
-            // is queued by `side_effects` and resolved by the executive (WM.5
-            // §2.4).
+            // is queued by `side_effects` and resolved by the executive.
             USERMODEL => self.user_model_name = value,
             USERDATA => self.user_model_edit = value,
             _ => unreachable!("CapControl has no string property {idx}"),
@@ -401,17 +397,15 @@ impl DssObject for CapControl {
             }
             // CAPACITOR: Pascal stores ControlVars.CapacitorName :=
             // ControlledElement.FullName here, and its Save/Dump echo that
-            // copy. `Save` IS ported (`report/save/save.rs`); under RP3.11's
-            // `KEEP_LIVE_PINNED` verdict it renders the live getter instead —
-            // `get_string(CAPACITOR)` above returns `controlled_name`, the name
-            // as typed — so no stored copy is kept here.
+            // copy. This engine's `Save` (`report/save/save.rs`) renders the
+            // live getter instead: `get_string(CAPACITOR)` above returns
+            // `controlled_name`, the name as typed, so no stored copy is kept here.
             VBUS => {
                 self.voverride_bus_name = self.voverride_bus_name.to_ascii_lowercase();
                 self.voverride_bus_specified = true;
             }
-            // WM.5 — the §2.4 uniform activation rule. Pascal
-            // `PropertySideEffects` (`CapControl.pas:429-436`): `UserModel.Name`
-            // (load) then `UserData` (edit). The filesystem/current-dir are
+            // The uniform activation rule: `UserModel=` loads, then `UserData=`
+            // edits. The filesystem/current-dir are
             // unreachable from the property hook, so each records a deferred
             // request the executive resolves before `EndEdit` (a `.wasm` loads
             // and sets `IsUserModel`; a native-DLL name / missing file warns
@@ -438,7 +432,7 @@ impl DssObject for CapControl {
     }
 
     /// Drain the deferred `UserModel=`/`UserData=` requests queued by the
-    /// property side effects (WASM_USERMODELS WM.5, §2.4). The executive
+    /// property side effects. The executive
     /// resolves each `Load` path and reads the `.wasm` bytes (or `None`), then
     /// calls [`Self::apply_user_model_load`] before `end_edit`.
     fn take_user_model_loads(&mut self) -> Vec<crate::obj::base::UserModelLoad> {
@@ -446,7 +440,7 @@ impl DssObject for CapControl {
     }
 
     /// Apply a resolved user-model load/edit (the data side of a queued
-    /// `UserModelLoad`) — WASM_USERMODELS WM.5 §2.4.
+    /// `UserModelLoad`).
     fn apply_user_model_load(
         &mut self,
         load: &crate::obj::base::UserModelLoad,

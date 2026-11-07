@@ -1,4 +1,4 @@
-! WP-U1.4 (UPGRADE_PLAN §WP-U1.4) — LineSpacing equivalent-spacing model.
+! LineSpacing equivalent-spacing model.
 ! A LineSpacing with detailed=no supplies the four equivalent distances
 ! (EqDistPhPh/EqDistPhN/AvgPhaseHeight/AvgNeutralHeight) instead of per-conductor
 ! X/H coordinates; the LineGeometry (nconds=4, nphases=3, reduce=y) Kron-reduces

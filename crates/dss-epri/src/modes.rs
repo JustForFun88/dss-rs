@@ -1,6 +1,5 @@
-//! Mode capability classification for the grouped r4133 DDLL API — the WP-G1
-//! bridge rails (`GOLDEN_REBASE_PLAN.md` WP-G1, sub-step G1.0, coordinator
-//! decision D2).
+//! Mode capability classification for the grouped r4133 DDLL API — the
+//! bridge rails.
 //!
 //! The vendored `OpenDSSDirect.dll` exports **no** per-property `*_Get_*`
 //! symbols: every interface is a grouped quartet `XxxI/XxxF/XxxS/XxxV(mode, …)`
@@ -23,8 +22,7 @@
 //! `GetCurrents` into a scratch buffer and leave the element's `Iterminal`
 //! cache marked fresh but unfilled, so a `Powers`/`Losses` read afterwards
 //! returns a stale current. That partition is recorded per row in
-//! [`ModeEffect`] (`GOLDEN_REBASE_PLAN.md` §1.1(a), coordinator decision D3) and
-//! pinned by `the_capture_order_partition_is_the_one_d3_names`.
+//! [`ModeEffect`] and pinned by `the_capture_order_partition_is_the_one_d3_names`.
 //!
 //! Two more are unsafe only in *some* engine states: r4133's `Bus.VLL` /
 //! `Bus.puVLL` pairing loop does not terminate on certain bus node sets, so
@@ -46,12 +44,11 @@
 //!   mode). So on those two shapes [`ModeStatus::Served`] is conclusive while
 //!   [`ModeStatus::UnknownMode`] is **evidence**, not proof; the positive proof
 //!   that a mode is served is a comparison against a known value on a solved
-//!   deck (the table-driven proof WP-G1 runs over [`crate::dss::Engine`]).
+//!   deck (a table-driven proof over [`crate::dss::Engine`]).
 //!
-//! All sentinels below were read out of the vendored r4133 DDLL sources
-//! (`.inputs/electricdss-code-r4133-trunk/Version8/Source/DDLL/`) by an
-//! exhaustive sweep of the `else` branches, and confirmed live against the
-//! vendored DLL by the G1.0 mode probe (2026-09-04).
+//! All sentinels below were read out of the r4133 DDLL sources by an exhaustive
+//! sweep of the `else` branches, and confirmed live against the vendored DLL by
+//! a mode probe.
 
 /// One of the four uniform DDLL ABI shapes ([`crate::ffi`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -139,7 +136,7 @@ impl std::fmt::Display for ModeStatus {
 
 // ---- the four sentinel shapes -------------------------------------------
 
-/// `XxxI` unknown-mode reply. Every WP-G1 family's `I` `else` branch is
+/// `XxxI` unknown-mode reply. Every table family's `I` `else` branch is
 /// `Result:=-1` — `DCktElement.pas:308`, `DBus.pas:75`, `DCircuit.pas:187`,
 /// `DMeters.pas:316`, `DTopology.pas:168`, `DSolution.pas:295`,
 /// `DPDELements.pas:120`.
@@ -195,17 +192,17 @@ pub fn v_sentinel_undetectable(family: &str) -> bool {
 
 /// The measured per-family `XxxS` unknown-mode literal. The DDLL spells this
 /// `else` branch differently in almost every unit (seven distinct literals over
-/// the whole surface, six of them in the WP-G1 families — `Topology` and
-/// `PDElements` share one), so it is a table and
+/// the whole surface, six of them in the families [`WP_G1_MODES`] reads —
+/// `Topology` and `PDElements` share one), so it is a table and
 /// not a constant. Each row cites the `else` branch it transcribes; every literal
-/// was confirmed live by the G1.0 probe (2026-09-04).
+/// was confirmed live by a mode probe.
 ///
 /// `CktElement`'s bare `"Error"` is **ambiguous in principle** — a served string
 /// mode returns exactly that when a variable name is unknown
 /// (`DCktElement.pas:462`, the *default* of the served **mode 6**
 /// `CktElement.ActiveVariableName`) — so it is fit for the probe/diagnostic path
 /// only and must never gate a capture. Mode 6 is not a table row; the one
-/// `CktElementS` row WP-G1 reads is mode 4 (`CktElement.EnergyMeter`), whose own
+/// `CktElementS` row [`WP_G1_MODES`] holds is mode 4 (`CktElement.EnergyMeter`), whose own
 /// default is the function default `'0'` (`DCktElement.pas:421`).
 pub const S_SENTINELS: &[(&str, &str)] = &[
     // `DCktElement.pas:483` — bare, ambiguous (see above).
@@ -300,7 +297,7 @@ pub fn classify_v(type_tag: i32, strings: &[String]) -> ModeStatus {
 /// them before any FFI, and no typed accessor exists for either.
 ///
 /// Both are r4133 defects (`investigations/to_opendss/` material) and neither is
-/// on WP-G1's mode list, so refusing them costs no comparison channel.
+/// in [`WP_G1_MODES`], so refusing them costs no comparison channel.
 pub const DO_NOT_CALL: &[(&str, ModeKind, i32, &str)] = &[
     (
         "Solution",
@@ -316,7 +313,7 @@ pub const DO_NOT_CALL: &[(&str, ModeKind, i32, &str)] = &[
         17,
         "Bus.ZSC012Matrix: DBus.pas:803-838 calls Zsc.MtrxMult(As2p) with no Assigned(Zsc) \
          guard, so a bus whose Zsc was never built (no fault study) nil-derefs — MEASURED \
-         process kill of the worker on IEEE13 (G1.0 probe, 2026-09-04)",
+         process kill of the worker on IEEE13",
     ),
 ];
 
@@ -330,7 +327,7 @@ pub fn check_callable(family: &str, kind: ModeKind, mode: i32) -> Option<ModeSta
         .map(|(_, _, _, why)| ModeStatus::DoNotCall(why))
 }
 
-// ---- the state-dependent refusal register (G1.4c) ------------------------
+// ---- the state-dependent refusal register -------------------------------
 
 /// [`bus_vll_would_hang`]'s verdict when the **first** `repeat` of the pairing
 /// loop cannot terminate.
@@ -441,7 +438,7 @@ pub fn state_dependent_refusal(family: &str, kind: ModeKind, mode: i32) -> Optio
         .map(|(_, _, _, why)| *why)
 }
 
-// ---- the WP-G1 mode table ------------------------------------------------
+// ---- the mode table ------------------------------------------------------
 
 /// What calling a mode does to engine state beyond returning its value.
 ///
@@ -454,19 +451,18 @@ pub fn state_dependent_refusal(family: &str, kind: ModeKind, mode: i32) -> Optio
 /// rather than a comment someone has to find.
 ///
 /// The three non-`Pure` variants are exactly the A/B/C partition of the
-/// §1.1(a) capture-order rule (`GOLDEN_REBASE_PLAN.md`, coordinator decision
-/// **D3**): [`ReadsIterminalCache`](ModeEffect::ReadsIterminalCache) is group
-/// **A** (read first), [`PoisonsIterminalCache`](ModeEffect::PoisonsIterminalCache)
+/// capture-order rule: [`ReadsIterminalCache`](ModeEffect::ReadsIterminalCache)
+/// is group **A** (read first), [`PoisonsIterminalCache`](ModeEffect::PoisonsIterminalCache)
 /// is group **B** (read after every group-A mode of the same element), and
 /// [`Pure`](ModeEffect::Pure) is group **C** (order-free).
 /// [`Impure`](ModeEffect::Impure) is orthogonal to the order rule: it moves a
 /// cursor or a memoized structure rather than the current cache.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModeEffect {
-    /// A pure read: nothing in the engine changes (D3 group **C**,
+    /// A pure read: nothing in the engine changes (capture-order group **C**,
     /// order-free).
     Pure,
-    /// D3 group **A** — a *cache-aware* read: the arm reaches
+    /// Capture-order group **A** — a *cache-aware* read: the arm reaches
     /// `TDSSCktElement.ComputeIterminal` (`Common/CktElement.pas:632-639`),
     /// which recomputes `Iterminal` **only** when the element's
     /// `IterminalSolutionCount` differs from `Solution.SolutionCount`.
@@ -476,21 +472,20 @@ pub enum ModeEffect {
     /// stale current, so every group-A mode is read FIRST. The payload names
     /// the path and cites the Pascal.
     ReadsIterminalCache(&'static str),
-    /// D3 group **B** — the arm calls `GetCurrents` (directly or through
+    /// Capture-order group **B** — the arm calls `GetCurrents` (directly or through
     /// `CalcSeqCurrents`) into a **scratch** buffer. On a PC element that lands
     /// in `TPCElement.GetTerminalCurrents`
     /// (`PCElements/PCElement.pas:247-266`), which fills the scratch buffer and
     /// then marks the cache fresh (`set_ITerminalUpdated(TRUE)`,
     /// `PCElements/PCElement.pas:510-514`) **without filling `Iterminal`**; on a
     /// PD element it overwrites the element's own `Vterminal`
-    /// (`PDElements/PDElement.pas:224-231`). Neither is "nothing changes", and
-    /// the first is the mechanism behind the upstream harmonics
-    /// `Powers`-after-`Currents` defect this project never reproduces
-    /// (CLAUDE.md §"Known upstream bugs"; `crate::capture` reads Powers first
-    /// for exactly this reason).
+    /// (`PDElements/PDElement.pas:224-231`). Neither is "nothing changes". The
+    /// first is the mechanism behind the OpenDSS harmonics
+    /// `Powers`-after-`Currents` bug, which this engine never reproduces, and
+    /// [`crate::capture`] reads Powers first for exactly this reason.
     ///
     /// Measured on the vendored r4133 DLL + vendored IEEE13, snapshot **and**
-    /// harmonics (G1.0 settlement probe, 2026-09-04): the poisoning is
+    /// harmonics: the poisoning is
     /// *latent* there — `TotalPowers` reads the same value before and after
     /// `SeqPowers`/`CurrentsMagAng`, because the converged solve already left
     /// `IterminalSolutionCount` current, so no read refreshes and none is
@@ -507,7 +502,7 @@ pub enum ModeEffect {
 }
 
 impl ModeEffect {
-    /// The §1.1(a)/D3 capture-order group: `'A'` must be read before `'B'`
+    /// The capture-order group: `'A'` must be read before `'B'`
     /// on the same element; `'C'` is order-free. [`Impure`](ModeEffect::Impure)
     /// is order-free too (it moves a cursor, not the current cache) but still
     /// demands a fixture re-selection.
@@ -544,7 +539,7 @@ const POISONS_ITERMINAL: ModeEffect = ModeEffect::PoisonsIterminalCache(
      :510-514) and on a PD element overwrites Vterminal (PDElements/PDElement.pas:224-231)",
 );
 
-/// One mode WP-G1 reads through the r4133 bridge: the DDLL `(family, kind,
+/// One mode the capture reads through the r4133 bridge: the DDLL `(family, kind,
 /// mode)` triple plus the `case` arm it transcribes.
 ///
 /// The mode *number* lives here and nowhere else — every typed accessor on
@@ -732,7 +727,7 @@ pub const CKT_ELEMENT_OCP_DEV_TYPE: ModeSpec = ModeSpec::scalar(
 /// (`DCktElement.pas:271`, `if arg=1 then … Enabled := BData`) is deliberately
 /// not a row — the generic reader drives a mode with the neutral argument `0`,
 /// which that arm would store as `Enabled := FALSE`. That omission is carried
-/// as a row of [`EXCLUDED_WRITE_MODES`], not as prose (G1.3a audit settlement).
+/// as a row of [`EXCLUDED_WRITE_MODES`], not as prose.
 ///
 /// The arm's codomain is exactly `{0, 1}`: it raises the `CktElementI`
 /// pre-`case` default `Result := 0` (`DCktElement.pas:137`) to 1 only when
@@ -743,7 +738,7 @@ pub const CKT_ELEMENT_OCP_DEV_TYPE: ModeSpec = ModeSpec::scalar(
 /// `NodeRef^[i]` dereference (`DCktElement.pas:1099`; capi guards it at
 /// `CAPI/CAPI_Alt.pas:1081`) and kills the process.
 ///
-/// Read for every element by the GOLDEN_REBASE G1.3a derived capture: it is
+/// Read for every element by the derived capture: it is
 /// the safety predicate that enabled-only capture needs, and a fastdss
 /// `_columns` parity surface in its own right (`dss/ICktElement.py` on
 /// `origin/fastdss`).
@@ -895,9 +890,8 @@ pub const BUS_DISTANCE: ModeSpec = ModeSpec::scalar(
 /// (`DBus.pas:298-300`, the upstream "n/A for less then 3 phases" marker).
 ///
 /// The arm tags the buffer `myType := 3` (complex) while writing three *real*
-/// magnitudes with `mySize := 3 × SizeOf(double)`; the tag is transcribed as
-/// measured, and what the payload means is settled by the surface sub-step that
-/// compares it.
+/// magnitudes with `mySize := 3 × SizeOf(double)`. The tag is transcribed as
+/// measured, and the comparison that reads the payload decides what it means.
 pub const BUS_SEQ_VOLTAGES: ModeSpec = ModeSpec::array(
     "Bus",
     1,
@@ -915,7 +909,7 @@ pub const BUS_SEQ_VOLTAGES: ModeSpec = ModeSpec::array(
 /// bounded in practice — each of the `NumNodesThisBus` node numbers is distinct
 /// and >= 1, so the scan finds them all — unlike the `VLL`/`puVLL` pairing loop
 /// (modes 11/12), whose second `repeat` cycles `jj` in `{1,2,3,4}` and can spin
-/// forever (G1.4c).
+/// forever.
 ///
 /// The surface it serves is fastdss' `IBus._columns` `'Nodes'`
 /// (`origin/fastdss` `dss/IBus.py:19-53`, reached through `save_state`'s
@@ -1056,7 +1050,7 @@ pub const BUS_ALL_PDE_AT_BUS: ModeSpec = ModeSpec::array(
     ),
 );
 
-// -- Bus reliability columns (DBus.pas; GOLDEN_REBASE G1.6(ii)) -------------
+// -- Bus reliability columns --------------------------------------------------
 //
 // The eight per-bus reliability accumulators the EnergyMeter reliability sweep
 // writes (`Meters/EnergyMeter.pas:2449-2616`, driven by the executive
@@ -1157,7 +1151,7 @@ pub const BUS_N_CUSTOMERS: ModeSpec = ModeSpec::scalar(
 /// bus (`Meters/EnergyMeter.pas:2494`) and every TO bus
 /// (`PDElement.pas:179-181`), so a bus the sweep does not reach keeps the `-1`.
 /// The module doc's rule — on `I`/`F` a [`ModeStatus::UnknownMode`] verdict is
-/// *evidence*, never proof — is therefore load-bearing here: the G1.0 walk
+/// *evidence*, never proof — is therefore load-bearing here: the mode walk
 /// probes this row on a fixture whose `RelCalc` has not run (the field is FPC
 /// zero-filled there), and its identity is proven by value instead
 /// (`crates/dss-epri/tests/modes.rs`, which also measures that no bus of the
@@ -1236,9 +1230,8 @@ pub const CIRCUIT_TOTAL_POWER: ModeSpec = ModeSpec::array(
 /// (`DCircuit.pas:453-454`) where the capi twin writes one empty string
 /// (`DefaultResult`, `CAPI_Circuit.pas:426-430`); either way `SetActiveBus` then
 /// returns `-1`, so the caller's index re-assert fails the case loudly on both
-/// transports instead of capturing nothing. No live corpus case takes that path
-/// (measured G1.4a: 0 of the 520 live cases have an empty bus list, and no bus is
-/// named `none` or empty).
+/// transports instead of capturing nothing. No live corpus case takes that path:
+/// none has an empty bus list or a bus named `none` or empty.
 pub const CIRCUIT_ALL_BUS_NAMES: ModeSpec = ModeSpec::array(
     "Circuit",
     7,
@@ -1310,9 +1303,9 @@ pub const METERS_NUM_SECTIONS: ModeSpec = ModeSpec::scalar(
     ModeEffect::Pure,
 );
 /// `MetersI(22)` — **select** the feeder section that every `MetersI(23..27)` /
-/// `MetersF(4..6)` read then answers for (GOLDEN_REBASE G1.6(i)).
+/// `MetersF(4..6)` read then answers for.
 ///
-/// The one WP-G1 row that consumes its argument: `DMeters.pas:254-264` stores
+/// The one table row that consumes its argument: `DMeters.pas:254-264` stores
 /// `pMeter.ActiveSection := arg` for `1 <= arg <= SectionCount` and `0`
 /// otherwise, and assigns no `Result` — the function default `0`
 /// (`DMeters.pas:30`) is the only legal reply, so a `-1` means this DLL does not
@@ -1860,22 +1853,15 @@ pub const PD_ELEMENTS_NAME: ModeSpec = ModeSpec::scalar(
     ModeEffect::Pure,
 );
 
-/// Every mode WP-G1 reads through the r4133 bridge — 111 rows over the seven
-/// families the plan's surface sub-steps touch (`GOLDEN_REBASE_PLAN.md` WP-G1).
-/// The set was measured `Served` on the vendored DLL by the G1.0 probe
-/// (2026-09-04) with zero misses, and the acceptance test
+/// Every mode the capture reads through the r4133 bridge — 111 rows over seven
+/// families. Every row is `Served` on the vendored DLL, and the acceptance test
 /// `crates/dss-epri/tests/modes.rs` re-proves that on every run.
 ///
-/// G1.4a (2026-09-04) added the two rows its bus capture reads and G1.0 had not
-/// listed — [`CIRCUIT_ALL_BUS_NAMES`] (the walk) and [`BUS_NODES`] (a compared
-/// value) — so that no capture read bypasses [`crate::dss::Engine::read_mode`]'s
-/// `myType` check (96 -> 98 on its own lane; 100 -> 102 merged onto the four
-/// rows G1.9 and G1.6b added in parallel). G1.6(i) (lane `lane-m`, 2026-09-05)
-/// added [`METERS_SET_ACTIVE_SECTION`], the section cursor its reliability
-/// capture drives — 102 -> **103** at that lane's merge. G1.6(ii) (lane
-/// `lane-m`, 2026-09-05) added the eight per-bus reliability columns
-/// ([`BUS_LAMBDA`] .. [`BUS_SECTION_ID`]) its bus capture reads —
-/// 103 -> **111**.
+/// The bus walk ([`CIRCUIT_ALL_BUS_NAMES`]) and the node list ([`BUS_NODES`])
+/// are rows too, so that no capture read bypasses
+/// [`crate::dss::Engine::read_mode`]'s `myType` check. So are the section cursor
+/// the reliability capture drives ([`METERS_SET_ACTIVE_SECTION`]) and the eight
+/// per-bus reliability columns ([`BUS_LAMBDA`] .. [`BUS_SECTION_ID`]).
 ///
 /// Each row also has a typed accessor on [`crate::dss::Engine`] that takes the
 /// row **by reference**, so no mode number is ever written twice.
@@ -1993,24 +1979,22 @@ pub const WP_G1_MODES: &[&ModeSpec] = &[
     &PD_ELEMENTS_NAME,
 ];
 
-/// DDLL `case` arms a naive reading of WP-G1's mode *ranges* would include but
+/// DDLL `case` arms a naive reading of the table's mode *ranges* would include but
 /// that this bridge must never drive: they are **write** arms, and the generic
 /// reader supplies a neutral argument, so calling one would mutate the circuit
 /// instead of reading anything — `F:1`/`F:3` store `0.0` into the active PD
 /// element, `S:1` re-selects the active element by name and walks the
 /// `PDElements` cursor to the end of the list.
 ///
-/// `tmp/g10/spec.md` §2.B B4 listed `PDElements F:0..7` as a range; the vendored
-/// r4133 source shows modes 1 and 3 are the setters paired with the readers at 0
-/// and 2, which [`WP_G1_MODES`] carries instead. G1.6b added the third row when
-/// it took the `S:0` reader ([`PD_ELEMENTS_NAME`]) for the PDElements walk.
-/// Recorded here — and enforced by a unit test — so each omission is a decision,
-/// not a gap.
+/// `PDElements` modes 1 and 3 are the setters paired with the readers at 0 and
+/// 2, which [`WP_G1_MODES`] carries instead, and `S:1` is the setter next to the
+/// `S:0` reader ([`PD_ELEMENTS_NAME`]) of the PDElements walk. Recorded here —
+/// and enforced by a unit test — so each omission is a decision, not a gap.
 ///
-/// The register is **not** PDElements-only: G1.3a's `CktElement.Enabled` read
+/// The register is **not** PDElements-only: the `CktElement.Enabled` read
 /// (`I:12`) sits next to the most destructive write arm in the bridge (`I:13`
-/// disables the active element), so that arm is a row here too (G1.3a audit
-/// settlement, 2026-09-04) rather than a sentence in the reader's doc.
+/// disables the active element), so that arm is a row here too rather than a
+/// sentence in the reader's doc.
 pub const EXCLUDED_WRITE_MODES: &[(&str, ModeKind, i32, &str)] = &[
     (
         "PDElements",
@@ -2059,14 +2043,12 @@ pub fn wp_g1_mode(name: &str) -> Option<&'static ModeSpec> {
 
 // -- the element reads that predate the table ------------------------------
 //
-// [`WP_G1_MODES`] is the set of modes WP-G1 *adds*, so the three element reads
-// `crate::capture` has always performed (the port of
-// `oracle_server.capture_all_elements`) are not in it. The §1.1(a)/D3 capture
-// order rules them all the same, so they are declared as [`ModeSpec`] rows like
-// every other read — same type, same `ModeEffect`, same Pascal citation —
-// rather than growing a second, competing order table (GOLDEN_REBASE G1.3a spec
-// amendment, 2026-09-04). [`capture_group_of`] resolves a marker against both
-// lists.
+// [`WP_G1_MODES`] does not hold the three element reads of `crate::capture`'s
+// element capture (the twin of `oracle_server.capture_all_elements`). The
+// capture order rules them all the same, so they are declared as [`ModeSpec`]
+// rows like every other read — same type, same `ModeEffect`, same Pascal
+// citation — rather than growing a second, competing order table.
+// [`capture_group_of`] resolves a marker against both lists.
 
 /// `CktElementV(3)` — terminal currents, complex `[re, im, …]`. Group **B**:
 /// the arm allocates `cBuffer` and calls `GetCurrents` into it
@@ -2117,7 +2099,7 @@ pub const PRE_G1_ELEMENT_READS: &[&ModeSpec] = &[
     &CKT_ELEMENT_LOSSES,
 ];
 
-/// The §1.1(a)/D3 capture group of the read a `capture-order: <name> (<group>)`
+/// The capture-order group of the read a `capture-order: <name> (<group>)`
 /// marker names: `'A'` (read first), `'B'` (read after every group-A read of the
 /// same element) or `'C'` (order-free).
 ///
@@ -2194,7 +2176,7 @@ mod tests {
         assert!(classify_f(60.0).is_served());
     }
 
-    /// The five WP-G1 `S` spellings, pinned verbatim against the DDLL `else`
+    /// The five `S` spellings of the table's families, pinned verbatim against the DDLL `else`
     /// branches (`DBus.pas:217` `non`, `DSolution.pas:513` `paratemer`, …).
     #[test]
     fn s_sentinels_are_per_family_literals() {
@@ -2253,7 +2235,7 @@ mod tests {
         assert!(!v_sentinel_undetectable("Bus"));
     }
 
-    /// The table is the single home of every WP-G1 mode number, so its own
+    /// The table is the single home of every mode number the capture reads, so its own
     /// shape is pinned offline: one row per `(family, kind, mode)`, one row per
     /// name, `Family.Property` naming, and a declared `myType` on exactly the
     /// `V` rows (the tag [`crate::dss::Engine::read_mode`] validates).
@@ -2262,7 +2244,7 @@ mod tests {
         assert_eq!(
             WP_G1_MODES.len(),
             111,
-            "WP-G1 mode count changed — update the count, the record and TESTING.md"
+            "the mode table's row count changed — update the count here"
         );
         let mut names: Vec<&str> = Vec::new();
         let mut triples: Vec<(String, ModeKind, i32)> = Vec::new();
@@ -2295,7 +2277,7 @@ mod tests {
             assert!(!triples.contains(&t), "duplicate triple for {m}");
             triples.push(t);
         }
-        // The seven families WP-G1's surface sub-steps touch, spelled exactly as
+        // The seven families the table reads, spelled exactly as
         // `crate::families::REGISTRY` spells them (the lookup is
         // case-insensitive, but a typo here would silently probe nothing).
         let mut fams: Vec<&str> = WP_G1_MODES.iter().map(|m| m.family).collect();
@@ -2343,9 +2325,9 @@ mod tests {
         }
         // Non-vacuity: the excluded rows really are the neighbours of table rows
         // in the same family and shape, so the check above is not comparing
-        // against an empty or unrelated set. (The register is no longer
-        // PDElements-only — G1.3a's `CktElement.Enabled` read brought its write
-        // arm in — so the neighbourhood is asserted both against the table
+        // against an empty or unrelated set. (The register is not
+        // PDElements-only — the `CktElement.Enabled` read's write arm is a row
+        // too — so the neighbourhood is asserted both against the table
         // itself and, row by row, against each excluded arm's named reader.)
         assert_eq!(EXCLUDED_WRITE_MODES.len(), 5);
         for (fam, kind, mode, why) in EXCLUDED_WRITE_MODES {
@@ -2370,7 +2352,7 @@ mod tests {
                 "{reader}'s write arm is not on the excluded register"
             );
         }
-        // G1.6(ii): the fifth row is not a reader's write twin but the shape
+        // The fifth row is not a reader's write twin but the shape
         // collision the pairing loop above cannot express — the two integer
         // reliability columns sit at `I:4`/`I:5`, and mode 4 read on the `F`
         // entry point is `Bus.Y - Write`. Pinned so neither column can be
@@ -2394,12 +2376,12 @@ mod tests {
         );
     }
 
-    /// The §1.1(a) / D3 capture-order partition, pinned as data.
+    /// The capture-order partition, pinned as data.
     ///
     /// Group **A** (`ReadsIterminalCache`) is read before group **B**
     /// (`PoisonsIterminalCache`) on the same element; everything else is
     /// order-free. The membership below was derived from the Pascal by reading
-    /// each `case` arm (G1.0 audit settlement, 2026-09-04): the group-B arms all
+    /// each `case` arm: the group-B arms all
     /// reach `GetCurrents` into a scratch buffer — directly (`SeqPowers`
     /// `DCktElement.pas:758`, `Residuals` `:837`, `CurrentsMagAng` `:1069`) or
     /// through `CalcSeqCurrents` (`SeqCurrents` `:717`, `CplxSeqCurrents`
@@ -2453,7 +2435,7 @@ mod tests {
     }
 
     /// The capture bodies' `capture-order:` markers resolve through this module
-    /// and nowhere else (GOLDEN_REBASE G1.3a spec amendment): every group comes
+    /// and nowhere else: every group comes
     /// from [`ModeEffect::capture_group`] of a real row, so a marker cannot
     /// claim an order the Pascal does not support, and the three pre-table
     /// element reads keep exactly the discipline
@@ -2465,7 +2447,7 @@ mod tests {
         assert_eq!(capture_group_of("CktElement", "Losses"), Some('A'));
         assert_eq!(capture_group_of("CktElement", "Powers"), Some('A'));
         assert_eq!(capture_group_of("CktElement", "Currents"), Some('B'));
-        // G1.3a's four, straight out of `WP_G1_MODES`.
+        // Four straight out of `WP_G1_MODES`.
         assert_eq!(capture_group_of("CktElement", "CurrentsMagAng"), Some('B'));
         assert_eq!(capture_group_of("CktElement", "Residuals"), Some('B'));
         assert_eq!(capture_group_of("CktElement", "VoltagesMagAng"), Some('C'));
@@ -2502,11 +2484,9 @@ mod tests {
         }
     }
 
-    /// [`bus_vll_would_hang`] against every distinct bus node set the live
-    /// corpus contains (19 classes over 209 211 buses / 511 live cases,
-    /// `tmp/g14c` population sweep of `tmp/g14a/bus_pop_main.json`), with the
-    /// pairing each class produces spelled out so the table doubles as the
-    /// documentation of the walk.
+    /// [`bus_vll_would_hang`] against every distinct bus node set the live corpus
+    /// contains, with the pairing each class produces spelled out so the table
+    /// doubles as the documentation of the walk.
     ///
     /// Exactly one class refuses — NEVTestCase `double-1..6`
     /// `[10,31,32,33,41,42,43]`, live-measured as a `BUSV(11)` TIMEOUT — and the
@@ -2568,7 +2548,7 @@ mod tests {
     /// [`crate::dss::Engine::read_mode`] for every state, [`STATE_DEPENDENT_REFUSALS`]
     /// is cleared per call by a predicate. A mode on both would be refused
     /// unconditionally while claiming to be conditional, so they must be
-    /// disjoint — and a state-dependent row must still be a mode WP-G1 reads.
+    /// disjoint — and a state-dependent row must still be a mode the table reads.
     #[test]
     fn the_two_refusal_registers_are_disjoint_and_state_dependent_rows_are_read_modes() {
         assert_eq!(STATE_DEPENDENT_REFUSALS.len(), 2);
@@ -2585,7 +2565,7 @@ mod tests {
                 WP_G1_MODES.iter().any(|m| m.kind == *kind
                     && m.mode == *mode
                     && m.family.eq_ignore_ascii_case(fam)),
-                "{fam} {kind:?}:{mode} is refused per state but is not a WP-G1 mode"
+                "{fam} {kind:?}:{mode} is refused per state but is not a table mode"
             );
         }
         // The lookup is by triple, case-insensitive on the family, and does not

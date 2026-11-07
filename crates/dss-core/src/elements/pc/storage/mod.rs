@@ -1,6 +1,6 @@
 //! Port of `PCElements/Storage.pas` — `TStorageObj`, the battery-storage PC
-//! element, built on the Generator injection template (WP6.2) with the shared
-//! inverter base [`InvBasedPceData`] (WP7.3 step 1) embedded the way [`PVSystem`]
+//! element, built on the Generator injection template with the shared
+//! inverter base [`InvBasedPceData`] embedded the way [`PVSystem`]
 //! does. Storage adds a **charge/idle/discharge state machine** and an
 //! integrated state of charge (`kWhStored`/`%stored`) that the time-step cleanup
 //! hook advances (`UpdateStorage`).
@@ -12,7 +12,7 @@
 //! priority and the `kVA`/kvar clamps (`ComputeInverterPower`). The result is a
 //! per-phase P/Q that injects exactly like a Generator's constant-PQ model.
 //!
-//! Scope (WP7.4 step 1): the **power-flow** Storage — `SetNominalDEROutput`
+//! Scope: the **power-flow** Storage — `SetNominalDEROutput`
 //! (`SetNominalStorage`), the state machine + dispatch (`CheckStateTriggerLevel`),
 //! daily/yearly/duty shapes (snapshot-clone), `CalcYPrim` (state-dependent
 //! `YeqDischarge`), `DoConstantPQStorageObj` / `DoConstantZStorageObj` + the
@@ -22,8 +22,8 @@
 //! (`DoHarmonicMode`/`InitHarmonics`), the dynamics state machinery
 //! (`DoDynamicMode`/`InitStateVars`/`IntegrateStates` + the state-variable
 //! interface `NumVariables`/`Get_Variable`/`VariableName`), and the user-written
-//! `UserModel`/`DynaModel` (`user_model.rs`, the WASM host, WASM_USERMODELS WM.4)
-//! are all ported. `MakePosSequence` is in `accessors` (WPG.21).
+//! `UserModel`/`DynaModel` (`user_model.rs`, the WASM host) are all ported.
+//! `MakePosSequence` is in `accessors`.
 //!
 //! Split into submodules (this file holds the metadata, struct and `Create`):
 //! - [`nominal`]: shape multipliers, the state machine
@@ -303,18 +303,17 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // schema `minimum:0`/`exclusiveMaximum:24`/`units:hour`.
         PropDef::double("TimeChargeTrig").flags(PropFlags::UNITS_TOD_HOUR),
         PropDef::integer("Class"),
-        // WASM_USERMODELS WM.4: `DynaDLL`/`DynaData` follow the §2.4 uniform rule
-        // (parse + store + load-`.wasm`-or-warn), same as `UserModel`/`UserData`
-        // below. The Pascal edit dispatch (Storage.pas:866) loads `DynaModel`; the
+        // `DynaDLL`/`DynaData` follow the uniform activation rule (parse + store +
+        // load-`.wasm`-or-warn, `docs/wasm/USERMODEL_ABI.md` §5), same as
+        // `UserModel`/`UserData` below. The edit dispatch loads `DynaModel`; the
         // property hook queues a deferred request the executive resolves before
         // `end_edit` — a `.wasm` loads through the sandboxed ABI, a native-DLL name
         // / missing file emits a non-fatal "Not Loaded" 1570 and falls back to the
         // built-in model. Native DLL loading stays out of scope (forbid(unsafe_code)).
         PropDef::string("DynaDLL").flags(PropFlags::IS_FILENAME),
         PropDef::string("DynaData"),
-        // WASM_USERMODELS WM.4: `UserModel=`/`UserData=` follow the §2.4 uniform
-        // rule (parse + store + load-`.wasm`-or-warn) — never a parse error;
-        // upstream never errors on these properties (Storage.pas:851-858).
+        // `UserModel=`/`UserData=` follow the same rule — never a parse error;
+        // OpenDSS never errors on these properties.
         PropDef::string("UserModel").flags(PropFlags::IS_FILENAME),
         PropDef::string("UserData"),
         PropDef::boolean("DebugTrace"),
@@ -398,7 +397,7 @@ pub struct Storage {
     /// `PF_Priority` (default false).
     pub pf_priority: bool,
 
-    // Monitor results written by InvControl/ExpControl (mode-3 state, WP7.5/7.7);
+    // Monitor results written by InvControl/ExpControl (mode-3 state);
     // initialised to 9999 by Create.
     pub vreg: f64,
     pub vavg: f64,
@@ -448,7 +447,7 @@ pub struct Storage {
     pub pct_idle_kvar: f64,
     /// `kvarRequested` — the kvar setpoint (write target of the `kvar` property).
     pub kvar_requested: f64,
-    /// `kWRequested` — the kW request (set by VW control, WP7.5).
+    /// `kWRequested` — the kW request (set by VW control).
     pub kw_requested: f64,
     /// `kWOutIdling` — present AC-side idling draw (kW).
     pub kw_out_idling: f64,
@@ -482,13 +481,13 @@ pub struct Storage {
     /// Resolved harmonic spectrum, snapshot-cloned in at edit-completion (only
     /// when an explicit `spectrum=` is given — Create forces `SpectrumObj := NIL`).
     pub spectrum_obj: Option<SpectrumObj>,
-    /// `DynaModelNameStr` — user dynamics DLL/`.wasm` name (WASM_USERMODELS WM.4).
+    /// `DynaModelNameStr` — user dynamics DLL/`.wasm` name.
     pub dyna_model_name: String,
     /// `DynaModelEditStr` — the `DynaData=` string.
     pub dyna_model_edit: String,
 
     /// Pascal `UserModel: TStoreUserModel` (`Storage.pas:281`) — the 15-fn
-    /// `UserModel=` slot (WASM_USERMODELS WM.4). `None` until a `.wasm` loads.
+    /// `UserModel=` slot. `None` until a `.wasm` loads.
     pub user_model: Option<Box<StorageUserModelSlot>>,
     /// Pascal `DynaModel: TStoreDynaModel` (`:282`) — the 13-fn `DynaDLL=` slot.
     pub dyna_model: Option<Box<StorageUserModelSlot>>,
@@ -497,7 +496,8 @@ pub struct Storage {
     /// the header, the executive creates the file, the record writers append.
     trace: trace::DebugTraceFile,
     /// Deferred `UserModel=`/`UserData=`/`DynaDLL=`/`DynaData=` load/edit
-    /// requests, drained + resolved by the executive (§2.4 activation rule).
+    /// requests, drained + resolved by the executive (activation rule,
+    /// `docs/wasm/USERMODEL_ABI.md` §5).
     pub pending_user_model_loads: Vec<crate::obj::base::UserModelLoad>,
 }
 

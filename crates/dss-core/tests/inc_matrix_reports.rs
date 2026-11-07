@@ -1,4 +1,4 @@
-//! Incidence-matrix report goldens (WP-AD.1, DIAKOPTICS_PSTCALC_PLAN §2): pin the
+//! Incidence-matrix report goldens: pin the
 //! CSV files the oracle writes for `CalcIncMatrix`/`CalcIncMatrix_O`/
 //! `CalcLaplacian` + exports 53–57. `tools/golden/gen_inc_matrix.py` runs each
 //! fixture on the pinned engine, issues the calc + export commands, and captures
@@ -11,9 +11,9 @@
 //! token diff the float reports need. A wrong traversal order, a dropped/extra
 //! row, a mis-normalized level, or a filename/header typo all fail here.
 //!
-//! Stage F (`DE_PASCALIZE_PLAN.md` Part IV.2): that byte compare stays in
-//! **both** lanes. These writers render no number through the F-FMT seam
-//! (`report::format`'s float helpers / `fmt_g`), so F.4 cannot move their bytes
+//! That byte compare stays in
+//! **both** lanes. These writers render no number through the print seam
+//! (`report::format`'s float helpers / `fmt_g`), so the lane cannot move their bytes
 //! and the stronger gate costs the default lane nothing — the scoping rule is
 //! documented in `harness::lane`.
 //!

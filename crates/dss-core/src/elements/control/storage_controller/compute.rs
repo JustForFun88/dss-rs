@@ -48,8 +48,8 @@ impl StorageController {
         // Seasons` (valid array length, one past the last `0..Seasons-1` slot)
         // — or a negative `RatingIdx` off a signal curve that extrapolates
         // below 0 — indexes `SeasonTargets`/`SeasonTargetsLow` out of bounds:
-        // an upstream dynamic-array OOB read (UB, not a deterministic bug —
-        // CLAUDE.md "UB ... not reproduced"). Rust falls back to the
+        // an OpenDSS dynamic-array OOB read, undefined behaviour this engine
+        // does not reproduce. Rust falls back to the
         // non-seasonal target instead of reproducing the OOB read.
         if rating_idx > self.seasons || self.seasons <= 1 {
             return if t_high {
@@ -204,7 +204,7 @@ impl StorageController {
     /// pins Storage.A..E at `%Reserve = 25` from exactly that residue).
     ///
     /// [`storage_controller_recalc_fleet`]:
-    ///     crate::solution::controls::dispatch::storage_controller_recalc_fleet
+    ///     crate::solution::controls::storage_controller_recalc_fleet
     pub(crate) fn recalc_fleet(&mut self, env: &mut dyn StorageDispatchEnv) {
         if self.fleet_list_changed {
             self.make_fleet_list(env);
@@ -323,10 +323,8 @@ impl StorageController {
     /// its energy is gone is left discharging at its old kW, with no
     /// `PushTimeOntoControlQueue` to re-solve, while the event log says
     /// "Fleet has been set to idling state" regardless. r4133 carries the same
-    /// two unparenthesised lines
-    /// (`Version8/Source/Controls/StorageController.pas:1771`/`:2042`), so both
-    /// gating oracles have it and it is fixed rather than reproduced
-    /// (`GOLDEN_REBASE_PLAN.md` G2.1e; `issue-18`).
+    /// two unparenthesised lines, so both gating oracles have it and it is fixed
+    /// rather than reproduced (`issue-18`).
     ///
     /// That it is a precedence slip and not a convention is written seven times
     /// in the same unit: every *other* test of this field is parenthesised —
@@ -735,7 +733,7 @@ impl StorageController {
                 if p_diff.abs() > self.half_kw_band {
                     if self.fleet_state != StorageState::Discharging {
                         self.set_fleet_to_discharge(env);
-                        // D10 (WP-U1.6, `1b3123ce`, SVN r4058): if not already
+                        // If not already
                         // discharging, force a new power flow on the first control
                         // iteration so Storage.kW updates even when this step's
                         // discharge condition matches the last one.
@@ -964,7 +962,7 @@ impl StorageController {
             if p_diff.abs() > self.half_kw_band_low {
                 if self.fleet_state != StorageState::Charging {
                     self.set_fleet_to_charge(env);
-                    // D10 (WP-U1.6, `1b3123ce`, SVN r4058): if not already
+                    // If not already
                     // charging, force a new power flow on the first control
                     // iteration (peakshavelow charge).
                     if env.control_iteration() == 1 {

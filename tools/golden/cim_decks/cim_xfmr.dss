@@ -1,6 +1,6 @@
-! GAPS_PLAN WPG.18 CIM export — Stage E golden deck (transformers +
+! CIM export — transformer golden deck (transformers +
 ! autotransformers + banks + RegControl). Exercises every transformer arm of
-! `ExportCDPSM` (`ExportCIMXML.pas:3783-4270`):
+! `ExportCDPSM`:
 !   - AutoTrans t1 (3-winding YNad1) + t2 (2-winding YNa) -> PowerTransformerEnd
 !     + mesh/core, no tanks. Body from the corpus asymmetric/autotrans_snap.dss
 !     330 MVA unit (proven solvable).

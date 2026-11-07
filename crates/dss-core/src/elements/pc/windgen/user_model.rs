@@ -11,7 +11,7 @@
 //! `:2735-2876`) call sites through the ABI-doc record shuttle.
 //!
 //! Two things separate this from the Generator slot
-//! (`generator/user_model.rs`, the WM.3 pattern this follows):
+//! (`generator/user_model.rs`, the pattern this follows):
 //!
 //! 1. **The boundary record is `TWindGenVars`, not `TGeneratorVars`** — a
 //!    348-byte wasm image with the turbine tail (`ag`…`s`) appended and the
@@ -186,7 +186,7 @@ impl WindGenUserModelSlot {
     /// Reached through [`WindGen::take_live_user_model`], which every engine-side
     /// call site goes through: without that the `exists()` guards would shadow
     /// this revive completely and a cloned element would fall back to its
-    /// built-in model in silence (RP1.3 audit settlement).
+    /// built-in model in silence.
     pub(super) fn ensure_live(
         &mut self,
         g: &mut WindGen,
@@ -424,12 +424,12 @@ impl WindGenUserModelSlot {
                 }
                 Effect::ControlQueuePush { .. } => {
                     // No WindGen user model schedules control actions
-                    // (`ControlQueuePush` is the CapControl surface, WM.5).
+                    // (`ControlQueuePush` is the CapControl surface).
                     // Surface it loudly rather than silently drop.
                     errors.push(DssDiagnostic::msg(
                         format!(
                             "WindGen.{name}: user model called ControlQueuePush, which is not \
-                             wired for WindGen elements (CapControl scope, WM.5)."
+                             wired for WindGen elements (CapControl only)."
                         ),
                         Some(9001),
                     ));
@@ -505,7 +505,7 @@ impl WindGen {
         });
     }
 
-    /// The executive-drained apply for a resolved [`UserModelLoad`] (§2.4
+    /// The executive-drained apply for a resolved [`UserModelLoad`] (ABI doc §5
     /// activation rule). `wasm` is `Some` iff a `.wasm` file was found + read.
     pub(super) fn apply_user_model_load_impl(
         &mut self,
@@ -573,8 +573,8 @@ impl WindGen {
     /// all or the re-creation itself failed — the latter loudly, as #569. Every
     /// engine-side user-model call site goes through this rather than testing
     /// `exists()` directly: a bare `exists()` guard turns a snapshot into a
-    /// silent fallback to the built-in model, which is exactly the class of
-    /// defect RP1.3 found on the `like=` path.
+    /// silent fallback to the built-in model, the defect a `like=` copy would
+    /// otherwise hit.
     fn take_live_user_model(
         &mut self,
         sys: &SysCtx,
@@ -682,8 +682,8 @@ impl WindGen {
     /// runs only `ComputeIterminal` (`:2512`) — never `ComputeVterminal` —
     /// before `FInit`, so the user model is seeded from the STALE `Vterminal`
     /// buffer, i.e. the node voltage of the power flow's *last injection
-    /// iteration*. This mirrors the Generator slot's `user_model_finit`
-    /// (the WM.3 D2 finding), which is the same Pascal shape.
+    /// iteration*. This mirrors the Generator slot's `user_model_finit`,
+    /// which has the same shape.
     pub(super) fn user_model_finit(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         let mut errs = ErrorLog::new();
         let Some(mut s) = self.take_live_user_model(sys, node_v, &mut errs) else {

@@ -6,8 +6,7 @@ that dumps every registered DSS class + enum. The Rust port currently reproduces
 only the **static core** of that document (the schema envelope + the ten reusable
 global `$defs` + the static `circuitProperties` head); the per-class/enum walk is
 blocked on per-property metadata the Rust port never carried (help text,
-`AltPropertyOrder`, `SpecSets`, enum JSON names, most `Units_*` flags) — see
-STATUS §OG-1.5.
+`AltPropertyOrder`, `SpecSets`, enum JSON names, most `Units_*` flags).
 
 This script captures the oracle bytes, proves them deterministic across two
 independent oracle processes, extracts the exact fpjson-pretty rendering of each
@@ -107,12 +106,12 @@ SCHEMA_CLASSES = [
     # SinglePhTrip / Lock / RatedCurrent / InterruptingRating / per-phase
     # Normal/State arrays), which diverges STRUCTURALLY from the pinned 0.14.5
     # oracle (53 props, classic names). Like LineGeometry/WindGen it needs a
-    # port-output reference, not a 0.14.5 byte compare. See STATUS §OG-1.5c B4.
+    # port-output reference, not a 0.14.5 byte compare.
     # LineGeometry: deferred to integration as a port-authored (0.15.x) class —
     # its property model follows the newer dss_capi (Wires -> Redundant+SuppressJSON,
     # new Conductors=20 object-ref-array) and straddles 0.14.5 via HIDE_015X, so its
     # schema diverges structurally from the pinned 0.14.5 oracle and needs a
-    # port-output reference (like WindGen). See STATUS §OG-1.5c batch B1.
+    # port-output reference (like WindGen).
     # --- Batch B5: protection + PV (byte-exact after the documented r4133
     # divergences in schema_divergences.json). ---
     # Recloser: deferred to integration as a port-authored (r4133) class — the
@@ -122,17 +121,17 @@ SCHEMA_CLASSES = [
     # deprecated aliases, plus MechanicalDelay/SinglePhTrip/Lock/Reset/
     # RatedCurrent/InterruptingRating), which diverges STRUCTURALLY from the
     # pinned 0.14.5 oracle (24 props, classic names). Like Relay/LineGeometry it
-    # needs a port-output reference, not a 0.14.5 byte compare. See STATUS §OG-1.5c B5.
+    # needs a port-output reference, not a 0.14.5 byte compare.
     "Fuse",
-    # SwtControl: deferred to integration as a port-authored (r4133/0.15.x) class —
-    # the port adopted the 0.15.x property model (D12/WP-U1.6: Normal→NormalState,
+    # SwtControl: an engine-authored (r4133/0.15.x) class — this engine uses
+    # the 0.15.x property model (Normal→NormalState,
     # State→PresentState instead of the shared 0.14.5 CurrentAction; the State
     # ReadByFunction=GetState "no controlled element → CTRL_NONE" semantics are
     # intentionally not modelled in the accessor) plus the OpenDSS r4133
     # RatedCurrent prop and the 0.15.x help catalog (deprecated Delay, per-phase
     # Normal/State help). Its Normal/State schema defaults therefore differ from the
     # 0.14.5 oracle in getter semantics (not a clean line diff), so it needs a
-    # port-output reference. See STATUS §OG-1.5c B5.
+    # port-output reference.
     "PVSystem",
     "UPFC",
     "UPFCControl",

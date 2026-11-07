@@ -33,7 +33,7 @@ pub use prop_def::{PropDef, RefMissMessage, StubMessage, prop_index};
 pub use prop_flags::PropFlags;
 pub use prop_type::PropType;
 
-/// Declarative per-class property table (PHASE4_PLAN §3.4, bounded outcome):
+/// Declarative per-class property table:
 /// generates the 1-based ordinal consts (`pub mod prop`, with `NUM_PROPS`
 /// including the auto-appended `Like`) and the `class_props()` builder from a
 /// single listing, so the ordinals and the table can never drift apart.
@@ -43,8 +43,7 @@ pub use prop_type::PropType;
 /// available without macro ceremony. The `DssObject` accessor arms stay
 /// hand-written: in every ported class the non-trivial arms (spec-type side
 /// effects, clamping, redundant aliases) dominate, so a field-mapping macro
-/// would need an escape hatch per arm and was abandoned per the §3.4 fallback
-/// rule (see STATUS.md).
+/// would need an escape hatch per arm.
 ///
 /// ```ignore
 /// define_properties! {

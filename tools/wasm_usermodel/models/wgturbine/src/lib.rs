@@ -1,5 +1,5 @@
-//! wgturbine — the WindGen `UserModel=` reference fixture for
-//! `R4133_PROPS_PLAN.md` RP1.3. r4133 ships no example WindGen user model (only
+//! wgturbine — the WindGen `UserModel=` reference fixture. r4133 ships no
+//! example WindGen user model (only
 //! the loader, `PCElements/WindGenUserModel.pas`), so the model is authored, the
 //! way wm4model and capuserctl were.
 //!
@@ -87,7 +87,7 @@ pub const DYNAMICMODE: i32 = 14;
 pub const VAR_OUT_OF_RANGE: f64 = -9999.99;
 
 /// A minimal complex type (re, im) — the fixture avoids `num_complex` to keep
-/// the wasm module tiny and the toolchain surface stable (plan §2.6).
+/// the wasm module tiny and the toolchain surface stable.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct Cx {
     pub re: f64,
@@ -274,7 +274,7 @@ impl Model {
     /// Pascal `Edit` (`WindGenUserModel.pas:152-156`): a minimal `key=value`
     /// scanner for `g=`, `b=`, `slip=`, `eta=`, `tau=` (whitespace/`(...)`
     /// tolerant; unknown keys ignored) — what a small Delphi/C user model's own
-    /// parser would accept, with no dss-parser dependency (plan §2.6).
+    /// parser would accept, with no dss-parser dependency.
     pub fn edit(&mut self, data: &str) {
         for tok in data
             .split(|c: char| c.is_whitespace() || c == '(' || c == ')' || c == ',')

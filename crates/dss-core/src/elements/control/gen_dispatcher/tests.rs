@@ -282,10 +282,9 @@ mod make_pos_seq_tests {
     use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
     use crate::elements::traits::{CktElement, ElemId};
 
-    /// Pascal `TGenDispatcherObj.MakePosSequence` (GenDispatcher.pas:263) is a
-    /// NIL-deref hazard: `element=` set (MonitoredElement <> NIL) makes it deref
-    /// the always-NIL `ControlledElement` (Access violation #303, probe `3a`).
-    /// CLAUDE.md forbids reproducing UB → safe-skip: no mutation, no panic.
+    /// With `element=` set, the OpenDSS `MakePosSequence` dereferences the
+    /// always-NIL `ControlledElement` and crashes. This engine skips the block: no
+    /// mutation, no panic.
     #[test]
     fn crash_config_element_set_is_safe_skip() {
         let mut gd = GenDispatcher::new("gd1");

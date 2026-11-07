@@ -1,5 +1,5 @@
-//! A length unit is one exact documented word in every class (coordinator
-//! ruling 2026-10-04). Each unit property takes the words its documentation
+//! A length unit is one exact documented word in every class. Each unit
+//! property takes the words its documentation
 //! lists, written whole in any case, blanks around a word being no part of
 //! it, and refuses any other text at its token, naming the property, the word
 //! and the list: the property keeps what it had and nothing is read in

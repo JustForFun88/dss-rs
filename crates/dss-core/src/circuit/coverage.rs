@@ -1,15 +1,13 @@
-//! A-Diakoptics coverage-path tracing (`DIAKOPTICS_PSTCALC_PLAN.md` WP-AD.5).
+//! A-Diakoptics coverage-path tracing.
 //!
-//! Behavioral spec = **official r3723 Delphi** (plan D10):
-//! `.inputs/electricdss-code-r3723-trunk/Version8/Source/Common/Circuit.pas`
-//! `get_longest_path` (778), `Append2PathsArray` (809), `Normalize_graph`
-//! (823), `Get_paths_4_Coverage` (853). These trace the longest paths from the
+//! `get_longest_path`, `Append2PathsArray`, `Normalize_graph` and
+//! `Get_paths_4_Coverage` trace the longest paths from the
 //! feeder backbone (the level-0 buses of the hierarchical incidence matrix)
 //! outward until the requested `Coverage` fraction of buses is reached — the
 //! body of the `Refine_BusLevels` command.
 //!
 //! The routines read/mutate `Solution.Inc_Mat_Levels` (the per-bus proximity
-//! level, populated by `Calc_Inc_Matrix_Org`, WP-AD.1) and the circuit's
+//! level, populated by `Calc_Inc_Matrix_Org`) and the circuit's
 //! `Longest_paths`/`Path_Idx`/`Buses_Covered`/`New_Graph` working arrays
 //! (`AdTearing`), and use `Coverage`/`Actual_Coverage`.
 
@@ -51,9 +49,9 @@ impl Circuit {
             // unconditionally at the loop head; `Current_idx` decrements each
             // iteration and could pass below 0. In a well-formed hierarchical
             // graph the descent hits a level-0 backbone bus first (which sets
-            // `end_flag = False`), so index 0 is the floor — but per plan D5 we do
-            // not reproduce a potential negative-index OOB read: a run past the
-            // start terminates the trace.
+            // `end_flag = False`), so index 0 is the floor. This engine does not
+            // reproduce a potential negative-index OOB read: a run past the start
+            // terminates the trace.
             let lv = self.solution.inc_matrix.levels[current_idx];
             // Termination criteria (Circuit.pas:793–794).
             if current_level > lv || lv == 0 {
@@ -175,7 +173,7 @@ impl Circuit {
                     self.ad.path_idx.push(start);
                     // Estimated buses covered by this path = first index - last
                     // index of the extracted branch (Circuit.pas:894). Empty branch
-                    // => 0 (guards the [0]/[High] OOB read; plan D5).
+                    // => 0 (guards the [0]/[High] OOB read).
                     let covered = match (new_graph.first(), new_graph.last()) {
                         (Some(&f), Some(&l)) => f - l,
                         _ => 0,

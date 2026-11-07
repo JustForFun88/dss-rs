@@ -1,18 +1,15 @@
-//! Pascal `TXYcurveObj.SaveWrite` (r4133
-//! `Version8/Source/General/XYcurve.pas:978-1003`) — the `Save`-serializer
-//! override. Adopted by RP3.11 P2-P4 (§1.1: the port's override set is the
-//! *union* of both upstreams', because each one exists to keep the emitted deck
-//! re-compilable); dss_capi 0.14.5 dropped it, so the port never had it.
+//! The XYcurve `Save`-serializer override, as r4133 has it. This engine's
+//! override set is the *union* of both OpenDSS engines', because each one
+//! exists to keep the emitted deck re-compilable. dss_capi 0.14.5 dropped this
+//! one.
 //!
 //! `Npts` sizes the `XArray`/`YArray` allocation on reload, so it has to be the
 //! first token on the line. In the parse chain it is not: r4133's
 //! `TXYcurveObj.Set_NumPoints` re-stamps `PropertyValue[1]`
 //! (`XYcurve.pas:1005-1019`) whenever an array property is parsed, pushing
-//! `npts` to the *back* of the chain, and this port stamps it wherever the deck
-//! typed it — which for a deck that re-sets `npts` last is dead last:
-//! `New "XYcurve.xy2" XArray=[ 0 1] YArray=[ 0 2] NPts=2` (measured before this
-//! override, RP3.11 I1). r4133 on the same deck writes
-//! `New "XYcurve.xy2" Npts=2 Xarray=[0, 1, ] Yarray=[0, 2, ]`.
+//! `npts` to the *back* of the chain, and this engine stamps it wherever the
+//! deck typed it, which for a deck that re-sets `npts` last is dead last. The
+//! override writes `Npts` first, as r4133 does.
 //!
 //! Co-located with the element (like the [`crate::elements::pd::line`] and
 //! [`crate::elements::pd::transformer`] overrides) and dispatched from
@@ -49,9 +46,8 @@ impl XyCurveObj {
                 // state, so an empty (or blank-only, or `----`) render would emit
                 // a bare ` Name=`. No reachable XYcurve property renders leading
                 // or trailing blanks or the sentinel, so the deviation is
-                // currently unobservable; it is written down because the doc
-                // above claims loop-for-loop fidelity to the Pascal (RP3.11
-                // audit finding AC-4).
+                // currently unobservable. It is written down because this body
+                // otherwise follows the Pascal loop for loop.
                 save_write_token(out, cx, self, i);
             }
             iprop = self.data().next_property_set(Some(i));

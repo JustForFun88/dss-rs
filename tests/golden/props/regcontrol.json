@@ -3,7 +3,7 @@
  "oracle": {
   "engine_spec": "capi015",
   "engine": "DSS C-API Library version 0.15.0b4 revision e936d2101d745e0f0ea6872d7aa8545cb6bbd5ae based on OpenDSS SVN 4103 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20260226044838; License Status: Open \nDSS-Python version: 0.16.0b2",
-  "note": "WP-U1.6 C5 RegControl 0.15.x surface (r4086, 8a898cba): signed RevThreshold default \u2212100 kW, FwdThreshold, Idle/IdleReverse/IdleForward, EndEdit legacy band. Probed on capi015."
+  "note": "RegControl 0.15.x surface (r4086, 8a898cba): signed RevThreshold default \u2212100 kW, FwdThreshold, Idle/IdleReverse/IdleForward, EndEdit legacy band. Probed on dss_capi 0.15.0b4."
  },
  "class": "regcontrol",
  "scenarios": [

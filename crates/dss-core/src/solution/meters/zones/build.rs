@@ -367,7 +367,7 @@ pub(super) fn make_meter_zone_lists(
                             if !enabled || !is_pd_element(store, test_ref) {
                                 zone_list_counter += 1; // ignore disabled / non-PD
                             } else {
-                                // D8-r3723 (dss_capi 0.15.x manual-zonelist fix): the
+                                // dss_capi 0.15.x manual-zonelist fix: the
                                 // child is added with the element's terminal-1 bus
                                 // reference and terminal 1 — Pascal `AddNewChild(
                                 // TestElement, TestCE.Terminals[0].BusRef, 1)`. The

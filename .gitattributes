@@ -5,7 +5,7 @@
 tests/corpus/electricdss-tst/** -text
 tests/corpus/SHA256SUMS -text
 
-# The vendored G1.1 r4133 property census (R4133_PROPS_PLAN.md RP0.1). Five of
+# The vendored G1.1 r4133 property census. Five of
 # its files are byte-identical copies of a local-only, gitignored source and the
 # rest are frozen derivations of a 270 MiB census that is not in the repo, so
 # nothing here may be rewritten on checkout either.

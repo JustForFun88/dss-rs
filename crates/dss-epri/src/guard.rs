@@ -11,7 +11,7 @@
 //! never make the guard classify pre-existing corpus files as run-created and
 //! delete them (the war story documented in the Python original).
 //!
-//! GOLDEN_REBASE G1.10a added the *reporting* half: the classification that
+//! The guard has a *reporting* half too: the classification that
 //! decides what to delete is also the gate's `compare_run_files` surface — the
 //! set of filesystem entries a run created under the case dir. One
 //! classification, two consumers ([`CorpusGuard::created`] and
@@ -20,18 +20,17 @@
 //! own entries, plus everything under a directory the run created**: a
 //! PRE-EXISTING subdirectory is never descended into, because the gate schedules
 //! by case *dir* and a report file appearing under one belongs to a
-//! concurrently running sibling case, not to this run (D30(2); the citations and
-//! the measurement are on [`CorpusGuard::classify`]). The classification itself
+//! concurrently running sibling case, not to this run (the citations and the
+//! measurement are on [`CorpusGuard::classify`]). The classification itself
 //! is the free [`classify_created`], so the gate's outer guard
 //! (`crates/dss-core/tests/corpus_gate/runner.rs`), whose snapshot is shared per
-//! directory, runs the identical rule — one classification, three consumers
-//! (D32(3)).
+//! directory, runs the identical rule — one classification, three consumers.
 //!
-//! And the sweep is no longer allowed to fail quietly (D32(2)): whatever it
-//! could not remove comes back from [`CorpusGuard::finish`] as `sweep_failed`
-//! and travels in the transport's reply, so a producer that leaks an open file
-//! handle can never again silence a LATER producer's created set by leaving the
-//! file behind as "pre-existing".
+//! And the sweep never fails quietly: whatever it could not remove comes back
+//! from [`CorpusGuard::finish`] as `sweep_failed` and travels in the
+//! transport's reply, so a producer that leaks an open file handle can never
+//! silence a LATER producer's created set by leaving the file behind as
+//! "pre-existing".
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -41,10 +40,9 @@ use std::path::{Path, PathBuf};
 /// `_RESTORE_MAX` and the Rust gate's `RESTORE_MAX`.
 const RESTORE_MAX: u64 = 2 * 1024 * 1024;
 
-/// Engine-internal scratch files (GOLDEN_REBASE G1.10a, coordinator decision
-/// D25/Q2). The Pascal engines round-trip the fundamental solution through DISK
-/// when harmonics is initialized: `SavePresentVoltages` writes
-/// `<CircuitName_>SavedVoltages.dbl` (r4133
+/// Engine-internal scratch files. The Pascal engines round-trip the fundamental
+/// solution through DISK when harmonics is initialized: `SavePresentVoltages`
+/// writes `<CircuitName_>SavedVoltages.dbl` (r4133
 /// `Version8/Source/Common/Utilities.pas:1512-1521`, reached only from
 /// `InitializeForHarmonics` `:1599-1608`; read back by `RetrieveSavedVoltages`
 /// `:1554-1564`, consumed at `Common/SolutionAlgs.pas:1056,1131`; dss_capi
@@ -61,9 +59,8 @@ const RESTORE_MAX: u64 = 2 * 1024 * 1024;
 /// `src/Executive/ExecHelper.pas:3387`, port
 /// `crates/dss-core/src/exec/report.rs:2490-2522`) — all three engines write it,
 /// so it stays a compared member of the set.
-/// The match is a SUFFIX, not the full `<CircuitName_>SavedVoltages.dbl` shape
-/// (G1.10a audit settlement, finding AC-8: a conscious choice, not an
-/// oversight). It cannot hide anything: the split is SYMMETRIC — a name that
+/// The match is a SUFFIX, not the full `<CircuitName_>SavedVoltages.dbl` shape,
+/// by choice. It cannot hide anything: the split is SYMMETRIC — a name that
 /// matches leaves the compared set on the oracle side and on the port side
 /// alike, the port is asserted to produce none
 /// (`harness::run_files::compare_run_files`), and every declined name is counted
@@ -83,10 +80,9 @@ pub const ENGINE_SCRATCH_SUFFIXES: [&str; 1] = ["savedvoltages.dbl"];
 /// (`src/Executive/ExportOptions.pas:314,343,345,381,437`), and r4133
 /// additionally lowercases deck-supplied stems (`Auto1bus_HL_current.txt` ->
 /// `auto1bus_hl_current.txt`), so no single spelling can satisfy both gating
-/// channels; NTFS is case-insensitive, so nothing observable depends on it (the
-/// R-18 decision, recorded in `DIVERGENCES.md`). The fold is ASCII-only — the
-/// exact twin of the Python `ascii_lower` — so a non-ASCII name survives
-/// unfolded and the comparator can refuse it loudly.
+/// channels; NTFS is case-insensitive, so nothing observable depends on it. The
+/// fold is ASCII-only — the exact twin of the Python `ascii_lower` — so a non-ASCII
+/// name survives unfolded and the comparator can refuse it loudly.
 ///
 /// Twin: `tools/oracle/corpus_guard.py::normalize_created_name`.
 pub fn normalize_created_name(rel: &str, is_dir: bool) -> String {
@@ -126,7 +122,7 @@ pub fn is_engine_scratch_file(name: &str) -> bool {
 const DI_DIR_PREFIX: &str = "di_yr_";
 
 /// True for a normalized created-name that is a **file** member of a
-/// demand-interval tree (GOLDEN_REBASE G1.10c): some directory segment of its
+/// demand-interval tree: some directory segment of its
 /// path starts with [`DI_DIR_PREFIX`].
 ///
 /// The test is on the PREFIX, not on `di_yr_<digits>`: r4133 appends
@@ -136,7 +132,7 @@ const DI_DIR_PREFIX: &str = "di_yr_";
 /// any of the three producers writes creates a `DI_yr_*` directory.
 ///
 /// A DIRECTORY member (trailing `/`) is never a DI *file*: it carries no
-/// contents, and its existence is already compared by G1.10a's created-file set.
+/// contents, and its existence is already compared by the created-file set.
 ///
 /// Twin: `tools/oracle/corpus_guard.py::is_di_member`.
 pub fn is_di_member(name: &str) -> bool {
@@ -151,14 +147,13 @@ pub fn is_di_member(name: &str) -> bool {
 }
 
 /// Copy the demand-interval members `members` into the gate's sidecar directory
-/// `di_dir`, and return `normalized name -> path relative to di_dir`
-/// (GOLDEN_REBASE G1.10c, coordinator decision D42(5)).
+/// `di_dir`, and return `normalized name -> path relative to di_dir`.
 ///
 /// Why a sidecar at all: the DI tree is run-created, so the guard sweeps it away
 /// at the end of the run — and the comparison happens later, in the gate
 /// process, after the port has re-run the same case in the same directory. The
 /// files are therefore COPIED (never moved: the guard must still find and sweep
-/// the original, and G1.10a must still see its name) into a directory the gate
+/// the original, and the created-file set must still see its name) into a directory the gate
 /// owns, outside `tests/corpus/`.
 ///
 /// Every failure is returned, never swallowed: a copy that cannot be made, or
@@ -191,8 +186,7 @@ pub fn copy_di_tree(
 }
 
 /// The size check behind [`copy_di_tree`] and [`copy_selected_contents`] — ONE
-/// rail for both sidecars since the G1.10c landing (coordinator decision
-/// D42(5)): the DESTINATION is stat-ed, exactly as the Python twin does
+/// rail for both sidecars: the DESTINATION is stat-ed, exactly as the Python twin does
 /// (`tools/oracle/corpus_guard.py::verify_sidecar_size`).
 ///
 /// `copied` — what `std::fs::copy` reported — is checked too, but it can never
@@ -200,8 +194,7 @@ pub fn copy_di_tree(
 /// return value is the length it read from the SOURCE, so comparing it against
 /// the source's own metadata is a validation that cannot fail. A short or
 /// later-truncated sidecar copy would otherwise reach the comparator as a
-/// row-count divergence — the very misdiagnosis this check exists to prevent
-/// (GOLDEN_REBASE G1.10c audit finding AC-1).
+/// row-count divergence — the very misdiagnosis this check exists to prevent.
 fn verify_sidecar_size(src: &Path, dest: &Path, copied: u64) -> Result<(), String> {
     let want = std::fs::metadata(src)
         .map_err(|e| format!("cannot stat the sidecar source {src:?}: {e}"))?
@@ -222,7 +215,7 @@ fn verify_sidecar_size(src: &Path, dest: &Path, copied: u64) -> Result<(), Strin
 
 /// Partition a created-file set into `(compared, engine-internal scratch)`.
 ///
-/// The structural normalization of decision D25/Q2, applied SYMMETRICALLY to
+/// A structural normalization, applied SYMMETRICALLY to
 /// every channel: the caller compares the first list and counts the second (the
 /// gate's fail-on-stale `SCRATCH_FILE_DECLINES` population constant), so the
 /// decline stays visible instead of being silently masked.
@@ -242,16 +235,16 @@ pub fn split_engine_scratch(names: &[String]) -> (Vec<String>, Vec<String>) {
 }
 
 // ---------------------------------------------------------------------------
-// GOLDEN_REBASE G1.10b — which created files carry their CONTENTS to the gate.
+// Which created files carry their CONTENTS to the gate.
 // ---------------------------------------------------------------------------
 
-/// The G1.10b CONTENTS selection: the created-file names whose BYTES the gate
-/// compares (G1.10a compares the set; this is its second half).
+/// The CONTENTS selection: the created-file names whose BYTES the gate
+/// compares (the created-file set is the first half, this the second).
 ///
 /// Declared ONCE, here, and shipped to both oracle transports in the run request
 /// (`run_file_contents`) so that no transport ever re-derives which files it
 /// must hand back — the same "one classification, three producers" property
-/// G1.10a established for the set itself
+/// the set itself has
 /// (`crates/dss-core/tests/corpus_gate/engines.rs::build_run_request`).
 ///
 /// Each entry is a pattern over a [`normalize_created_name`] member (already
@@ -266,17 +259,16 @@ pub fn split_engine_scratch(names: &[String]) -> (Vec<String>, Vec<String>) {
 /// * `EXP_PV_<NAME>.CSV` — the `/m` ("multiple") arm of `Export PVSystem`
 ///   writes one file per PVSystem and does NOT prefix the circuit name
 ///   (`Version8/Source/Common/ExportResults.pas:2010`).
-/// * `STOR_<NAME>.CSV` — the Storage `DebugTrace` file
-///   (`Version8/Source/PCElements/Storage.pas:1073-1085`, ported by G1.10a
-///   micro-part F4a into `crates/dss-core/src/elements/pc/storage/trace.rs`).
+/// * `STOR_<NAME>.CSV` — the Storage `DebugTrace` file (this engine writes it
+///   in `crates/dss-core/src/elements/pc/storage/trace.rs`).
 ///
 /// Deliberately NOT selected, each recorded by the gate's census with its reason
-/// instead of compared ad hoc (coordinator decision D40(3)/D40(5)): the monitor
-/// CSVs (A6 — f32 data, and unsampled-monitor comparison is a known oracle
-/// artifact, `TESTING.md`), the `Show`/`Dump` text reports, the demand-interval
-/// tree (G1.10c owns it), the export kinds with no golden `ExportPolicy`
-/// (`Jacobian`, `deltaF`, `deltaZ`, `cim100`), and a deck-named
-/// `export ... file=<name>`, whose file name does not identify the report kind.
+/// instead of compared ad hoc: the monitor CSVs (f32 data, and an unsampled
+/// monitor is a known OpenDSS artifact), the `Show`/`Dump` text reports, the
+/// demand-interval tree (its own surface, [`copy_di_tree`]), the export kinds with
+/// no golden `ExportPolicy` (`Jacobian`, `deltaF`, `deltaZ`, `cim100`), and a
+/// deck-named `export ... file=<name>`, whose file name does not identify the
+/// report kind.
 ///
 /// `exp_pv_*.csv` is matched with the ORACLE's spelling, which two r4133 writers
 /// share: `WriteMultiplePVSystemMeterFiles` (`Common/ExportResults.pas:1990`) and
@@ -371,23 +363,19 @@ pub fn path_is_inside(path: &Path, dir: &Path) -> bool {
 /// Refuse a sidecar directory that is, contains, or sits under the case
 /// directory — the one destructive path of this surface (`remove_dir_all`).
 ///
-/// ONE rail for both sidecars since the G1.10c landing deduped G1.10b's
-/// contents sidecar and G1.10c's demand-interval sidecar (coordinator decision
-/// D42(5)). It is the union of what the two sub-steps each measured: the paths
-/// are canonicalized first (G1.10b — a relative or `..`-bearing spelling must
-/// not slip past a textual test) and then compared with [`path_is_inside`] in
-/// BOTH directions (G1.10c's ASCII case fold, which a canonicalize that fails —
-/// the sidecar need not exist yet — would otherwise leave to a case-sensitive
-/// `Path::starts_with`).
+/// ONE rail for both sidecars, the contents sidecar and the demand-interval
+/// sidecar. The paths are canonicalized first (a relative or `..`-bearing
+/// spelling must not slip past a textual test) and then compared with
+/// [`path_is_inside`] in BOTH directions (an ASCII case fold, which a
+/// canonicalize that fails — the sidecar need not exist yet — would otherwise
+/// leave to a case-sensitive `Path::starts_with`).
 ///
 /// A sidecar that does not exist yet is resolved against its nearest EXISTING
 /// ancestor, not only against its immediate parent: several levels of it may be
 /// missing (`create_dir_all` makes them), and a raw spelling left unresolved
 /// could never share a prefix with the canonicalized `\\?\`-form of the case
 /// directory, so the refusal would silently stop firing exactly where the
-/// directory is newest — the shape CLAUDE.md records two `.inputs` wipes from.
-/// That is what the Python twin's `os.path.abspath` does (merge settlement of
-/// the lane-e G1.10c landing, finding MT-1).
+/// directory is newest. That is what the Python twin's `os.path.abspath` does.
 ///
 /// The message names the relation it actually found — the rail is shared, so
 /// both directions can fire — and its caller adds the surface it speaks for.
@@ -421,8 +409,8 @@ pub(crate) fn refuse_sidecar_under_case_dir(case_dir: &Path, sidecar: &Path) -> 
         return Err(format!(
             "the sidecar {} {relation} the case directory {}. The bytes travel \
              through a directory the GATE owns under `target/` and this transport \
-             clears it with a recursive delete (coordinator decision D40(6)); \
-             pointing it at a corpus deck would delete vendored sources.",
+             clears it with a recursive delete. Pointing it at a corpus deck would \
+             delete vendored sources.",
             s.display(),
             c.display()
         ));
@@ -470,8 +458,7 @@ fn resolve_selected<S: AsRef<str>>(
         // take for an entry whose `file_type()` errors, because this module's
         // contract is ONE classification with three producers. Treating it as a
         // file here means the copy below refuses it loudly instead of the
-        // resolver silently reporting it as "no longer a file". (G1.10b audit
-        // settlement, finding AC3-6.)
+        // resolver silently reporting it as "no longer a file".
         if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
             continue;
         }
@@ -529,8 +516,8 @@ pub fn decode_run_file(bytes: &[u8], what: &str) -> Result<String, String> {
 }
 
 /// Copy the selected members' bytes into the gate-owned sidecar directory and
-/// return the names copied, sorted — an oracle TRANSPORT's half of the G1.10b
-/// contents surface (coordinator decision D40(6)).
+/// return the names copied, sorted — a TRANSPORT's half of the contents
+/// surface.
 ///
 /// Bytes travel on disk rather than inline in the line-JSON reply because the
 /// selection reaches ~19 MB per channel per full drive (`NEV_EXP_Y.csv` alone is
@@ -542,8 +529,7 @@ pub fn decode_run_file(bytes: &[u8], what: &str) -> Result<String, String> {
 /// (`crates/dss-test-harness/src/harness/run_files.rs::read_sidecar`).
 ///
 /// `patterns` empty ⇒ the gate did not ask: no directory is touched and `None`
-/// comes back, which keeps an off-flag reply identical to a pre-G1.10b one and
-/// lets the gate's presence rail tell "not requested" from "requested, and this
+/// comes back, which lets the gate's presence rail tell "not requested" from "requested, and this
 /// deck wrote none of the selected reports".
 ///
 /// Twin: `tools/oracle/corpus_guard.py::copy_selected_contents`.
@@ -560,7 +546,7 @@ pub fn copy_selected_contents<S: AsRef<str>>(
         "run-file contents: the request carries selection patterns but no \
          `run_file_contents_dir`. The bytes travel through a gate-owned sidecar \
          directory; without one the transport would have to inline megabytes into the \
-         reply, which coordinator decision D40(6) rules out."
+         reply."
             .to_string()
     })?;
     let created = created.ok_or_else(|| {
@@ -572,10 +558,9 @@ pub fn copy_selected_contents<S: AsRef<str>>(
     let selected = resolve_selected(case_dir, created, patterns)?;
     let dir = Path::new(sidecar);
     // The next statement is a RECURSIVE DELETE of a path the request chose, so
-    // coordinator decision D40(6) ("the gate's OWN scratch — never inside
-    // `tests/corpus/` or the case directory") is enforced here, not only at the
-    // single construction site: CLAUDE.md records two wipes of vendored sources
-    // from exactly this shape. (G1.10b audit settlement, finding AC3-4.)
+    // the rule "the gate's OWN scratch — never inside `tests/corpus/` or the
+    // case directory" is enforced here, not only at the single construction
+    // site: aimed at a vendored tree, that delete wipes it.
     refuse_sidecar_under_case_dir(case_dir, dir)
         .map_err(|why| format!("run-file contents: {why}"))?;
     std::fs::remove_dir_all(dir).or_else(|e| match e.kind() {
@@ -595,8 +580,7 @@ pub fn copy_selected_contents<S: AsRef<str>>(
                 path.display()
             )
         })?;
-        // ONE size rail for both sidecars (coordinator decision D42(5), deduped
-        // at the G1.10c landing): a short or later-truncated copy fails the case
+        // ONE size rail for both sidecars: a short or later-truncated copy fails the case
         // here instead of reaching the comparator as a row-count divergence.
         verify_sidecar_size(&path, &dest, copied)?;
         names.push(name);
@@ -632,7 +616,7 @@ pub fn read_selected_contents<S: AsRef<str>>(
 /// [`CorpusGuard::classify`], which is the entry point for a guard that owns its
 /// own snapshot.
 ///
-/// Free-standing (coordinator decision D32(3)) so the gate's OUTER guard
+/// Free-standing so the gate's OUTER guard
 /// `crates/dss-core/tests/corpus_gate/runner.rs::CorpusGuard` — which holds a
 /// *refcounted per-directory* snapshot shared by every guard active on that
 /// directory, not a per-guard one — sweeps with exactly the code the two oracle
@@ -649,11 +633,11 @@ pub struct Created {
     /// contents included ([`normalize_created_name`]).
     pub names: BTreeSet<String>,
     /// Every created **file** member as `(path on disk, normalized name)`,
-    /// filled by the same single walk that fills [`Self::names`] (GOLDEN_REBASE
-    /// G1.10c). The normalized name is ASCII-case-FOLDED, so it is a key, not a
-    /// path: a consumer that has to open the file (the demand-interval tree's
-    /// contents) needs the real spelling, and re-deriving it by a second walk
-    /// would be a second classification.
+    /// filled by the same single walk that fills [`Self::names`]. The normalized
+    /// name is ASCII-case-FOLDED, so it is a key, not a path: a consumer that has
+    /// to open the file (the demand-interval tree's contents) needs the real
+    /// spelling, and re-deriving it by a second walk would be a second
+    /// classification.
     pub files: Vec<(PathBuf, String)>,
     /// False when any directory listing failed. An incomplete classification may
     /// still be SWEPT (the sweep removes only what it did classify, never more)
@@ -663,7 +647,7 @@ pub struct Created {
 
 /// Classify `dir` against the pre-run snapshot `pre_existing` (`/`-joined
 /// relative paths, files AND directories). See [`CorpusGuard::classify`] for the
-/// rule, the r4133/capi citations and the F2b measurement behind it.
+/// rule, the r4133/capi citations and the measurement behind it.
 pub fn classify_created(dir: &Path, pre_existing: &BTreeSet<String>) -> Created {
     let mut c = Created {
         roots: Vec::new(),
@@ -817,12 +801,11 @@ impl CorpusGuard {
         ok
     }
 
-    /// The ONE created-entry classification (G1.10a): an entry of the case
+    /// The ONE created-entry classification: an entry of the case
     /// directory ITSELF is run-created iff its `/`-joined relative path is
     /// absent from the pre-run snapshot. The surface is **the case dir's own
     /// entries, plus everything under a directory the run created** — a
-    /// PRE-EXISTING subdirectory is never descended into (coordinator decision
-    /// D30(2), measured by G1.10a micro-part F2b).
+    /// PRE-EXISTING subdirectory is never descended into.
     ///
     /// Returns [`Created`]: `roots` = the `(path, is_dir)` of every created
     /// entry — exactly what the sweep removes — and `names` = the normalized
@@ -844,10 +827,8 @@ impl CorpusGuard {
     /// not the dir *tree* (`crates/dss-core/tests/corpus_gate/scheduler.rs`
     /// module doc), so a case in `Test/` runs concurrently with a case in
     /// `Test/AutoTrans/`; descending would report — and SWEEP — that other
-    /// case's live report files. F2b measured 9 such entries over two full
-    /// 526-case drives across all three producers, every one of them
-    /// `Test/AutoTrans/Auto3bus_*.txt` under the sibling case directory
-    /// `Test/AutoTrans` (10 manifest cases).
+    /// case's live report files, such as `Test/AutoTrans/Auto3bus_*.txt` under
+    /// the sibling case directory `Test/AutoTrans`.
     ///
     /// `complete` is false if any directory listing failed: an incomplete
     /// classification may still be SWEPT (the sweep removes only what it did
@@ -855,14 +836,14 @@ impl CorpusGuard {
     ///
     /// Twin: `tools/oracle/corpus_guard.py::CorpusGuard._classify`. The body
     /// lives in the free [`classify_created`] so the gate's outer guard, whose
-    /// snapshot is shared per directory, runs the very same rule (D32(3)).
+    /// snapshot is shared per directory, runs the very same rule.
     fn classify(&self) -> Created {
         classify_created(&self.dir, &self.names)
     }
 
     /// The case DIRECTORY this guard brackets — `<case_path>`'s parent, resolved
     /// exactly as [`CorpusGuard::new`] resolved it, so a consumer that has to touch
-    /// the same files (G1.10b reads the selected reports' contents out of it, see
+    /// the same files (the contents surface reads the selected reports out of it, see
     /// [`read_selected_contents`]) can never disagree with the guard about which
     /// directory is being swept.
     pub fn dir(&self) -> &Path {
@@ -870,7 +851,7 @@ impl CorpusGuard {
     }
 
     /// The run-created set, sorted and normalized — the gate's
-    /// `compare_run_files` surface (GOLDEN_REBASE G1.10a).
+    /// `compare_run_files` surface.
     ///
     /// `None` means "cannot be reported honestly" (an incomplete pre-run
     /// snapshot, or a failed listing now); the gate's presence rail
@@ -896,8 +877,7 @@ impl CorpusGuard {
     }
 
     /// The run-created demand-interval tree's FILE members as
-    /// `(path on disk, normalized name)` — the gate's `compare_di` surface
-    /// (GOLDEN_REBASE G1.10c).
+    /// `(path on disk, normalized name)` — the gate's `compare_di` surface.
     ///
     /// It is the SAME classification [`CorpusGuard::created`] reports and
     /// [`CorpusGuard::sweep_created`] sweeps, narrowed by [`is_di_member`]: a DI
@@ -906,7 +886,7 @@ impl CorpusGuard {
     /// `DI_yr_*` path is in `tests/corpus`) cannot enter the compared surface
     /// through this door. It is read BEFORE `created()` — the per-run
     /// capture-order rule keeps the classification the last READ of the run and
-    /// the D32(2)(a) teardown the only statement after it
+    /// the sweep the only statement after it
     /// (`crates/dss-core/tests/capture_order.rs`) — which is why this is a
     /// second call and not a filter over the reported set.
     ///
@@ -940,14 +920,11 @@ impl CorpusGuard {
     /// pre-existing contents.
     ///
     /// Returns the normalized names of created entries the case directory STILL
-    /// lists afterwards — the `sweep_failed` report of coordinator decision
-    /// D32(2). A failed removal used to be swallowed (`let _ = remove_file`),
-    /// and that is how the leak F4 measured could hide: dss_capi never closes
-    /// its Storage trace stream (`src/PCElements/Storage.pas:872`, freed only at
-    /// `:871`/`:1199`), so its guard's removal failed silently, the file
-    /// survived, and every LATER producer of the same case snapshotted it as
-    /// pre-existing and reported an empty created set. Reporting the survivor
-    /// makes that order-coupling impossible to hide again.
+    /// lists afterwards — the `sweep_failed` report. A swallowed removal failure
+    /// would hide a leak: dss_capi never closes its Storage trace stream, so its
+    /// guard's removal fails, the file survives, and every LATER producer of the
+    /// same case snapshots it as pre-existing and reports an empty created set.
+    /// Reporting the survivor makes that order-coupling impossible to hide.
     ///
     /// The presence test is a fresh `read_dir` of the case directory, not
     /// `Path::exists`: every root is a direct child of it, and a Windows
@@ -1027,16 +1004,14 @@ impl CorpusGuard {
                 Ok(_) => {
                     let _ = std::fs::write(&p, data);
                 }
-                // GONE. Never write it back (G1.10a audit settlement, the
-                // settle stage's measurement): a guard on a PARENT case
+                // GONE. Never write it back: a guard on a PARENT case
                 // directory photographs a sibling case's directory too, and
-                // when that sibling's own guard sweeps its output this arm
-                // used to RESURRECT it — the `Test/AutoTrans/Auto{1,3}bus_*`
-                // residue STATUS tracks, and the shrunken created-file set it
-                // causes in the next producer. A deck that genuinely deletes
-                // a vendored file leaves a tracked deletion, which is loud on
-                // its own. The Python twin (`corpus_guard.py::__exit__`)
-                // already behaved this way: it reads before it writes.
+                // when that sibling's own guard sweeps its output, writing it
+                // back would RESURRECT it and shrink the next producer's
+                // created-file set. A deck that genuinely deletes a vendored
+                // file leaves a tracked deletion, which is loud on its own.
+                // The Python twin (`corpus_guard.py::__exit__`) behaves the
+                // same way: it reads before it writes.
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                 // Unreadable for another reason (a held handle): try, as before.
                 Err(_) => {
@@ -1054,7 +1029,7 @@ impl Drop for CorpusGuard {
         }
         // No caller to hand the report to (an early error return, or a producer
         // that never calls `finish`), so it goes to stderr rather than nowhere:
-        // D32(2) forbids a silently swallowed removal failure.
+        // A removal failure is never silently swallowed.
         let leaked = self.sweep_created();
         if !leaked.is_empty() {
             eprintln!(
@@ -1070,7 +1045,7 @@ impl Drop for CorpusGuard {
 }
 
 /// How many times a per-run scratch copy's removal is retried after the first
-/// attempt, and the pause before each retry (RETRO_FIXES RF-I00-01): 25 x
+/// attempt, and the pause before each retry: 25 x
 /// 200 ms = 5 s at most, spent only while a removal does not take. A transient
 /// holder (a Defender scan of a file the producer just closed, a worker process
 /// that exits right after its reply) is waited out; a handle held for the
@@ -1137,11 +1112,13 @@ fn list_below(dir: &Path, root: &Path, out: &mut Vec<String>) {
     }
 }
 
+/// Knob: `DSS_ORACLE_PYTHON`, the interpreter that runs the Python twin's
+/// self-test (default `python`).
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// The shared synthetic fixture of GOLDEN_REBASE G1.10a: the Python twin
+    /// The shared synthetic fixture: the Python twin
     /// builds the identical tree and asserts the identical lists
     /// (`tools/oracle/corpus_guard.py`, `SELF_TEST_*` +
     /// `python corpus_guard.py --self-test`), so the two guards are provably one
@@ -1155,8 +1132,8 @@ mod tests {
         "NEV_SavedVoltages.dbl",
     ];
     /// `pre/New_Report.Txt` is deliberately ABSENT: it sits under the
-    /// pre-existing `pre/`, which the classification does not descend into
-    /// (D30(2)) — it stands for the sibling case's live report file.
+    /// pre-existing `pre/`, which the classification does not descend into —
+    /// it stands for the sibling case's live report file.
     const CREATED: [&str; 6] = [
         "di_yr_0/",
         "di_yr_0/sub/",
@@ -1166,7 +1143,7 @@ mod tests {
         "nev_savedvoltages.dbl",
     ];
     const SCRATCH: [&str; 1] = ["nev_savedvoltages.dbl"];
-    /// The DI FILE members of the same fixture (GOLDEN_REBASE G1.10c): the two
+    /// The DI FILE members of the same fixture: the two
     /// files under the run-created `DI_yr_0/` tree, the nested one included and
     /// the two directory members (`di_yr_0/`, `di_yr_0/sub/`) excluded — a
     /// directory carries no contents. `exp_y.csv` and `nev_savedvoltages.dbl`
@@ -1247,7 +1224,7 @@ mod tests {
             },
             "the sweep removes exactly what it classified: the case dir's own \
              entries and the run-created tree go, the write under the \
-             pre-existing subdirectory stays (D30(2))"
+             pre-existing subdirectory stays"
         );
         assert_eq!(
             std::fs::read_to_string(root.join("root.txt")).expect("read restored"),
@@ -1256,7 +1233,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// The measured sibling-case race (G1.10a F2b, D30(2)): while a case in
+    /// The measured sibling-case race: while a case in
     /// `Test/` is running, a case in the pre-existing subdirectory
     /// `Test/AutoTrans/` writes its own report files there. The outer guard must
     /// neither REPORT them (they are not this run's output) nor DELETE them
@@ -1322,9 +1299,9 @@ mod tests {
         assert_eq!(normalize_created_name("İST.CSV", false), "İst.csv");
     }
 
-    /// D32(2): a removal the guard cannot perform is REPORTED, never swallowed.
+    /// A removal the guard cannot perform is REPORTED, never swallowed.
     ///
-    /// The fixture reproduces the mechanism F4 measured on the capi channel —
+    /// The fixture reproduces the mechanism measured on the capi channel —
     /// dss_capi creates `STOR_<name>.csv` at edit time and never closes the
     /// stream (`src/PCElements/Storage.pas:868-885`, freed only at
     /// `:871`/`:1199`), so `os.remove` fails, the file survives its own guard's
@@ -1447,27 +1424,24 @@ mod tests {
         out
     }
 
-    /// **Guard parity (GOLDEN_REBASE G1.10a spec §4.3): the Python twin's fixture
-    /// IS this fixture, and the twin's own self-test runs inside `cargo test`.**
+    /// **Guard parity: the Python twin's fixture IS this fixture, and the twin's
+    /// own self-test runs inside `cargo test`.**
     ///
     /// `tools/oracle/corpus_guard.py` classifies the created-file SET on the
     /// capi_v0145 transport and this module classifies it for the r4133 transport
-    /// AND the port, so "one classification, three consumers" (TESTING.md) is a
+    /// AND this engine, so "one classification, three consumers" is a
     /// claim about two languages. [`classifies_the_shared_synthetic_fixture`]
-    /// proves only the Rust half; before this test the Python half rested on
-    /// `python tools/oracle/corpus_guard.py --self-test`, which no gate ever ran,
-    /// and on the two `SELF_TEST_*`/`const` lists being equal, which nothing
-    /// checked — so a drift in the Python twin that the corpus happens not to
-    /// exercise would ship silently. Here the four shared name lists are compared
+    /// proves only the Rust half, and a drift in the Python twin that the corpus
+    /// happens not to exercise would ship silently. Here the four shared name lists are compared
     /// against THIS module's constants, the derived fifth is re-derived, and the
-    /// twin is executed — and, since G1.10b, the CONTENTS fixture's three lists
+    /// twin is executed — and the CONTENTS fixture's three lists
     /// (`SELF_TEST_CONTENTS_{PATTERNS,CREATED,COPIED}`) are run through this
     /// module's own selection matcher, so the two guards are pinned to select
     /// the same members and not only to classify the same tree.
     /// Python is resolved exactly as the corpus gate resolves
     /// it (`DSS_ORACLE_PYTHON`, default `python`); a missing interpreter FAILS,
-    /// like every other oracle prerequisite (TESTING.md: the gate fails rather
-    /// than skipping).
+    /// like every other prerequisite of the OpenDSS engines: the gate fails
+    /// rather than skipping.
     #[test]
     fn the_python_twin_shares_this_fixture_and_passes_its_self_test() {
         let script = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -1489,7 +1463,7 @@ mod tests {
             assert_eq!(
                 py_list(&src, py),
                 rs,
-                "the shared G1.10a fixture drifted: `corpus_guard.py::{py}` no longer \
+                "the shared fixture drifted: `corpus_guard.py::{py}` no longer \
                  equals this module's constant. The two guards must classify the SAME \
                  tree, or `compare_run_files` compares two different surfaces on the \
                  two channels — change both sides in one commit."
@@ -1513,14 +1487,13 @@ mod tests {
             "the swept tree's two sides disagree"
         );
 
-        // G1.10b: the CONTENTS half of the same fixture. The two guards must
+        // The CONTENTS half of the same fixture. The two guards must
         // also SELECT the same members — the patterns arrive as data in the run
         // request, so a matcher that drifted would change one channel's selected
         // set silently. The twin's own (patterns, created) table is run through
         // THIS module's matcher here, and the Python side asserts the same
         // expectation against its own (`corpus_guard.py --self-test`), so one
-        // truth table crosses both languages. (Settlement of the G1.10b code
-        // audit, finding AC-7.)
+        // truth table crosses both languages.
         let c_patterns = py_list(&src, "SELF_TEST_CONTENTS_PATTERNS");
         let c_created = py_list(&src, "SELF_TEST_CONTENTS_CREATED");
         let c_copied = py_list(&src, "SELF_TEST_CONTENTS_COPIED");
@@ -1571,7 +1544,7 @@ mod tests {
         );
     }
 
-    /// GOLDEN_REBASE G1.10c: the DI surface is the created-file classification
+    /// The DI surface is the created-file classification
     /// narrowed by [`is_di_member`], and the sidecar is a byte-for-byte copy.
     ///
     /// Same synthetic fixture as [`classifies_the_shared_synthetic_fixture`], so
@@ -1642,8 +1615,7 @@ mod tests {
 
     /// The size check of [`copy_di_tree`] fires on a destination that does not
     /// match the source — the drive the check needs, since its own `copied`
-    /// argument comes from the SOURCE on Windows and can never disagree with it
-    /// (GOLDEN_REBASE G1.10c audit finding AC-1).
+    /// argument comes from the SOURCE on Windows and can never disagree with it.
     #[test]
     fn a_truncated_di_sidecar_copy_is_reported() {
         let root = scratch_dir("di-size");
@@ -1697,7 +1669,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // GOLDEN_REBASE G1.10b — the CONTENTS selection, its transport and its read.
+    // The CONTENTS selection, its transport and its read.
     // -----------------------------------------------------------------------
 
     fn pat(v: &[&str]) -> Vec<String> {
@@ -1723,8 +1695,7 @@ mod tests {
     }
 
     /// The sidecar is cleared with a recursive delete, so a sidecar that is, or
-    /// sits under, the case directory is refused before anything is removed
-    /// (coordinator decision D40(6); G1.10b audit settlement, finding AC3-4).
+    /// sits under, the case directory is refused before anything is removed.
     #[test]
     fn a_sidecar_inside_the_case_directory_is_refused_before_anything_is_deleted() {
         let root = std::env::temp_dir().join(format!(
@@ -1756,9 +1727,7 @@ mod tests {
             // Several levels deep and NOT created yet — `create_dir_all` would
             // make them inside the vendored deck. The rail must resolve such a
             // spelling against its nearest existing ancestor, not only against
-            // its immediate parent (merge settlement of the lane-e G1.10c
-            // landing, finding MT-1: the dedup'd rail had stopped refusing it,
-            // while the Python twin's `abspath` still did).
+            // its immediate parent, as the Python twin's `abspath` does.
             case.join("newdir").join("sub"),
         ] {
             let e = copy_selected_contents(
@@ -1810,11 +1779,11 @@ mod tests {
             assert!(selects_contents(&p, yes), "{yes} must be selected");
         }
         for no in [
-            // Monitors (A6) and the `Show`/`Dump` text reports.
+            // Monitors and the `Show`/`Dump` text reports.
             "ieee13nodeckt_mon_m1_1.csv",
             "yydtestcase_curr_elem.txt",
             "nev_systemy.txt",
-            // Policy-less kinds and the deck-named exports (D40(5)).
+            // Policy-less kinds and the deck-named exports.
             "kundur_two_area_jacobian.csv",
             "kundur_two_area_deltaf.csv",
             "auto1bus_hl_current.txt",
@@ -1987,7 +1956,7 @@ mod tests {
 
     /// The gate's own scratch for a fixture case directory: a SIBLING, because
     /// `copy_selected_contents` clears it recursively and refuses any path that
-    /// shares a prefix with the case directory (D40(6)).
+    /// shares a prefix with the case directory.
     fn sidecar_beside(case: &Path) -> PathBuf {
         let mut p = case.as_os_str().to_os_string();
         p.push("-sidecar");

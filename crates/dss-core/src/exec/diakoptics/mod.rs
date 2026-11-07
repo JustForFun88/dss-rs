@@ -1,12 +1,12 @@
-//! A-Diakoptics engine (`DIAKOPTICS_PSTCALC_PLAN.md` WP-AD.3).
+//! A-Diakoptics engine.
 //!
-//! Behavioral spec = **official r3723 Delphi** (plan D10):
+//! Behavioral spec = **official r3723 Delphi**:
 //! `.inputs/electricdss-code-r3723-trunk/Version8/Source/Common/Diakoptics.pas`
 //! (whole unit) + `Common/Solution.pas` AD members. The vendored dss_capi
 //! rewrite is the `TDSSContext` structure map.
 //!
-//! Ownership follows plan **D3** ("children without threads"): the coordinator
-//! is the main [`Dss`] (Pascal `ActiveCircuit[1]`), which owns
+//! Ownership is "children without threads": the coordinator is the main
+//! [`Dss`](crate::exec::Dss) (Pascal `ActiveCircuit[1]`), which owns
 //! `ad_children: Vec<Dss>` (Pascal `ActiveCircuit[2..NumOfActors]`). The Pascal
 //! actor message loop (`Solution.pas:3156` `TSolver.Execute`) is mirrored by the
 //! [`AdMsg`] enum and a synchronous method-call loop — no threads, no
@@ -19,8 +19,8 @@
 //! (`LocalBusIdx`/`AD_IBus`/`AD_ISrcIdx`/`VIndex`) live on each child's
 //! `circuit`/`solution` (WP-AD.3 solve stage). Pascal `Node_dV`/`Ic_Local`
 //! (`Ymatrix.pas:430–434`) and `V_0` (`SendIdx2Actors`, only read by the dead
-//! `Notify_Main`) are deliberately absent — allocated-but-never-read scaffolding
-//! (plan D5).
+//! `Notify_Main`) are deliberately absent — allocated-but-never-read
+//! scaffolding.
 
 mod engine;
 mod matrices;
@@ -30,7 +30,7 @@ use crate::elements::traits::CktElement;
 use crate::exec::registry::DssClass;
 
 /// The A-Diakoptics actor message set (`Solution.pas:80–86` `TActorMessage`,
-/// AD subset). Under plan D3 "sending a message" is a synchronous coordinator
+/// AD subset). "Sending a message" is a synchronous coordinator
 /// method call over `ad_children`, not a thread signal — the enum keeps the 1:1
 /// mapping to the Pascal `TSolver.Execute` `case MsgType of` dispatch
 /// (`Solution.pas:3230–3264`).
@@ -56,7 +56,7 @@ pub(crate) enum AdMsg {
 /// at its prior value (a stale read). The AD callers only ever pass link-branch
 /// names that resolve (a link is a real `Line` in the interconnected model), so
 /// the miss path is unreachable; we return `None` rather than reproduce the
-/// stale-state read (plan D5).
+/// stale-state read.
 pub(crate) fn ad_find_element<'a>(
     classes: &'a [DssClass],
     full_name: &str,

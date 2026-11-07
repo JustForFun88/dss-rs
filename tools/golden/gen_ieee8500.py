@@ -1,4 +1,4 @@
-"""Generate tests/golden/ieee8500.json from the pinned oracle (PHASE6_PLAN WP6.9).
+"""Generate tests/golden/ieee8500.json from the pinned oracle.
 
 The headline Phase-6 gate: compile the **unmodified** IEEE 8500-Node master
 (`Version8/Distrib/IEEETestCases/8500-Node/Master.dss`), then, per

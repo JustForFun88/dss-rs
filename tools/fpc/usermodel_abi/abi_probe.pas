@@ -1,5 +1,5 @@
 program abi_probe;
-// WASM_USERMODELS WP-WM.0 P2 — record-layout probe over the dss_capi 0.14.5
+// Probe P2 — record-layout probe over the dss_capi 0.14.5
 // user-model boundary records, compiled exactly like the release engine:
 // FPC -Mdelphi, x86_64-win64, DSS_CAPI_NO_PACKED_RECORDS UNSET (=> packed).
 //

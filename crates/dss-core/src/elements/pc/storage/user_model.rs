@@ -1,5 +1,5 @@
 //! The dss-core side of the WASM user-model host for Storage
-//! (`UserModel=` / `DynaDLL=`, WASM_USERMODELS WM.4).
+//! (`UserModel=` / `DynaDLL=`).
 //!
 //! Mirrors the Pascal `UserModel: TStoreUserModel` (15-fn, `Storage.pas:281`)
 //! and `DynaModel: TStoreDynaModel` (13-fn, no `Save`/`Restore`, `:282`;
@@ -16,7 +16,7 @@
 //! record shuttle is the 52-byte `TDynamicsRec` only. The transport is
 //! sandboxed WebAssembly (`crates/dss-usermodel`); the contract is 1:1 with the
 //! native DLL — same call ordering, same warn-and-fallback failure behavior
-//! (plan §2.4 / ABI doc §5).
+//! (ABI doc §5).
 
 use std::sync::Arc;
 
@@ -330,11 +330,11 @@ impl StorageUserModelSlot {
                 }
                 Effect::ControlQueuePush { .. } => {
                     // No Storage user model schedules control actions
-                    // (`ControlQueuePush` is the CapControl surface, WM.5).
+                    // (`ControlQueuePush` is the CapControl surface).
                     errors.push(DssDiagnostic::msg(
                         format!(
                             "Storage.{name}: user model called ControlQueuePush, which is not \
-                             wired for Storage elements (CapControl scope, WM.5)."
+                             wired for Storage elements (CapControl only)."
                         ),
                         Some(9001),
                     ));
@@ -346,8 +346,8 @@ impl StorageUserModelSlot {
     /// Refresh the cached `num_vars` + names from the live model (a read-only
     /// snapshot suffices — these calls never touch element state). A guest trap in
     /// `num_vars`/`get_var_name` is surfaced (propagated), never swallowed to a
-    /// silent `num_vars=0` that would drop the model's state-var tail (plan
-    /// §2.9-5 loud-error policy; WM.4 settle T-WM4-3 — the caller drains it).
+    /// silent `num_vars=0` that would drop the model's state-var tail (the
+    /// caller drains it).
     fn refresh_var_cache(&mut self) -> LiveResult {
         let Some(live) = self.live.as_mut() else {
             return Ok(());
@@ -428,7 +428,7 @@ impl Storage {
         }
     }
 
-    /// The executive-drained apply for a resolved [`UserModelLoad`] (§2.4
+    /// The executive-drained apply for a resolved [`UserModelLoad`] (ABI doc §5
     /// activation rule). `wasm` is `Some` iff a `.wasm` file was found + read.
     pub(super) fn apply_user_model_load_impl(
         &mut self,

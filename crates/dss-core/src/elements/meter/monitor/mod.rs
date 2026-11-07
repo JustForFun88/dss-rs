@@ -9,8 +9,8 @@
 //! compat-critical: every value is computed in f64 and pushed `as f32` exactly
 //! where Pascal narrows (`AddDblToBuffer`).
 //!
-//! Modes ported (PHASE6_PLAN §2.3): 0 (V&I), 1 (powers), 2 (transformer tap),
-//! 3 (PCElement state vars), 4 (flicker/Pst — WP-PF.2), 5 (solution variables),
+//! Modes: 0 (V&I), 1 (powers), 2 (transformer tap),
+//! 3 (PCElement state vars), 4 (flicker/Pst), 5 (solution variables),
 //! 6 (capacitor steps), 7 (Storage), 8 (transformer winding currents), 9
 //! (losses), 10 (transformer winding voltages), 11 (all terminal V&I), 12
 //! (line-to-line terminal voltages + currents) — plus the ±16/±32/±64
@@ -92,8 +92,9 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
 pub struct Monitor {
     pub med: MeterElementData,
     /// Typed decode of the raw `mode=` bitfield (`mode` submodule). The raw
-    /// `i32` survives only at the property boundary ([`Self::get_i32`]/
-    /// [`Self::set_i32`] via `to_raw`/`from_raw`).
+    /// `i32` survives only at the property boundary
+    /// ([`crate::obj::base::DssObject::get_i32`]/
+    /// [`crate::obj::base::DssObject::set_i32`] via `to_raw`/`from_raw`).
     mode: MonitorModeView,
     include_residual: bool,
     vi_polar: bool,
@@ -242,8 +243,7 @@ impl Monitor {
     /// same stream.
     ///
     /// **Two distinct upstream answers are refused here, and it is worth
-    /// keeping them apart** (the G2.4 record was corrected on 2026-08-06 —
-    /// `GOLDEN_REBASE_PLAN.md` §G2.4):
+    /// keeping them apart**:
     ///
     /// 1. *The clients' `[0.0]`* — a client artifact, never an engine value.
     ///    dss-python's `IMonitors.Channel` (`dss/IMonitors.py:28-55`) does not
@@ -422,8 +422,8 @@ mod tests {
         assert_eq!(m.sample_count(), 4, "four samples were taken");
         assert_eq!(m.flushed_records(), 0, "and none of them flushed");
         assert_eq!(m.num_channels(), 3, "across three channels");
-        // 0-based loop, `+ 1` at the 1-based `Channel(i)` boundary — the port's
-        // indexing convention (`DE_PASCALIZE` P14).
+        // 0-based loop, `+ 1` at the 1-based `Channel(i)` boundary — this
+        // engine's indexing convention.
         for ch in 0..m.num_channels() {
             let i = ch + 1;
             assert_eq!(

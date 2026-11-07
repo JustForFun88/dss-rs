@@ -259,8 +259,8 @@ impl Dss {
             // included. The port's hook cannot see `OutputDirectory`, so it
             // queues the header and the executive drains it; this path must
             // drain it too, or a Storage imported with `debugtrace=yes` keeps a
-            // queued header forever and traces nothing (G1.10a audit settlement,
-            // finding AC-4; the `exec/command.rs` twin).
+            // queued header forever and traces nothing (the `exec/command.rs`
+            // twin).
             objects[oi].open_debug_traces(output_directory, errors);
             // Pascal `RecalcElementData` (run by `EndEdit`) reads the live
             // `ActiveCircuit.Solution` globals; thread that snapshot in.

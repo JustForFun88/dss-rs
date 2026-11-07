@@ -234,8 +234,9 @@ pub struct VSource {
     /// the harmonic injection path (`GetVterminalForSource`).
     pub spectrum_obj: Option<SpectrumObj>,
     /// Resolved shape objects (Pascal `YearlyShapeObj` etc.), snapshot-cloned
-    /// at parse time like [`super::super::load::Load`]; `GetVterminalForSource`
-    /// drives `GetMultAtHour` on the owned copy in a time-series mode.
+    /// at parse time like [`crate::elements::pc::load::Load`];
+    /// `GetVterminalForSource` drives `GetMultAtHour` on the owned copy in a
+    /// time-series mode.
     pub yearly_shape_obj: Option<LoadShapeObj>,
     pub daily_shape_obj: Option<LoadShapeObj>,
     pub duty_shape_obj: Option<LoadShapeObj>,
@@ -247,24 +248,23 @@ pub struct VSource {
     pub shape_factor: Complex64,
     pub shape_is_actual: bool,
     /// `Solution.SolutionCount` at which
-    /// [`crate::solution::solution::ncim::ncim_stamp_swing_source_currents`]
+    /// `solution::solution::ncim::ncim_stamp_swing_source_currents`
     /// last wrote this source's `Iterminal` with the `CalcInjCurrAtBus` KCL sum
     /// at the swing bus — i.e. the marker that says *this* `VSource` is the one
     /// the NCIM solver stamped. `None` (or a stale count) means no stamp stands
-    /// behind a read, and [`CktElement::get_currents`] must take the ordinary
-    /// `YPrim·V - Iinj` branch.
+    /// behind a read, and [`crate::elements::traits::CktElement::get_currents`]
+    /// must take the ordinary `YPrim·V - Iinj` branch.
     ///
     /// r4133 needs no such marker: `TVsourceObj.GetCurrents` (`VSource.pas`
     /// l.1194) re-runs `CalcInjCurrAtBus` per read and per element. That is also
     /// why it cannot survive **two** sources on the global slack node - each
     /// one's `CalcInjCurrAtBus` calls the other's `GetCurrents` (l.1158; only
     /// the element *itself* is excluded, l.1149), so the two recurse until the
-    /// stack dies: measured 2026-09-03 (RP3.13 micro-part S2), the r4133 DLL
-    /// overflows its stack and the `epri-worker` process is killed on
-    /// `export currents` for a deck with a second `Vsource` at `sourcebus`.
-    /// The port stamps once, for the one swing source, and every other source
-    /// keeps reporting its own physical terminal current through the ordinary
-    /// branch.
+    /// stack dies: the r4133 DLL overflows its stack and the `epri-worker`
+    /// process is killed on `export currents` for a deck with a second `Vsource`
+    /// at `sourcebus`. This engine stamps once, for the one swing source, and
+    /// every other source keeps reporting its own physical terminal current
+    /// through the ordinary branch.
     pub ncim_swing_stamped_at: Option<i32>,
 }
 

@@ -34,6 +34,8 @@ The board (who holds, who waits, since when) is rewritten on every change:
 <root>/board.txt; events are appended to <root>/board.log (wait and hold seconds per run).
 Board and log writes are best-effort and never fail a run.
 Exit code = the command's exit code. GATELOCK_OFF=1 runs the command unqueued.
+CARGO_BUILD_JOBS: a build-slot command gets the caller's value, or BUILD_JOBS (8) when it
+is unset. A test run inherits the caller's environment unchanged.
 Windows only: on another platform the wrapper says so on stderr and runs the command
 unqueued, without a job object.
 """

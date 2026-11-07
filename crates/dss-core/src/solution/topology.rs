@@ -276,9 +276,9 @@ pub(crate) fn get_isolated_sub_area(
 /// source. Returns a fresh tree each call: upstream memoizes `Branch_List` on the
 /// circuit and frees it only in `Destroy` / `DoResetMeterZones`
 /// (`Common/Circuit.pas:2932-2950`, `:703`, `:2308`), so a conductor opened
-/// between two reads leaves it answering from the pre-trip tree — an upstream
-/// defect the port never reproduces (CLAUDE.md; GOLDEN_REBASE G1.7 decision D15,
-/// where the live gate asserts the memoization instead). Two consumers today: the
+/// between two reads leaves it answering from the pre-trip tree — an OpenDSS
+/// defect this engine never reproduces (the live gate asserts the memoization
+/// instead). Two consumers today: the
 /// `Show Topology`/`Show Isolated` reports and `exec/view.rs::topology_view`.
 /// Returns an empty tree if the circuit has no source.
 pub(crate) fn get_topology(ckt: &mut Circuit, store: &mut dyn ElemStore) -> CktTree {

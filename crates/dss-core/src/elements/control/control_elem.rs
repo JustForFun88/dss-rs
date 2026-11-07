@@ -4,11 +4,10 @@
 //! on another (often via the control queue), but it never stamps admittance and
 //! its terminal currents are always zero.
 //!
-//! Phase 4 ports the *parse-time* surface only: the property state, the
-//! reference resolution, and `RecalcElementData`'s bus/phase setup (so the
-//! control participates in `ProcessBusDefs` without changing node order). The
-//! behavioral `Sample`/`DoPendingAction` machinery and the control queue arrive
-//! in Phase 5 (PHASE4_PLAN §5).
+//! This module holds the shared parse-time surface (the property state, the
+//! reference resolution, and `RecalcElementData`'s bus/phase setup, so the
+//! control participates in `ProcessBusDefs` without changing node order) and the
+//! [`CtrlCtx`] each control's `Sample`/`DoPendingAction` receives.
 
 use num_complex::Complex64;
 
@@ -122,7 +121,7 @@ impl ControlAction {
 }
 
 /// Scalar/queue/event context handed to a control's `Sample` and
-/// `DoPendingAction` (PHASE5_PLAN §2.1) — the disjoint-borrow stand-in for the
+/// `DoPendingAction`: the disjoint-borrow stand-in for the
 /// Pascal `ActiveCircuit.Solution.*` / `ActiveCircuit.ControlQueue` /
 /// `DSS.EventStrings` global reach. The *controlled/monitored* circuit elements
 /// are passed to each control's method separately (their concrete types differ
@@ -217,10 +216,9 @@ impl ControlClass {
 /// The shared behavior surface of every control element (`TControlElem`): its
 /// [`ControlElemData`] base state, its concrete [`ControlClass`], and the
 /// control-only `Reset`. Acquired from a [`DssObject`] via
-/// `as_control()`/`as_control_mut()`, this replaces the `dispatch.rs`
-/// identification downcast chain (R0); the per-control `Sample`/`Action`
-/// behavioral entry points keep their concrete signatures until R2 hands
-/// dispatch typed-arena pair access.
+/// `as_control()`/`as_control_mut()`, it identifies a control without a
+/// downcast chain. The per-control `Sample`/`Action` behavioral entry points
+/// keep their concrete signatures.
 ///
 /// [`DssObject`]: crate::obj::base::DssObject
 pub trait ControlElem {
@@ -377,19 +375,10 @@ mod tests {
         }
     }
 
-    /// The Relay AND SwtControl `Action`/`State` `DssEnum`s carry the `Keep`
-    /// sentinel as their `default_value` (an unmatched token parses to it
-    /// instead of raising), so the registry and the enum must agree on the
-    /// exact number — a silent mismatch would turn "leave the phase as is"
-    /// into a stored state.
-    ///
-    /// Relay: the `InterpretRelayState` spelling quirk. SwtControl (RP3.7 A1):
-    /// r4133's `InterpretSwitchState` is structurally identical —
-    /// `case LowerCase(param)[1] of 'o': CTRL_OPEN; 'c': CTRL_CLOSE` with NO
-    /// else arm (`Version8/Source/Controls/SwtControl.pas:423-426`,
-    /// `:464-467`; probe `tmp/rp37/probe.md` §9: `state=bogus` leaves the
-    /// state untouched, silently). The pre-RP3.7 "Relay-only" claim dated from
-    /// the scalar model, which raised on mismatch instead.
+    /// The Relay and SwtControl `Action`/`State` `DssEnum`s carry the `Keep`
+    /// sentinel as their `default_value`, so an unmatched token leaves the state
+    /// untouched instead of raising. A mismatch between registry and enum would
+    /// turn "leave the phase as is" into a stored state.
     #[test]
     fn state_enums_default_to_the_keep_sentinel() {
         let reg = EnumRegistry::new();
@@ -409,14 +398,10 @@ mod tests {
         }
         // The remaining CTRL-backed registry entries carry `NO_DEFAULT`
         // (`dss_enum::enum_def` = -9999999, "raise instead"), NOT the Keep
-        // sentinel — and NOT "the Pascal default 0", as this comment claimed
-        // before RP3.7 FIX-A1 (verify-A1 finding F12). Note the neighbouring
-        // inconsistency the negative arm therefore pins: r4133's
-        // `InterpretFuseState` (`Fuse.pas:563-566`) and its Recloser twin use
-        // the SAME first-character `case` with no else arm as SwtControl/Relay,
-        // so raising on an unmatched Fuse/Recloser token is a pre-existing
-        // divergence from the rule adopted here. Recorded for whichever plan
-        // owns those pairs — explicitly not RP3.7's to change.
+        // sentinel. The negative arm pins a known inconsistency: r4133 reads a
+        // Fuse/Recloser state by the same first character with no else arm as
+        // SwtControl/Relay, so raising on an unmatched Fuse/Recloser token
+        // diverges from the Keep rule above.
         for id in [
             reg.fuse_action,
             reg.fuse_state,

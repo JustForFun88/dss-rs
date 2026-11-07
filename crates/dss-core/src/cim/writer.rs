@@ -4,8 +4,8 @@
 //! node helpers), l.3188-3201 (`StartCIMFile`), and l.4729-4770
 //! (`FD_Create`/`FD_Destroy`). The [`Writer`] carries **both** output modes:
 //! combined (`Export CIM100`, `Separate = false`) writes every profile into the
-//! one `F_FUN` buffer; fragments (`Export CIM100Fragments`, `Separate = true`,
-//! GAPS_PLAN WPG.18 Stage F) routes each line to its own per-profile buffer with
+//! one `F_FUN` buffer; fragments (`Export CIM100Fragments`, `Separate = true`)
+//! routes each line to its own per-profile buffer with
 //! the auto-`StartFreeInstance` / close-every-open-profile logic.
 
 use super::Uuid;
@@ -205,7 +205,7 @@ pub fn end_instance(buf: &mut Writer, prf: ProfileChoice, root: &str) {
 }
 
 /// Pascal `TCIMExporterHelper.DoubleNode` (`ExportCIMXML.pas:1340`): `%.8g`
-/// (`report::format::g` at 8 significant digits — the WP8.5-audited FPC `%g`).
+/// (`report::format::g` at 8 significant digits — the FPC `%g`).
 pub fn double_node(buf: &mut Writer, prf: ProfileChoice, node: &str, val: f64) {
     let s = crate::report::format::g(val, 8);
     write_cim_ln(buf, prf, &format!("  <cim:{node}>{s}</cim:{node}>"));
@@ -527,7 +527,7 @@ pub fn is_ground_bus(s: &str) -> bool {
 
 /// Pascal `TCIMExporterHelper.StartCIMFile` (`ExportCIMXML.pas:3188`): the fixed
 /// XML preamble + the `IEC61970CIMVersion` singleton instance every CIM file
-/// (combined, or each per-profile file in Stage F fragments mode) opens with.
+/// (combined, or each per-profile file in fragments mode) opens with.
 /// Writes the `IEC61970CIMVersion` block **directly** (not via
 /// [`start_instance`]/[`end_instance`] — the Pascal call site bypasses
 /// `WriteCimLn`'s profile dispatch and writes straight to the stream `F` being

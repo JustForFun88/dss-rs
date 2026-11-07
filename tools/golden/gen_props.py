@@ -3,7 +3,7 @@
 For each scenario we run a short command script through the oracle, then read
 back every property of the target object via the `?` query. The Rust engine
 must replay the identical scripts and produce the same property values
-(numbers compared with tolerance, structure exactly — see PORTING_PLAN.md §4).
+(numbers compared with tolerance, structure exactly).
 
 Only fully-specified or all-default states are probed: arrays sized by `Npts`
 but never filled contain uninitialized heap garbage in the oracle (genuine UB,
@@ -169,7 +169,7 @@ SCENARIOS = [
             "New LineCode.lc1 like=base",
         ],
     },
-    # --- Line + LineCode fetch (WP4.2) ---
+    # --- Line + LineCode fetch ---
     {
         "name": "line_code_sym",
         "target": "Line.l1",
@@ -205,7 +205,7 @@ SCENARIOS = [
             "New Line.l1 bus1=a bus2=b linecode=mtx601 r1=0.5 length=1 units=mi",
         ],
     },
-    # --- GrowthShape (WP4.3) ---
+    # --- GrowthShape ---
     {
         "name": "growthshape_default",
         "target": "GrowthShape.gs1",
@@ -243,7 +243,7 @@ SCENARIOS = [
             "New GrowthShape.gs1 like=base",
         ],
     },
-    # --- XYcurve (WP5.1) ---
+    # --- XYcurve ---
     # NOTE: `points=` triggers an access violation in the pinned oracle (a
     # dss_capi `DoubleDArrayProperty` bug), so the arrays are driven through
     # `xarray`/`yarray`; the `Points` getter is still validated by readback.
@@ -294,9 +294,8 @@ SCENARIOS = [
             "New XYcurve.c1 like=base",
         ],
     },
-    # --- LoadShape (WP5.2a, in-memory core) ---
-    # File props (CSVFile/SngFile/DblFile/PQCSVFile) are all ported (WP5.2b /
-    # WPG.1) but none of these scenarios actually loads a file — every default
+    # --- LoadShape (in-memory core) ---
+    # File props (CSVFile/SngFile/DblFile/PQCSVFile) are all ported, but none of these scenarios actually loads a file — every default
     # here stays the empty string, so no file-fixture scenario is needed on
     # this round-trip gate (the executive integration tests + the live
     # shape_binfiles corpus deck cover an actual load). Mean/StdDev on the
@@ -373,7 +372,7 @@ SCENARIOS = [
             "New LoadShape.d like=base",
         ],
     },
-    # --- TShape / TempShape (WP5.2c). Legacy scalar shape; CSVFile is exercised
+    # --- TShape / TempShape. Legacy scalar shape; CSVFile is exercised
     # by the executive integration test, not here. Empty Mean/StdDev return 0
     # (no error, unlike LoadShape), so no skip_props is needed.
     {
@@ -421,7 +420,7 @@ SCENARIOS = [
             "New TShape.t like=base",
         ],
     },
-    # --- PriceShape (WP5.2c). Same skeleton; Hour auto-zeroes Interval.
+    # --- PriceShape. Same skeleton; Hour auto-zeroes Interval.
     {
         "name": "priceshape_default",
         "target": "PriceShape.d",
@@ -499,7 +498,7 @@ SCENARIOS = [
             "New XfmrCode.xc1 like=base",
         ],
     },
-    # --- Transformer (WP4.4) ---
+    # --- Transformer ---
     {
         "name": "transformer_default",
         "target": "Transformer.t1",
@@ -558,7 +557,7 @@ SCENARIOS = [
             "New Transformer.t6 like=base buses=(p2, s2)",
         ],
     },
-    # --- AutoTrans (WPG.15) ---
+    # --- AutoTrans ---
     # The autotransformer: Series (conn=s, code 2)/Common (wye)/Delta-tertiary
     # windings, the XHX/XHT/XXT reactance set, no XfmrCode, no RNeut/XNeut. The
     # PropertySideEffects force winding 1 = Series and winding 2 = Wye; the
@@ -645,7 +644,7 @@ SCENARIOS = [
             "solve",
         ],
     },
-    # --- Capacitor (WP4.5) ---
+    # --- Capacitor ---
     # NOTE: the oracle's `DoubleSymMatrixProperty` getter for `Capacitor.CMatrix`
     # reads uninitialized memory (it returns denormal garbage even when
     # `cmatrix=` is set — a genuine dss_capi bug), so its numbers are
@@ -703,7 +702,7 @@ SCENARIOS = [
         ],
         "zero_garbage": ["CMatrix"],
     },
-    # --- Reactor (WP4.6) ---
+    # --- Reactor ---
     # NOTE: like Capacitor.CMatrix, the oracle's `DoubleSymMatrixProperty` getter
     # for `Reactor.RMatrix`/`XMatrix` reads uninitialized memory (denormal garbage
     # regardless of what is stored — the same dss_capi bug), so both are
@@ -778,7 +777,7 @@ SCENARIOS = [
         ],
         "zero_garbage": ["RMatrix", "XMatrix"],
     },
-    # --- Fault (WP7.2) ---
+    # --- Fault ---
     # `R` stores its inverse `G` (InverseValue); `GMatrix` shares the oracle's
     # DoubleSymMatrixProperty garbage-getter bug (zeroed via `zero_garbage`, like
     # Capacitor.CMatrix / Reactor.RMatrix).
@@ -827,7 +826,7 @@ SCENARIOS = [
         ],
         "zero_garbage": ["GMatrix"],
     },
-    # --- RegControl / CapControl (WP4.7, parse-only) ---
+    # --- RegControl / CapControl (parse-only) ---
     # Every scenario defines the referenced transformer/capacitor/line first;
     # a RegControl without `transformer=` (or a CapControl without
     # `capacitor=`) raises in the oracle (errors 124 / 303), and the replay
@@ -989,7 +988,7 @@ SCENARIOS = [
         ],
     },
     {
-        # --- GenDispatcher (WP6.8) ---
+        # --- GenDispatcher ---
         # The monitored element must exist (RecalcElementData attaches the
         # control's terminal to it); GenDispatcher without `element=` raises 372.
         "name": "gendispatcher_default",
@@ -1022,7 +1021,7 @@ SCENARIOS = [
         ],
     },
     {
-        # --- StorageController (WP6.8 skeleton) ---
+        # --- StorageController (skeleton) ---
         # The Storage element is Phase 7, so a StorageController on a circuit
         # with no Storage always logs error 37201 at RecalcElementData (the Rust
         # port reproduces this); `allow_errors` captures the dump past it.
@@ -1074,14 +1073,14 @@ SCENARIOS = [
             "New StorageController.sc1 like=base element=Line.l2",
         ],
     },
-    # --- SwtControl (WP7.2 step 2a; capi015-baselined WP-U1.6 D12) ---------
-    # D12 gave Action/Normal/State distinct fields (CurrentAction/NormalState/
+    # --- SwtControl (capi015-baselined) ---------
+    # Action/Normal/State are distinct fields (CurrentAction/NormalState/
     # PresentState). Action/Normal/State are ConditionalReadOnly on Locked. Every
     # scenario defines the switched Line first (SwtControl without SwitchedObj
-    # raises 387). NOTE (WP-U2.4 D6): the deprecated `Action` scenario was removed
-    # here — r4133 makes `action=open` force the ACTUAL state (State=open), which
-    # capi015 (this golden's oracle) does NOT do (State=closed), so it is no longer
-    # capi015-pinnable; the D6 behavior is pinned by the swt_control unit tests +
+    # raises 387). NOTE: there is no deprecated `Action` scenario here — r4133
+    # makes `action=open` force the ACTUAL state (State=open), which capi015
+    # (this golden's engine) does NOT do (State=closed), so it is not
+    # capi015-pinnable. That behavior is pinned by the swt_control unit tests +
     # the r4133 live decks (swtcontrol_time/midi). `swtcontrol_state_open` still
     # covers the immediate force (identical on capi015 and r4133).
     {
@@ -1133,8 +1132,8 @@ SCENARIOS = [
     {
         # MakeLike copies CurrentAction/NormalState/PresentState/TimeDelay/Locked.
         # Base uses `state=open` (not the deprecated `action=open`) so the copied
-        # PresentState is capi015-pinnable AND unchanged by the WP-U2.4 D6 Action
-        # fix (state= forces the switch open identically on capi015 and r4133).
+        # PresentState is capi015-pinnable AND unchanged by the `Action`
+        # forcing (state= forces the switch open identically on capi015 and r4133).
         "name": "swtcontrol_makelike",
         "target": "SwtControl.sw1",
         "commands": [
@@ -1466,7 +1465,7 @@ SCENARIOS = [
             "New Generator.g1 like=base bus1=gb2",
         ],
     },
-    # --- PVSystem (WP7.3 step 2) --------------------------------------------
+    # --- PVSystem --------------------------------------------
     {
         "name": "pvsystem_default",
         "target": "PVSystem.pv1",
@@ -1625,7 +1624,7 @@ SCENARIOS = [
             "New EnergyMeter.m1 like=base kVAEmerg=2000",
         ],
     },
-    # --- Sensor (WP6.7) ---
+    # --- Sensor ---
     # NOTE (probed): `element=`/`conn=`/`deltadirection=` all set NeedsRecalc, so
     # `RecalcElementData` runs at EndEdit and `ZeroSensorArrays` zeros the
     # measured arrays. A single `New Sensor … currents=…` therefore dumps
@@ -1687,7 +1686,7 @@ SCENARIOS = [
             "New Sensor.s1 like=base",
         ],
     },
-    # --- WireData / CNData / TSData (WP7.1 step 2) ---------------------------
+    # --- WireData / CNData / TSData ---------------------------
     {
         "name": "wiredata_default",
         "target": "WireData.wd1",
@@ -1949,7 +1948,7 @@ SCENARIOS = [
         "target": "LineSpacing.ls1",
         "commands": ["New LineSpacing.ls1 nconds=3 x=(1 2 3) h=(4 5 6) units=mm"],
     },
-    # ----- LineGeometry (WP7.1 step 2c) ------------------------------------
+    # ----- LineGeometry ------------------------------------
     {
         # Default geometry has NConds=0, so X/H/Units have no active conductor
         # to read — the oracle raises an access violation on those getters
@@ -2109,7 +2108,7 @@ SCENARIOS = [
             "cond=3 wire=acsr x=1 h=10",
         ],
     },
-    # --- Storage (WP7.4 step 1) --------------------------------------------
+    # --- Storage --------------------------------------------
     # `%Idlingkvar` is DeprecatedAndRemoved (dumps '' regardless); the State /
     # %Stored / kW getters reflect the state machine. Defaults assume a fully
     # charged, idling battery.
@@ -2181,7 +2180,7 @@ SCENARIOS = [
             "New Storage.s1 like=base bus1=c",
         ],
     },
-    # --- IndMach012 (WP7.7 step 3a) ----------------------------------------
+    # --- IndMach012 ----------------------------------------
     # The symmetrical-component induction machine. `pf` is read-only (computed
     # PowerFactor(Power[1]) → 1 on an unsolved circuit); `slip` write goes through
     # set_Localslip (clamped to ±MaxSlip outside dynamics); `conn` defaults to
@@ -2229,7 +2228,7 @@ SCENARIOS = [
             "New IndMach012.m1 like=base bus1=c",
         ],
     },
-    # --- VSConverter (WP7.8) -----------------------------------------------
+    # --- VSConverter -----------------------------------------------
     # A 2-terminal AC/DC bridge PC element. Defaults: phases=4, Ndc=1, kVac=kVdc=
     # kW=1, m0=0.5, Mmin=0.1, Mmax=0.9, Iacmax=Idcmax=2, VscMode=Fixed. Setting
     # bus1 defaults bus2 to the grounded node list (Bus1base.0.0.0.0).
@@ -2403,7 +2402,7 @@ SCENARIOS = [
             "New ESPVLControl.e1 like=base element=Line.l2",
         ],
     },
-    # --- DynamicExp (WP7.3 step 0) -----------------------------------------
+    # --- DynamicExp -----------------------------------------
     # Setting Expression compiles it (InterpretDiffEq); a valid one keeps the
     # verbatim input text, a bad one is cleared. VarNames is lowercased and dumps
     # `[a, b, ...]`; `var=` resolves VarIdx (the active-variable index). Domain
@@ -2481,7 +2480,7 @@ SCENARIOS = [
         "allow_errors": True,
         "commands": ["New DynamicExp.de nvariables=2 varnames=[a b] expression=[ dt = b]"],
     },
-    # --- InvControl (WP7.5 step 2a; parse-only skeleton) --------------------
+    # --- InvControl (parse-only skeleton) --------------------
     # The smart-inverter control over a PVSystem/Storage fleet. step 2a pins the
     # property table: the seven enums (Mode/CombiMode/Voltage_CurveX_Ref/
     # VoltWattYAxis/RateOfChangeMode/RefReactivePower/ControlModel), the five
@@ -2728,7 +2727,7 @@ SCENARIOS = [
             "New InvControl.ic avgwindowlen=1h dynreacavgwindowlen=2h",
         ],
     },
-    # --- ExpControl (WP7.5 step 3) -----------------------------------------
+    # --- ExpControl -----------------------------------------
     # The adaptive-Vreg volt-var control over a PVSystem fleet. Pins the 14
     # properties, the PVSystemList ↔ DERList sync (the two share no backing but are
     # kept in lockstep by the side effects), and MakeLike. An ExpControl with an
@@ -2775,7 +2774,7 @@ SCENARIOS = [
             "New ExpControl.e1 like=base",
         ],
     },
-    # --- Isource (GAPS_PLAN WPG.14) -----------------------------------------
+    # --- Isource -----------------------------------------
     # The ideal current source. Defaults: Phases=3, Amps=0, Angle=0,
     # Frequency=60 (BaseFrequency), ScanType=pos, Sequence=pos, Bus2 defaults
     # to Bus1 stripped of nodes + one ".0" per phase (grounded-Y), Spectrum=
@@ -2791,9 +2790,8 @@ SCENARIOS = [
         # PropertySideEffects re-derives the grounded-Y default unconditionally
         # whenever Bus1 is (re)set — it never sets Bus2Defined, unlike Vsource).
         # KEEP THIS ORDER: the golden is captured from the oracle, which needs
-        # it. The port latches Bus2 like the sibling class (GOLDEN_REBASE G2.2b
-        # tore the reproduction down in both lanes), so there the ordering is
-        # merely redundant — never the other way round.
+        # it. This engine latches Bus2 like the sibling class in both lanes, so
+        # there the ordering is merely redundant — never the other way round.
         "name": "isource_full",
         "target": "Isource.i1",
         "commands": [
@@ -2850,7 +2848,7 @@ SCENARIOS = [
             "New Isource.i1 bus2=b2 bus1=b1 phases=3 amps=10",
         ],
     },
-    # --- GICLine (GAPS_PLAN WPG.16) ------------------------------------------
+    # --- GICLine ------------------------------------------
     # The 2-terminal induced-EMF source. Defaults: Phases=3, R=1, X=0, C=0,
     # Frequency=0.1, ScanType/Sequence=0 (zero seq, internal), Bus2 defaults to
     # Bus1 node-stripped, Volts computed by Compute_VLine (default geodesy).
@@ -2904,7 +2902,7 @@ SCENARIOS = [
             "New GICLine.l1 like=base bus1=c1",
         ],
     },
-    # --- GICTransformer (GAPS_PLAN WPG.16) -----------------------------------
+    # --- GICTransformer -----------------------------------
     # The resistance-only GIC winding model. Defaults: Phases=3, Type=GSU,
     # kVLL1=500, kVLL2=138, MVA=100, %R1=%R2=0.2, K=2.2, R1/R2 derived from %R
     # (R1=5, R2=0.38088 via the FZbase and the FpctR1-for-both quirk).
@@ -2953,7 +2951,7 @@ SCENARIOS = [
             "New GICTransformer.t1 like=base busH=b2",
         ],
     },
-    # --- GICsource (GAPS_PLAN WPG.16) ----------------------------------------
+    # --- GICsource ----------------------------------------
     # The Line-spliced injector: the source's name must match an existing Line.
     # Defaults: Phases=3, Angle=0, Frequency=0.1, EN/EE=1, default geodesy,
     # Spectrum forbidden (empty). Volts=Compute_VLine (sign-flipped) unless spec.

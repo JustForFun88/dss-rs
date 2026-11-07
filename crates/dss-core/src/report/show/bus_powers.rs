@@ -38,7 +38,7 @@ fn check_bus_reference(elem: &dyn CktElement, bus_idx: usize) -> Option<usize> {
 /// through the cache-aware `compute_iterminal`, where r4133 calls an
 /// unconditional scratch-buffer `GetCurrents` (`Common/ShowResults.pas:1332`,
 /// `:1352`, `:1369`; `WriteTerminalPowerSeq` `:1159`, `WriteTerminalPower`
-/// `:1235`) — the same current after a solve, Newton included since RF-D00-01
+/// `:1235`) — the same current after a solve, Newton included
 /// (why: the call site in `report::export::currents`; pinned by
 /// `exec::tests::newton::newton_reports_read_like_the_normal_algorithm`).
 #[allow(clippy::too_many_arguments)]

@@ -1,7 +1,6 @@
-"""Generate the time-series/control goldens from dss-python (oracle;
-historically "Phase 5", PHASE5_PLAN.md).
+"""Generate the time-series/control goldens from dss-python (oracle).
 
-Command-replay style like slice.json (PHASE5_PLAN.md WP5.9): each scenario
+Command-replay style like slice.json: each scenario
 stores its full command list, the per-`solve`-step captures (dblHour,
 iterations, node voltages), the final control state (transformer taps,
 RegControl tap numbers, capacitor states) and the event log. The Rust engine

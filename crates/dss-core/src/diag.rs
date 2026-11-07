@@ -1,17 +1,17 @@
-//! Unified engine diagnostics (`DE_PASCALIZE` P5).
+//! Unified engine diagnostics.
 //!
 //! One `miette`-based diagnostic type backs every error the engine records —
 //! the `DoSimpleMsg`/`DoErrorMsg` log (Pascal `DSSGlobals.pas`), the deferred
 //! property-hook channel, and the wrapped typed errors (`ParserError`,
 //! `SparseError`, `SingularMatrix`). `miette` is used as a *protocol* only (no
 //! `fancy` feature here): the library carries structured `Diagnostic` data —
-//! `code`/`severity`/`help` (and, from P5b, source spans) — and the binary
+//! `code`/`severity`/`help` and source spans — and the binary
 //! (`dss-cli`) owns terminal presentation.
 //!
 //! The **stable identity** of an error is its numeric `code` (the Pascal
 //! `DoSimpleMsg(..., NNN)` number, rendered `dss::eNNN`), never its message
-//! text: post-acceptance the wording is free to change (plan §P5 golden
-//! policy), so tests and the future GUI key on the code, not the string.
+//! text: the wording is free to change, so tests and the future GUI key on the
+//! code, not the string.
 
 use std::fmt;
 use std::ops::{Deref, DerefMut};
@@ -22,8 +22,8 @@ use miette::{Diagnostic, LabeledSpan, NamedSource, Severity, SourceCode, SourceS
 ///
 /// Constructed via [`DssDiagnostic::msg`] (`DoSimpleMsg` — record and continue)
 /// or [`DssDiagnostic::abort`] (`DoErrorMsg` — also requests `SolutionAbort`).
-/// `span`/`src` stay `None` until P5b attaches source spans; `help` is an
-/// optional hint the message-cleanup pass may fill in.
+/// `span`/`src` stay `None` until the executive attaches the source span of the
+/// offending command. `help` is an optional hint.
 #[derive(Debug, Clone, thiserror::Error)]
 #[error("{message}")]
 pub struct DssDiagnostic {
@@ -36,9 +36,9 @@ pub struct DssDiagnostic {
     /// `true` = `DoErrorMsg` semantics (severity Error + `SolutionAbort`);
     /// `false` = `DoSimpleMsg` (severity Warning, record-and-continue).
     pub abort: bool,
-    /// Source span of the offending token (P5b; `None` until then).
+    /// Source span of the offending token (`None` until attached).
     pub span: Option<SourceSpan>,
-    /// The command line / file the span points into (P5b; `None` until then).
+    /// The command line / file the span points into (`None` until attached).
     pub src: Option<NamedSource<String>>,
     /// Optional "valid range is …"-style hint.
     pub help: Option<String>,
@@ -86,7 +86,7 @@ impl DssDiagnostic {
         self
     }
 
-    /// Builder: attach a source span + its source (P5b).
+    /// Builder: attach a source span + its source.
     pub fn with_span(mut self, span: impl Into<SourceSpan>, src: NamedSource<String>) -> Self {
         self.span = Some(span.into());
         self.src = Some(src);
@@ -216,7 +216,7 @@ impl ErrorLog {
         self.0.push(d.into());
     }
 
-    /// The message texts only — the convenience the pre-P5 harness callers used
+    /// The message texts only — a convenience for callers that compare texts
     /// (`Dss::error_texts`).
     pub fn texts(&self) -> Vec<String> {
         self.0.iter().map(|d| d.message.clone()).collect()

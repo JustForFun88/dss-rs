@@ -1,4 +1,4 @@
-"""Generate tests/golden/allocation.json from the pinned oracle (WP6.7).
+"""Generate tests/golden/allocation.json from the pinned oracle.
 
 For each feeder the oracle runs `allocateloads` and records, per load, the
 allocated quantities the EnergyMeter/Sensor allocation loop produces:

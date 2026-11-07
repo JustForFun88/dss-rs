@@ -1,10 +1,7 @@
 //! Case runner: the Rust engine runs ONCE per case ([`run_rust_capture`]), then
 //! its per-step state is compared against a channel's [`CaseResult`]
-//! ([`compare_capture`]). The comparator call order and every `harness`
-//! comparator are byte-identical to the pre-Phase-B `run_and_compare` — the only
-//! structural change is that the oracle `CaseResult` is now fetched by the
-//! scheduler (via a persistent [`Channel`]) and passed in, instead of being
-//! spawned inside.
+//! ([`compare_capture`]). The OpenDSS `CaseResult` is fetched by the scheduler
+//! (through a persistent [`Channel`]) and passed in.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
@@ -28,12 +25,12 @@ use crate::harness::{
 use crate::manifest::{EngineChannel, SolvableCase};
 
 // ---------------------------------------------------------------------------
-// Corpus guard: since RF-I00-01 part 2 it brackets the port's scratch copy
-// (`compare_with_result`, the two smoke arms), never a vendored folder.
+// Corpus guard: it brackets this engine's scratch copy (`compare_with_result`,
+// the two smoke arms), never a vendored folder.
 // ---------------------------------------------------------------------------
 
-/// Buffer small files up to this size for overwrite-restore. Mirrors the oracle
-/// server's `_RESTORE_MAX`.
+/// Buffer small files up to this size for overwrite-restore. Mirrors
+/// `oracle_server.py`'s `_RESTORE_MAX`.
 const RESTORE_MAX: u64 = 2 * 1024 * 1024;
 
 /// One directory's pristine snapshot, shared by every guard currently active on
@@ -58,29 +55,14 @@ struct DirClaim {
 /// Live claims per **canonical** case directory, plus the condvar a producer
 /// waiting for a directory parks on.
 ///
-/// Historical (RF-I00-01 part 1 moved every producer onto a scratch copy): the
-/// corpus puts many decks in one folder (`Test/AutoTrans`, `8500-Node`, …), and
-/// this test binary had more than one producer walking them. The scheduler was
-/// not the problem — its task unit WAS the case-dir group, so its own cases in
-/// one folder were sequential — but libtest runs the gate `#[test]`
-/// concurrently with its siblings in the same binary, and
-/// `corpus_ad_matches_normal_mode` compiled `ad_sweep.json`'s decks **in place**
-/// (`8500-Node/Run_8500Node.dss`, `Run_8500Node_Unbal.dss` and
-/// `Run_RecloserSiting.DSS` all carry `ad: "pf"`). A deck's own `Show`/`Export`
-/// lines run during `compile`, i.e. before `ad_solve_normal` re-points
-/// `datapath` at a scratch directory, so they land in the very case directory
-/// the gate is measuring.
-///
-/// Measured on this tree (G1.10a F4 run 2, `tmp/g110a/f_F4_unexpected_run2.md`):
-/// with only the per-directory snapshot sharing below, one case's created-file
-/// SET picked up another deck's reports — `ieee8500_*` and `ieee8500u_*` in a
-/// single reply — on a different (case, channel) pair each run.
-///
-/// So the claim was made **exclusive per directory** (coordinator decision
-/// D33(2)). Since RF-I00-01 a claim only ever sits on the port's own scratch
-/// copy (`CorpusGuard::new` refuses a vendored folder): `run_one_case` takes
-/// none, the oracle captures run in their own copies without this guard, and
-/// `deferred_smoke_in` takes one on its copy. It stays **reentrant for the
+/// The corpus puts many decks in one folder (`Test/AutoTrans`, `8500-Node`, …),
+/// and a deck's own `Show`/`Export` lines run during `compile`, so two
+/// producers in one folder would see each other's reports in their created-file
+/// SETs. The claim is therefore **exclusive per directory**. A claim only ever
+/// sits on this engine's own scratch copy (`CorpusGuard::new` refuses a
+/// vendored folder): `run_one_case` takes none, the OpenDSS captures run in
+/// their own copies without this guard, and `deferred_smoke_in` takes one on
+/// its copy. It stays **reentrant for the
 /// owning thread** — the overlap fixture below takes two nested guards, which
 /// share the one pristine snapshot, so the names set is always the pre-run one
 /// and exactly one sweep runs, when the last of them leaves.
@@ -91,20 +73,19 @@ fn dir_registry() -> &'static DirRegistry {
     REG.get_or_init(|| (Mutex::new(HashMap::new()), Condvar::new()))
 }
 
+/// How long a producer waits for a case directory before calling it a deadlock.
+/// A claim is held for ONE case (both OpenDSS captures + this engine's run +
+/// the sweep), and the slowest gated case is a `large` feeder at well under a
+/// minute, so this bound cannot fire on a healthy run. It exists so that a
+/// leaked claim fails loudly instead of hanging the gate with no output at all.
+const DIR_CLAIM_DEADLINE: Duration = Duration::from_secs(600);
+
 /// The claim key: the case directory as the filesystem itself spells it, so two
 /// manifest rows reaching one physical folder through different spellings
 /// (`Test/AutoTrans` vs `Test/autotrans`, a `..` segment, a junction) contend
 /// for the same claim instead of running unserialized side by side. Falls back
 /// to the literal path when the directory cannot be canonicalized (it does not
 /// exist — there is nothing to protect).
-/// How long a producer waits for a case directory before calling it a deadlock.
-/// A claim is held for ONE case (both oracle captures + the port run + the
-/// sweep), and the slowest gated case is a `large` feeder at well under a
-/// minute, so this bound cannot fire on a healthy run — it exists so that a
-/// claim leaked by a future edit fails loudly instead of hanging a 4-minute gate
-/// with no output at all.
-const DIR_CLAIM_DEADLINE: Duration = Duration::from_secs(600);
-
 fn dir_claim_key(dir: &Path) -> PathBuf {
     std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf())
 }
@@ -151,7 +132,7 @@ impl CorpusGuard {
     }
 
     /// Claim the case directory — blocking while another thread runs a case in
-    /// it (coordinator decision D33(2)) — and photograph it.
+    /// it — and photograph it.
     pub(crate) fn new(case_path: &str) -> Self {
         let dir = Path::new(case_path)
             .parent()
@@ -242,33 +223,22 @@ impl CorpusGuard {
     }
 
     /// Remove what the run created, classifying with the SHARED rule the two
-    /// oracle transports and the port probe report from
-    /// ([`dss_epri::guard::classify_created`]; coordinator decision D32(3)).
+    /// OpenDSS transports and this engine's probe report from
+    /// ([`dss_epri::guard::classify_created`]).
     ///
-    /// Before that this guard had its own recursion, which descended into
-    /// PRE-EXISTING subdirectories — so an outer guard on `Test/` could delete
-    /// the live report files of a case running concurrently in the sibling case
-    /// directory `Test/AutoTrans/` (G1.10a F2b measured 9 such members over two
-    /// full 526-case drives). One classification, three consumers closes the
-    /// hazard everywhere: the removal roots are the case dir's own created
-    /// entries, and a created directory goes as one tree.
+    /// The removal roots are the case dir's own created entries, and a created
+    /// directory goes as one tree. The sweep never descends into a
+    /// PRE-EXISTING subdirectory, which may be another case's directory with a
+    /// case running in it right now. `dss_epri::guard` is pure `std::fs`, so the
+    /// one classification holds on every platform.
     ///
-    /// Until coordinator decision D33(3) this arm was `#[cfg(windows)]` and the
-    /// other platforms kept a compile-only twin of the same rule, because
-    /// `dss-epri` gated its every module on Windows. `dss_epri::guard` is pure
-    /// `std::fs`, so it is now ungated (and the crate is an unconditional
-    /// dev-dependency): the twin is deleted and "one classification, three
-    /// consumers" is literally true on every platform.
     /// Returns the normalized names of created entries the case directory STILL
     /// lists afterwards — the same `sweep_failed` report its two twins make
     /// (`dss_epri::guard::CorpusGuard::sweep_created`,
-    /// `corpus_guard.py::_sweep_created`). Until the G1.10a audit settlement
-    /// (finding AC-2) this one producer discarded every removal error, so the
-    /// classification was shared but the LOUDNESS was not: on a `kind=large*`
-    /// case no `RunFileProbe` brackets the run and this guard is the ONLY
-    /// sweeper, so a dropping it could not remove was invisible to the gate and
-    /// left for a human to notice as an untracked file. `Drop` prints what comes
-    /// back; nothing here panics, because a panicking `Drop` during another
+    /// `corpus_guard.py::_sweep_created`). On a `kind=large*` case no
+    /// `RunFileProbe` brackets the run and this guard is the ONLY sweeper, so a
+    /// dropping it could not remove must still be loud. `Drop` prints what comes
+    /// back. Nothing here panics, because a panicking `Drop` during another
     /// panic aborts the process.
     fn sweep_created(&self) -> Vec<String> {
         let c = dss_epri::guard::classify_created(&self.dir, &self.snap.names);
@@ -326,17 +296,17 @@ impl Drop for CorpusGuard {
         }
         // Last one out. Sweep and restore while the claim is STILL held, so the
         // next producer of this directory cannot photograph this run's droppings
-        // as vendored (coordinator decision D33(2)); only then release the
+        // as vendored; only then release the
         // directory and wake whoever is waiting for it.
         if self.snap.snapshot_ok {
             let leaked = self.sweep_created();
             if !leaked.is_empty() {
-                // D32(2) forbids a silently swallowed removal failure. This
+                // A removal failure is never swallowed silently. This
                 // guard cannot fail the case from `Drop` (a panic here during
                 // another panic aborts the process), so it says so on stderr,
                 // where a full-drive log keeps it greppable.
                 eprintln!(
-                    "corpus guard: leaked dropping(s) under {}: {} - the sweep could not remove them (a producer still holds the file open). Since RF-I00-01 the folder is the port's scratch copy, whose bounded removal (`ScratchCopy::finish`) then fails the case naming the producer.",
+                    "corpus guard: leaked dropping(s) under {}: {} - the sweep could not remove them (a producer still holds the file open). The folder is this engine's scratch copy, whose bounded removal (`ScratchCopy::finish`) then fails the case naming the producer.",
                     self.dir.display(),
                     leaked.join(", "),
                 );
@@ -350,16 +320,14 @@ impl Drop for CorpusGuard {
                     Ok(_) => {
                         let _ = std::fs::write(&p, data);
                     }
-                    // GONE. Never write it back (G1.10a audit settlement, the
-                    // settle stage's measurement): a guard on a PARENT case
+                    // GONE. Never write it back: a guard on a PARENT case
                     // directory photographs a sibling case's directory too, and
-                    // when that sibling's own guard sweeps its output this arm
-                    // used to RESURRECT it — the `Test/AutoTrans/Auto{1,3}bus_*`
-                    // residue STATUS tracks, and the shrunken created-file set it
-                    // causes in the next producer. A deck that genuinely deletes
-                    // a vendored file leaves a tracked deletion, which is loud on
-                    // its own. The Python twin (`corpus_guard.py::__exit__`)
-                    // already behaved this way: it reads before it writes.
+                    // when that sibling's own guard sweeps its output, writing
+                    // it back would RESURRECT it and shrink the next producer's
+                    // created-file set. A deck that genuinely deletes a vendored
+                    // file leaves a tracked deletion, which is loud on its own.
+                    // The Python twin (`corpus_guard.py::__exit__`) reads
+                    // before it writes too.
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                     // Unreadable for another reason (a held handle): try, as before.
                     Err(_) => {
@@ -405,8 +373,8 @@ fn corpus_guard_restores_case_dir_recursively() {
         "a file appearing under a PRE-EXISTING subdirectory must NOT be swept: \
          the gate schedules by case dir, so `support/` may itself be a manifest \
          case directory whose case is running right now, and this file is its \
-         live output (D30(2)/D32(3); the shared classification \
-         `dss_epri::guard::classify_created` and its F2b measurement)"
+         live output (the shared classification \
+         `dss_epri::guard::classify_created`)"
     );
     assert!(
         !root.join("ckt_di").exists(),
@@ -415,27 +383,16 @@ fn corpus_guard_restores_case_dir_recursively() {
     std::fs::remove_dir_all(&root).ok();
 }
 
-/// G1.10a audit settlement, the settle stage's own measurement — a guard on a
-/// PARENT case directory must never RESURRECT the output a sibling case's guard
-/// has just swept.
+/// A guard on a PARENT case directory never RESURRECTS the output a sibling
+/// case's guard has just swept.
 ///
-/// `Test/` holds 36 manifest cases and `Test/AutoTrans/` five more, and the two
-/// are different claim keys, so they run concurrently by design. The parent's
-/// pre-run photograph used to walk into the child directory and buffer whatever
-/// the child's run had already written; when the child then swept its own
-/// output, the parent's `restore` found the file *missing*, took that for "the
-/// run destroyed a vendored file" and wrote it back. That is the mechanism
-/// behind the `Test/AutoTrans/Auto{1,3}bus_*.txt` residue STATUS has tracked
-/// since 2026-08-29 (measured again here: one full `corpus_gate` drive left 9
-/// such files with no `sweep_failed` report anywhere, the next left none), and
-/// the residue is what silently shrinks the next producer's created-file set —
-/// it red `run_files_pins::the_two_oracle_spellings_of_auto1bus_fold_to_one_member`
-/// with `0` names instead of 9 during this settlement's own gate.
-///
-/// The fix is in `restore`: a snapshot entry that is GONE stays gone (a deck that
-/// deletes a vendored file shows up as a tracked deletion, which is loud), while
-/// an entry that still exists and was overwritten is still restored — the
-/// contract `corpus_guard_restores_case_dir_recursively` pins.
+/// A parent directory and its child are different claim keys, so they run
+/// concurrently by design, and the parent's pre-run photograph may buffer what
+/// the child's run already wrote. A snapshot entry that is GONE at restore
+/// stays gone (a deck that deletes a vendored file shows up as a tracked
+/// deletion, which is loud), while an entry that still exists and was
+/// overwritten is still restored, the contract
+/// `corpus_guard_restores_case_dir_recursively` pins.
 #[test]
 fn a_parent_guard_does_not_resurrect_a_sibling_cases_swept_output() {
     let root = std::env::temp_dir().join(format!("dss_guard_sibling_{}", std::process::id()));
@@ -471,13 +428,12 @@ fn a_parent_guard_does_not_resurrect_a_sibling_cases_swept_output() {
     std::fs::remove_dir_all(&root).ok();
 }
 
-/// G1.10a audit settlement (finding AC-2): the outer guard REPORTS a removal it
-/// could not perform, exactly like its two twins
+/// The outer guard REPORTS a removal it could not perform, exactly like its two
+/// twins
 /// (`dss_epri::guard::tests::a_created_file_the_sweep_cannot_remove_is_reported_as_sweep_failed`,
 /// `corpus_guard.py`'s `SELF_TEST_LEAK_*`). The fixture holds the created file
-/// open with `FILE_SHARE_READ` only — what the FPC/Delphi file APIs do — so
-/// `remove_file` fails with a sharing violation, the mechanism dss_capi's
-/// never-closed Storage trace stream produced live (G1.10a F4).
+/// open with `FILE_SHARE_READ` only, as dss_capi holds a never-closed Storage
+/// trace stream, so `remove_file` fails with a sharing violation.
 #[cfg(windows)]
 #[test]
 fn the_outer_guard_reports_a_created_file_it_cannot_remove() {
@@ -526,9 +482,9 @@ fn the_outer_guard_reports_a_created_file_it_cannot_remove() {
 
 /// Two guards on the **same** deck folder nested inside one thread — what
 /// `assert_deferred_rust_smoke` does inside `scheduler::run_one_case`'s guard.
-/// Since D33(2) that is the only way two guards on one directory can overlap
-/// (another thread blocks in `new`), and the interleaving that used to leak is
-/// still the one this pins: A snapshots clean → A writes → B snapshots (sees A's
+/// That is the only way two guards on one directory can overlap (another
+/// thread blocks in `new`), and this pins the interleaving that would leak
+/// without the shared snapshot: A snapshots clean → A writes → B snapshots (sees A's
 /// output) → A drops and sweeps → B writes again → B drops and *keeps* it. With
 /// the shared per-directory snapshot the nested guard reuses the pristine names
 /// and the sweep runs once, when the last guard leaves.
@@ -561,12 +517,11 @@ fn corpus_guard_overlapping_guards_still_sweep() {
     std::fs::remove_dir_all(&root).ok();
 }
 
-/// Coordinator decision **D33(2)**: one producer at a time owns a case
-/// directory. Two synthetic manifest rows in one folder — the
-/// `IEEETestCases/8500-Node` shape, where seven rows plus `ad_sweep.json`'s `pf`
-/// decks all write `<CircuitName>_*` reports into ONE directory — must not have
-/// their before/after windows overlap, or one producer's output lands in the
-/// other's created-file SET (measured: G1.10a F4 run 2).
+/// One producer at a time owns a case directory. Two synthetic manifest rows in
+/// one folder (the `IEEETestCases/8500-Node` shape, where several rows plus
+/// `ad_sweep.json`'s `pf` decks all write `<CircuitName>_*` reports into ONE
+/// directory) must not have their before/after windows overlap, or one
+/// producer's output lands in the other's created-file SET.
 ///
 /// Deterministic in the direction that matters: the second thread records
 /// whether the first was still holding the directory at the moment it got in,
@@ -633,10 +588,9 @@ fn corpus_guard_serializes_two_threads_in_one_case_directory() {
     std::fs::remove_dir_all(&root).ok();
 }
 
-/// The other direction of D33(2): the claim is per DIRECTORY, not a global lock
-/// on the corpus. Two producers in DIFFERENT case folders keep running at the
-/// same time — the gate's `jobs=16` parallelism depends on it, and a global
-/// lock would serialize a 4-minute gate into an hour.
+/// The other direction: the claim is per DIRECTORY, not a global lock on the
+/// corpus. Two producers in DIFFERENT case folders keep running at the same
+/// time, which the gate's parallelism depends on.
 #[test]
 fn corpus_guard_does_not_serialize_two_different_case_directories() {
     use std::sync::mpsc;
@@ -736,15 +690,13 @@ pub(crate) fn run_rust_capture(label: &str, case_path: &str, c: &SolvableCase) -
         dss.command(cmd);
     }
     assert_expected_warnings(&dss, &c.expect_warnings, &format!("{label}: after compile"));
-    // G1.10a audit settlement (finding AT-1) — a `compile` that produced NEITHER
-    // a circuit NOR an error can only mean the master file read back with no
-    // command in it: `exec/solve.rs::do_redirect` errors loudly on a missing
-    // (`Redirect file not found`) or unreadable (`could not be read`) file, but a
-    // SHORT read — an empty file, or just its leading comment block — yields no
-    // command and no diagnostic, and every later command then fails with "You
-    // must create a new circuit object first" (the shape the one-off
-    // `controls:espvlcontrol` red of this sub-step's part P took, on a machine at
-    // 100 % CPU). Assert it HERE, where the deck's size on disk is still evidence,
+    // A `compile` that produced NEITHER a circuit NOR an error can only mean
+    // the master file read back with no command in it: `exec/solve.rs::do_redirect`
+    // errors loudly on a missing (`Redirect file not found`) or unreadable
+    // (`could not be read`) file, but a SHORT read (an empty file, or just its
+    // leading comment block) yields no command and no diagnostic, and every
+    // later command then fails with "You must create a new circuit object
+    // first". Assert it HERE, where the deck's size on disk is still evidence,
     // instead of one step later where only the symptom shows. Never retry the
     // case: a deck that reads short means a producer is writing it.
     assert!(
@@ -759,12 +711,11 @@ pub(crate) fn run_rust_capture(label: &str, case_path: &str, c: &SolvableCase) -
 }
 
 /// Compare the (once-run) Rust engine against ONE channel's `CaseResult`, per
-/// step, in the fixed comparator order. Byte-identical to the pre-Phase-B loop
-/// EXCEPT where a per-case-per-channel `ledger` scope partitions a field: the
-/// untouched `harness` comparator runs on the unscoped remainder while the
-/// ledger's envelope/exact-pair assert covers the scoped part and records the hit
-/// (§1.3). With `ledger = None` or an empty view every field takes the original
-/// path unchanged.
+/// step, in the fixed comparator order. Where a per-case-per-channel `ledger`
+/// scope partitions a field, the untouched `harness` comparator runs on the
+/// unscoped remainder while the ledger's envelope/exact-pair assert covers the
+/// scoped part and records the hit. With `ledger = None` or an empty view every
+/// field takes the plain path.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn compare_capture(
     dss: &mut Dss,
@@ -781,12 +732,12 @@ pub(crate) fn compare_capture(
     let star = c.selected_elements == ["*"];
     // A view with no applicable entries behaves exactly like `None` (fast path).
     let ledger = ledger.filter(|v| !v.is_empty());
-    // G1.7 / D15: the port's isolation topology at step 0 of THIS case+channel
+    // This engine's isolation topology at step 0 of THIS case+channel
     // run — the memoization reference the topology comparator rebases onto once
     // a conductor has opened (`harness::topology::compare_topology`).
     let mut topo_step0: Option<harness::topology::IsolationSnapshot> = None;
 
-    // GOLDEN_REBASE G1.6(i) protocol: `RelCalc` is NOT idempotent (a nested or
+    // The reliability protocol: `RelCalc` is NOT idempotent (a nested or
     // adjoining zone re-reads the inner meter's `Bus.TotalMiles` as its own
     // downstream mileage on the second run), so the gate runs it exactly once
     // per case, on the LAST step, on all three engines. Assert the channel did
@@ -828,7 +779,7 @@ pub(crate) fn compare_capture(
         let rust_global_result = dss.result().to_string();
         let ctx = format!("{label} step {i}");
 
-        // GOLDEN_REBASE G1.6(i): drive the executive `RelCalc` HERE - after the
+        // Drive the executive `RelCalc` HERE - after the
         // per-step error assert and the `Text.Result`/`dss.result()` read (the
         // command overwrites the result), before every comparator of this step,
         // and only on the last one. Both transports drive it at exactly this
@@ -869,13 +820,13 @@ pub(crate) fn compare_capture(
                 ckt.solution.dbl_hour,
                 cp.dbl_hour
             );
-            // Iteration policy (§4 Phase C): the pinned capi_v0145 channel is an
-            // exact 1:1 contract; the r4133 channel (a different engine line)
-            // allows the port to converge in FEWER iterations — never more. A
-            // ledger `iterations` scope overrides both (exact pair, or an explicit
-            // rust_le_oracle where a target-rev delta needs pinning).
+            // Iteration policy: the pinned capi_v0145 channel must match the
+            // iteration count exactly, and the r4133 channel (a different engine
+            // line) allows this engine to converge in FEWER iterations, never
+            // more. A ledger `iterations` scope overrides both (exact pair, or an
+            // explicit rust_le_oracle where a revision delta needs pinning).
             //
-            // Stage F (Part IV.2 drift model): both non-ledgered shapes go
+            // Both non-ledgered shapes go
             // through `harness::lane`, which keeps them exactly as above in the
             // parity lane and grants the default lane its documented
             // ±`ITER_SLACK` band. Ledger-scoped pins stay exact in BOTH lanes:
@@ -933,7 +884,7 @@ pub(crate) fn compare_capture(
             }
         }
 
-        // Whole-artifact ledger exclusions (`GOLDEN_REBASE_PLAN.md` G2.5): the
+        // Whole-artifact ledger exclusions: the
         // assembled Y, its fingerprint, an element's YPrim and a meter's
         // register block have no partition and no envelope, so an entry that
         // names one drops it for this (case, channel) — hit-accounted, so it
@@ -1009,7 +960,7 @@ pub(crate) fn compare_capture(
             .map(|v| v.element_rewrites(i, &snaps, &cp.elements, tol, &ctx))
             .unwrap_or_default();
         // The lane policy drops the two `S = V·conj(I)` sub-channels on the
-        // `newton*` decks in **both** lanes since `GOLDEN_REBASE_PLAN.md` G2.3
+        // `newton*` decks in **both** lanes
         // (no oracle channel reports them at the converged `NodeV`; pinned by
         // its own expected-value test) — every other case gets
         // `ElemChannels::ALL`. See `harness::lane`.
@@ -1021,7 +972,7 @@ pub(crate) fn compare_capture(
             }
         }
 
-        // `GOLDEN_REBASE_PLAN.md` G1.9 — the five `Circuit` aggregates and the
+        // The five `Circuit` aggregates and the
         // ten `Solution` scalars. The surface is UNFLAGGED and universal (no
         // `G1_SURFACE_FLAGS` row, no rigor token, no forced population), so the
         // capture is demanded on every live case of every gating channel; the
@@ -1029,10 +980,10 @@ pub(crate) fn compare_capture(
         // manifest-flag shaped and there is no flag to name here.
         let agg = cp.aggregates.as_ref().unwrap_or_else(|| {
             panic!(
-                "{ctx}: the `{}` capture carries no `aggregates` member. G1.9 is an \
+                "{ctx}: the `{}` capture carries no `aggregates` member. The aggregates are an \
                  unflagged, universal surface — every live case must compare it, so \
                  an absent capture FAILS the case instead of silently comparing \
-                 nothing (GOLDEN_REBASE_PLAN.md §1.1(f)).",
+                 nothing.",
                 channel_tag(channel)
             )
         });
@@ -1060,30 +1011,27 @@ pub(crate) fn compare_capture(
             channel.iterations_exact(),
             &ctx,
         );
-        // WP-G1 G1.3a: the per-element **derived** channels — `Enabled` plus
-        // the polar renderings `CurrentsMagAng` / `VoltagesMagAng` / `Residuals`
-        // (r4133 `DDLL/DCktElement.pas:1058`/`:1082`/`:827`). Compared on the
-        // same caps the loop above just used, so a ledger `element` scope that
-        // pins one of the new sub-channels neutralizes it here too, and an
-        // unscoped element is compared against the untouched oracle cap.
+        // The per-element **derived** channels: `Enabled` plus the polar
+        // renderings `CurrentsMagAng` / `VoltagesMagAng` / `Residuals`. Compared
+        // on the same caps the loop above just used, so a ledger `element` scope
+        // that pins one of these sub-channels neutralizes it here too, and an
+        // unscoped element is compared against the untouched OpenDSS cap.
         //
-        // G1.3b rides on the same flag: the per-element symmetrical-component
-        // surfaces `SeqCurrents` / `SeqVoltages` / `SeqPowers` (r4133
-        // `DDLL/DCktElement.pas:700-737` / `:660-698` / `:739-797`; capi
-        // `CAPI/CAPI_Alt.pas:490-527` / `:620-659` / `:529-593`), captured in the
+        // The per-element symmetrical-component surfaces `SeqCurrents` /
+        // `SeqVoltages` / `SeqPowers` ride on the same flag, captured in the
         // same `derived` block and compared by `harness::compare_element_seq`
         // beside — never instead of — the polar comparator, on the same
         // (possibly ledger-rewritten) caps.
         //
         // The guard is the flag's own non-vacuity rail: under `derived` BOTH
         // transports emit `enabled` for every element (present even on the
-        // disabled ones, whose polar channels the capture must skip — r4133
-        // `CktElementV(19)` dereferences a nil `NodeRef` there), so a channel
+        // disabled ones, whose polar channels the capture must skip because
+        // r4133 dereferences a nil `NodeRef` there), so a channel
         // that ignored the request answers with zero `enabled` fields and the
         // case fails instead of comparing nothing.
         //
         // There are two of them, for the reason `compare_element_extras` has
-        // two (G1.3d(ii) audit settlement): the two comparators read disjoint
+        // two: the two comparators read disjoint
         // capture fields, so a channel that honoured the request for the polar
         // arrays but not the sequence ones must fail the case rather than
         // compare nothing, and the two refusals must not print the same
@@ -1103,7 +1051,7 @@ pub(crate) fn compare_capture(
                 cp.elements.iter().filter(|e| !e.seq_i.is_empty()).count(),
                 &ctx,
             );
-            // G1.3c's two, for the same reason: `compare_element_total_powers`
+            // Two more, for the same reason: `compare_element_total_powers`
             // and `compare_element_cplx_seq` read capture fields disjoint from
             // each other and from the two rails above, so a channel that
             // honoured the request for the polar and magnitude arrays but not
@@ -1129,11 +1077,10 @@ pub(crate) fn compare_capture(
                     .count(),
                 &ctx,
             );
-            // The voltage half gets its own rail too (G1.3c audit settlement,
-            // 2026-09-06): it is the one capture field of this surface that no
-            // other rail counts, and it is the half whose guards differ between
-            // the channels (capi's `CplxSeqVoltages` alone tests
-            // `NodeRef = NIL`, `CAPI/CAPI_Alt.pas:878`, where r4133 mode `13`
+            // The voltage half gets its own rail too: it is the one capture
+            // field of this surface that no other rail counts, and it is the
+            // half whose guards differ between the channels (capi's
+            // `CplxSeqVoltages` alone tests for a nil `NodeRef`, where r4133
             // tests only `Enabled`), so a transport that dropped exactly this
             // key would otherwise reach the comparator's length assert rather
             // than a sentence naming the field that went missing.
@@ -1148,20 +1095,20 @@ pub(crate) fn compare_capture(
             );
             // The channel travels with the capture for one reason only: the
             // `SeqPowers` "not available" sentinel is spelled per channel and is
-            // folded per channel (`harness::na_seq_power`, G1.3b D-b2), and the
+            // folded per channel (`harness::na_seq_power`), and the
             // r4133-only truncated-matrix term rides on the same argument.
             let seq_channel = channel.props_channel();
             for ec in &cp.elements {
                 // A ledger `element` scope rewrites only the sub-channels it
-                // names, so both comparators see the untouched oracle values on
+                // names, so both comparators see the untouched OpenDSS values on
                 // every channel the scope does not select.
                 let cap = el_rewrites.get(&ec.name.to_lowercase()).unwrap_or(ec);
                 compare_element_derived(&snaps, cap, tol, &ctx, channels);
-                // The gating population's sequence-arm census — the guard behind
-                // D-b1 costing zero ledger rows (`harness::
-                // assert_seq_arm_population`, checked in the gate's epilogue).
-                // Recorded HERE and never inside the comparator (coordinator
-                // decision D24, the `record_control_census` line below): the
+                // The gating population's sequence-arm census: the guard that
+                // keeps r4133's misplaced positive-sequence `SeqPowers` slot
+                // from costing ledger rows (`harness::assert_seq_arm_population`,
+                // checked in the gate's epilogue). Recorded HERE and never
+                // inside the comparator (as `record_control_census` below): the
                 // comparator has other callers, the `harness::seq_floors`
                 // fixtures among them, and a comparator-side census would
                 // count every caller in its process. Counting here keeps it
@@ -1173,39 +1120,33 @@ pub(crate) fn compare_capture(
                 {
                     harness::record_seq_arm(arm, seq_channel);
                 }
-                // G1.3c, beside — never instead of — the three above, on the
-                // same possibly-rewritten cap: the un-`Cabs`'d complex pair
-                // (r4133 `DDLL/DCktElement.pas:931-975`/`:885-928`, capi
-                // `CAPI/CAPI_Alt.pas:898-925`/`:872-895`), which needs the
-                // channel for the r4133-only truncated-matrix band term and for
-                // its measured 0-terminal shapes, and the per-terminal
-                // `TotalPowers` sums (`:1109-1139` / `:1108-1141`), which need
-                // neither. Neither records a census (coordinator decision D24).
+                // Beside, never instead of, the three above, on the same
+                // possibly-rewritten cap: the un-`Cabs`'d complex pair, which
+                // needs the channel for the r4133-only truncated-matrix band
+                // term and for its 0-terminal shapes, and the per-terminal
+                // `TotalPowers` sums, which need neither. Neither records a
+                // census.
                 compare_element_cplx_seq(&snaps, cap, tol, &ctx, seq_channel, channels);
                 compare_element_total_powers(&snaps, cap, tol, &ctx, channels);
             }
         }
 
-        // WP-G1 G1.3d: the per-element **extras**. Part (i)'s discrete
-        // index/name scalars — `NumTerminals` / `NumConductors` / `NumPhases`
-        // (r4133 `DDLL/DCktElement.pas:139`/`:144`/`:149`), `EnergyMeter`
-        // (`:442`) and `NodeOrder` (`:1032`) — plus part (ii)'s five
-        // control-derived scalars (`:207-262`, over `Common/Utilities.pas:3165`
-        // `GetOCPDeviceType`), all discrete and compared exactly: no tolerance,
-        // no `ElemChannels` selector, no ledger sub-channel.
+        // The per-element **extras**. The discrete index/name scalars
+        // (`NumTerminals` / `NumConductors` / `NumPhases`, `EnergyMeter` and
+        // `NodeOrder`) plus the five control-derived scalars, all discrete and
+        // compared exactly: no tolerance, no `ElemChannels` selector, no ledger
+        // sub-channel.
         //
-        // Part (ii)'s sixth field, `PhaseLosses` (`:637-659` over
-        // `Common/CktElement.pas:1078`), is numeric and goes through its own
+        // `PhaseLosses` is numeric and goes through its own
         // comparator on the powers tier, with the `ElemChannels` selector: it
         // reaches the same cache-aware `ComputeIterminal` as Powers/Losses and
         // shares their `newton*` lane exclusion (see `harness::lane`).
         //
         // Fed from the same `el_rewrites`-or-raw caps as the two loops above so
         // the block keeps their shape, which costs nothing and hides nothing: a
-        // ledger rewrite is a full `clone_element_cap` (`ledger.rs:2292-2294`,
-        // `ec.clone()`) with only its six named value channels overwritten
-        // (`rewrite_element_selected`, `:1702`), so the five extras fields it
-        // hands back are always the untouched oracle ones.
+        // ledger rewrite is a full `ledger::clone_element_cap` with only its
+        // named value channels overwritten (`ledger::rewrite_element_selected`),
+        // so the extras fields it hands back are always the untouched OpenDSS ones.
         //
         // The guard is the flag's own non-vacuity rail, and there are two of
         // them because the two comparators read disjoint capture fields. Under
@@ -1226,7 +1167,7 @@ pub(crate) fn compare_capture(
                 &ctx,
             );
             capture_guard::require_capture(
-                // Its own flag spelling (G1.3d(ii) audit settlement): the two
+                // Its own flag spelling: the two
                 // rails read disjoint capture fields, so a missing `n_terms`
                 // and a missing `pl_kw` must not print the same sentence.
                 "compare_element_extras (PhaseLosses)",
@@ -1236,26 +1177,25 @@ pub(crate) fn compare_capture(
             );
             // The channel travels with the capture for one reason only: the
             // "no meter" sentinel is spelled per channel and is folded per
-            // channel (`harness::oracle_meter_name`, G1.3d(i) audit settlement).
+            // channel (`harness::oracle_meter_name`).
             let ch = channel.props_channel();
             for ec in &cp.elements {
                 // A ledger `element` scope rewrites only the sub-channels it
                 // names (`ledger.rs::rewrite_element_selected`,
                 // `SUBCHANNEL_FIELDS`). The ten discrete extras are on NO
                 // sub-channel, so `compare_element_extras` always sees the
-                // untouched oracle values — a discrete divergence can never be
-                // masked by a scope. `PhaseLosses` IS the seventh sub-channel
-                // (G1.3d(ii)): a scope selecting `phase_losses` overwrites
-                // `pl_kw`/`pl_kvar` with the port's values (x0.001), which is
-                // exactly how the ten measured widenings neutralize it here.
+                // untouched OpenDSS values: a discrete divergence can never be
+                // masked by a scope. `PhaseLosses` IS a sub-channel: a scope
+                // selecting `phase_losses` overwrites `pl_kw`/`pl_kvar` with
+                // this engine's values (x0.001), which is how it is
+                // neutralized here.
                 let cap = el_rewrites.get(&ec.name.to_lowercase()).unwrap_or(ec);
                 compare_element_extras(&snaps, cap, ch, &ctx);
                 compare_element_phase_losses(&snaps, cap, tol, &ctx, channels);
-                // The gating population's control census — the guard behind
-                // D-ii-1 costing zero ledger rows (`harness::
+                // The gating population's control census (`harness::
                 // assert_no_multi_control_element`, checked in the gate's
-                // epilogue). Counted from the ORACLE's `NumControls`, which the
-                // compare above has just held the port to.
+                // epilogue). Counted from the OpenDSS `NumControls`, which the
+                // compare above has just held this engine to.
                 harness::record_control_census(cap.num_controls, cap.ocp_dev_type);
             }
         }
@@ -1280,7 +1220,7 @@ pub(crate) fn compare_capture(
             }
         }
 
-        // The reliability surface (GOLDEN_REBASE G1.6(i)), immediately after the
+        // The reliability surface, immediately after the
         // register/zone compare so the two meter surfaces stay adjacent - the
         // same slot both transports read it in. Only the last checkpoint carries
         // it (asserted above); `require_capture_opt` turns "flag on, channel sent
@@ -1328,7 +1268,7 @@ pub(crate) fn compare_capture(
             "{ctx}: oracle variables-capture count differs from the manifest spec"
         );
         for v in &cp.variables {
-            // Per-variable ledger exclusions (`R4133_PROPS_PLAN.md` RP3.10).
+            // Per-variable ledger exclusions.
             // The key is the lowercased `element:variable` pair —
             // `windgen.w1:pgen` — with `:` as the separator because the element
             // name already carries the class dot; it is the `element.prop`
@@ -1352,8 +1292,8 @@ pub(crate) fn compare_capture(
                     .collect(),
                 None => cp.eventlog.clone(),
             };
-            // Then the two Relay label rows, which apply in **both** lanes
-            // (GOLDEN_REBASE_PLAN.md G2.2d). The relay/recloser split is read
+            // Then the two Relay label rows, which apply in **both** lanes.
+            // The relay/recloser split is read
             // from the Rust circuit, which the element-name set above has
             // already pinned against the oracle.
             let relays: BTreeSet<String> = class_member_names(&snaps, "relay");
@@ -1387,12 +1327,11 @@ pub(crate) fn compare_capture(
             );
         }
 
-        // The bus voltage surface (GOLDEN_REBASE_PLAN.md G1.4a). Placed here to
+        // The bus voltage surface. Placed here to
         // mirror the capi transport's capture slot — after `ctrlqueue`, before
         // the `all_properties` `?` sweep that must stay last
         // (`tools/oracle/oracle_server.py`). Every bus read is class C
-        // (order-free) under §1.1(a)/D3: both engines read `Solution.NodeV`
-        // directly (`CAPI/CAPI_Alt.pas:2275` == r4133 `DDLL/DBus.pas:423`) and
+        // (order-free): both OpenDSS engines read `Solution.NodeV` directly and
         // move only `ActiveBusIndex`, so nothing here can stale a cached
         // `Iterminal`.
         //
@@ -1417,15 +1356,12 @@ pub(crate) fn compare_capture(
             harness::compare_bus(dss, &cp.buses, tol, v_excluded, &ctx);
             harness::compare_all_bus_vmag_pu(dss, &cp.all_bus_vmag_pu, tol, v_excluded, &ctx);
 
-            // The DISTANCE half of the SAME per-bus walk (GOLDEN_REBASE_PLAN.md
-            // G1.4b): `Bus.Distance` plus the two circuit-level views of the
-            // very same field, `Circuit.AllBusDistances` and
-            // `Circuit.AllNodeDistances`. Like the two blocks below it rides
+            // The DISTANCE half of the SAME per-bus walk: `Bus.Distance` plus
+            // the two circuit-level views of the very same field,
+            // `Circuit.AllBusDistances` and `Circuit.AllNodeDistances`. Like the two blocks below it rides
             // `compare_bus` — no flag of its own — and is class C (order-free):
-            // all three arms return the stored `TDSSBus.DistFromMeter` and move
-            // only `ActiveBusIndex` (`CAPI/CAPI_Alt.pas:2071-2074`,
-            // `CAPI_Circuit.pas:671-688`/`:697-722` == r4133 `DDLL/DBus.pas:122-128`,
-            // `DCircuit.pas:566-580`/`:582-604`).
+            // all three arms return the stored bus distance from the meter and
+            // move only `ActiveBusIndex`.
             //
             // `v_excluded` is deliberately NOT passed: the distance is a
             // zone-build output, not an image of `Solution.NodeV`, so a
@@ -1433,13 +1369,12 @@ pub(crate) fn compare_capture(
             // suppressing it would hide a zone-build bug behind an unrelated
             // triage. Compared exactly (`rel = abs = 0`).
             //
-            // What a real upstream divergence gets instead is its own ledger
-            // field, `distance`, selected per BUS (coordinator decision D29
-            // step 3). The closure is passed rather than a precomputed flag
-            // because `excluded()` records the scope's hit when it answers, and
-            // `compare_bus_distances` asks it only once the exact equality has
-            // already failed — so a hit means "masked a real divergence" and a
-            // fixed upstream leaves the scope STALE.
+            // What a real OpenDSS divergence gets instead is its own ledger
+            // field, `distance`, selected per BUS. The closure is passed rather
+            // than a precomputed flag because `excluded()` records the scope's
+            // hit when it answers, and `compare_bus_distances` asks it only once
+            // the exact equality has already failed, so a hit means "masked a
+            // real divergence" and an OpenDSS fix leaves the scope STALE.
             //
             // The returned non-zero count feeds the run-wide fail-on-stale
             // population (`harness::assert_distance_compare_ran`, called once
@@ -1456,9 +1391,9 @@ pub(crate) fn compare_capture(
             );
             harness::record_distance_compare(nonzero_distances);
 
-            // The SEQUENCE + LINE-TO-LINE half of the SAME per-bus walk
-            // (GOLDEN_REBASE_PLAN.md G1.4c): `Bus.SeqVoltages`/
-            // `CplxSeqVoltages`/`VLL`/`puVLL`, four arms appended to the one
+            // The SEQUENCE + LINE-TO-LINE half of the SAME per-bus walk:
+            // `Bus.SeqVoltages`/`CplxSeqVoltages`/`VLL`/`puVLL`, four arms
+            // appended to the one
             // `SetActiveBus` sweep the block above already paid for — hence a
             // second call on `cp.buses` rather than a second capture or a
             // second flag (the surface rides `compare_bus`, as
@@ -1475,7 +1410,7 @@ pub(crate) fn compare_capture(
             // `v_excluded` is reused NARROWED, exactly as the short-circuit arm
             // below reuses it: it drops the sequence/L-L VALUES only, while
             // every availability rule (each channel's own sentinel), every
-            // length, the `vll_declined` cross-check and the port-internal
+            // length, the `vll_declined` cross-check and this engine's internal
             // identities stay compared.
             //
             // The returned class counts feed the run-wide fail-on-stale
@@ -1493,9 +1428,9 @@ pub(crate) fn compare_capture(
             );
             harness::record_seq_vll_populations(seq_vll);
 
-            // The short-circuit half of the SAME per-bus walk
-            // (GOLDEN_REBASE_PLAN.md G1.5): `Bus.Zsc1`/`Zsc0`/`ZscMatrix`/
-            // `YscMatrix`/`Isc`/`Voc`, six arms appended to the one
+            // The short-circuit half of the SAME per-bus walk:
+            // `Bus.Zsc1`/`Zsc0`/`ZscMatrix`/`YscMatrix`/`Isc`/`Voc`, six arms
+            // appended to the one
             // `SetActiveBus` sweep the block above already paid for. That is
             // why `compare_zsc` implies `compare_bus` (asserted in
             // `engines::build_run_request`, where the two flags meet) and why
@@ -1521,8 +1456,8 @@ pub(crate) fn compare_capture(
                 );
                 // The count of buses whose full `n x n` matrices were really
                 // value-compared feeds the gate epilogue's fail-on-stale
-                // (`harness::assert_sc_study_compare_ran`, G1.5 audit
-                // settlement T1): `port_ran == oracle_ran` is also true when
+                // (`harness::assert_sc_study_compare_ran`): `port_ran ==
+                // oracle_ran` is also true when
                 // NEITHER ran, so without this the whole non-trivial half of
                 // the surface could go quiet and stay green. This is the one
                 // call site that records — the harness' own drives must not.
@@ -1538,8 +1473,7 @@ pub(crate) fn compare_capture(
                 harness::record_sc_study_compare(full);
             }
 
-            // The AT-BUS half of the SAME per-bus walk (GOLDEN_REBASE_PLAN.md
-            // G1.4d, coordinator decision D26): `Bus.AllPCEatBus` /
+            // The AT-BUS half of the SAME per-bus walk: `Bus.AllPCEatBus` /
             // `Bus.AllPDEatBus`, two arms appended to the one `SetActiveBus`
             // sweep — so, like the three blocks above, it rides `compare_bus`
             // and opens no flag of its own.
@@ -1548,22 +1482,21 @@ pub(crate) fn compare_capture(
             // pair in, and they read it last because on the r4133 channel it is
             // the bus walk's only `ModeEffect::Impure` read: `getP*atBus`
             // drives `DSS_Class.First`/`Next` and `TDSSClass.Get_First`/
-            // `Get_Next` assign `ActiveCircuit.ActiveCktElement`
-            // (`Common/DSSClass.pas:342-371`). It moves neither `ActiveBusIndex`
-            // nor any `Iterminal` cache, so the surface is still capture-group
-            // C (order-free) — `crates/dss-epri/src/modes.rs`, G1.4d F0.
+            // `Get_Next` assign `ActiveCircuit.ActiveCktElement`. It moves
+            // neither `ActiveBusIndex` nor any `Iterminal` cache, so the surface
+            // is still capture-group C (order-free), `crates/dss-epri/src/modes.rs`.
             //
             // `v_excluded` is deliberately NOT passed and no `Tolerances`
             // either: the wire carries element NAMES, not an image of
             // `Solution.NodeV`, so a triaged voltage cause can never explain a
             // divergence here and there is nothing to band.
             //
-            // The two oracles run two DIFFERENT walks and each contradicts its
-            // own stated intent, so neither is compared against the port's
-            // answer directly: each channel's walk is asserted POSITIVELY over
-            // the port's own attachment facts (`oracle == walk(port state)`,
-            // the D15/D16/D21 shape). Nothing is excluded — G1.4d adds no
-            // ledger entry — and the measured disagreements are COUNTED into
+            // The two OpenDSS engines run two DIFFERENT walks and each
+            // contradicts its own stated intent, so neither is compared against
+            // this engine's answer directly: each channel's walk is asserted
+            // POSITIVELY over this engine's own attachment facts
+            // (`oracle == walk(port state)`). Nothing is excluded, no ledger
+            // entry is involved, and the measured disagreements are COUNTED into
             // four run-wide fail-on-stale populations
             // (`harness::assert_at_bus_populations`, called once from the gate
             // epilogue). This is the ONE recording call site — the harness' own
@@ -1581,10 +1514,10 @@ pub(crate) fn compare_capture(
                 &ctx,
             );
             // A ledger `property` scope pins one (element, prop) pair — an exact
-            // `oracle` pin, or `num_rel` for numeric-skeleton values (§1.3; same
+            // `oracle` pin, or `num_rel` for numeric-skeleton values (same
             // contract as `probe`). To keep the monolithic `compare_all_properties`
             // count/order contract intact while excluding that one pair from the
-            // value compare, rewrite its oracle value to the Rust `?`-surface value
+            // value compare, rewrite its OpenDSS value to the Rust `?`-surface value
             // (the ledger already asserted the Rust value against the pin/envelope),
             // so the standard compare treats it as equal.
             let prop_keys = ledger
@@ -1620,19 +1553,19 @@ pub(crate) fn compare_capture(
             }
         }
 
-        // The PDElements interface walk (GOLDEN_REBASE G1.6b). Late in the
-        // step, next to the other whole-model surfaces (G1.7's topology arm is
-        // the one that must run after it): `Dss::pd_elements` is a
+        // The PDElements interface walk. Late in the step, next to the other
+        // whole-model surfaces (the topology arm is the one that must run after
+        // it): `Dss::pd_elements` is a
         // `&self` read over `Circuit.pd_elements` that depends on no active
         // element and no solve state, so its position among the comparators is
         // free — unlike the CAPTURE order, which is fixed on both transports
-        // (after the meters, before the probes) because the oracles' own
+        // (after the meters, before the probes) because the OpenDSS engines' own
         // `ParentPDElement` read hijacks `ActiveCktElement`.
         //
-        // `require_capture_opt`, not `require_capture`: 96 of the 372 walked
-        // live capi cases hold no PD element at all, so an EMPTY walk is a
-        // legitimate answer the comparator must still match (`[]` against a
-        // non-empty port walk fails on the length assert). What must never
+        // `require_capture_opt`, not `require_capture`: many live cases hold
+        // no PD element at all, so an EMPTY walk is a legitimate answer the
+        // comparator must still match (`[]` against a non-empty walk of this
+        // engine fails on the length assert). What must never
         // pass is an ABSENT field — a channel that ignored the request — and
         // the global collapse to zero everywhere, which
         // `harness::assert_pd_elements_compare_ran` catches in the epilogue.
@@ -1646,12 +1579,12 @@ pub(crate) fn compare_capture(
             compare_pd_elements(dss, pde, channel.props_channel(), &ctx);
         }
 
-        // `GOLDEN_REBASE_PLAN.md` G1.7 — the `ITopology` interface, compared
+        // The `ITopology` interface, compared
         // LAST in the step on purpose, mirroring both transports' capture order
         // (`oracle_server.py::run_case`, `dss-epri::capture::run`): building the
         // topology tree stamps `Checked`/`IsIsolated`/`BusChecked` on every
-        // element (r4133 `Common/Circuit.pas:2937-2947`), upstream on its
-        // circuit and `Dss::topology_view` on ours, so no other comparison of
+        // element, OpenDSS on its circuit and `Dss::topology_view` on ours, so
+        // no other comparison of
         // this step may run after it. The surface is flag-gated, so the
         // `capture_guard` rail applies: the flag being ON with nothing captured
         // FAILS the case instead of comparing nothing.
@@ -1662,24 +1595,23 @@ pub(crate) fn compare_capture(
                 cp.topology.as_ref(),
                 &ctx,
             );
-            // `topo_step0` carries the port's OWN step-0 isolation topology
-            // across the steps of this case+channel run: coordinator decision
-            // D15's rule is defined against it, and the engine is re-run per
+            // `topo_step0` carries this engine's OWN step-0 isolation topology
+            // across the steps of this case+channel run: the topology
+            // comparator's rebase rule is defined against it, and the engine is re-run per
             // channel, so the reference is per run and never shared.
             harness::topology::compare_topology(dss, topo, &ctx, label, i, &mut topo_step0);
         }
 
-        // `GOLDEN_REBASE_PLAN.md` G1.8 — the flat incidence surface, compared
+        // The flat incidence surface, compared
         // AFTER the topology block and therefore last of the whole step, exactly
         // as both transports capture it (`oracle_server.py::run_case`,
         // `dss-epri::capture::run`; `crates/dss-core/tests/capture_order.rs`
         // asserts the source order on both). Two independent reasons, neither of
         // them cosmetic: `Dss::inc_matrix_view` REBUILDS solution state
         // (`IncMat`, `Laplacian`, `Inc_Mat_Rows`, `IncMat_Ordered`) and on r4133
-        // the same pair also moves `ActiveCktElement`
-        // (`AddSeriesReac2IncMatrix` -> `ActiveDSSClass.First`, r4133
-        // `Common/Solution.pas:3007-3010`); and it must FOLLOW the topology
-        // read, whose memoized `Branch_List` is what G1.7's two decline censuses
+        // the same pair also moves `ActiveCktElement`; and it must FOLLOW the
+        // topology read, whose memoized `Branch_List` is what the topology
+        // surface's two decline censuses
         // are defined on. Flag-gated, so the `capture_guard` rail applies: the
         // flag ON with nothing captured FAILS the case instead of comparing
         // nothing.
@@ -1722,30 +1654,25 @@ pub(crate) fn compare_capture(
     }
 }
 
-/// G1.10a / coordinator decision D32(2), hardened by the G1.10a audit
-/// settlement (finding AT-3) — hygiene H1, checked BEFORE anything else a case
-/// does with the filesystem.
+/// The leak rail, checked BEFORE anything else a case does with the filesystem.
 ///
 /// `swept` is the transport's own `sweep_failed` report: what its `CorpusGuard`
 /// classified as run-created and then could NOT remove, i.e. an engine leak. On
-/// the shared tree (before RF-I00-01) such an entry poisoned the next producer's
-/// snapshot. On a per-producer copy it poisons nothing, and for the two oracle
-/// channels this report stays THE leak rail (their process has exited before
-/// the gate removes the copy). Not hypothetical: dss_capi never closes a Storage
-/// `debugtrace` stream (`src/PCElements/Storage.pas:872`, freed only at
-/// `:871`/`:1199`), so the capi channel used to leak `STOR_<name>.csv` (G1.10a F4).
+/// a per-producer copy it poisons nothing, and for the two OpenDSS channels
+/// this report is THE leak rail (their process has exited before the gate
+/// removes the copy). dss_capi never closes a Storage `debugtrace` stream, so a
+/// `STOR_<name>.csv` is the leak this rail catches.
 ///
-/// `None` is a MISSING report, not a clean one: the field was a plain
-/// `Vec<String>` behind `serde(default)` until the audit settlement, so a
-/// transport that stopped emitting the key deserialized to `[]` and disarmed
-/// this rail in silence. Both transports emit it unconditionally
+/// `None` is a MISSING report, not a clean one: if the field defaulted to `[]`,
+/// a transport that stopped emitting the key would disarm this rail in
+/// silence. Both transports emit it unconditionally
 /// (`tools/oracle/oracle_server.py::run_case`, `dss-epri::capture::run_case`),
 /// so its absence is a broken transport and fails the case here.
 fn assert_swept_clean(label: &str, producer: &str, swept: Option<&[String]>) {
     let Some(swept) = swept else {
         panic!(
             "{label}: the `{producer}` producer sent no `sweep_failed` report. \
-             Every transport reports it on every case (it is the D32(2) leak \
+             Every transport reports it on every case (it is the leak \
              rail); a reply without the key can never be read as \"the sweep \
              was clean\".",
         );
@@ -1764,7 +1691,7 @@ fn assert_swept_clean(label: &str, producer: &str, swept: Option<&[String]>) {
     );
 }
 
-/// The D32(2) rail fires on a leaked dropping, and names the producer.
+/// The leak rail fires on a leaked dropping, and names the producer.
 #[test]
 #[should_panic(expected = "left 1 leaked dropping(s)")]
 fn a_transport_reporting_a_leaked_dropping_fails_the_case() {
@@ -1794,9 +1721,9 @@ fn a_transport_reply_without_a_sweep_report_fails_the_case() {
     assert_swept_clean("fixture:missing", "r4133", cr.sweep_failed.as_deref());
 }
 
-/// Assert the oracle step counts, run the Rust engine once, compare against the
+/// Assert the OpenDSS step counts, run the Rust engine once, compare against the
 /// given `channel`'s capture (its iteration + eventlog-mask policy). No guard,
-/// no oracle fetch — the caller (scheduler or [`run_and_compare`]) owns those.
+/// no OpenDSS fetch: the caller (scheduler or [`run_and_compare`]) owns those.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn compare_with_result(
     oc: &CaseResult,
@@ -1812,19 +1739,18 @@ pub(crate) fn compare_with_result(
         c.n_steps,
         "{label}: oracle checkpoint count"
     );
-    // G1.10a / coordinator decision D33(1) — the channel's own D32(2)(a)
-    // teardown `clear` raised. Surfaced FIRST (before the hygiene assert below,
+    // The channel's own teardown `clear` raised. Surfaced FIRST (before the
+    // leak assert below,
     // whose panic would otherwise hide it) and deliberately NOT a case failure:
     // the teardown runs after every read of the run, so the compared surface is
     // already captured, and the transport that raised exits after replying so a
     // pooled worker is respawned instead of reused
-    // (`tools/oracle/oracle_server.py::main`). The one measured producer is the
-    // pinned dss_capi 0.14.5 on the two `modes:autoadd` decks (`DSSException
-    // (#303) ... clear ... Access violation`) — an outdated-oracle fault, not a
-    // port divergence, so it gets a note here and in `DIVERGENCES.md`, never a
-    // ledger row.
+    // (`tools/oracle/oracle_server.py::main`). The pinned dss_capi 0.14.5
+    // raises this way on the `modes:autoadd` decks (`DSSException (#303) ...
+    // clear ... Access violation`), an OpenDSS fault after the capture and not
+    // a divergence of this engine, so it gets a note here, never a ledger row.
     if let Some(err) = oc.teardown_error.as_deref() {
-        // One line: the pinned oracle folds a CRLF-formatted multi-line
+        // One line: the pinned dss_capi folds a CRLF-formatted multi-line
         // description into the message, and a per-case note must stay
         // greppable in a 526-case log.
         let err = err.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -1835,57 +1761,48 @@ pub(crate) fn compare_with_result(
             channel_tag(channel),
         );
     }
-    // G1.10a / coordinator decision D32(2) — hygiene H1, checked BEFORE anything
-    // else this case does with the filesystem. `sweep_failed` is what the
-    // channel's own `CorpusGuard` classified as run-created and then could not
-    // remove: an engine leak. On the shared tree (before RF-I00-01) the entry
-    // stayed in the case directory and the NEXT producer of the case dropped
-    // that name from its created set. Every producer now runs its own copy, so
-    // nothing is poisoned, but the engine still holds the file. Not
-    // hypothetical: dss_capi never closes a Storage `debugtrace` stream
-    // (`src/PCElements/Storage.pas:872`, freed only at `:871`/`:1199`), so the
-    // capi channel used to leak `STOR_<name>.csv` (G1.10a F4). Both transports
-    // release the circuit before their guard sweeps, and any survivor fails the
-    // case here, and for the oracle channels this report is the leak rail.
+    // The leak rail, checked BEFORE anything else this case does with the
+    // filesystem. `sweep_failed` is what the channel's own `CorpusGuard`
+    // classified as run-created and then could not remove: an engine leak.
+    // Every producer runs its own copy, so nothing is poisoned, but the engine
+    // still holds the file (dss_capi never closes a Storage `debugtrace`
+    // stream). Both transports release the circuit before their guard sweeps,
+    // any survivor fails the case here, and for the OpenDSS channels this
+    // report is the leak rail.
     assert_swept_clean(label, channel_tag(channel), oc.sweep_failed.as_deref());
     let tol = tol_for(&c.kind);
-    // RETRO_FIXES RF-I00-01: the port compiles its OWN fresh scratch copy of the
-    // case — never the vendored deck, and never the copy the oracle ran in — so
-    // `deck` is what the engine and the probe see, while `case_path` (the
-    // vendored deck) keeps keying the oracle's sidecars below. The copy is
+    // This engine compiles its OWN fresh scratch copy of the case, never the
+    // vendored deck and never the copy OpenDSS ran in, so `deck` is what the
+    // engine and the probe see, while `case_path` (the vendored deck) keeps
+    // keying the OpenDSS sidecars below. The copy is
     // removed at the end, or the case fails naming the `port` producer.
     let copy = crate::scratch::ScratchCopy::new(case_path, crate::scratch::PORT);
     let deck = copy.deck();
-    // RF-I00-01 part 2 (guard reuse on the copy): the port's corpus guard
-    // brackets the copy exactly as it bracketed the vendored folder before —
-    // snapshot, `classify_created`, sweep, restore, and the D32(2) leak report
-    // on stderr — and is dropped before `copy.finish()`, whose bounded removal
+    // This engine's corpus guard brackets the copy (snapshot,
+    // `classify_created`, sweep, restore, and the leak report on stderr) and
+    // is dropped before `copy.finish()`, whose bounded removal
     // then fails the case naming the `port` producer if anything survived.
     let port_guard = CorpusGuard::new(deck);
-    // G1.10a — the run-produced FILE SET. The port needs its OWN before/after
+    // The run-produced FILE SET. This engine needs its OWN before/after
     // bracket (and must sweep what it classified) because the scheduler runs the
-    // Rust engine once PER CHANNEL; since RF-I00-01 each of those runs also has
-    // its own scratch copy, so the "before" snapshot is the copy's initial
-    // listing and no other producer's file can be in it.
+    // Rust engine once PER CHANNEL, each run in its own scratch copy, so the
+    // "before" snapshot is the copy's initial listing and no other producer's
+    // file can be in it.
     //
-    // G1.10c: the probe is also the port-side producer of the demand-interval
-    // tree's CONTENTS, and three of the five DI cases are `kind = large` (so not
-    // forced for run files; the count read "four" until the G1.10c audit
-    // settlement, findings AC3-1 / AT2-2), so it exists whenever EITHER surface
-    // is armed — which is also what gives the ~79 live `large*` decks a
-    // port-side snapshot/sweep bracket they did not have before. The
-    // two COMPARISONS stay independently gated below: arming G1.10a's file-set
-    // comparison on a `large` deck is a decision for that surface's owner, not
-    // a side effect of this one: on `EPRITestCircuits/ckt5` the deck exports a
-    // monitor that does not exist, capi raises and `EarlyAbort` drops its
-    // remaining exports while r4133 and the port carry on, so the created-file
-    // SET differs by one member there and would red instantly.
+    // The probe is also this engine's producer of the demand-interval tree's
+    // CONTENTS, and most DI cases are `kind = large` (so not forced for run
+    // files), so it exists whenever EITHER surface is armed. The two
+    // COMPARISONS stay independently gated below: arming the file-set
+    // comparison on a `large` deck is a decision of its own. On
+    // `EPRITestCircuits/ckt5` the deck exports a monitor that does not exist,
+    // capi raises and drops its remaining exports while r4133 and this engine
+    // carry on, so the created-file SET differs by one member there.
     #[cfg(windows)]
     let run_file_probe = (c.compare_run_files || c.compare_di)
         .then(|| harness::run_files::RunFileProbe::start(deck));
-    // The classification itself is portable since D33(3) (`dss_epri::guard` is
-    // ungated, and `CorpusGuard::sweep_created` above runs it on every
-    // platform), but the SURFACE is compared only against the gate's two oracle
+    // The classification itself is portable (`dss_epri::guard` is ungated, and
+    // `CorpusGuard::sweep_created` above runs it on every platform), but the
+    // SURFACE is compared only against the gate's two OpenDSS
     // channels and the `r4133` transport is a Win64 DLL, so the comparator
     // `harness::run_files` stays declared under `#[cfg(windows)]`. Refuse the
     // flag loudly elsewhere rather than compare nothing (that module's
@@ -1894,7 +1811,7 @@ pub(crate) fn compare_with_result(
     assert!(
         !c.compare_run_files && !c.compare_di,
         "{label}: `compare_run_files` / `compare_di` are Windows-only — their \
-         `r4133` oracle channel is a Win64 DLL, so the comparators \
+         `r4133` channel is a Win64 DLL, so the comparators \
          `harness::run_files` and `harness::di` are declared under \
          `#[cfg(windows)]`"
     );
@@ -1902,17 +1819,17 @@ pub(crate) fn compare_with_result(
     compare_capture(
         &mut dss, baseline, oc, label, deck, c, &tol, channel, ledger,
     );
-    // The port's run is over: drop the engine BEFORE the probe reads, so a file
+    // This engine's run is over: drop the engine BEFORE the probe reads, so a file
     // the engine still holds open is closed (and flushed) first — a removal that
     // failed on an open handle would leave the file in this copy and fail the
     // case when the copy is removed.
     drop(dss);
     #[cfg(windows)]
     if let Some(probe) = run_file_probe {
-        // G1.10c — the demand-interval tree's contents, read BEFORE the
-        // sweep (`finish_and_clean` consumes the probe, so the borrow checker
-        // states that half of the read-slot rule;
-        // `capture_order::check_run_tail_order` states the two oracle
+        // The demand-interval tree's contents, read BEFORE the sweep
+        // (`finish_and_clean` consumes the probe, so the borrow checker states
+        // that half of the read-slot rule;
+        // `capture_order::check_run_tail_order` states the two OpenDSS
         // transports' half).
         let port_di = c.compare_di.then(|| probe.di_tree(label));
         let port_files = probe.finish_and_clean(label, c.compare_run_files);
@@ -1930,11 +1847,10 @@ pub(crate) fn compare_with_result(
                 &excluded,
                 label,
             );
-            // G1.10b: the CONTENTS of the members the gate selected. The oracle's
-            // bytes came back through the case's sidecar directory (coordinator
-            // decision D40(6)); read them — which also deletes the directory — and
-            // pair them with the port's, read in its own scratch copy (RF-I00-01)
-            // by the probe above before its sweep. The same
+            // The CONTENTS of the members the gate selected. The OpenDSS bytes
+            // came back through the case's sidecar directory; read them (which
+            // also deletes the directory) and pair them with this engine's, read
+            // in its own scratch copy by the probe above before its sweep. The same
             // `excluded` closure partitions both surfaces: a name whose PRESENCE is
             // triaged has no contents to compare either.
             let oracle_contents = harness::run_files::read_sidecar(
@@ -1950,19 +1866,19 @@ pub(crate) fn compare_with_result(
                 &excluded,
                 label,
             );
-            // The per-report-kind CELL comparison (G1.10b micro-part F2): each kind's
-            // column map — quantity class + Pascal `Format` per column, cited to the
-            // r4133 writer — under the `case floor + print ulp` rule of coordinator
-            // decision D40(1), on exactly the pairs F1's structural rails (presence,
-            // the sidecar/reply agreement, the two sides selecting the same files)
-            // just certified. `tol` is this case's own calibrated floor, the same one
+            // The per-report-kind CELL comparison: each kind's column map
+            // (quantity class + print format per column) under the
+            // `case floor + print ulp` rule, on exactly the pairs the structural
+            // rails (presence, the sidecar/reply agreement, the two sides
+            // selecting the same files) just certified. `tol` is this case's own
+            // calibrated floor, the same one
             // the in-memory comparators above used on the very numbers these files
             // re-print.
             // The returned `CellTally` (and the process-wide
             // `harness::run_file_contents::trace_tail_census`) carry the Storage
             // `DebugTrace` read-back tail this (case, channel) measured — the
-            // oracle transport's own post-solve element reads minus the port's
-            // single G2.3 recompute (coordinator decision D43(1)(iii)). The
+            // OpenDSS transport's own post-solve element reads minus this
+            // engine's single recompute. The
             // scheduler epilogue, not this call, holds it against the re-derived
             // `TRACE_READBACK_RECORDS` fail-on-stale in both directions.
             let tally = harness::run_file_contents::compare_run_file_cells(
@@ -1972,7 +1888,7 @@ pub(crate) fn compare_with_result(
                 label,
             );
             // The census is recorded HERE and never inside that comparator
-            // (coordinator decision D24, the `record_seq_arm` line above): the
+            // (as `record_seq_arm` above): the
             // comparator has other callers, the `harness::run_file_contents`
             // fixtures among them, and a comparator-side census would count
             // every caller in its process. Recorded for EVERY gated (case,
@@ -1984,8 +1900,8 @@ pub(crate) fn compare_with_result(
         }
         if let Some(port_di) = port_di {
             let tag = channel_tag(channel);
-            // The oracle's files live in this (case, channel)'s sidecar: the
-            // channel's own guard swept the originals away before the port ever
+            // The OpenDSS files live in this (case, channel)'s sidecar: the
+            // channel's own guard swept the originals away before this engine ever
             // ran (`corpus_gate::engines::di_sidecar_dir`).
             let oracle_di = oc
                 .di
@@ -2005,15 +1921,14 @@ pub(crate) fn compare_with_result(
     copy.finish();
 }
 
-/// `GOLDEN_REBASE_PLAN.md` G1.10c — read one oracle channel's
-/// demand-interval capture back off its sidecar directory.
+/// Read one OpenDSS channel's demand-interval capture back off its sidecar directory.
 ///
 /// The transports cannot answer with the file TEXT: the tree is run-created, so
-/// each channel's guard sweeps it away in the channel's scratch copy (RF-I00-01)
-/// before the port re-runs the same case in its own copy and this gate
-/// compares. They therefore COPY the selected members into
+/// each channel's guard sweeps it away in the channel's scratch copy before
+/// this engine re-runs the same case in its own copy and this gate compares.
+/// They therefore COPY the selected members into
 /// `<target>/corpus_gate/di/<case key>/<channel>/`
-/// (`engines::di_sidecar_dir`, coordinator decision D42(5)) and reply with
+/// (`engines::di_sidecar_dir`) and reply with
 /// `normalized member name -> path relative to it`.
 ///
 /// Every failure here is LOUD, never a skip: a member the transport claimed and
@@ -2060,7 +1975,7 @@ fn read_di_sidecar(
 ///
 /// `Path::starts_with` is a COMPONENT-prefix test and normalizes nothing, so
 /// `dir.join("../evil")` passes it while `fs::read` then leaves the sidecar
-/// (GOLDEN_REBASE G1.10c audit finding AC-3). The containment is therefore
+/// on a name like that. The containment is therefore
 /// asserted on the relative name's own components first: every one must be a
 /// plain segment — no `..`, no root, no drive prefix. Both transports build
 /// these names with `dss_epri::guard::normalize_created_name` over a walk
@@ -2088,21 +2003,21 @@ fn sidecar_member_path(dir: &Path, name: &str, rel: &str, channel: &str, label: 
 }
 
 /// One-shot convenience for the opt-in report tests: snapshot the case dir,
-/// fetch the pinned oracle model once, compare against the `capi_v0145` channel
-/// (no ledger — the report tests predate it).
+/// fetch the pinned dss_capi model once, compare against the `capi_v0145`
+/// channel, without the ledger.
 pub(crate) fn run_and_compare(oracle: &Oracle, label: &str, case_path: &str, c: &SolvableCase) {
-    // Each producer runs in its own scratch copy (RF-I00-01): the oracle's is
-    // made and removed inside `run_case`, the port's inside the compare.
+    // Each producer runs in its own scratch copy: the OpenDSS one is made and
+    // removed inside `run_case`, this engine's inside the compare.
     let oc = oracle.run_case(case_path, c);
     compare_with_result(&oc, label, case_path, c, EngineChannel::CapiV0145, None);
 }
 
 // ---------------------------------------------------------------------------
-// Abort + pending contracts (unchanged behavior; abort now over a Channel).
+// Abort + pending contracts (abort over a Channel).
 // ---------------------------------------------------------------------------
 
-/// Gate a deck that BOTH engines abort at solve. The oracle *raises* at solve
-/// (so there is no solved state to line up); assert the ORACLE aborts with the
+/// Gate a deck that BOTH engines abort at solve. OpenDSS *raises* at solve
+/// (so there is no solved state to line up); assert OPENDSS aborts with the
 /// expected message and the RUST engine sets `solution_abort` + surfaces it.
 pub(crate) fn run_and_compare_abort(
     channel: &Channel,
@@ -2116,8 +2031,8 @@ pub(crate) fn run_and_compare_abort(
         .expect("abort case has expect_solve_abort");
 
     // The abort request drives `Compile` (which executes the deck's own `Solve`);
-    // the oracle raises on the aborting solve → `ok:false` carrying the message.
-    // RF-I00-01: the oracle and the port each abort in their own fresh copy.
+    // OpenDSS raises on the aborting solve → `ok:false` carrying the message.
+    // OpenDSS and this engine each abort in their own fresh copy.
     let copy = crate::scratch::ScratchCopy::new(case_path, channel.tag());
     // Hand-built, so it refuses a vendored deck itself, as `build_run_request`
     // does for every other request (the transports' guards bracket its folder).
@@ -2175,17 +2090,15 @@ pub(crate) fn run_and_compare_abort(
     });
 }
 
-/// Schema v2 (§4 Phase C step c): a `defer_ledger` case is parked from live
-/// oracle comparison (its validated capi015 behavior reproduces on neither
-/// surviving channel; a Phase D ledger will re-gate it). It is still **smoke-run**
-/// on the Rust engine — compile + post + solve every step must converge with NO
-/// new engine errors. This catches a *convergence or error-surfacing* regression
-/// (a deferred case that stops solving, NaNs out, or starts erroring); it does
-/// **not** catch a *numeric-correctness* regression that still converges — no
-/// physical value is compared against any reference here. Full numeric coverage
-/// on these cases returns with the Phase D ledger. This is strictly stronger than
-/// the plan's `pending` fallback (which asserts an error) and membership is
-/// preserved, but it is a bounded, temporary reduction in verification depth.
+/// A `defer_ledger` case is parked from the live OpenDSS comparison (it
+/// reproduces on neither channel and has no ledger entry yet). It is still
+/// **smoke-run** on the Rust engine: compile + post + solve every step must
+/// converge with NO new engine errors. This catches a *convergence or
+/// error-surfacing* regression (a deferred case that stops solving, NaNs out,
+/// or starts erroring); it does **not** catch a *numeric-correctness*
+/// regression that still converges, since no physical value is compared
+/// against any reference here. Membership is preserved, but it is a reduction
+/// in verification depth until the case has a ledger entry.
 pub(crate) fn assert_deferred_rust_smoke(label: &str, case_path: &str, c: &SolvableCase) {
     crate::scratch::in_copy(case_path, crate::scratch::PORT, |deck| {
         deferred_smoke_in(label, deck, c)
@@ -2207,13 +2120,13 @@ fn deferred_smoke_in(label: &str, deck: &str, c: &SolvableCase) {
         assert!(
             dss.circuit().is_some_and(|ckt| ckt.is_solved),
             "{label} (deferred smoke) step {i}: Rust did not converge — a deferred case \
-             must still SOLVE on the Rust engine (defer_ledger parks the ORACLE compare, \
+             must still SOLVE on the Rust engine (defer_ledger parks the OpenDSS compare, \
              not the Rust smoke)"
         );
     }
 }
 
-/// GAPS_PLAN.md §2.3 pending discipline: the unported feature must surface as an
+/// Pending discipline: the unported feature must surface as an
 /// engine error (a clean run means a silent fallback masks the gap).
 pub(crate) fn assert_pending_errors_loudly(label: &str, case_path: &str, c: &SolvableCase) {
     crate::scratch::in_copy(case_path, crate::scratch::PORT, |deck| {
@@ -2234,7 +2147,7 @@ fn pending_errors_in(label: &str, deck: &str, c: &SolvableCase) {
         !dss.errors().is_empty(),
         "{label}: pending case (wp {}) ran with NO engine error — the unported \
          feature fell back silently; if it is now ported, flip `pending: false` \
-         and prove the live compare green (GAPS_PLAN.md §3.1)",
+         and prove the live compare green",
         c.wp.as_deref().unwrap_or("?"),
     );
 }
@@ -2287,7 +2200,7 @@ mod tests {
 
     /// [`sidecar_member_path`] refuses a transport-supplied name that leaves
     /// the sidecar directory — the containment `Path::starts_with` alone does
-    /// NOT give (GOLDEN_REBASE G1.10c audit finding AC-3).
+    /// NOT give.
     #[test]
     fn a_di_member_name_that_escapes_its_sidecar_is_refused() {
         let dir = Path::new(r"C:\gate\di\case\r4133");
@@ -2319,7 +2232,7 @@ mod tests {
         }
     }
 
-    /// RF-I00-01 part 2 — the port's corpus guard brackets a scratch copy,
+    /// This engine's corpus guard brackets a scratch copy,
     /// never the vendored tree: pointed at a vendored deck it refuses before it
     /// claims or photographs anything, so no producer can run under it there.
     #[test]

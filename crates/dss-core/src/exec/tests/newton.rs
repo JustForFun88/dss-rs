@@ -1,7 +1,6 @@
-//! `Set algorithm=Newton` — the expected-value pins of CLAUDE.md upstream bug 5
-//! (`GOLDEN_REBASE_PLAN.md` G2.3, repaired at its root by `RETRO_FIXES_PLAN.md`
-//! RF-D00-01) and the in-engine dispatch tripwire that carries the gate signal
-//! both lanes give up with it.
+//! `Set algorithm=Newton` — the expected-value pins of the Newton stale
+//! `Iterminal` upstream bug and the in-engine dispatch tripwire that carries
+//! the gate signal both lanes give up with it.
 //!
 //! **The bug.** r4133 `DoNewtonSolution` stamps every element's `Iterminal`
 //! from the pre-final voltage guess `NodeV_{n-1}` in its last `SumAllCurrents`
@@ -26,7 +25,7 @@
 //! The census covers the iteration-limit exit and every element class the drop
 //! sorts, too.
 //!
-//! **After a direct solve** (the RF-D00-01 settlement). r4133's `SumAllCurrents`
+//! **After a direct solve.** r4133's `SumAllCurrents`
 //! also takes the PC direct-solve shortcut while `LastSolutionWasDirect` is still
 //! set, so its first Newton solve after `Solve mode=direct` returns the direct
 //! solution. The port's sum never does
@@ -35,7 +34,7 @@
 //! **Why the deck is the corpus feeder.** `modes/newton/newton.dss` is the gated
 //! case whose Powers/Losses channel both lanes exclude
 //! (`crates/dss-test-harness/src/harness/lane.rs::LANE_SKIP_ELEM_POWERS`,
-//! unconditional since G2.3 — no oracle channel reports it correctly), so the fix
+//! unconditional — no OpenDSS channel reports it correctly), so the fix
 //! is pinned here on exactly the model that stopped being oracle-compared there.
 //! Its content is inlined rather than read from `tests/corpus/` because these are
 //! `src` unit tests.
@@ -87,8 +86,8 @@ fn solve_with(algorithm: &str) -> Dss {
 // the reported powers and losses are the *normal* algorithm's — asserted
 // outright in both lanes, where upstream and all three vendored official revs
 // report a one-Newton-step-stale current instead.
-/// The CLAUDE.md upstream bug #5, torn down by `GOLDEN_REBASE_PLAN.md` G2.3,
-/// pinned against the algorithm that has no cache to be stale.
+/// The Newton stale `Iterminal` upstream bug, pinned against the algorithm
+/// that has no cache to be stale.
 ///
 /// Newton and the normal fixed point land on the same voltages (measured: max
 /// |ΔV| = 7.6e-12 V, both in 2 iterations), and the *normal* solve leaves no
@@ -97,7 +96,7 @@ fn solve_with(algorithm: &str) -> Dss {
 /// no Newton staleness by construction. Newton-vs-normal on the same deck is
 /// therefore a direct read of any stale current, in physical units:
 ///
-/// | quantity | upstream / the pre-G2.3 parity lane | both lanes today |
+/// | quantity | OpenDSS (the solver without its stamp drop) | both lanes |
 /// |---|---|---|
 /// | worst per-conductor \|ΔS\| | **5.283e-1 kVA** (`Vsource.source`) | 3.256e-11 kVA |
 /// | worst \|Δlosses\| | **6.248e2 W** | 3.329e-8 W |
@@ -160,15 +159,13 @@ fn newton_powers_match_the_normal_algorithm() {
 }
 
 // EXPECTED-VALUE-PIN(POWERS_REUSE_STALE_NEWTON_ITERMINAL): the same torn-down
-// row on
-// the `TotalPowers` surface (`GOLDEN_REBASE_PLAN.md` G1.3c). `TotalPowers` sums
+// row on the `TotalPowers` surface. `TotalPowers` sums
 // `GetPhasePower`'s conductor slots per terminal (r4133
 // `DDLL/DCktElement.pas:1109-1139` over `Common/CktElement.pas:1041-1071`, capi
 // `CAPI/CAPI_Alt.pas:1108-1141`), so it routes through the same cache-aware
 // `ComputeIterminal` as `Powers`/`Losses` and carries the same one-Newton-step
 // staleness upstream — and the terminal sum does NOT cancel it: measured on the
-// pinned dss_capi 0.14.5 oracle (`tmp/g13c/probe_newton.py`, 2026-09-05, the
-// reported `TotalPowers` against a terminal sum of `V·conj(I)` rebuilt from a
+// pinned dss_capi 0.14.5 (the reported `TotalPowers` against a terminal sum of `V·conj(I)` rebuilt from a
 // fresh `Currents` + `VoltagesMagAng`, whose own reconstruction noise is
 // ≤ 2.1e-7 kVA on the Load rows) it is **0.6831564014868734 kVA** on
 // `modes/newton/newton.dss` (`Line.l1`, and 0.68315640148 kVA on
@@ -179,8 +176,8 @@ fn newton_powers_match_the_normal_algorithm() {
 // `tools/oracle/oracle_server.py:612-632`) the same stale read is
 // 4.5155082046702575e-4 / 5.213217790400988e-3 kVA off the port on
 // `Vsource.source` terminal 0 — still ~20x the comparator's band on BOTH
-// channels (G1.3c F5, 2026-09-06;
-// `crates/dss-test-harness/src/harness/lane.rs::elem_channels_for`). Both lanes
+// channels (`crates/dss-test-harness/src/harness/lane.rs::elem_channels_for`).
+// Both lanes
 // therefore exclude the field on those two decks
 // (`crates/dss-test-harness/src/harness/lane.rs::LANE_SKIP_ELEM_POWERS`) and this pin is what the
 // exclusion owes.
@@ -245,12 +242,9 @@ fn newton_total_powers_match_the_normal_algorithm() {
 /// asserted at its source and in *both* lanes.
 ///
 /// On the `newton*` decks Newton and the normal fixed point converge to the same
-/// voltages in the same iteration count, and since RF-D00-01 they also leave the
-/// same `Iterminal` cache, so no reported quantity notices `Set
-/// algorithm=Newton` silently falling back to `DoNormalSolution` any more (the
-/// signal G2.3's tripwire used — `Line.l1`'s cache left valid on a current
-/// 7.378239e-2 A off its fresh recompute — was the bug itself, and is gone with
-/// it). What stays Newton-only is the loop's own bookkeeping: r4133
+/// voltages in the same iteration count, and they also leave the same
+/// `Iterminal` cache, so no reported quantity notices `Set algorithm=Newton`
+/// silently falling back to `DoNormalSolution`. What stays Newton-only is the loop's own bookkeeping: r4133
 /// `DoNewtonSolution` increments `SolutionCount` at the top of every iteration
 /// (`Common/Solution.pas:1199`, "SumAllCurrents Uses ITerminal So must force a
 /// recalc") on top of the single `Inc(SolutionCount)` of `DoPFLOWsolution`
@@ -290,7 +284,7 @@ fn newton_dispatch_advances_the_solution_count_once_per_iteration() {
 // its root — after a Newton solve no element's `Iterminal` cache is stale,
 // asserted in both lanes, where upstream leaves three of six elements stale.
 /// A Newton solve leaves exactly the `Iterminal` cache the normal fixed point
-/// leaves, and nothing a cache-aware reader can see is stale (RF-D00-01).
+/// leaves, and nothing a cache-aware reader can see is stale.
 ///
 /// Per energized element, straight after the solve:
 ///
@@ -305,10 +299,9 @@ fn newton_dispatch_advances_the_solution_count_once_per_iteration() {
 ///   `ITerminalUpdated`, which both algorithms leave from their last pass at
 ///   `NodeV_{n-1}`).
 ///
-/// Measured with the solver's stamp drop disabled (the pre-RF-D00-01 engine —
-/// r4133's `DoNewtonSolution` as ported): `Vsource.source`
-/// 7.378239345614925e-2 A, `Line.l1` 7.378239345633905e-2 A (the G2.3
-/// tripwire's 7.378239e-2 A) and `Line.l2` 1.9101628302694115e-2 A off their
+/// Measured with the solver's stamp drop disabled (r4133's `DoNewtonSolution`
+/// as is): `Vsource.source` 7.378239345614925e-2 A, `Line.l1`
+/// 7.378239345633905e-2 A and `Line.l2` 1.9101628302694115e-2 A off their
 /// own `GetCurrents`, the loads 0 — every Export/Show/meter/monitor read after
 /// the solve reported those three.
 #[test]
@@ -458,7 +451,7 @@ fn run_deck(deck: &[&str], commands: &[&str]) -> Dss {
 }
 
 /// The first Newton solve after a direct solve lands on the fresh Newton
-/// solution, not on the direct one (RF-D00-01 settlement, audit AC-1).
+/// solution, not on the direct one.
 ///
 /// `Solve mode=direct` (like a fault study, a harmonics solve or
 /// `LoadModel=Admittance`) arms `LastSolutionWasDirect`, and r4133 clears it only
@@ -466,9 +459,8 @@ fn run_deck(deck: &[&str], commands: &[&str]) -> Dss {
 /// at `:2782`). While it is set, `TPCElement.GetCurrents`
 /// (`PCElements/PCElement.pas:284`) answers `Yprim·V` instead of the load model,
 /// so r4133's `SumAllCurrents` sees every load as its constant-Z admittance and
-/// Newton converges straight back to the direct solution. Live on this deck (the
-/// settlement probe: r4133 through `epri-worker` and capi 0.14.5 through the
-/// pinned dss-python, 60 Hz, 2 iterations each), direct→Newton sits **10.0756 V**
+/// Newton converges straight back to the direct solution. Live on this deck
+/// (r4133 through `epri-worker` and capi 0.14.5 through the pinned dss-python, 60 Hz, 2 iterations each), direct→Newton sits **10.0756 V**
 /// off a fresh Newton solve — `b2.1` 6978.4028 V against 6971.9402 V,
 /// `Vsource.source` I1 80.2959 A against 82.7513 A, i.e. the direct solution
 /// itself — while direct→normal lands on the fresh one (8.3e-12 V). The port's
@@ -519,8 +511,7 @@ fn newton_after_a_direct_solve_matches_a_fresh_newton_solve() {
     );
 }
 
-/// The iteration-limit exit of the Newton loop drops the stale stamps too
-/// (RF-D00-01 settlement, audit AT-2). r4133 `DoNewtonSolution` leaves its loop
+/// The iteration-limit exit of the Newton loop drops the stale stamps too. r4133 `DoNewtonSolution` leaves its loop
 /// on convergence **or** on `Iteration >= MaxIterations` (`Common/Solution.pas:1228`),
 /// and either way its last `SumAllCurrents` stamped every element at the
 /// pre-update guess. With `Set maxiterations=1` both algorithms stop unconverged
@@ -600,8 +591,7 @@ const MULTI_CLASS_DECK: &[&str] = &[
 ];
 
 /// The cache census of [`newton_leaves_the_iterminal_cache_the_normal_algorithm_leaves`]
-/// over every element class the stamp drop sorts (RF-D00-01 settlement, audit
-/// AT-3). The drop keys on `ITerminalUpdated`: it keeps the model-state stamps
+/// over every element class the stamp drop sorts. The drop keys on `ITerminalUpdated`: it keeps the model-state stamps
 /// of Load, Generator, PVSystem and Storage and drops every other one (PD
 /// elements, `Vsource`, `Isource`), so a class that sets the flag differently
 /// (a PC model path leaving it false under Newton, or a PD override setting it)
@@ -722,11 +712,11 @@ fn newton_autoadd_scores_the_trial_generator_like_the_normal_algorithm() {
     // 15-digit `GlobalResult`. Refused: without the aux currents Newton picks
     // `b1` at -1.05519285051277e-6; with them but with the solver's stamp drop
     // disabled (the stale meter samples) it scores `b2` at 1.21128540007173e-2,
-    // 3.7e-3 relative off. That refused figure is upstream's: r4133 prints
+    // 3.7e-3 relative off. That refused figure is OpenDSS's: r4133 prints
     // `b2, 0.0121128540006551` under Newton and `b2, 0.0121581112543737` under
     // the normal algorithm (capi 0.14.5 Newton `b2, 0.0121128540006772`, all from
-    // the RF-D00-01 settlement's live probe), so this pin is a deliberate divergence
-    // from r4133's Newton figure (CLAUDE.md upstream bug 5, never reproduced).
+    // a live probe), so this pin is a deliberate divergence from r4133's Newton
+    // figure, an OpenDSS bug that is never reproduced.
     assert!(
         (newton_gain - normal_gain).abs() <= 1e-10 * normal_gain.abs(),
         "AutoAdd improvement under Newton {newton_gain:e} vs normal {normal_gain:e} \
@@ -735,7 +725,7 @@ fn newton_autoadd_scores_the_trial_generator_like_the_normal_algorithm() {
 }
 
 // ---------------------------------------------------------------------------
-// The report layer (RF-D00-01 part 2). Every `Export`/`Show` surface below runs
+// The report layer. Every `Export`/`Show` surface below runs
 // as the first reader after the solve, under both algorithms, and is checked
 // three ways: each printed cell is the value rebuilt from `V·conj(I)`, `I` from
 // the element's own scratch-buffer `GetCurrents` (the read r4133's `Export`/
@@ -1000,7 +990,7 @@ fn csv_rows(text: &str) -> Vec<Vec<&str>> {
 /// upstream prints the one-Newton-step-stale current: r4133 prints
 /// `"Line.L1", 1, 1338.9, 548.5` and `"Line.L1", 2, -1330.4, -523.1` under
 /// Newton and `1339.6, 548.8` / `-1331.0, -523.4` under the normal algorithm
-/// (kW and kvar, live `epri-worker` probe at the RF-D00-01 settlement, 60 Hz).
+/// (kW and kvar, a live `epri-worker` probe, 60 Hz).
 /// With the solver's stamp drop disabled the port printed r4133's Newton rows.
 /// The rebuilt values asserted here are its normal-algorithm rows.
 #[test]
@@ -1034,7 +1024,7 @@ fn newton_export_powers_match_the_normal_algorithm() {
 /// through `GetLosses` (`Common/ExportResults.pas:1192`) over the cache-aware
 /// `Losses` (`Common/CktElement.pas:524-533`): r4133 prints `Line.L1, 8580.566,
 /// 25398.79` under Newton and `8586.077, 25413.53` under the normal algorithm
-/// (W and var, the settlement's live probe). With the solver's stamp drop
+/// (W and var, a live probe). With the solver's stamp drop
 /// disabled the port printed r4133's Newton row. The rebuilt value asserted here
 /// is its normal-algorithm row.
 #[test]
@@ -1064,8 +1054,8 @@ fn newton_export_losses_match_the_normal_algorithm() {
 /// cache-aware getters (`GetTotalPowerFromSources` / `Losses`,
 /// `Common/ExportResults.pas:3309`, `:3312`): r4133 prints `TotalMW 1.33894,
 /// TotalMvar 0.548524, MWLosses 0.0101527, MvarLosses 0.029433` under Newton and
-/// `1.33956, 0.5488, 0.0101586, 0.0294493` under the normal algorithm (the
-/// settlement's live probe). With the solver's stamp drop disabled the port
+/// `1.33956, 0.5488, 0.0101586, 0.0294493` under the normal algorithm (a live
+/// probe). With the solver's stamp drop disabled the port
 /// printed r4133's Newton row. The rebuilt values asserted here are its
 /// normal-algorithm row.
 #[test]
@@ -1128,8 +1118,8 @@ fn newton_export_summary_matches_the_normal_algorithm() {
 /// symmetrical-component form print the normal algorithm's report. r4133 reads
 /// every element through a scratch `GetCurrents` (`Common/ShowResults.pas:785`,
 /// `:844`, `:912`; `Elements` form `:988`, `:1023`, `:1074`), so there upstream
-/// prints the fresh value and the port printed neither oracle's before
-/// RF-D00-01: with the solver's stamp drop disabled, `SOURCEBUS 1 -542.9 +j
+/// prints the fresh value. With the solver's stamp drop disabled this engine
+/// prints neither OpenDSS value: `SOURCEBUS 1 -542.9 +j
 /// -236.2` against the rebuilt `-543.3 +j -236.4`, and `"Vsource.source" 1
 /// -1339.0 -548.8` against `-1339.6 -549.1` in the sequence form.
 #[test]
@@ -1201,8 +1191,8 @@ fn newton_show_powers_match_the_normal_algorithm() {
 /// report. r4133 calls that scratch `GetCurrents` on every element
 /// (`Common/ExportResults.pas:563`, `:574`, `:584`, `:594`; capi 0.14.5
 /// `src/Common/ExportResults.pas:660`), so there upstream prints the fresh
-/// current and the port printed neither oracle's before RF-D00-01: with the
-/// solver's stamp drop disabled `Vsource.SOURCE` conductor 1 read `82.6776` A
+/// current. With the solver's stamp drop disabled this engine prints neither
+/// OpenDSS value: `Vsource.SOURCE` conductor 1 reads `82.6776` A
 /// against the fresh `82.7513` A.
 #[test]
 fn newton_export_currents_match_the_normal_algorithm() {
@@ -1255,8 +1245,8 @@ fn newton_export_currents_match_the_normal_algorithm() {
 /// and both it and the symmetrical-component form print the normal algorithm's
 /// report. r4133 reads that scratch `GetCurrents` on every element
 /// (`Common/ShowResults.pas:572`, `:594`, `:616`, `:639`;
-/// `WriteTerminalCurrents` `:492`), so the port printed neither oracle's before
-/// RF-D00-01: with the solver's stamp drop disabled `SOURCEBUS 1 82.678` A
+/// `WriteTerminalCurrents` `:492`), so with the solver's stamp drop disabled
+/// this engine prints neither OpenDSS value: `SOURCEBUS 1 82.678` A
 /// against the fresh `82.751` A, and `"VSOURCE.SOURCE" 1 67.29` against
 /// `67.322` A (`I1`) in the sequence form.
 #[test]
@@ -1295,15 +1285,14 @@ fn newton_show_currents_match_the_normal_algorithm() {
 
 /// Every other report that reads element currents prints, after `Set
 /// algorithm=Newton`, exactly the normal algorithm's report. Each surface below
-/// printed something else with the solver's stamp drop disabled (RF-D00-01
-/// part 2 probe); `Export Powers MVA`, `Show Powers MVA`, the two overload
+/// printed something else with the solver's stamp drop disabled. `Export Powers MVA`, `Show Powers MVA`, the two overload
 /// reports and the voltage reports are left out because they cannot see the
 /// stale current at their printed resolution, or at all. `Export ElemPowers` /
 /// `Export ElemCurrents` read the cache-aware `ComputeIterminal` in r4133 as
 /// well (`Common/ExportResults.pas:751`, `:977`), so there upstream prints the
 /// stale current: r4133's `Export ElemCurrents` reads `Vsource.source`
 /// conductor 1 at 82.6776 A under Newton and 82.7513 A under the normal
-/// algorithm (the settlement's live `epri-worker` probe). This pin asserts the
+/// algorithm (a live `epri-worker` probe). This pin asserts the
 /// latter.
 #[test]
 fn newton_reports_read_like_the_normal_algorithm() {

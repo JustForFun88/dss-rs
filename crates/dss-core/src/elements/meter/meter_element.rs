@@ -4,9 +4,9 @@
 //! observes one circuit element's terminal but never stamps admittance and its
 //! terminal currents are always zero.
 //!
-//! Phase 6 (WP6.3) ports the parse-time surface plus the sensor-allocation
-//! helpers (`AllocateSensorArrays`/`CalcAllocationFactors`, consumed by Sensor
-//! in WP6.7). The behavioral `TakeSample` is each subclass's own override.
+//! This module holds the parse-time surface plus the sensor-allocation helpers
+//! (`AllocateSensorArrays`/`CalcAllocationFactors`, consumed by Sensor). The
+//! behavioral `TakeSample` is each subclass's own override.
 
 use num_complex::Complex64;
 
@@ -28,7 +28,7 @@ pub enum MeteredKind {
 }
 
 /// A read-only snapshot of the monitored circuit element, captured when the
-/// `element=` reference is resolved during parsing (the WP4.7 `RefSnapshot`
+/// `element=` reference is resolved during parsing (the `RefSnapshot`
 /// pattern, extended with the fields the meter header/sample paths need).
 #[derive(Debug, Clone, Default)]
 pub struct MeteredSnapshot {
@@ -67,8 +67,8 @@ pub struct MeterElementData {
     /// Parse-time snapshot of the monitored element.
     pub metered_snap: Option<MeteredSnapshot>,
 
-    // Sensor-allocation arrays (`AllocateSensorArrays`; consumed by Sensor in
-    // WP6.7). Sized to `Fnphases`.
+    // Sensor-allocation arrays (`AllocateSensorArrays`; consumed by Sensor).
+    // Sized to `Fnphases`.
     pub sensor_current: Vec<f64>,
     pub sensor_voltage: Vec<f64>,
     pub phs_allocation_factor: Vec<f64>,

@@ -26,8 +26,7 @@ fn line_fetches_sym_linecode() {
 
 #[test]
 fn conductor_none_geometry_rejects_but_line_accepts_and_solves() {
-    // 0.15.x-adoption sweep (re-decided from the WP-U1.1 AllowNoneItem adoption):
-    // a `none` in a conductor list is a Line-level construct only. r4133
+    // A `none` in a conductor list is a Line-level construct only. r4133
     // LineGeometry.pas:346-396 has NO `none` branch on the `wires`/`cncables`/
     // `tscables` arms → #10103; BOTH gating oracles reject a GEOMETRY-level `none`
     // (0.14.5 #40303, r4133 #10103). The Line-level lists (r4133 Line.pas
@@ -115,9 +114,8 @@ fn conductor_none_geometry_rejects_but_line_accepts_and_solves() {
     );
 }
 
-/// 0.15.x-adoption sweep item 4, coverage follow-up (settle round): the existing
-/// `none`-compaction tests only exercise a **≤2-conductor** list (a 2-slot spacing,
-/// 1 valid). This pins the audit-flagged **>2-conductor** compaction (a 4-conductor
+/// The other `none`-compaction tests only exercise a **≤2-conductor** list (a
+/// 2-slot spacing, 1 valid). This pins the **>2-conductor** compaction (a 4-conductor
 /// spacing with `wires=(w w w none)`): the `none` at the neutral position must be
 /// compacted out (r4133 `LoadSpacingAndWires`, actualNConds 4→3, spacing coords by
 /// ORIGINAL position), leaving a 3-phase line whose Carson `Z` is bit-identical to
@@ -176,11 +174,10 @@ fn line_none_conductor_compaction_over_two_conductors_matches_explicit() {
 
 #[test]
 fn incomplete_double_sym_matrix_rejected_keeps_default() {
-    // WP-U1.1 item 2 settle: the DoubleSymMatrix parse arm (Reactor RMatrix/XMatrix,
-    // Capacitor CMatrix, Fault GMatrix) shares the r4133 incomplete-matrix reject
-    // with the SymMatrix arm, but only the SymMatrix arm was tested (line_code).
-    // Probed 2026-07-12: capi015 zero-fills a reactor `rmatrix=(1 | 2 3)` to
-    // `(1 |2 3 |0 0 0 )`; the port adopts the r4133 reject.
+    // The DoubleSymMatrix parse arm (Reactor RMatrix/XMatrix, Capacitor CMatrix,
+    // Fault GMatrix) shares the r4133 incomplete-matrix reject with the
+    // SymMatrix arm. capi015 zero-fills a reactor `rmatrix=(1 | 2 3)` to
+    // `(1 |2 3 |0 0 0 )`. This engine refuses it, as r4133 does.
     //
     // Asserted on the reject error AND on the STORED value (`get_f64_array`),
     // which is what the arm's `return Ok(0)` skips — the stored array is the
@@ -232,7 +229,7 @@ fn incomplete_double_sym_matrix_rejected_keeps_default() {
 
 #[test]
 fn load_and_vsource_resolve_shape_refs() {
-    // WP5.3: the shape refs became resolved `object_ref_class` props. The
+    // The shape refs are resolved `object_ref_class` props. The
     // ObjectRef getter renders the resolved object's name, and an unset
     // `yearly` is seeded from `daily` (Pascal `YearlyShapeObj := DailyShapeObj`).
     let mut dss = Dss::new();
@@ -258,7 +255,7 @@ fn load_and_vsource_resolve_shape_refs() {
     );
 }
 
-/// DE_PASCALIZE R3.1 (iv): the statically-classed object-ref fields keep a typed
+/// The statically-classed object-ref fields keep a typed
 /// `Idx<T>`, not a class-erased `ElemId`. Two things need pinning:
 ///
 /// 1. the narrowing on the write side is **total** — every one of these
@@ -391,10 +388,9 @@ fn typed_object_ref_handles_dereference_to_the_named_object() {
 
     // The rest of the 34: the yearly/duty siblings, the two non-`daily`
     // LoadShape refs, the second XYcurve ref on the inverter class, the WindGen
-    // curve pair, and the shared `DynEqPCE` DynamicExp handle. Settler pass
-    // 2026-07-26 (audit-tests finding 3 — the first cut asserted 6 of 34, so a
-    // narrowing that silently yielded `None` on any of the rest would have
-    // shown up only as a corpus/dump difference).
+    // curve pair, and the shared `DynEqPCE` DynamicExp handle. A narrowing that
+    // silently yields `None` on any of them would otherwise show up only as a
+    // corpus/dump difference.
     dss.command("New loadshape.d2 npts=2 interval=1 mult=(0.5 0.9)");
     dss.command("New xycurve.pt npts=2 xarray=[0 75] yarray=[1.0 0.9]");
     dss.command("New xycurve.vv npts=2 xarray=[0.9 1.1] yarray=[1.0 -1.0]");
@@ -586,7 +582,7 @@ fn line_geometry_undefined_wire_in_array_aborts() {
     assert_eq!(query(&mut dss, "LineGeometry.g1.wires"), "[, , ]");
 }
 
-/// WP7.1 step 3a: a `geometry=`-specified Line resolves the `LineGeometry`
+/// A `geometry=`-specified Line resolves the `LineGeometry`
 /// class end to end (parse → foreign-class resolve → `FetchGeometryCode`),
 /// adopts the geometry's conductor count, and solves through the Carson
 /// matrix path — the full pipeline the inline `geometry_tests` bypass.
@@ -620,7 +616,7 @@ fn line_geometry_specified_resolves_and_solves() {
     assert!(ckt.solution.converged_flag, "geometry line should converge");
 }
 
-/// WP7.1 step 3b: a `spacing=`+`wires=` Line resolves the `LineSpacing` and the
+/// A `spacing=`+`wires=` Line resolves the `LineSpacing` and the
 /// conductor array end to end through the executive (parse → foreign-class
 /// resolve → `FetchLineSpacing`/`SetWires` → `FMakeZFromSpacing`) and solves —
 /// the full pipeline the inline `spacing_*` tests bypass (they call
@@ -653,7 +649,7 @@ fn line_spacing_specified_resolves_and_solves() {
     assert!(ckt.solution.converged_flag, "spacing line should converge");
 }
 
-/// WP7.1 step 3a follow-up: `rmatrix`/`xmatrix`/`cmatrix` on a geometry line must
+/// `rmatrix`/`xmatrix`/`cmatrix` on a geometry line must
 /// report the **per-unit-length** matrix — Pascal `GetZmatScale`/`GetYCScale`
 /// divide the stored *total* `Z`/`Yc` by `Len` (the geometry folds length+units
 /// in). Regression guard for both getter geometry branches (the pre-fix getter
@@ -716,7 +712,7 @@ fn line_geometry_rmatrix_is_per_unit_length() {
     );
 }
 
-/// WP7.1 step 3a follow-up: a geometry whose conductors share a position makes
+/// A geometry whose conductors share a position makes
 /// `CalcYPrim` (via `FMakeZFromGeometry`) hit the Pascal `ELineGeometryProblem`.
 /// The Y-build must surface the queued message and set `solution_abort` — the
 /// faithful equivalent of Pascal's `SolutionAbort` + `Exit`.
@@ -779,7 +775,7 @@ fn line_singular_matrix_aborts_solve() {
     );
 }
 
-/// WP7.1 step 4: `Set EarthModel=` sets the context default (`DSS.DefaultEarthModel`,
+/// `Set EarthModel=` sets the context default (`DSS.DefaultEarthModel`,
 /// Pascal ExecOptions.pas:630) that each subsequently created line copies into
 /// `FEarthModel` (Line.pas:998); a per-line `earthmodel=` still overrides it, and
 /// a line created before the `Set` keeps the prior default (DERI). Unblocks the
@@ -799,7 +795,7 @@ fn set_earthmodel_seeds_new_line_default() {
     assert_eq!(query(&mut dss, "line.l2.earthmodel"), "Deri");
 }
 
-/// WP7.1 step 4 audit follow-up: unlike a context-global such as
+/// Unlike a context-global such as
 /// `DefaultBaseFrequency`, `Set EarthModel=` requires a circuit — probed against
 /// the pinned oracle, which raises #301 ("You must create a new circuit object
 /// first") for a pre-circuit `Set earthmodel=`. So the option lives only in the
@@ -848,14 +844,12 @@ fn line_illegal_phase_change_reverts_and_logs() {
 /// surfaces: the property render (`3: If FLineCodeSpecified Then Result :=
 /// CondCode else Result := ''`, `:1357`) and the `units=` conversion branch
 /// (`20: If FLineCodeSpecified Then FUnitsConvert := ConvertLineUnits(
-/// FLineCodeUnits, NewLengthUnits) Else …`, `:626-627`). dss_capi 0.14.5 added
-/// a `KillLineCodeSpecified()` to arm 15 and flagged it in its own source
-/// (`src/PDElements/Line.pas:677`, `//TODO: check if this missing is relevant
-/// bug`); the port had copied it. r4133 is the behavioral authority
-/// (CLAUDE.md 2026-08-02), so the kill is gone from that arm only.
+/// FLineCodeUnits, NewLengthUnits) Else …`, `:626-627`). dss_capi 0.14.5 adds a
+/// `KillLineCodeSpecified()` to arm 15, an OpenDSS bug this engine does not
+/// reproduce, so the kill is gone from that arm only.
 ///
-/// Every value below was measured live on the r4133 DLL (RP3.6 probe,
-/// 2026-08-29) and the assertions come in two kinds, both load-bearing:
+/// Every value below was measured live on the r4133 DLL and the assertions come
+/// in two kinds, both load-bearing:
 ///
 /// * **discriminators** — they fail against the pre-fix engine, proven by
 ///   re-running it with the kill restored: `swk.linecode` (`""`), `swk.r1`
@@ -958,8 +952,7 @@ fn switch_yes_keeps_the_linecode_and_its_units_conversion() {
     // 304.8x less impedant than the identical switch without a code. Two equal
     // 1 MW loads hang off the two switches, and the node voltages are pinned
     // against the **r4133 DLL**, read at f64 from the live `YNodeVarray` on this
-    // exact deck (RP3.6 audit settlement, 2026-08-29) — the leg the sub-step's
-    // first pass measured only through the `r1` string.
+    // exact deck.
     let mut dss = Dss::new();
     dss.command("New Circuit.phys basekv=12.47 pu=1.0");
     dss.command("New LineCode.lckft nphases=3 r1=1 x1=1 r0=1 x0=1 c1=0 c0=0 units=kft");
@@ -1019,8 +1012,7 @@ fn switch_yes_keeps_the_linecode_and_its_units_conversion() {
     // whose flag arm 6 cleared writes no `linecode=` on either engine. The
     // emitted scalars are the getter's, hence `1/304.8` here and not `1`; r4133
     // emits **no** `R1..C0` on a switch at all — 0.14.5's `PrpSequence`
-    // bookkeeping (`src/PDElements/Line.pas:691-700`), which §RP3.11 settled
-    // on 2026-09-03 by keeping it: `Save`'s membership is the explicitly-set
+    // bookkeeping, which this engine keeps: `Save`'s membership is the explicitly-set
     // chain *including* 0.14.5's property-tracking stamps (the AltDSS JSON
     // export, which has no r4133 counterpart, is captured with them), the
     // values re-emitted are the live switch values, and the divergence from
@@ -1060,8 +1052,7 @@ fn switch_yes_keeps_the_linecode_and_its_units_conversion() {
     assert!(!ovr.contains("LineCode="), "{ovr}");
 }
 
-/// The two statements the `switch=` arm's neighbours *do* carry, read as
-/// carefully as RP3.6(a) read its silence — r4133
+/// The two statements the `switch=` arm's neighbours *do* carry — r4133
 /// `Version8/Source/PDElements/Line.pas`:
 ///
 /// * **`FetchConductorList` clears the flag** (`:1853-1854`, `FLineCodeSpecified
@@ -1077,7 +1068,7 @@ fn switch_yes_keeps_the_linecode_and_its_units_conversion() {
 ///   (`src/PDElements/Line.pas:2112-2115`) and its `FetchLineCode` tail kills
 ///   both outright (`:581-582`), which is the model the port had copied.
 ///
-/// Measured on the r4133 DLL, 2026-08-29 (RP3.6 audit settlement):
+/// Measured on the r4133 DLL:
 ///
 /// | deck | r4133 | port before |
 /// |---|---|---|
@@ -1201,12 +1192,10 @@ fn conductors_clears_the_linecode_flag_and_the_switch_arm_spares_the_spacing() {
 ///   (`Common/ExportCIMXML.pas:3876`).
 ///
 /// So on r4133 one line answers `''` to `? line.q.linecode` **and** prints
-/// `~ linecode=lcnone` in its `Dump` — measured on the r4133 DLL, RP3.6 probe
-/// deck C, 2026-08-29. dss_capi 0.14.5 cannot: it has no `CondCode` field at
-/// all (`KillLineCodeSpecified` NILs `LineCodeObj`, `src/PDElements/
-/// Line.pas:1994-1999`) and prints an empty `linecode=` in both places, which is
-/// the model the port had copied. r4133 is the behavioral authority (CLAUDE.md
-/// 2026-08-02), so the port now models both fields (RP3.6(b)).
+/// `~ linecode=lcnone` in its `Dump` — measured on the r4133 DLL. dss_capi
+/// 0.14.5 cannot: it has no `CondCode` field at all and prints an empty
+/// `linecode=` in both places. Where the documentation is silent this engine
+/// follows r4133, so it models both fields.
 ///
 /// Discriminators against the pre-split engine (each fails with the name-clear
 /// restored in `kill_line_code_specified`): the `Dump` line of `q` and of `g`.
@@ -1273,8 +1262,8 @@ fn linecode_name_survives_the_flag_that_gates_its_render() {
     // copy set is pre-existing and has no census cell — no corpus deck writes
     // `like=` on a coded line, which is why `line.linecode` is 5 switch-shaped
     // cells — and narrowing it is a class-wide `MakeLike` question with numeric
-    // reach (`length_units`/`units_convert` feed `FUnitsConvert`), owned by
-    // `ORPHANED_GAPS.md` §1.12. Until then this line holds the flag to the name
+    // reach (`length_units`/`units_convert` feed `FUnitsConvert`) that stays
+    // open. Until then this line holds the flag to the name
     // it was copied with, so the pair cannot drift apart silently, and whoever
     // narrows the copy set will delete this assertion deliberately.
     dss.command("New Line.cp like=live bus1=c bus2=d");

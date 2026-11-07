@@ -25,12 +25,11 @@ impl Line {
     /// `FetchLineSpacing`, `:1853` `FetchConductorList`, `:1952`
     /// `FetchWireList`, `:2016` `FetchCNCableList`, `:2075` `FetchTSCableList`,
     /// `:2131` `FetchGeometryCode`) and at *no other statement*: the `switch=`
-    /// arm (`:694-700`) deliberately leaves it standing (RP3.6(a)). All eight
+    /// arm (`:694-700`) deliberately leaves it standing. All eight
     /// have a caller here — `accessors.rs`' `R1..B0`, `RMATRIX..CMATRIX`,
     /// `CNCABLES` and `TSCABLES` arms and `code.rs`' [`Line::fetch_geometry_code`],
     /// [`Line::fetch_line_spacing`], [`Line::set_wires`] and
-    /// [`Line::set_conductors`] — the last of them added by the RP3.6 audit
-    /// settlement (2026-08-29).
+    /// [`Line::set_conductors`].
     ///
     /// It does **not** clear `CondCode` — [`Line::line_code_name`] — which
     /// `FetchLineCode` writes (`:387`) and only the constructor clears (`:825`),
@@ -41,11 +40,9 @@ impl Line {
     /// counterpart for — a superseded code must not be resolvable) and the
     /// set-order mark, so `Save`/JSON stop emitting the superseded code.
     ///
-    /// dss_capi 0.14.5 models one field where r4133 models two — its
-    /// `KillLineCodeSpecified` NILs `LineCodeObj` (`src/PDElements/
-    /// Line.pas:1994-1999`) and it has no `CondCode` at all — which is what
-    /// the port had copied; r4133 is the behavioral authority (CLAUDE.md
-    /// 2026-08-02), so the two pieces of state are now separate (RP3.6(b)).
+    /// dss_capi 0.14.5 models one field where r4133 models two (it has no
+    /// `CondCode` at all). This engine follows r4133 and keeps the two pieces
+    /// of state separate.
     pub(super) fn kill_line_code_specified(&mut self) {
         self.line_code_specified = false;
         self.line_code_ref = None;
@@ -63,13 +60,8 @@ impl Line {
     /// export". The field is written only by the `units=` arm (r4133 `:629`,
     /// mirrored at `accessors.rs`' `UNITS` side effect) and the constructor
     /// (`:849`), and read only by the CIM writer (`ExportCIMXML.pas:3707`,
-    /// `:3735`, `:3877`), which is exactly why upstream keeps it across an
-    /// impedance override. Clearing it here was port-authored and diverged from
-    /// **both** oracles: probed live on `units=kft length=2 rmatrix=…` (units
-    /// typed BEFORE the matrices), `Export CIM100` writes
-    /// `<cim:Conductor.length>609.6</…>` = `2 x To_Meters(kft)` on the r4133 DLL
-    /// and on the pinned 0.14.5 oracle, against `2` here (RP3.5, 2026-08-28).
-    /// Pinned in direct state by
+    /// `:3735`, `:3877`), which is exactly why both OpenDSS engines keep it
+    /// across an impedance override. Pinned in direct state by
     /// `elements::pd::line::tests::reset_length_units_keeps_the_users_units`
     /// (all three `reset_length_units` callers) and observably by
     /// `golden_cim::cim_conductor_length_uses_the_users_length_units`.
@@ -173,8 +165,7 @@ impl Line {
         // `KillGeometrySpecified` (`if GeometrySpecified = True then
         // KillGeometrySpecified; GeometrySpecified := False`, which is that
         // routine's own guard restated). dss_capi 0.14.5 kills BOTH at the
-        // `FetchLineCode` tail (`src/PDElements/Line.pas:581-582`) — the port had
-        // copied it; r4133 is the behavioral authority (CLAUDE.md 2026-08-02).
+        // `FetchLineCode` tail. This engine follows r4133.
         self.spacing_specified = false;
         self.kill_geometry_specified();
     }
@@ -202,7 +193,7 @@ impl Line {
     }
 
     /// Pascal `TLineObj.FetchGeometryCode`: adopt a resolved `LineGeometry` as
-    /// the impedance source. Snapshot-clones it (the WP4.2 `FetchLineCode`
+    /// the impedance source. Snapshot-clones it (the `FetchLineCode`
     /// pattern), copies the ratings/line-type, sizes the Line to the geometry's
     /// effective conductor count, and switches off the sym-component model.
     pub(super) fn fetch_geometry_code(&mut self, geom: &LineGeometryObj) {
@@ -533,8 +524,8 @@ impl Line {
     /// conductor *model* (`FPhaseChoice`) and ratings are computed by the side
     /// effect (`Line.pas:750-865`), matching upstream's split. Class-prefixed text
     /// items resolve via the CASE-INSENSITIVE `parse_conductor_proxy` (r4133
-    /// `LowerCase(CondClass)`; the capi015 `GetDSSClass` case bug was dropped in
-    /// the 0.15.x-adoption sweep), and a `none` slot writes NIL (compacted out at
+    /// `LowerCase(CondClass)`, not the capi015 `GetDSSClass` case bug), and a
+    /// `none` slot writes NIL (compacted out at
     /// solve time by `LoadSpacingAndWires`); the real-conductor fill is also gated
     /// by the whitebox equivalence test
     /// `tests::conductors_array_matches_buried_neutral_and_oracle`.

@@ -45,12 +45,12 @@ impl ElemFlags {
     pub const HAS_OCP_DEVICE: Self = Self(1 << 7);
     /// `Flg.HasAutoOCPDevice` — Relay or Recloser only.
     pub const HAS_AUTO_OCP_DEVICE: Self = Self(1 << 8);
-    /// `Flg.ForceYPrim` — use the YPrim supplied by the user (`Set YPrim=…`,
-    /// WP-U1.9): `ReCalcAllYPrims`/`BuildYMatrix` skip `CalcYPrim`, and
+    /// `Flg.ForceYPrim` — use the YPrim supplied by the user (`Set YPrim=…`):
+    /// `ReCalcAllYPrims`/`BuildYMatrix` skip `CalcYPrim`, and
     /// `SetYPrimInvalid(true)` is suppressed so the forced matrix stays live.
     pub const FORCE_YPRIM: Self = Self(1 << 9);
     /// `Flg.ForceInjCurrents` — use the injection/terminal currents supplied by
-    /// the user (`Set InjCurrent=…`/`Set ITerminal=…`, WP-U1.9): the injection
+    /// the user (`Set InjCurrent=…`/`Set ITerminal=…`): the injection
     /// loop injects the stored `InjCurrent` directly and `GetCurrents` returns
     /// the stored `ITerminal` instead of recomputing the PC-element model.
     pub const FORCE_INJ_CURRENTS: Self = Self(1 << 10);
@@ -214,16 +214,14 @@ pub struct CktElementData {
     /// this one (`exec/command.rs`, `RefAction::SetOcpDevice`, first write
     /// wins — the same write that raises `HAS_OCP_DEVICE`).
     ///
-    /// **Not** Pascal's `GetOCPDeviceType` and no longer read by the
-    /// reliability sweep (GOLDEN_REBASE G1.3d(ii), adjacent defect A-1): that
-    /// scan has no `Enabled` filter and answers from the live
-    /// `ControlElementList` order, so the two disagree whenever the element's
-    /// first list member is a disabled or later-attached control of another
-    /// class. The sweep recomputes it at
-    /// `solution::meters::reliability::live_ocp_device_type` (r4133
-    /// `Meters/EnergyMeter.pas:2538`), pinned by
+    /// **Not** read by the reliability sweep: the live OCP scan has no
+    /// `Enabled` filter and answers from the live `ControlElementList` order,
+    /// so the two disagree whenever the element's first list member is a
+    /// disabled or later-attached control of another class. The sweep
+    /// recomputes it at `solution::meters::reliability::live_ocp_device_type`,
+    /// pinned by
     /// `exec::tests::reliability::section_device_type_is_the_live_ocp_scan_not_the_registration_latch`.
-    /// Retiring this field is A-1's tail; it is read only by tests today.
+    /// Only tests read this field.
     pub ocp_device_type: OcpDeviceType,
 }
 
@@ -954,7 +952,7 @@ mod tests {
     /// Pascal `Set_/Get_ConductorClosed(index > 0)` guard `Index <= Fnconds`, not
     /// `Fnphases` (`CktElement.pas`). On a 4-conductor element (3 phases + a
     /// neutral) the `Open`/`Close` exec verbs must be able to open conductor 4 (the
-    /// neutral); a `Nphases` guard would silently reject it. Pins the audit fix.
+    /// neutral); a `Nphases` guard would silently reject it.
     #[test]
     fn conductor_closed_guard_is_nconds_not_nphases() {
         let mut cd = CktElementData::new("e", 0);

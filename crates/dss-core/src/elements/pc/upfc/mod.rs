@@ -4,7 +4,7 @@
 //! injections — the output current `OutCurr` at terminal 2 and the input current
 //! `InCurr` at terminal 1. The injections are *not* recomputed every solve: they
 //! are persistent control state updated only when the companion `UPFCControl`
-//! commands an `UploadCurrents` (the WP5.7 control sweep), driving the output-bus
+//! commands an `UploadCurrents` (the control sweep), driving the output-bus
 //! voltage `Vbout` to `RefkV` within the `Tol1` dead-band.
 //!
 //! `GetOutputCurr` is a 5-mode dispatcher (0=Off, 1=VReg, 2=PAReg, 3=Dual,

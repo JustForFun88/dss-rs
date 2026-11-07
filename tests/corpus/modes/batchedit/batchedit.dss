@@ -1,5 +1,5 @@
-// BatchEdit coverage (PHASE8_PLAN WP8.6): the TRegExpr selection semantics.
-// Pascal DoBatchEditCmd (ExecHelper.pas:292): the name pattern is a regex,
+// BatchEdit coverage: the TRegExpr selection semantics.
+// DoBatchEditCmd: the name pattern is a regex,
 // matched CASE-INSENSITIVELY (ModifierI) and UNANCHORED (Exec = partial
 // match anywhere in the name); the trailing edit string is replayed against
 // every match in class-list order by rewinding the parser position.

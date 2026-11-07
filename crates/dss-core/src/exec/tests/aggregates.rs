@@ -1,5 +1,5 @@
 //! Circuit aggregates — `Circuit.Losses` / `LineLosses` / `SubstationLosses` /
-//! `TotalPower` / `AllElementLosses` (`GOLDEN_REBASE_PLAN.md` G1.9).
+//! `TotalPower` / `AllElementLosses`.
 //!
 //! The live corpus gate compares these five numbers against both oracle
 //! channels on every case, but a *number* only ever proves the sum; what an

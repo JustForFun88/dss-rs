@@ -1,21 +1,19 @@
 //! The dss-core side of the WASM user-model host for the CapControl
-//! (`UserModel=`/`UserData=`, WASM_USERMODELS WM.5).
+//! (`UserModel=`/`UserData=`).
 //!
-//! Mirrors the Pascal `UserModel: TCapUserControl` field
-//! (`Controls/CapControl.pas:165`, `Controls/CapUserControl.pas`): a bound model
-//! is (re)created by `Set_Name` (guest `new`), holds a live wasmi instance
-//! ([`dss_usermodel::CapControlInstance`], the 7-function interface), and
-//! services the control call sites — `edit`/`update_model` after a property
-//! edit (`CapControl.pas:429-440`), `sample()` at `Sample` (`:1024-1041`), and
-//! `do_pending(code, proxy)` at `DoPendingAction` (`:726-733`) — through the
-//! `dss_env` callback surface (NO boundary records: the 7-fn `sample()` takes no
-//! arguments; the model reads its context via callbacks and schedules via
-//! `control_queue_push`, ABI doc §2.5).
+//! A bound model is (re)created when its name is set (guest `new`), holds a live
+//! wasmi instance ([`dss_usermodel::CapControlInstance`], the 7-function
+//! interface), and services the control call sites through the `dss_env`
+//! callback surface: `edit`/`update_model` after a property edit, `sample()` at
+//! `Sample`, and `do_pending(code, proxy)` at `DoPendingAction`. There are no
+//! boundary records. The 7-fn `sample()` takes no arguments, the model reads its
+//! context via callbacks and schedules via `control_queue_push`
+//! (`docs/wasm/USERMODEL_ABI.md` §2.5).
 //!
 //! The transport is sandboxed WebAssembly (`crates/dss-usermodel`) rather than a
-//! native DLL — permanently required by `#![forbid(unsafe_code)]` — but the
-//! contract is 1:1: the same call ordering and the same warn-and-fallback
-//! failure behavior (plan §2.4 / ABI doc §5).
+//! native DLL, as `#![forbid(unsafe_code)]` requires. The call ordering and the
+//! warn-and-fallback failure behavior are those of a native user model
+//! (`docs/wasm/USERMODEL_ABI.md` §3, §5).
 
 use std::sync::Arc;
 
@@ -181,7 +179,7 @@ impl CapControlUserModelSlot {
 
     /// Drain the tier-B effects (control-queue pushes, messages) queued by the
     /// last guest call, for the caller to route into the real control queue /
-    /// error sink (never a silent drop, plan §2.9-5).
+    /// error sink (never a silent drop).
     pub fn drain_effects(&mut self) -> Vec<Effect> {
         self.live
             .as_mut()
@@ -295,7 +293,7 @@ impl CapControl {
         self.user_model.as_ref().is_some_and(|s| s.exists())
     }
 
-    /// The executive-drained apply for a resolved [`UserModelLoad`] (§2.4
+    /// The executive-drained apply for a resolved [`UserModelLoad`] (the
     /// activation rule). `wasm` is `Some` iff a `.wasm` file was found + read.
     /// Mirrors Pascal `PropertySideEffects` (`CapControl.pas:429-440`):
     /// `UserModel.Name := …` (load) → `IsUserModel := UserModel.Exists` →
@@ -355,7 +353,7 @@ impl CapControl {
 /// Map a load-time [`UserModelError`] onto the Pascal load-failure diagnostic:
 /// a missing export → 569 ("Does Not Have Required Function"), anything else →
 /// 570 ("… Not Loaded", warn-and-fallback). The model stays absent either way
-/// (the built-in control solves — plan §2.4).
+/// (the built-in control solves).
 fn push_load_failure(name: &str, model_name: &str, e: &UserModelError, errors: &mut ErrorLog) {
     match e {
         UserModelError::MissingExport { .. } | UserModelError::SignatureMismatch { .. } => {
@@ -373,8 +371,8 @@ fn push_load_failure(name: &str, model_name: &str, e: &UserModelError, errors: &
 
 /// Route a non-control-queue effect (a `Msg`) into the error sink. A
 /// `ControlQueuePush` from `edit`/`do_pending` (rather than `sample`) has no
-/// queue in scope; it is surfaced loudly rather than silently dropped (plan
-/// §2.9-5) — the reference fixture only pushes from `sample`.
+/// queue in scope. It is surfaced loudly rather than silently dropped. The
+/// reference fixture only pushes from `sample`.
 pub(super) fn route_non_queue_effect(name: &str, eff: Effect, errors: &mut ErrorLog) {
     match eff {
         Effect::Msg(text) => errors.push(DssDiagnostic::msg(text, Some(9000))),

@@ -8,14 +8,14 @@
 //!
 //! This module owns the **report content**: the option name tables (here), the
 //! number/string formatters, the output-path machinery, and the per-report
-//! formatters as they land per WP (PHASE8_PLAN §2.1). The thin command
+//! formatters. The thin command
 //! **routers** (`Dss::do_{export,show,save,dump}_cmd`) live in `exec/report.rs`
 //! as `impl Dss`, like every other command router (`command.rs`/`set_cmd.rs`),
 //! because they drive the (private) parser/circuit/error state; they delegate
 //! all formatting here.
 //!
 //! Reports are read-only over the solved circuit — no formatter mutates shared
-//! electrical state (PHASE8_PLAN §2.1).
+//! electrical state.
 
 pub mod export;
 pub mod format;
@@ -28,7 +28,7 @@ pub mod table;
 /// Pascal `TExportOption` names in ordinal order (`ExportOptions.pas`
 /// `DefineOptions` → `GetEnumName`). Ordinals 58–61 (`ZLL`/`ZCC`/`Contours`/
 /// `Y4`) are the A-Diakoptics matrix exports — compiled out of the pinned oracle
-/// build (plan §0.2) but registered here as a recorded departure (WP-AD.3), each
+/// build but registered here as a recorded departure, each
 /// a **silent no-op unless `Solution.ADiakoptics`** (Pascal `if ADiakoptics`).
 /// Index `i` is ordinal `i + 1`, matching the Pascal `case ParamPointer of`.
 /// Spelling is verbatim from the enum (case-insensitive at match time via
@@ -96,7 +96,7 @@ pub(crate) const EXPORT_OPTIONS: &[&str] = &[
     "ZCC",               // 59
     "Contours",          // 60 (filename `C.csv`)
     "Y4",                // 61
-    "Jacobian",          // 62 — NCIM solver state (WP-U1.7)
+    "Jacobian",          // 62 — NCIM solver state
     "DeltaF",            // 63
     "DeltaZ",            // 64
 ];
@@ -139,5 +139,5 @@ pub(crate) const SHOW_OPTIONS: &[&str] = &[
     "QueryLog",          // 32
     "Controlled",        // 33
     "Result",            // 34
-    "PV2PQ_Conversions", // 35 — NCIM PV→PQ conversion list (WP-U1.7)
+    "PV2PQ_Conversions", // 35 — NCIM PV→PQ conversion list
 ];

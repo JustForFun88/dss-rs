@@ -7,7 +7,7 @@
 //! The winding-property machinery (per-winding scalars `kV`/`kVA`/`Tap`/`%R`/…
 //! addressed through the `Wdg=` active index, plus the plural array forms
 //! `kVs`/`Conns`/… that write every winding at once) is shared with the
-//! Transformer (WP4.4); see [`crate::elements::pd::winding::Winding`].
+//! Transformer; see [`crate::elements::pd::winding::Winding`].
 //!
 //! Split into submodules (no behavioral change): the struct, its constructor,
 //! the read-only accessors, the winding-realloc helpers and the property table

@@ -14,7 +14,7 @@ impl Monitor {
     /// does) fire mid-record. In the merged MonBuffer+MonitorStream model the
     /// flush moves no data — the single already lives in `mon_buffer` — so only
     /// `bufptr` resets (Pascal `Save` sets `BufPtr := 0`, Monitor.pas:1596-1599).
-    /// Accepted divergence (audit Question, 2026-07-09): Pascal's mid-solve
+    /// Accepted divergence: Pascal's mid-solve
     /// flush calls the full `Save`, so `MonitorStream` becomes non-empty at
     /// that instant; here `flushed_records` stays 0 until an explicit `save()`.
     /// Observable only by reading a monitor mid-solve after ≥1024 singles and
@@ -51,8 +51,8 @@ impl Monitor {
         // allocation included — the body re-zeroes them, so the values are
         // identical to the freshly allocated buffers this replaces.
         //
-        // Not unwind-safe by design (settler pass 2026-07-26, audit-code
-        // finding 3): a panic inside the body skips the hand-back and leaves
+        // Not unwind-safe by design: a panic inside the body skips the
+        // hand-back and leaves
         // both fields `Vec::new()`. That costs the reused *allocation* and
         // nothing else — the body's first act on either buffer is
         // `clear()` + `resize(scratch_len, ZERO)` (below), the sole early
@@ -332,8 +332,8 @@ impl Monitor {
                 // element with `NTerms > 1` the terminal-2..N currents are read
                 // from uninitialized `CurrentBuffer` heap — proven
                 // nondeterministic (byte-identical solve, terminal-2 currents
-                // change with unrelated prior monitor allocations). Per CLAUDE.md
-                // (UB is documented and gated around, never reproduced) the port
+                // change with unrelated prior monitor allocations). The UB is
+                // documented and gated around, never reproduced: this engine
                 // fills all `MeteredElement.Yorder` currents correctly. Mode 12 on
                 // a single-terminal element (Load/Generator/Capacitor) has no UB
                 // region (`monitor Yorder == MeteredElement.Yorder`) and matches

@@ -1,4 +1,4 @@
-//! AltDSS JSON-export byte goldens (JSON_EXPORT_PLAN §3.3). Each fixture under
+//! AltDSS JSON-export byte goldens. Each fixture under
 //! `tests/golden/json/<deck>.json` carries the deck plus the oracle's exact
 //! `DSSElement_ToJSON` / `IActiveClass.ToJSON` bytes for a matrix of option
 //! combos. This driver replays the identical deck through `Dss`, calls
@@ -7,8 +7,8 @@
 //! pure dump of parsed input properties (no solve, no faer-vs-KLU last-ULP
 //! exposure).
 //!
-//! **Stage F.4:** the JSON writer's float spelling and pretty-mode line break
-//! became lane rows (`compat::json_float`, `compat::JSON_LINE_BREAK`), so the
+//! The JSON writer's float spelling and pretty-mode line break are lane rows
+//! (`compat::json_float`, `compat::JSON_LINE_BREAK`), so the
 //! comparison goes through `harness::lane::compare_json`: byte-exact in the
 //! parity lane, token-for-token with bit-exact numeric equality in the default
 //! one. Structure, key order and every *string* — including the DSS script text
@@ -81,9 +81,9 @@ const CKT_MODEL_DEFAULT: &str = "\"Set CktModel=Positive\"";
 ///
 /// The JSON goldens are byte-compared in *both* lanes
 /// (`crates/dss-test-harness/src/harness/lane.rs`: their writer renders numbers through its
-/// own `{:.16E}` helper, outside the F-FMT inventory).
+/// own `{:.16E}` helper, outside the lane's print seam).
 ///
-/// **The `Set CktModel=` line — an oracle bug, rewritten in both lanes.**
+/// **The `Set CktModel=` line — an OpenDSS bug, rewritten in both lanes.**
 /// dss_capi renders `OrdinalToString(Integer(PositiveSequence))` from a
 /// `LongBool` -1, an out-of-range ordinal, so the `PreCommands` entry is emitted
 /// value-less and the flag does not survive its own serialization (the oracle's
@@ -260,12 +260,8 @@ fn json_transformer_solved() {
     run_deck("transformer_solved");
 }
 
-/// The DERIVED-RDCOhms branch (`Transformer.pas:1007-1008`). Every other
-/// Transformer deck sets `rdcohms` explicitly, so only the `RdcSpecified` branch
-/// was rendered and the `Rdcpu * SQR(VBase) / VABase` derivation was ungated.
-/// `SQR` binds before the surrounding product, so re-associating it to
-/// `(Rdcpu * VBase) * VBase` shifts the result by one ULP; winding 1 of `t2` is
-/// such a case and the needle below is the SQR-first byte.
+/// The derived `RDCOhms` (`Rdcpu * VBase² / VABase`) renders with the square
+/// taken first, the association the formula states.
 #[test]
 fn json_transformer_derived_rdc() {
     assert_fixture_pins(
@@ -283,12 +279,8 @@ fn json_transformer_derived_rdc() {
 // nondeterministic across processes — see the note in `gen_json.py`). Those
 // values are pinned in `elements/pd/capacitor/tests.rs` instead.
 
-/// AutoTrans's own copy of the array-alternative JSON metadata
-/// (`AutoTrans.pas:439-557`): the DEFAULT sweep must render the per-winding
-/// arrays under the SINGULAR keys. Losing `array_alternative`/`REDUNDANT` would
-/// flip them to `Buses/Conns/kVs/kVAs`, which the positive needles below already
-/// catch. No negative pin on the plural keys is possible here: they legitimately
-/// appear in the deck's Full captures.
+/// AutoTrans's array-alternative JSON metadata: the DEFAULT sweep renders the
+/// per-winding arrays under the SINGULAR keys.
 #[test]
 fn json_autotrans_micro() {
     assert_fixture_pins(
@@ -326,10 +318,8 @@ fn json_autotrans_solved() {
     run_deck("autotrans_solved");
 }
 
-/// Generator/PVSystem/Storage user-model string properties under Full mode.
-/// They were skipped from the Full sweep while they carried `NOT_PORTED`;
-/// WASM_USERMODELS WM.3/WM.4 made them real properties, so the Full render must
-/// now emit them as the oracle's empty strings.
+/// Generator/PVSystem/Storage user-model string properties under Full mode are
+/// real properties, so the Full render emits them as the captured empty strings.
 #[test]
 fn json_der_usermodel_full() {
     assert_fixture_pins(
@@ -352,11 +342,9 @@ fn json_der_usermodel_full() {
     run_deck("der_usermodel_full");
 }
 
-/// The ASSIGNED (non-empty) DER user-model data strings. `der_usermodel_full`
-/// pins the six surfaces at their empty default, which cannot tell a correct
-/// render from one that always emits `""`. The filename surfaces still cannot be
-/// pinned (naming an unresolvable model makes the oracle raise `#570 … Not
-/// Loaded`), but the data surfaces take any string with no loader involved.
+/// The ASSIGNED (non-empty) DER user-model data strings render as assigned,
+/// which the empty-default pin of `der_usermodel_full` cannot tell apart from
+/// an always-empty render.
 #[test]
 fn json_der_usermodel_assigned() {
     assert_fixture_pins(
@@ -462,21 +450,9 @@ fn json_circuit_positive_seq() {
     run_deck("circuit_positive_seq");
 }
 
-/// The expected-value pin of the `Set CktModel=` golden rewrite, meaningful in
-/// **both** lanes (the rewrite is unconditional; only the `%8.2f` weight row
-/// below it is still lane-split).
-///
-/// Three things at once, over the whole committed JSON golden set:
-///
-/// 1. **Non-vacuity of the oracle side** — exactly one capture, in exactly one
-///    deck, still carries the value-less `"Set CktModel="`. If that golden is
-///    ever regenerated without it the rewrite becomes dead code and this fails
-///    instead of passing silently.
-/// 2. **Non-vacuity and scope of the transform** — exactly that one occurrence
-///    is rewritten, in both lanes, and no other capture is touched.
-/// 3. **Direction** — after the transform the expectation carries
-///    `Set CktModel=Positive` and no value-less form; `json_circuit_positive_seq`
-///    then holds the engine to it byte-for-byte.
+/// Exactly one committed JSON capture carries the value-less `Set CktModel=`
+/// OpenDSS bug, the rewrite touches only it, and the result reads
+/// `Set CktModel=Positive`, in both lanes.
 #[test]
 fn json_ckt_model_is_rewritten_to_the_correct_value() {
     let parity = dss_core::compat::OPENDSS_PARITY;
@@ -572,11 +548,8 @@ fn json_ckt_model_is_rewritten_to_the_correct_value() {
     );
 }
 
-/// Directory-completeness guard. Every deck is wired by hand with its own
-/// `#[test]`, so a deck added to `gen_json.py` (whose golden is then committed)
-/// without a matching driver would ship silently uncovered. This walks the
-/// golden directory and asserts each deck golden is actually replayed, with an
-/// anti-shrink floor so deleting one is caught too.
+/// Every committed deck golden is replayed by its own driver, with an
+/// anti-shrink floor, so a golden added or deleted without its test fails.
 #[test]
 fn json_every_deck_golden_has_a_driver() {
     // The floor is the count at the time of writing; raise it when decks are

@@ -47,7 +47,7 @@
 //! unobservable):**
 //! - The type-confused `Gen.kWBase` aliases a `TGeneratorObj` field over a
 //!   `TESPVLControlObj`'s memory — impossible in safe Rust and unobservable on
-//!   every compared cell, so it is modeled as the [`phantom_kw_base`] field. Its first
+//!   every compared cell, so it is modeled as the [`phantom_kw_base`](EspvlControl::phantom_kw_base) field. Its first
 //!   read is undefined garbage in Pascal; we read a defined `0.0`. Neither the
 //!   value nor the write reaches any getter, the power flow, or `Y`.
 //! - When a named subordinate fails to resolve, or a (mis-configured) Local
@@ -56,9 +56,9 @@
 //!   a NIL deref. This port iterates the resolved subset instead (same divergence
 //!   GenDispatcher documents), so it cannot crash; `FListSize`/`TotalWeight` still
 //!   reflect the full list.
-//! - `MakePosSequence` is ported as a NIL-deref-safe no-op (the upstream body
-//!   dereferences the always-NIL `ControlledElement` — Access violation,
-//!   `docs/wpg21_makeposseq_probes.md`; CLAUDE.md forbids reproducing it).
+//! - `MakePosSequence` is a NIL-deref-safe no-op. The OpenDSS body dereferences
+//!   the always-NIL `ControlledElement` and crashes, which this engine does not
+//!   reproduce.
 //!
 //! The ESPVLControl "fleet" is the ESPVLControl class itself, reached through the
 //! class registry behind [`EspvlDispatchEnv`] (`solution/controls/dispatch.rs`),

@@ -1,4 +1,4 @@
-! UPGRADE_PLAN WP-U1.7 (NCIM solver) — PV bus hitting its Q-limit -> PV->PQ.
+! NCIM solver — PV bus hitting its Q-limit -> PV->PQ.
 ! A radial feeder (sourcebus -> genbus) with a 2 MW/0.8 Mvar load and a model-3
 ! (voltage-regulating) generator at genbus, regulating to vpu=1.01. The target
 ! demands more than the +1500 kvar limit, so NCIM_UpdateGenQ clamps Q at 1500

@@ -4,9 +4,9 @@
 ! build -> solve -> makeposseq -> solve. The cap/reactor overrides
 ! (Capacitor.pas:1... / Reactor.pas:1052) divide kvar by 3, average the C/R/X
 ! matrices to their positive-sequence value, and set Phases:=1.
-! The GICTransformer that used to sit on b1 moved to makeposseq_gic.dss at
-! GOLDEN_REBASE G1.4a (2026-09-04, coordinator decisions D12/D14): the pinned
-! dss_capi 0.14.5 oracle is nondeterministic across processes on any deck that
+! The GICTransformer reduction lives in makeposseq_gic.dss (measured
+! 2026-09-04):
+! dss_capi 0.14.5 is nondeterministic across processes on any deck that
 ! instantiates one, so that coverage gates on r4133 and this deck keeps its
 ! full-precision capi gating.
 clear

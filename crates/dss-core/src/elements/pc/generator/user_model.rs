@@ -1,5 +1,5 @@
 //! The dss-core side of the WASM user-model host for the Generator
-//! (`UserModel=`/`ShaftModel=`, WASM_USERMODELS WM.3).
+//! (`UserModel=`/`ShaftModel=`).
 //!
 //! Mirrors the Pascal `UserModel: TGenUserModel` / `ShaftModel: TGenUserModel`
 //! fields (`PCElements/generator.pas:1015-1016`, `GenUserModel.pas`): a bound
@@ -13,7 +13,7 @@
 //! a native DLL — permanently required by `#![forbid(unsafe_code)]` — but the
 //! contract is 1:1: the same call ordering, the same `TGeneratorVars`/
 //! `TDynamicsRec` record semantics (copy-in / copy-out per call), and the same
-//! warn-and-fallback failure behavior (plan §2.4 / ABI doc §5).
+//! warn-and-fallback failure behavior (ABI doc §5).
 
 use std::sync::Arc;
 
@@ -427,7 +427,7 @@ impl GenUserModelSlot {
 
     /// Drain the tier-B effects (MsgCallback text) queued by the last guest
     /// call and route them into `errors` (Pascal `MsgCallBack` →
-    /// `DoSimpleMsg`, errno 9000). Never a silent drop (plan §2.9-5).
+    /// `DoSimpleMsg`, errno 9000). Never a silent drop.
     pub fn drain_effects(&mut self, name: &str, errors: &mut ErrorLog) {
         let Some(live) = self.live.as_mut() else {
             return;
@@ -439,12 +439,12 @@ impl GenUserModelSlot {
                 }
                 Effect::ControlQueuePush { .. } => {
                     // No Generator user model schedules control actions
-                    // (`ControlQueuePush` is the CapControl surface, WM.5). Surface
-                    // it loudly rather than silently drop (plan §2.9-5).
+                    // (`ControlQueuePush` is the CapControl surface). Surface
+                    // it loudly rather than silently drop.
                     errors.push(DssDiagnostic::msg(
                         format!(
                             "Generator.{name}: user model called ControlQueuePush, which is not \
-                             wired for Generator elements (CapControl scope, WM.5)."
+                             wired for Generator elements (CapControl only)."
                         ),
                         Some(9001),
                     ));
@@ -521,7 +521,7 @@ impl Generator {
         match slot {
             UserModelSlot::User => self.user_model.take(),
             UserModelSlot::Shaft => self.shaft_model.take(),
-            // The Generator has no Dyna slot (Storage `DynaDLL=` only, WM.4).
+            // The Generator has no Dyna slot (Storage `DynaDLL=` only).
             UserModelSlot::Dyna => None,
         }
     }
@@ -542,7 +542,7 @@ impl Generator {
         }
     }
 
-    /// The executive-drained apply for a resolved [`UserModelLoad`] (§2.4
+    /// The executive-drained apply for a resolved [`UserModelLoad`] (ABI doc §5
     /// activation rule). `wasm` is `Some` iff a `.wasm` file was found + read.
     pub(super) fn apply_user_model_load_impl(
         &mut self,
@@ -653,7 +653,7 @@ impl Generator {
     /// `ComputeIterminal` reuses that cached value — so `TracePower =
     /// TerminalPowerIn(Vterminal, Iterminal)` reads the SHAFT model's currents,
     /// not the user model's. Faithfully write the shaft currents back so the
-    /// shaft-dynamics `dSpeed` matches the oracle (WM.3 D2 port-bug fix).
+    /// shaft-dynamics `dSpeed` matches the OpenDSS engines.
     pub(super) fn shaft_model_fcalc(
         &mut self,
         sys: &SysCtx,
@@ -719,42 +719,30 @@ impl Generator {
     /// it gives `E1 = V_{n-1} - I·Zsp`, which differs from `V_n - I·Zsp` by the
     /// last-iteration voltage step, and this is what drives the machine to
     /// `|Is1|=189.207` (not the power-flow `189.10`) at the first dynamics step.
-    /// Refreshing `Vterminal` to `V_n` here (the earlier port) left the machine at
-    /// the power-flow point and was the WM.3 D2 sub-bug #2 divergence
-    /// (STATUS §"D2 sub-bug #2 — FIXED"). The built-in-shaft `Edp` path
+    /// Refreshing `Vterminal` to `V_n` here would leave the machine at the
+    /// power-flow point. The built-in-shaft `Edp` path
     /// (`generator.pas:2409-2413`) reads a *fresh local* `Vabc := NodeV[NodeRef]`
     /// and is unaffected — only the Model=6 user-model seed uses the buffer.
     /// `Iterminal` was refreshed by `init_state_vars`' `ComputeIterminal`.
     ///
-    /// TODO(compat): this deliberately reproduces an upstream inconsistency —
+    /// TODO(compat): this deliberately reproduces an OpenDSS inconsistency —
     /// `FInit` receives a mixed-generation pair (fresh `Iterminal` computed at
-    /// the converged `V_n`, stale `Vterminal` = `V_{n-1}`), while upstream's own
-    /// built-in model seeds from the fresh `NodeV` (`:2409-2413`). Deterministic
-    /// and defined in BOTH oracle channels (0.14.5 == r4133 to ≤1e-13, the D2
-    /// three-way experiment), pinned by the `wasm_gen_dyn` numeric golden. The
+    /// the converged `V_n`, stale `Vterminal` = `V_{n-1}`), while the OpenDSS
+    /// built-in model seeds from the fresh `NodeV`. Deterministic and defined in
+    /// both OpenDSS engines, pinned by the `wasm_gen_dyn` numeric golden. The
     /// clean fix is a self-consistent `(V_n, I(V_n))` seed — one
     /// `compute_vterminal(node_v)` ahead of the two `FInit` calls.
     ///
-    /// Stage F status (F.3v, **measured**). The earlier note guessed the shift
-    /// would be "less than the power-flow convergence tolerance (~1e-4 pu)". It
-    /// is not: driving that one line through `tests/wasm_usermodels.rs` moves
-    /// the whole `wasm_gen_dyn` surface — `dSpeed` by **3.449e-2 relative**
-    /// (-118.32 vs the oracle's -122.55 Deg/sec), `Slip` 9.824e-5, `Is1`/`Ir1`
-    /// ≈5.3e-4, the stator/rotor losses ≈1.1e-3, and six of the twelve node
-    /// voltage components past their floors as well; the step-1 trajectory guard
-    /// `wasm_gen_dyn_step1_trajectory_matches_oracle` fails on four of its four
-    /// channels. That is because the seed sets `E1` for the *whole* dynamics
-    /// run, not just its first evaluation — the D2 experiment recorded the same
-    /// sensitivity from the other direction (`|Is1| = 189.207` vs the power-flow
-    /// `189.10`).
+    /// The clean fix is not a small shift: the seed sets `E1` for the *whole*
+    /// dynamics run, not just its first evaluation, so it moves the whole
+    /// `wasm_gen_dyn` surface past its floors and fails
+    /// `wasm_gen_dyn_step1_trajectory_matches_oracle`.
     ///
     /// So the split is not a field-scoped exclusion but a **whole-golden** one:
-    /// the default lane would stop oracle-comparing every node voltage and all
-    /// 34 variables of the one deck that exercises a Model=6 user model plus a
-    /// ShaftModel, on an r4133 golden the parity lane may never re-baseline.
-    /// Like the GICTransformer `%R2` and Capacitor `Cuf` rows, that is an owner
-    /// decision rather than a sweep line, so the row keeps its marker and stays
-    /// reproduced in both lanes.
+    /// the default lane would stop comparing every node voltage and every
+    /// variable of the one deck that exercises a Model=6 user model plus a
+    /// ShaftModel. That is an owner decision, so the row keeps its marker and
+    /// stays reproduced in both lanes.
     pub(super) fn user_model_finit(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         if !(self.user_model_exists() || self.shaft_model_exists()) {
             return;
@@ -908,7 +896,7 @@ impl Generator {
 /// Map a load-time [`UserModelError`] onto the Pascal load-failure diagnostic:
 /// a missing export → 569 ("Does Not Have Required Function"), anything else →
 /// 570 ("… Not Loaded", warn-and-fallback). The model stays absent either way
-/// (the generator solves on its built-in model — plan §2.4).
+/// (the generator solves on its built-in model — ABI doc §5).
 fn push_load_failure(name: &str, model_name: &str, e: &UserModelError, errors: &mut ErrorLog) {
     match e {
         UserModelError::MissingExport { .. } | UserModelError::SignatureMismatch { .. } => {
@@ -969,7 +957,7 @@ pub(super) fn gen_vars_from(g: &Generator) -> GeneratorVars {
 /// persists; the wasm host reproduces that by copying the full image back, not a
 /// state-only subset (a whitelist would silently drop a legitimate mutation of,
 /// e.g., `Pnominalperphase`/`Mmass`/`kVArating`, diverging from the native
-/// contract — WM.3 audit). Every mapped f64/Complex field of the 244-byte image
+/// contract). Every mapped f64/Complex field of the 244-byte image
 /// (`gen_vars_from`) is written back. f64 round-trips are bit-exact, so a field
 /// the model did not touch is a no-op; the reference fixture writes only `Speed`.
 ///

@@ -1,5 +1,5 @@
-// Reduce coverage (PHASE8_PLAN WP8.7): the MERGEPARALLEL strategy
-// (DoMergeParallelLines, ReduceAlgs.pas:47): a zone branch flagged
+// Reduce coverage: the MERGEPARALLEL strategy
+// (DoMergeParallelLines): a zone branch flagged
 // IsParallel merges with its LoopLineObj partner (Line.MergeWith
 // PARALLEL: sym-components Z paralleled via ParallelZ, C summed, name
 // becomes "<bus1>||<bus2>", partner disabled).

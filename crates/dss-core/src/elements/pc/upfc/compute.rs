@@ -450,7 +450,7 @@ impl Upfc {
         }
     }
 
-    /// Pascal `TUPFCObj.Set_Variable(i, value)` (1-based; only Mode + Sr0/Sr1[1]).
+    /// Pascal `TUPFCObj.Set_Variable(i, value)` (1-based; only Mode + `Sr0`/`Sr1[1]`).
     pub(super) fn set_variable_impl(&mut self, i: usize, value: f64) {
         match i {
             1 => self.mode_upfc = value.round() as i32,

@@ -1,8 +1,6 @@
-//! CIM100 transformer / autotransformer / regulator export (GAPS_PLAN WPG.18
-//! **Stage E**) — Pascal `Common/ExportCIMXML.pas:3783-4270`. Split out of
-//! [`super::export`] per `SPLITTING_RULES` as the transformer arm landed (the
-//! `ExportCDPSM` control flow calls [`write_transformers`] then
-//! [`write_reg_controls`] where its Stage-D `NOT_PORTED` guards sat).
+//! CIM100 transformer / autotransformer / regulator export, split out of
+//! [`super::export`]: the `ExportCDPSM` control flow calls
+//! [`write_transformers`] then [`write_reg_controls`].
 //!
 //! Three transformer cases (`ExportCIMXML.pas:3934-3937`): (1) balanced
 //! three-phase with no `XfmrCode` → `PowerTransformerEnd` + mesh/core, no tank;

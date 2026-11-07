@@ -3,7 +3,9 @@
 terminal V (node voltages) + I (terminal currents), port the model's exact
 Phase2SymComp (numerically-inverted A-matrix) + Zsp, compute
 E1 = V012[1] - I012[1]*Zsp at snapshot and step 1.
-Usage: python d2_recon_e1.py <twin.dll>"""
+Usage: python d2_recon_e1.py <twin.dll>
+Env: DECK (deck path, default tools/golden/wasm_decks/wasm_gen_dyn.dss),
+     H (dynamics step, default 0.000166667)."""
 import os, sys, cmath
 from dss import dss
 

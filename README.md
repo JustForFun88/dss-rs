@@ -1,43 +1,28 @@
 # dss-rs
 
-A 1:1 behavioral port of the Free Pascal **DSS C-API** engine (the
-[dss-extensions](https://github.com/dss-extensions) build of EPRI's
-[OpenDSS](https://www.epri.com/pages/sa/opendss) distribution-system simulator)
-to **pure, safe Rust** — `#![forbid(unsafe_code)]` in every product crate, no C
-bindings in the shipped engine, ever (the sole exception is the test-only
-`crates/dss-epri` oracle bridge, which drives the official EPRI DLL as a second
-live test oracle). The product is a Rust-native library (`dss-core`) plus a CLI;
-the sparse solver is pure-Rust [faer](https://github.com/sarah-quinones/faer-rs)
-wrapped in `dss-sparse` behind a KLUSolve-shaped API.
+A power-system engine in **pure, safe Rust**. It reads DSS scripts, the input
+language of EPRI's [OpenDSS](https://www.epri.com/pages/sa/opendss)
+distribution-system simulator, solves the network (power flow, time series,
+harmonics, dynamics, fault studies) and reports the result. The product is the
+library `dss-core` plus the `dss-cli` binary. `#![forbid(unsafe_code)]` holds in
+every product crate and the shipped engine has no C bindings. The one exception
+is the test-only `crates/dss-epri` bridge, which drives the official EPRI DLL to
+compare its numbers with ours. The sparse solver is pure-Rust
+[faer](https://github.com/sarah-quinones/faer-rs), wrapped in `dss-sparse`.
 
-## Engine parity
+## Comparison with OpenDSS
 
-**Engine behavior = OpenDSS 11.0.0.1 (SVN r4133, "Charlottesville") except the
-documented ledger.**
-
-The port was first calibrated 1:1 to dss_capi **0.14.5** (OpenDSS SVN r3723,
-the pinned numeric oracle in `tools/golden/PIN.txt`) and then moved to the
-current official release in two independently-gated rungs
-(`UPGRADE_PLAN.md`):
-
-- **Rung 1 (WP-U1.\*)** — parity with the dss_capi `0.15.x` / OpenDSS r4088 line
-  (oracle `capi015`). Exited at WP-U1.10.
-- **Rung 2 (WP-U2.\*)** — parity with **OpenDSS 11.0.0.1 (r4133)**, spec = the
-  official Delphi `r4088 → r4133` diff, oracle = the EPRI binary `oddie:r4133`.
-  Exited at WP-U2.6 (2026-07-17): the opt-in
-  `DSS_LIVE_OPENDSS=r4133 DSS_LIVE_OPENDSS_ASSERT=1` sweep is **green** — every
-  surviving Rust↔r4133 divergence is a deliberate, documented class.
-
-Every deliberate divergence from r4133 (an FPC-vs-Delphi last-ulp / display
-floor, a dss_capi property-format difference, or a proven upstream bug we do or
-don't reproduce) is pinned, case by case with measured envelopes, in the
-**gating divergence ledger `tests/corpus/ledger.json`** and by an
-expected-value test. There are **no "not yet ported" gaps** against
-r4133.
+The DSS language follows the OpenDSS documentation. The numbers follow physics.
+Two OpenDSS engines check them on every gate run: OpenDSS 11.0.0.1 (SVN r4133,
+the EPRI binary git-tracked at `tools/opendss/bin/r4133/`) and dss_capi 0.14.5
+(the dss-python pinned in `tools/golden/PIN.txt`). Every measured divergence
+from either engine (a last-ulp or display floor, a property-format difference,
+an OpenDSS bug this engine does not reproduce) is an entry in the **gating
+divergence ledger `tests/corpus/ledger.json`**, pinned by a test of our value.
 
 ## Test gate
 
-The mandatory gate that must be green before any commit:
+The gate that must be green before any landing:
 
 ```
 cargo fmt --all --check
@@ -47,21 +32,26 @@ cargo nextest run --workspace
 cargo nextest run --workspace --features dss-compat/opendss-parity
 cargo test --workspace --doc
 cargo test --workspace --doc --features dss-compat/opendss-parity
+RUSTDOCFLAGS="-D rustdoc::broken_intra_doc_links" cargo doc --workspace --no-deps --document-private-items
 ```
 
-`cargo test` includes the always-on unified live corpus gate
-(`crates/dss-core/tests/corpus_gate.rs`), which compiles + solves 514 manifest
-cases on the Rust engine and live-compares the full assembled model against
-**two oracles**: the pinned dss-python (`tools/golden/PIN.txt`, must be
-installed) and the official EPRI r4133 `OpenDSSDirect.dll` (git-tracked at
-`tools/opendss/bin/r4133/`, driven by the in-house `crates/dss-epri` bridge —
-Windows-only). Measured upstream divergences are pinned in the gating ledger
-`tests/corpus/ledger.json`, which fails the gate when stale. See `TESTING.md`.
+On a shared machine every command that builds or tests goes through the queue
+`python tools/gate/gatelock.py --label "<who>" -- cargo <args>`
+(`tools/gate/README.md`). The test runs include the unified corpus gate
+(`crates/dss-core/tests/corpus_gate.rs`), which compiles and solves every
+manifest case on this engine and compares the full assembled model with both
+OpenDSS engines: the pinned dss-python (must be installed) and the r4133
+`OpenDSSDirect.dll`, driven by the in-house `crates/dss-epri` bridge
+(Windows only). A ledger entry that no case hits fails the gate. The corpus,
+its manifests and the ledger procedures are described in
+`tests/corpus/README.md`.
+
+The two lanes: the `dss-compat/opendss-parity` feature builds the parity lane,
+which reproduces the OpenDSS precision and is byte-exact on the goldens in
+`tests/golden/` (`tools/golden/README.md`). The default lane is the product.
+`pwsh -File tools/lanes/lane_diff.ps1` compares the two builds over the corpus.
 
 ## Where to read next
 
-- **`PORTING_PLAN.md`** — the authoritative roadmap and binding decisions.
-- **`CLAUDE.md`** — conventions (`TODO(compat)`, the no-tolerance-fudging /
-  prove-the-divergence rules).
-- **`TESTING.md`** — the map of the whole test infrastructure.
-- **`STATUS.md`** — the living project-status / session-handoff snapshot.
+- **`ROADMAP.md`** — where the product is going and its known defects.
+- **`CLAUDE.md`** — the rules for working on the code.

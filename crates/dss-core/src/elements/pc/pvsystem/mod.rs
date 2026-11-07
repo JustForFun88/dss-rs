@@ -1,6 +1,6 @@
 //! Port of `PCElements/PVsystem.pas` — `TPVsystemObj`, the photovoltaic system
-//! PC element, built on the Generator injection template (WP6.2) with the shared
-//! inverter base [`InvBasedPceData`] (WP7.3 step 1) embedded the way [`Generator`]
+//! PC element, built on the Generator injection template with the shared
+//! inverter base [`InvBasedPceData`] embedded the way [`Generator`]
 //! flattens `GenVars`.
 //!
 //! The PV panel power is irradiance·`Pmpp`·shape·temperature-derate
@@ -10,7 +10,7 @@
 //! like a Generator's constant-PQ model (the model-current signs push power into
 //! the node; `StickCurrInTerminalArray` on the base routes wye/delta).
 //!
-//! Scope (WP7.3 step 2): the **power-flow** PVSystem — `SetNominalDEROutput`
+//! Scope: the **power-flow** PVSystem — `SetNominalDEROutput`
 //! (`SetNominalPVSystem`), the P-T-V curves (XYcurve) + irradiance/temperature
 //! shapes (snapshot-clone), `CalcYPrim`, `DoConstantPQPVsystemObj` /
 //! `DoConstantZPVsystemObj` + the inverter clamp, the energy-meter registers and
@@ -19,8 +19,7 @@
 //! machinery (`DoDynamicMode`/`InitStateVars`/`IntegrateStates` + the
 //! state-variable interface `NumVariables`/`Get_Variable`/`VariableName`), and
 //! the user-written model (`DoUserModel`, VoltageModel=3 — `user_model.rs`, the
-//! WASM host, WASM_USERMODELS WM.4) are ported. `MakePosSequence` is in
-//! `accessors` (WPG.21).
+//! WASM host) are ported. `MakePosSequence` is in `accessors`.
 //!
 //! Split into submodules (this file holds the metadata, struct and `Create`):
 //! - [`nominal`]: shape/temperature multipliers, `ComputePanelPower` /
@@ -168,9 +167,9 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::object_ref_class("TShape", "TDaily"),
         PropDef::object_ref_class("TShape", "TDuty"),
         PropDef::integer("Class"),
-        // WASM_USERMODELS WM.4: `UserModel=`/`UserData=` follow the §2.4 uniform
-        // rule (parse + store + load-`.wasm`-or-warn); upstream never errors on
-        // these properties (PVsystem.pas:628-632).
+        // `UserModel=`/`UserData=` follow the uniform activation rule (parse +
+        // store + load-`.wasm`-or-warn, `docs/wasm/USERMODEL_ABI.md` §5); OpenDSS
+        // never errors on these properties.
         PropDef::string("UserModel").flags(PropFlags::IS_FILENAME),
         PropDef::string("UserData"),
         PropDef::boolean("DebugTrace"),
@@ -262,7 +261,7 @@ pub struct PVSystem {
     /// `PF_Priority` (default false).
     pub pf_priority: bool,
 
-    // Monitor results written by InvControl/ExpControl (mode-3 state, WP7.5/7.7);
+    // Monitor results written by InvControl/ExpControl (mode-3 state);
     // initialised to 9999 by Create.
     pub vreg: f64,
     pub vavg: f64,
@@ -282,7 +281,7 @@ pub struct PVSystem {
     pub kw_requested: f64,
     /// `TShapeValue` — present temperature from the active T-shape.
     pub t_shape_value: f64,
-    /// `DutyStart` — start time offset into the duty shape [hrs].
+    /// `DutyStart` — start time offset into the duty shape, in hours.
     pub duty_start: f64,
     /// `varBase` — base vars per phase.
     pub var_base: f64,
@@ -304,7 +303,7 @@ pub struct PVSystem {
     /// when an explicit `spectrum=` is given — Create forces `SpectrumObj := NIL`).
     pub spectrum_obj: Option<SpectrumObj>,
 
-    // Temperature-shape references (snapshot-clone + typed Idx, WP4.2/WP5.3).
+    // Temperature-shape references (snapshot-clone + typed Idx).
     pub yearly_t_shape: String,
     pub daily_t_shape: String,
     pub duty_t_shape: String,
@@ -321,10 +320,10 @@ pub struct PVSystem {
     pub power_temp_curve_ref: Option<Idx<XyCurveObj>>,
 
     /// Pascal `UserModel: TPVsystemUserModel` (`PVsystem.pas:228`) — the 15-fn
-    /// `UserModel=` slot (WASM_USERMODELS WM.4). `None` until a `.wasm` loads.
+    /// `UserModel=` slot. `None` until a `.wasm` loads.
     pub user_model: Option<Box<PvUserModelSlot>>,
     /// Deferred `UserModel=`/`UserData=` load/edit requests, drained + resolved
-    /// by the executive (§2.4 activation rule).
+    /// by the executive (activation rule, `docs/wasm/USERMODEL_ABI.md` §5).
     pub pending_user_model_loads: Vec<crate::obj::base::UserModelLoad>,
 }
 

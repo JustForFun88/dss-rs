@@ -1,6 +1,6 @@
 //! capuserctl — a small deadband voltage CapControl user model for the
-//! WASM_USERMODELS WM.5 gate (there is no vendored upstream CapUserControl
-//! example — plan §WP-WM.5.2).
+//! CapControl user-model goldens (OpenDSS ships no CapUserControl
+//! example).
 //!
 //! **Behaviour (deadband voltage control, identical to the built-in VOLTAGE
 //! CapControl).** Each `sample()` the model reads the magnitude of the monitored
@@ -13,15 +13,15 @@
 //! - otherwise do nothing.
 //!
 //! It signals the decision through `control_queue_push(hour, sec, code, 0)` (a
-//! plain queue push — the guest owns the timing, ABI §2.5 / STATUS WM5-3). The
+//! plain queue push — the guest owns the timing, ABI §2.5). The
 //! `hour`/`sec` come from the dynamics record (`get_dynamics_rec`).
 //!
 //! The `(vlow, vhigh)` deadband maps exactly onto the built-in VOLTAGE
 //! CapControl's `(OnSetting, OffSetting)` (`CapControl.pas` VOLTAGECONTROL,
 //! 1-step bank: close when `Vtest < ON`, open when `Vtest > OFF`), so the r4133
-//! **built-in** VOLTAGE control is a sound cross-engine oracle for this model —
-//! see the STATUS WM.5 round-2 finding on why a native CapUserControl *twin*
-//! cannot be the oracle (it has no owner pointer to push a control action).
+//! **built-in** VOLTAGE control is a sound cross-engine reference for this
+//! model. A native CapUserControl *twin* cannot be the reference: it has no
+//! owner pointer to push a control action (see `native_exports`).
 //!
 //! One module exports the 7-function CapControl interface (`new()`,
 //! `delete`/`select`/`edit`/`update_model`/`sample`/`do_pending`), reading its
@@ -43,7 +43,7 @@ pub const CTRL_OPEN: i32 = 1;
 pub const CTRL_CLOSE: i32 = 2;
 
 /// A minimal complex (re, im) — the fixture avoids `num_complex` to keep the
-/// wasm module tiny and the toolchain surface stable (plan §2.6).
+/// wasm module tiny and the toolchain surface stable.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct Cx {
     pub re: f64,

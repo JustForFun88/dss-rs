@@ -1,4 +1,4 @@
-//! WP7.9 FaultStudy targeted gate. A self-contained radial feeder (a source
+//! FaultStudy targeted gate. A self-contained radial feeder (a source
 //! behind a known `R1/X1/R0/X0`, two series lines with no shunt) where every
 //! bus short-circuit impedance is analytically the series sum of the upstream
 //! branch impedances — so the oracle's `Zsc1`/`Zsc0` are exact closed forms and

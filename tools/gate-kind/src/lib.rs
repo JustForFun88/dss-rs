@@ -1,6 +1,5 @@
-//! `gate-kind`: the gate a RETRO_FIXES stage runs, chosen by what its diff can
-//! change at compile time (`RETRO_FIXES_PLAN.md` RF-I00-05, user decision
-//! 2026-09-27).
+//! `gate-kind`: the gate a diff needs, chosen by what the diff can change at
+//! compile time.
 //!
 //! The kinds are ordered [`GateKind::None`] < [`GateKind::Docs`] <
 //! [`GateKind::Comments`] < [`GateKind::Code`]. A file's kind is the maximum of
@@ -40,8 +39,8 @@
 //! lints both and doctests live in doc comments, so the same commands are
 //! needed either way. [`FileVerdict`] still names which of the two it saw.
 //!
-//! The tool never decides by itself what to run: the ritual maps the kind to
-//! its commands, and any error grades the diff `Code`.
+//! The tool never decides by itself what to run: its caller maps the kind to
+//! the commands, and any error grades the diff `Code`.
 
 #![forbid(unsafe_code)]
 
@@ -101,10 +100,8 @@ impl From<RsKind> for GateKind {
     }
 }
 
-/// The `.rs` files a lib unit test outside RAILS (`TESTING.md`, "Which gate to
-/// run") reads as text, so a comment-only edit of one can red a test only the
-/// full gate runs. Today one
-/// file: dss-core's
+/// The `.rs` files a lib unit test reads as text, so a comment-only edit of
+/// one can red a test only the full gate runs. Today one file: dss-core's
 /// `exec::tests::in_show_results::the_export_bracket_has_no_early_exit_between_its_two_statements`
 /// reads `do_export_cmd`'s body, comments included.
 pub const ALWAYS_CODE: &[&str] = &["crates/dss-core/src/exec/report.rs"];

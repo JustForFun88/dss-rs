@@ -103,18 +103,13 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> ControlEnums 
     // ordinals are EControlAction (CTRL_CLOSE=2, CTRL_OPEN=1). Action renders
     // close/open, State renders closed/open.
     //
-    // RP3.7 A1 (r4133 authority, 2026-08-02 policy): r4133's
-    // `InterpretSwitchState` matches the value's FIRST CHARACTER ONLY —
-    // `case LowerCase(param)[1] of 'o': CTRL_OPEN; 'c': CTRL_CLOSE` with NO
-    // else arm (`Version8/Source/Controls/SwtControl.pas:423-426` ganged,
-    // `:464-467` per-phase; structurally identical to Relay's
-    // `InterpretRelayState`, probe tmp/rp37/probe.md §2). `allow_longer` +
-    // `max_chars=1` give the first-char windows, and the `Keep` default gives
-    // the no-else arm: a non-matching value (`state=bogus`, a multi-token list
-    // reaching this seam) leaves the slots unchanged, silently. This is
-    // 0.14.5's SILENT fallback shaped to r4133's no-op value (0.14.5's
-    // `DefaultValue = CTRL_CLOSE` closes on mismatch — refused per policy);
-    // probed r4133 leaves the state untouched (probe §9, out_r4133_micro).
+    // r4133 matches the value's FIRST CHARACTER ONLY (`o` opens, `c` closes)
+    // with no else arm, ganged and per-phase alike, the same as for Relay.
+    // `allow_longer` + `max_chars=1` give the first-char windows, and the
+    // `Keep` default gives the no-else arm: a non-matching value
+    // (`state=bogus`, a multi-token list reaching this seam) leaves the slots
+    // unchanged, silently. 0.14.5 closes on a mismatch instead, which this
+    // engine does not reproduce.
     let mut swt_control_action = DssEnum::new(
         "SwtControl: Action",
         false,
@@ -207,7 +202,7 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> ControlEnums 
     // (match on the leading char alone: `openx`→open, `cs`→closed) and
     // `default_value = ControlAction::Keep` (unmatched → keep, no parse error). This
     // deliberately does NOT carry the old `trip`→open alias, which diverged from
-    // r4133. (The Recloser enums, WP-U2.2's lane, keep their own separate defs.)
+    // r4133. (The Recloser enums keep their own separate defs.)
     let mut relay_action = DssEnum::new("Relay: Action", false, 1, 1, &["close", "open"], &[2, 1]);
     relay_action.allow_longer = true;
     relay_action.default_value = ControlAction::Keep.ordinal();

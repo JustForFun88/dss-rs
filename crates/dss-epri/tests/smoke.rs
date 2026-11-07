@@ -1,8 +1,7 @@
 //! Oracle-free smoke `#[test]` for the r4133 bridge — wired into
-//! `cargo test --workspace` (UNIFIED_GATE_PLAN.md §2.4-1 DONE bar). Loads the
-//! git-tracked r4133 DLL, asserts the version pin, compiles + solves IEEE13,
-//! proves the CSC export is solution-neutral, and checks the injection shape.
-//! Needs no oracle installed.
+//! `cargo test --workspace`. Loads the git-tracked r4133 DLL, asserts the
+//! version pin, compiles + solves IEEE13, proves the CSC export is
+//! solution-neutral, and checks the injection shape. Needs no oracle installed.
 
 #[cfg(windows)]
 #[test]

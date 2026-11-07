@@ -176,7 +176,7 @@ impl DssObject for LoadShapeObj {
     /// file directives that the numeric parser cannot read. Under
     /// `MemoryMapping=Yes` a `Mult`/`PMult`/`QMult` directive queues an eager MMF
     /// read (the `UseMMF` branch; `Hour` has no MMF branch upstream). Otherwise
-    /// it queues a deferred non-MM `InterpretDblArray` read (WPG.19). A plain
+    /// it queues a deferred non-MM `InterpretDblArray` read. A plain
     /// numeric list returns `false` and flows to `ParseAsVector` unchanged.
     fn set_f64_array_raw(&mut self, idx: usize, raw: &str) -> bool {
         if !matches!(idx, MULT | PMULT | QMULT | HOUR) {
@@ -211,7 +211,7 @@ impl DssObject for LoadShapeObj {
             return true;
         }
 
-        // Non-MM `InterpretDblArray` directive (WPG.19). Deferred like the MMF
+        // Non-MM `InterpretDblArray` directive. Deferred like the MMF
         // path — the property hook has no filesystem / `LastResultFile` reach; the
         // executive reads the file and calls `apply_file_load` (text) /
         // `apply_binary_file_load` (binary), which run the file grammar into
@@ -255,8 +255,8 @@ impl DssObject for LoadShapeObj {
     fn do_action(&mut self, ordinal: i32, errors: &mut crate::diag::ErrorLog) {
         match ordinal {
             // Normalize: Pascal runs it inline, right after the (inline) file
-            // read. When a file directive is still pending (`mult=(file=…) ln`,
-            // WPG.19), defer it to `run_deferred_actions` so it sees the loaded
+            // read. When a file directive is still pending (`mult=(file=…) ln`),
+            // defer it to `run_deferred_actions` so it sees the loaded
             // data — otherwise it would normalize an empty array (error 61107)
             // that the deferred read then overwrites. With no pending load
             // (numeric `mult`), the array is already set, so run inline as before.
@@ -279,7 +279,7 @@ impl DssObject for LoadShapeObj {
         std::mem::take(&mut self.pending_file_loads)
     }
 
-    /// WPG.19: run the `action=normalize`/`ln` that was deferred until the file
+    /// Run the `action=normalize`/`ln` that was deferred until the file
     /// directive resolved (Pascal `Normalize` follows the inline `mult=(file=…)`
     /// read; our deferred read makes it run here, after the executive applied the
     /// file load).
@@ -304,7 +304,7 @@ impl DssObject for LoadShapeObj {
         content: &str,
         _errors: &mut crate::diag::ErrorLog,
     ) {
-        // WPG.19 non-MM `mult=(file=…)`/`hour=(file=…)` directive.
+        // Non-MM `mult=(file=…)`/`hour=(file=…)` directive.
         if let Some(il) = &load.interp {
             self.apply_interp_file(il, content.as_bytes());
             return;
@@ -339,7 +339,7 @@ impl DssObject for LoadShapeObj {
             self.read_mmf_raw(content, mmf.kind, mmf.column, mmf.qside);
             return;
         }
-        // WPG.19 non-MM `mult=(sngfile=…)`/`qmult=(dblfile=…)` directive.
+        // Non-MM `mult=(sngfile=…)`/`qmult=(dblfile=…)` directive.
         if let Some(il) = &load.interp {
             self.apply_interp_file(il, content);
             return;

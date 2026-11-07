@@ -3,14 +3,13 @@
 //! property accessors (`get_*`/`set_*`, `set_object_ref`, `PropertySideEffects`,
 //! `EndEdit`, `MakeLike`, `take_ref_actions`).
 //!
-//! RP3.7: the state model is per-phase (`super::SwtControl::present_state`/
+//! The state model is per-phase (`super::SwtControl::present_state`/
 //! `normal_state`) and so is the property surface — `Normal`/`State` are
 //! `MappedStringEnumArray`s whose [`DssObject::array_size`] is the LIVE
 //! controlled-element phase count and whose writes run r4133's
 //! `InterpretSwitchState` through [`DssObject::set_enum_array_raw`]. The lock
 //! rule is r4133's name-based guard (a locked `normal=` applies; locked
-//! `state=`/`action=` do not), with the Edit supplemental running either way
-//! (`SwtControl.pas:219-228`, measured — `tmp/rp37/out_a2a2.txt`).
+//! `state=`/`action=` do not), with the Edit supplemental running either way.
 
 use num_complex::Complex64;
 
@@ -47,11 +46,10 @@ impl CktElement for SwtControl {
     /// Pascal `TSwtControlObj.MakePosSequence`
     /// (`Version8/Source/Controls/SwtControl.pas:367-375`): adopt the controlled
     /// (switched) element's phase / conductor counts and attach terminal 1 to
-    /// its bus, then run the base bus rename (`inherited`). r4133 does NOT
-    /// touch the state arrays here — the render resync the probe measured after
-    /// `makeposseq` (`tmp/rp37/probe.md` §6: `'[closed, closed, closed, ]'` →
-    /// `'[closed, ]'`) is purely the getter's live `ControlledElement.NPhases`
-    /// loop. The port's stand-in for that live read is the controlled-element
+    /// its bus, then run the base bus rename (`inherited`). The state arrays are
+    /// not touched here: after `makeposseq` the render shrinks from
+    /// `'[closed, closed, closed, ]'` to `'[closed, ]'` because the getter loops
+    /// the live `ControlledElement.NPhases`. This engine's stand-in for that live read is the controlled-element
     /// snapshot, so this method refreshes the snapshot's shape too — otherwise
     /// [`SwtControl::state_size`] would keep answering the FROZEN parse-time
     /// count and a later `edit` (whose `recalc` re-reads the snapshot) would
@@ -96,8 +94,7 @@ impl SwtControl {
     /// (capi015, whose scalar model has no flag and copies `NormalState`)
     /// renders the carried normal — the `swtcontrol_makelike` props golden —
     /// and no corpus deck exercises `like=` followed by a state write, so the
-    /// port keeps the consistent reading; the divergence point is recorded in
-    /// the RP3.7 A1 handoff (`tmp/rp37/impl_a1.md`).
+    /// port keeps the consistent reading.
     pub(crate) fn make_like(&mut self, other: &Self) {
         self.ccd.cd.make_like_base(&other.ccd.cd);
         self.ccd.cd.nphases = other.ccd.cd.nphases;
@@ -198,8 +195,7 @@ impl DssObject for SwtControl {
 
     /// `Normal`/`State`: one token per LIVE controlled-element phase
     /// (`GetPropertyValue` `:589-610`), `0` with no controlled element — which
-    /// renders the bare `'[]'` r4133 answers on an orphan control
-    /// (`tmp/rp37/out_nil_controlled.txt`).
+    /// renders the bare `'[]'` r4133 answers on an orphan control.
     fn array_size(&self, idx: usize) -> usize {
         use super::prop::*;
         match idx {
@@ -267,10 +263,7 @@ impl DssObject for SwtControl {
     /// (r4133's no-else arm) leaves its slot unchanged, and the lock guard
     /// refuses `State` while letting `Normal` through (`:416-417`).
     ///
-    /// Being a second implementation, it CAN drift — an earlier revision of
-    /// this doc claimed it could not, and a mutation of the interpreter's lock
-    /// guard proved otherwise (RP3.7 audit settlement, 2026-09-02). What holds
-    /// the two together is
+    /// Being a second implementation, it CAN drift. What holds the two together is
     /// `tests::the_ordinal_array_setter_matches_the_interpreter`, which runs
     /// both paths on identical controls and compares the renders.
     fn set_enum_array(&mut self, idx: usize, values: &[i32]) {
@@ -373,9 +366,7 @@ impl DssObject for SwtControl {
     /// (`:203`) is inside the arm but after the call, and the
     /// `{Supplemental Actions} case ParamPointer of 3, 7:` block
     /// (`:219-228`) sits outside the arm entirely, running after **every**
-    /// `Action`/`State` edit. Measured on the r4133 DLL
-    /// (`tmp/rp37/out_a2a.txt` A2a(3), `tmp/rp37/out_a2a2.txt` A2a(4) vs
-    /// A2a(5)): on a fresh control a LOCKED `state=`/`action=` write — refused,
+    /// `Action`/`State` edit. On a fresh control a LOCKED `state=`/`action=` write — refused,
     /// the switch never moves — still latches `NormalStateSet`, so a LATER
     /// unlocked `state=open` leaves `Normal` at `[closed, closed, closed, ]`
     /// where the same sequence without the lock carries it to

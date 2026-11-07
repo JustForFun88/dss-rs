@@ -15,7 +15,7 @@ pub struct Bus {
     /// Lowercased bus name (`TNamedObject` reuse).
     pub name: String,
     /// `TNamedObject.pUuid`: lazily-created UUID slot — random v4 on first
-    /// read; preloaded by the `Uuids` command (WP8.6 step 6).
+    /// read; preloaded by the `Uuids` command.
     pub uuid: Option<crate::cim::Uuid>,
     /// User node numbers on this bus (`Nodes`).
     pub nodes: Vec<i32>,

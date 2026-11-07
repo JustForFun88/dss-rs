@@ -9,7 +9,7 @@
 //! and the RMS/phasor PLL path (`HWPLL`/`HWPLL3`, `RmsMode=true`). The decks are
 //! transcribed verbatim from the corpus (the library curves inlined from
 //! `HW_Inverters.txt`); the monitor channels are f32 on both engines, pinned at
-//! the standard `1e-6` (TOLERANCE_NOTES.md).
+//! the standard `1e-6`.
 
 use crate::exec::*;
 

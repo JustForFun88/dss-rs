@@ -15,63 +15,58 @@
 //! - `Generic` — reads a monitored PC element's state variable and trips out of
 //!   an over/under band.
 //!
-//! **r4133 rewrite (WP-U2.3, delta_r4088_r4133 rows B1/B2/B4/C1/D3/D4/D7/E2/E3):**
+//! **Behaviour:**
 //! - **Per-phase state machine for `type=current`.** `FPresentState`/`FNormalState`
-//!   become per-phase arrays (`StateArray[1..RELAYCONTROLMAXDIM=6]`);
+//!   are per-phase arrays (`StateArray[1..RELAYCONTROLMAXDIM=6]`);
 //!   `OperationCount`, `LockedOut`, `ArmedForOpen/Close/Reset`, `PhaseTarget`,
-//!   `RelayTarget` become per-phase with an extra `IdxMultiPh = NPhases+1` ganged
+//!   `RelayTarget` are per-phase with an extra `IdxMultiPh = NPhases+1` ganged
 //!   slot. All non-overcurrent sub-types drive the ganged slot only.
 //! - **Single-phase tripping/lockout** (`SinglePhTrip`/`SinglePhLockout`, overcurrent
 //!   ONLY — selecting any other type force-disables them): per-phase TCC eval of
 //!   `cBuffer^[i+CondOffset]`, the phase index rides the control-queue proxy handle.
-//! - **Ganged-path changes (B4):** sampling continues while ≥1 phase is closed;
+//! - **Ganged path:** sampling continues while ≥1 phase is closed;
 //!   `MaxOperatingCount` curve selection over non-locked-out phases;
 //!   `DoPendingAction` iterates phases honoring previously locked-out phases.
-//! - **VoltageLogic (B2):** OV/UV over `Vmax_closed`/`Vmin_closed` (closed phases
-//!   only); the reclose voltage check is still all-phase.
-//! - **CTRL_RESET semantics (D4):** the popped `CTRL_RESET` action no longer runs
-//!   the full `Reset` — it only resets `OperationCount` to 1 for closed phases (+
-//!   the TD21 quiet window); a reset no longer forces the element to normal state.
-//! - **Inst-trip delay single-count (D3):** inst time is a bare `0.01` (the
+//! - **VoltageLogic:** OV/UV over `Vmax_closed`/`Vmin_closed` (closed phases
+//!   only); the reclose voltage check is all-phase.
+//! - **CTRL_RESET semantics:** the popped `CTRL_RESET` action does not run the
+//!   full `Reset`. It only resets `OperationCount` to 1 for closed phases (+ the
+//!   TD21 quiet window), and a reset does not force the element to normal state.
+//! - **Inst-trip delay single-count:** inst time is a bare `0.01` (the
 //!   `MechanicalDelay` is added once, at the queue push).
-//! - **Property table 50 → 71** with deprecated aliases (`PhaseCurve→PhCurve`,
+//! - **Property table** with deprecated aliases (`PhaseCurve→PhCurve`,
 //!   `GroundTrip→OC_GndPickup`, `Delay→DefiniteTimeDelay`,
 //!   `Breakertime→MechanicalDelay`, `Variable→Generic_Variable`,
 //!   `Overvoltcurve→Voltage_OVCurve`…), plus `SinglePhTrip`/`SinglePhLockout`,
 //!   `Lock`/`Reset` actions, `RatedCurrent`/`InterruptingRating`, and the
 //!   `Normal`/`State` per-phase arrays.
-//! - **Event-log overhaul (E2/E3):** per-phase `'Phase %d opened on %s (…trip) …'`
-//!   wording, descriptive relay targets (`'Gnd Curve + Ph Curve'` etc.), and a
+//! - **Event log:** per-phase `'Phase %d opened on %s (…trip) …'` wording,
+//!   descriptive relay targets (`'Gnd Curve + Ph Curve'` etc.), and a
 //!   `'Debug Sample: Relay.<name> FPresentState: […]'` line on every `Sample`
-//!   (r4133 forgot the `DebugTrace` guard the Recloser has and its own sibling
-//!   traces keep; both lanes write the line under that guard —
-//!   `GOLDEN_REBASE_PLAN.md` G2.2d).
+//!   under the `DebugTrace` guard (r4133 omits the guard the Recloser has and
+//!   its own sibling traces keep).
 //!
-//! **The `Normal`/`State` write seam (RP3.7(b), 2026-09-02).** Both properties
+//! **The `Normal`/`State` write seam.** Both properties
 //! take the RAW value through `DssObject::set_enum_array_raw` ->
 //! `Relay::interpret_relay_state` — the only hook that can carry the outer
 //! `Parser.WasQuoted` flag *and* the first-character token match, the two things
-//! the generic ordinal tokenizer cannot: r4133 splits ganged-vs-per-phase on
-//! `WasQuoted` (`Relay.pas:1256-1306`), so `state=open` fills every slot while
-//! `state=(open)` writes phase 1 only, and it honors at most FIVE per-phase
-//! tokens (`:1286` — an r4133 off-by-one, upstream report 75, the port still
-//! reproduces until RETRO_FIXES RF-D01-01 AC3-1) while rendering one per
-//! controlled-element phase. `Action`
+//! the generic ordinal tokenizer cannot. r4133 splits ganged-vs-per-phase on
+//! `WasQuoted`, so `state=open` fills every slot while `state=(open)` writes
+//! phase 1 only. It honors at most FIVE per-phase tokens while rendering one per
+//! controlled-element phase. That cap is an r4133 off-by-one (OpenDSS report 75)
+//! this engine still reproduces, a known defect. `Action`
 //! keeps its `StringEnumActionProperty` seam (`Relay::do_action`) with the
 //! same guard + ganged fill, and the `NormalState := PresentState` supplemental
-//! (`:616-619`, outside `InterpretRelayState`) runs from the property side
+//! (outside `InterpretRelayState`) runs from the property side
 //! effects for `Action` and `State` alike — refused-while-locked writes
 //! included. The render/drive bound is the controlled element's phase count
-//! (`Relay::state_size`, read off the `ctrl_snap` snapshot, whose staleness
-//! after a later `phases=` edit is `ORPHANED_GAPS.md` §1.13), which
-//! `make_pos_sequence` now refreshes from
+//! (`Relay::state_size`, read off the `ctrl_snap` snapshot, stale after a
+//! later `phases=` edit), which `make_pos_sequence` refreshes from
 //! the live `PosSeqCtx`, so after `makeposseq` the relay renders `[closed, ]`
-//! exactly as r4133's live `ControlledElement.NPhases` loop does. Every byte in
-//! this paragraph was measured on the vendored r4133 DLL
-//! (`tmp/rp37/out_b1.txt`, `out_b1b.txt`). The one deliberate exception is a
-//! controlled element with more than six phases: the port clips the count at
-//! six where r4133's uncapped getters read past the six-slot array
-//! (`Relay::state_size`).
+//! exactly as r4133's live `ControlledElement.NPhases` loop does. The one
+//! deliberate exception is a controlled element with more than six phases: this
+//! engine clips the count at six where r4133's uncapped getters read past the
+//! six-slot array (`Relay::state_size`).
 //!
 //! Concern split mirrors the Recloser: this file holds the property metadata, the
 //! [`Relay`] struct, construction/`recalc`, and `Sample`/`DoPendingAction`/`Reset`;
@@ -498,7 +493,7 @@ pub struct Relay {
     /// `DebugTrace` — write extra `Debug Sample:` detail lines to the event log.
     debug_trace: bool,
 
-    /// Deferred parse-time element forces (the `RecalcElementData` Closed[i] sync).
+    /// Deferred parse-time element forces (the `RecalcElementData` `Closed[i]` sync).
     pending_ref_actions: Vec<RefAction>,
 }
 
@@ -621,9 +616,8 @@ impl Relay {
     /// uncapped (`:1409`/`:1420`), so on a >6-phase controlled element their
     /// 7th token reads `FPresentState^[7]` past the six-slot `StateArray`
     /// (`:62`) and past `Create`'s 3-entry allocation (`:829-830`). That
-    /// out-of-bounds read is never reproduced (2026-08-02 policy): the port
-    /// renders six tokens where r4133 renders `NPhases` (seven on a 7-phase
-    /// line, RF-D01-01 probe (b)), pinned by
+    /// out-of-bounds read is never reproduced: this engine renders six tokens
+    /// where r4133 renders `NPhases`, pinned by
     /// `tests::a_seven_phase_controlled_element_renders_six_tokens`.
     ///
     /// The per-phase state arrays are dimensioned by the
@@ -661,8 +655,7 @@ impl Relay {
     /// `set_States`, all already `Option`-guarded here) and its `Sample` path
     /// dereferences the nil pointer outright (`:1071` `WITH ControlledElement
     /// Do`), so nothing there is a defined observable to port. The residual —
-    /// r4133's nil-guarded `Reset` body vs the port's — stays
-    /// `ORPHANED_GAPS.md` §1.14(c) (RP3.7 audit settlement, 2026-09-02).
+    /// r4133's nil-guarded `Reset` body vs the port's — stays open.
     fn render_size(&self) -> usize {
         if self.ccd.controlled_element.is_none() {
             return 0; // `ControlledElement = NIL` -> `'[]'` (`:1407`/`:1418`)
@@ -710,10 +703,9 @@ impl Relay {
     /// after EVERY `Action`/`State` write — the refused-while-locked and
     /// non-matching-token ones included. The port runs it from the property side
     /// effects ([`Relay::state_side_effect`], `accessors::side_effects`), which
-    /// the property engine calls unconditionally. Measured on the r4133 DLL
-    /// (`tmp/rp37/out_b1.txt` B1(2b), `out_b1b.txt` B1(2e)): after a locked
-    /// `action=open` or an unlocked `action=xyz`, a LATER unlocked `state=open`
-    /// leaves `Normal` at `[closed, closed, closed, ]` — the latch already
+    /// the property engine calls unconditionally. After a locked `action=open`
+    /// or an unlocked `action=xyz`, a LATER unlocked `state=open` leaves
+    /// `Normal` at `[closed, closed, closed, ]`, as in r4133: the latch already
     /// happened. Pinned by
     /// `a_refused_or_unmatched_action_still_runs_the_normal_defaults_supplemental`.
     fn do_action(&mut self, ordinal: i32) {
@@ -727,30 +719,24 @@ impl Relay {
         self.set_all_present(state);
     }
 
-    /// Pascal `TRelayObj.InterpretRelayState` (`Relay.pas:1237-1308`) — the
-    /// r4133 write mechanics for `Normal`/`State`, structurally identical to the
-    /// SwtControl twin (`SwtControl.pas:410-482`, RP3.7 A2):
+    /// Pascal `TRelayObj.InterpretRelayState` — the r4133 write mechanics for
+    /// `Normal`/`State`, structurally identical to the SwtControl twin:
     ///
     /// - lock guard (`:1244`): while `Locked`, a write whose property name
     ///   starts with `a` (Action) or `s` (State) exits without touching
-    ///   anything; `Normal` (starts with `n`) still applies. The port's Relay
-    ///   already carried this rule at the property seam; it moves in here with
-    ///   the rest of the mechanics.
+    ///   anything; `Normal` (starts with `n`) still applies.
     /// - `State`/`Normal`: ganged over slots `1..RELAYCONTROLMAXDIM` when the
-    ///   value was NOT quoted (`:1258-1277`), phase-by-phase through the
-    ///   AuxParser when it was (`:1278-1305`) — at most FIVE tokens honored
-    ///   (`:1286` `While … and (i < RELAYCONTROLMAXDIM)`: an r4133 off-by-one,
-    ///   upstream report 75, still reproduced until RETRO_FIXES
-    ///   RF-D01-01 AC3-1), unlisted slots unchanged.
+    ///   value was NOT quoted, phase-by-phase through the AuxParser when it was
+    ///   — at most FIVE tokens honored (an r4133 off-by-one, OpenDSS report 75,
+    ///   that this engine still reproduces, a known defect), unlisted slots
+    ///   unchanged.
     /// - tokens match on the first character only ([`match_state_token`]); a
     ///   non-matching token leaves its slot unchanged (the `case` has no else).
     ///
-    /// Measured on the r4133 DLL (`tmp/rp37/out_b1.txt` B1(1), `out_b1b.txt`
-    /// B1(3b)): on a 3-phase controlled element `state=(open)` renders
+    /// On a 3-phase controlled element `state=(open)` renders
     /// `[open, closed, closed, ]` while the bare `state=open` renders
     /// `[open, open, open, ]`, and a six-token quoted list drops its sixth
-    /// token. The port's pre-RP3.7 seam read a one-element ordinal list as
-    /// ganged — right for the bare spelling, wrong for the quoted single.
+    /// token.
     ///
     /// The **two r4133 defects** the SwtControl twin documents are not
     /// reproduced here either: `Relay.pas:1278-1286` carries the identical
@@ -793,12 +779,11 @@ impl Relay {
         parser.next_param(&vars); // name slot — ignored, Pascal `:1282-1283`
         let mut token = parser.make_string(&vars);
         let mut i = 1usize;
-        // `:1286` `While (Length(DataStr2)>0) and (i<RELAYCONTROLMAXDIM)` — a
-        // sixth token is silently dropped (measured, `out_b1b.txt` B1(3b)).
-        // That bound is an r4133 off-by-one (upstream report 75: the ganged arm
-        // `:1260` and the type `:62` span six slots), still reproduced here and
-        // in the ordinal twin `set_enum_array` until RETRO_FIXES RF-D01-01 AC3-1
-        // fixes both together.
+        // `While (Length(DataStr2)>0) and (i<RELAYCONTROLMAXDIM)`: a sixth token
+        // is silently dropped. That bound is an r4133 off-by-one (OpenDSS report
+        // 75: the ganged arm and the state array span six slots). This engine
+        // still reproduces it here and in the ordinal twin `set_enum_array`, a
+        // known defect to fix in both together.
         while !token.is_empty() && i < RCMAX {
             if let Some(state) = match_state_token(&token) {
                 match prop {
@@ -816,7 +801,7 @@ impl Relay {
     /// without an outer parser (`PropEngine::was_quoted == false`: JSON import,
     /// the `MakePosSequence` applier, direct unit-test seams). The rule and its
     /// one blind spot are the SwtControl twin's (`SwtControl::
-    /// value_implies_quoted`, RP3.7 A2 D5): a value that still carries its
+    /// value_implies_quoted`): a value that still carries its
     /// opening bracket/quote, or one holding more than one token, is quoted; a
     /// single bare token resolves to *ganged* — the spelling every corpus deck
     /// writes (`state=open`, `normal=closed`). The distinction that ambiguity
@@ -907,7 +892,7 @@ impl Relay {
         }
     }
 
-    /// Queue the per-phase `RecalcElementData` Closed[i] sync (Pascal
+    /// Queue the per-phase `RecalcElementData` `Closed[i]` sync (Pascal
     /// `ControlledElement.Closed[i] := …` per phase). Deferred as a [`RefAction`].
     fn queue_switch_force(&mut self) {
         if let Some(target) = self.ccd.controlled_element {
@@ -1207,7 +1192,7 @@ impl Relay {
                 }
             }
             ControlAction::Reset => {
-                // D4: no longer runs the full Reset — only resets OperationCount to
+                // Does not run the full Reset: only resets OperationCount to
                 // 1 for closed phases (+ the TD21 quiet window). Both arms label the
                 // event with the class that emitted it: r4133 copied them verbatim
                 // from `Recloser.pas:909`/`:924`, class name included

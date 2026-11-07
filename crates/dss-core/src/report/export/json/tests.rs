@@ -2,7 +2,7 @@
 //! bytes are the pinned oracle's (dss-python 0.15.7, probed 2026-07-11 via
 //! `lib.DSSElement_ToJSON` over an XYcurve whose `Yarray` carried the table).
 //!
-//! Since Stage F.4 the float spelling and the pretty line break are the lane's
+//! The float spelling and the pretty line break are the lane's
 //! (`compat::json_float`, `compat::JSON_LINE_BREAK`), so the oracle tables below
 //! are asserted against the **parity impl** — which is compiled in both lanes —
 //! and the layout tests build their expectation from the lane's line break. The

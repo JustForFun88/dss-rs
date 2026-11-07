@@ -1,5 +1,5 @@
-//! The **native twin** boundary — built ONLY to empirically confirm the WM.5
-//! round-2 finding: a native `TCapUserControl` DLL loaded by the r4133 engine
+//! The **native twin** boundary — built ONLY to confirm empirically that
+//! a native `TCapUserControl` DLL loaded by the r4133 engine
 //! **cannot drive the control queue**, because it has no pointer to the owning
 //! `TCapControlObj` to pass as `ControlQueue.Push`'s `Owner`
 //! (`ControlQueue.pas:145` — the `Owner` becomes the `ControlElement` whose

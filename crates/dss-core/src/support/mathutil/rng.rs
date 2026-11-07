@@ -7,7 +7,7 @@
 //! `Load.Randomize`, `Fault.Randomize`) consume this stream. Because upstream
 //! seeds it from the clock per process, any value that reaches the output through
 //! the RNG is nondeterministic across processes and **cannot** be oracle-pinned
-//! (GAPS_PLAN.md §2.1) — the generator is therefore gated only by the Rust-only
+//! — the generator is therefore gated only by the Rust-only
 //! fixed-seed unit tests in this file.
 //!
 //! Provenance of those pins: they are **captured FPC-exact**. First derived as
@@ -79,7 +79,7 @@ impl FpcRng {
 
     /// FPC `Randomize`: seed from the clock (documented nondeterministic, like
     /// upstream's `initialization Randomize`). Never gated — no golden or oracle
-    /// compare reads an RNG-carried value (GAPS_PLAN.md §2.1).
+    /// compare reads an RNG-carried value.
     pub fn randomize(&mut self) {
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -255,7 +255,7 @@ mod tests {
         // pinned bit-exact above; only the single `exp` may differ from FPC's
         // own `exp` in the last ulp (FPC uses its RTL exp, not the platform
         // libm this reference used), so compare to a few ulp — never oracle-
-        // gated (GAPS_PLAN.md §2.1), so no bit-pin is required or possible here.
+        // gated, so no bit-pin is required or possible here.
         let mut rng = FpcRng::from_seed(SEED);
         let expect = [
             f64::from_bits(0x400c89c08627469cu64),
