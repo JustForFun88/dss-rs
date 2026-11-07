@@ -2,6 +2,7 @@
 name = "gate-kind"
 version = "0.1.0"
 edition = "2024"
+license.workspace = true
 publish = false
 description = "Picks the gate a diff needs by what the diff can change at compile time"
 

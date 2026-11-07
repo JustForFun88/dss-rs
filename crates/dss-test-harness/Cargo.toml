@@ -2,6 +2,7 @@
 name = "dss-test-harness"
 version = "0.0.0"
 edition = "2024"
+license.workspace = true
 publish = false
 description = "Test-only: the golden/oracle comparison harness of the dss-core integration tests"
 

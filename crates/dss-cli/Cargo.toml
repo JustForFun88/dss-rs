@@ -2,6 +2,7 @@
 name = "dss-cli"
 version = "0.1.0"
 edition = "2024"
+license.workspace = true
 
 # `cargo build -p dss-cli -p dss-compat --features dss-compat/opendss-parity`
 # builds the parity-lane CLI (cargo takes a feature only of a selected package or

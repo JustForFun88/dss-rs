@@ -2,6 +2,9 @@
 resolver = "3"
 members = ["crates/dss-cli", "crates/dss-compat", "crates/dss-core", "crates/dss-epri", "crates/dss-metis", "crates/dss-parser", "crates/dss-sparse", "crates/dss-test-harness", "crates/dss-usermodel", "tools/gate-kind"]
 
+[workspace.package]
+license = "Apache-2.0"
+
 [workspace.dependencies]
 # The default lane renders the fixed-width `Show` tables through a table crate
 # instead of hand-measured `Pad` widths. Chosen over `tabled` because its whole

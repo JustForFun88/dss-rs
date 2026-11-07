@@ -2,6 +2,7 @@
 name = "dss-parser"
 version = "0.1.0"
 edition = "2024"
+license.workspace = true
 
 [dependencies]
 # The lane switch: `src/compat.rs` selects its kernels by `OPENDSS_PARITY`.

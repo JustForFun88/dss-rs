@@ -1,0 +1,36 @@
+dss-rs
+Copyright 2025-2026 Alisher Galiev
+
+Licensed under the Apache License, Version 2.0 (LICENSE).
+
+This product contains code and material derived from the works below. The
+text of each licence is in LICENSES/, and ATTRIBUTION.md lists the
+third-party files in this repository one by one.
+
+OpenDSS
+Copyright (c) 2008-2026, Electric Power Research Institute, Inc.
+BSD-3-Clause, LICENSES/OpenDSS.txt. Engine code derived from the OpenDSS
+sources, the help text of the commands and properties, the OpenDSS r4133
+binaries and documentation under tools/opendss/bin/, and the IndMach012a
+example model built as a test twin under tools/wasm_usermodel/twin/.
+
+DSS C-API and DSS-Python (DSS-Extensions)
+Copyright (c) 2017-2024, Paulo Meira
+Copyright (c) 2018-2024, DSS-Extensions contributors
+BSD-3-Clause, LICENSES/dss_capi.txt. The JSON export and its schema, engine
+code derived from the DSS C-API sources, and the goldens under tests/golden/
+produced by the pinned DSS-Python.
+
+METIS and GKlib
+Copyright 1995-2018, Regents of the University of Minnesota
+Apache-2.0, LICENSES/METIS.txt and LICENSES/GKlib.txt. dss-metis is a port of
+METIS and of the GKlib primitives it uses.
+
+MT19937-64
+Copyright (C) 2004, Makoto Matsumoto and Takuji Nishimura
+BSD-3-Clause, LICENSES/MT19937.txt. The deterministic random generator of
+dss-metis.
+
+Test-only binaries that the product neither links nor ships (KLUSolve under
+LGPL-2.1-or-later, the Free Pascal run-time library inside the IndMach012a
+twin) are listed with their licences in ATTRIBUTION.md.

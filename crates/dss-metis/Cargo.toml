@@ -2,6 +2,7 @@
 name = "dss-metis"
 version = "0.1.0"
 edition = "2024"
+license.workspace = true
 
 # 1:1 safe-Rust source port of the METIS 5.2.1 `METIS_PartGraphKway` call path.
 # No C is linked; the vendored `.inputs/METIS` + `.inputs/GKlib` sources are the

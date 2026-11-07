@@ -2,6 +2,7 @@
 name = "dss-epri"
 version = "0.0.0"
 edition = "2024"
+license.workspace = true
 publish = false
 description = "Test-only FFI bridge to the official EPRI OpenDSSDirect.dll (r4133 live-oracle channel)"
 

@@ -2,6 +2,7 @@
 name = "dss-sparse"
 version = "0.1.0"
 edition = "2024"
+license.workspace = true
 
 [dependencies]
 # The lane switch, re-exported by `src/compat.rs`.

@@ -2,6 +2,7 @@
 name = "dss-compat"
 version = "0.1.0"
 edition = "2024"
+license.workspace = true
 
 # `opendss-parity` builds the precision-compatibility lane. Only this crate
 # declares it, so a `cfg(feature = "opendss-parity")` in any other crate is an
