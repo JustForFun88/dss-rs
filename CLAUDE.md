@@ -53,10 +53,10 @@ Engineers act on the numbers this engine prints, so a number is right by physics
 
 A crate depends only on lower layers. Inside `dss-core` a script flows from the command executive (`exec`) into objects and their properties (`obj`), which make up the circuit (`circuit`, `elements`). `solution` builds the nodal matrix and iterates, `report` writes what was solved. A new element is one more module under `elements` and changes none of this.
 
-Where things are: `tests/golden/` (byte goldens), `tests/corpus/` (our deck families, manifests, `ledger.json`, and the OpenDSS test suite that `tools/corpus/vendor.py` fetches), `tools/golden/` (golden generators and probes), `tools/oracle/` (the server the corpus gate calls for the `capi_v0145` channel), `tools/opendss/` (the r4133 binary and the OpenDSS documentation, `epri_worker.py`), `tools/gate/` (the gate queue), `tools/lanes/` (`lane_diff.ps1`), `investigations/to_opendss/` (the OpenDSS reports, gitignored). A tool documents itself in its own file (W6). A test's knobs (environment variables) are in the module doc of the test that reads them.
+Where things are: `tests/golden/` (byte goldens), `tests/corpus/` (our deck families, manifests, `ledger.json`, and the OpenDSS test suite that `tools/corpus/vendor.py` fetches), `tools/golden/` (golden generators and probes), `tools/oracle/` (the server the corpus gate calls for the `capi_v0145` channel), `tools/opendss/` (the r4133 binary and the OpenDSS documentation, `epri_worker.py`), `tools/gate/` (the gate queue), `tools/lanes/` (`lane_diff.ps1`). A tool documents itself in its own file (W6). A test's knobs (environment variables) are in the module doc of the test that reads them.
 
 ## Code
-- **C1.** `#![forbid(unsafe_code)]` in every product crate. `dss-epri` is the one exception (`publish = false`, `#[cfg(windows)]`, `#![deny(unsafe_op_in_unsafe_fn)]`, `// SAFETY` docs) and never ships.
+- **C1.** `#![forbid(unsafe_code)]` in every product crate. `dss-epri` is the one exception (`publish = false`, `#[cfg(windows)]`, `#![deny(unsafe_op_in_unsafe_fn)]`, `// SAFETY` docs) and never ships. Prefer pure-Rust crates: a dependency is safe to use from safe code.
 - **C2.** Write idiomatic Rust.
 - **C3.** No code is frozen: passing tests are the only contract. A module that grows large or mixes concerns becomes a directory module (`foo/mod.rs` plus submodules) with no behaviour change.
 - **C4.** Unit tests stay inline as `#[cfg(test)]` modules, in a sibling `tests.rs` only when the file is large, the `#[cfg(test)] mod tests;` line right after the module doc. Integration tests are thin drivers over `dss-test-harness`. No test reads a document (`.md`).
@@ -70,7 +70,7 @@ An engineer's study must not die on a bad script.
 ## The DSS language and OpenDSS
 The engine reads the DSS language, and two OpenDSS engines check the numbers of this part. They share code and bugs, so their agreement proves the code path, not the physics.
 - **D1. The OpenDSS documentation specifies the DSS language** (`tools/opendss/bin/r4133/OpenDSS_Documentation.chm`, readable after `hh.exe -decompile <dir> <chm>`): what a script may say and what it means. Input it rules out is refused, even where OpenDSS accepts it silently. The language grows only by the user's ruling: an agent adds no syntax, no guessing at intent and no warning in place of a refusal. A meaning the documentation leaves open follows r4133 where physics (P1) and the input checks (N2) are indifferent. How a refusal is reported, the reports and the exports are ours.
-- **D2. OpenDSS bugs are never reproduced, in any lane.** The divergence is excluded field by field, on the channel of each engine that has the bug (a ledger entry in the corpus gate), and pinned by a test of our value. Each fixed bug gets an OpenDSS report.
+- **D2. OpenDSS bugs are never reproduced, in any lane.** The divergence is excluded field by field, on the channel of each engine that has the bug (a ledger entry in the corpus gate), and pinned by a test of our value.
 - **D3. No new precision quirk.** The existing ones (truncated constants, FPC rounding and formatting) live in the parity lane, each marked `TODO(compat):` with its clean fix. One leaves when the goldens stay byte-exact without it or become this engine's own.
 - **T1. Channels.** `capi_v0145` is the dss-python pinned in `tools/golden/PIN.txt`, which also produced `tests/golden/` (regenerated only by hand through `tools/golden/*.py`). They are the one exception to R2, until they become this engine's own (`ROADMAP.md`). `r4133` is the EPRI binary at `tools/opendss/bin/r4133/`, driven through `epri-worker` (`crates/dss-epri`).
 - **T2. Corpus gate.** `corpus_gate_all_cases_match_engines` (`crates/dss-core/tests/corpus_gate.rs`) runs every manifest case against its channels. Every measured divergence is an entry in `tests/corpus/ledger.json`, and an entry nothing hits fails the gate. A manifest leaves a channel out of `engines` only when that engine cannot run the case, never because of a bug (D2).
@@ -101,12 +101,12 @@ Every agent reads these texts, so a stale or long sentence costs every session.
 - **W2. A test's name says what it checks.** Its doc comment is optional: at most two sentences on what is pinned and why it is right (by physics, P1, a standard, P2, or the DSS documentation, D1). No measured values, OpenDSS readings, dates or report numbers. Expected values live only in the assertions.
 - **W3. No measurement in prose in a committed file**, except the first failure an `exclusion` records in the ledger. Local paths go in your report.
 - **W4. A citation of code names it, never a line number.** In a doc comment the name is an intra-doc link, which rustdoc checks. Elsewhere it is the shortest Rust path that stays unambiguous (`harness::tol_for`, `Solution::converged`). A whole file is cited by its repository path.
-- **W5. Committed text cites no other project's source (no file, routine, line or path), and no comment or doc retells what an OpenDSS engine does.** The OpenDSS documentation (D1), `TODO(compat):` marks (D3) and the `.inputs/` paths a tool reads stay.
+- **W5. Committed text cites no other project's source (no file, routine, line or path), and no comment or doc retells what an OpenDSS engine does.** The OpenDSS documentation (D1) and `TODO(compat):` marks (D3) stay.
 - **W6. No README.** A tool or a test documents itself in the module doc or docstring of its own file: what it is, how it runs, its knobs. The repository has one `README.md`, at the root, and third-party files are listed in `ATTRIBUTION.md`.
 
 ## Commits
 History is read without our plans, so a commit must make sense on its own.
-- **M1. The subject names the change in the code** (`SeqCurrents: exclude and pin the negative-rating divergence`). The body is as long as the change needs: what changed and why, by area (behaviour, tests added or removed, divergences excluded, data regenerated). A small fix needs no body. The body tells what the commit does, not how the work went. No plan, step, wave, branch, ruling or work-package id in a subject or body, no path into `plan/`, `tmp/`, `investigations/` or `.inputs/`.
+- **M1. The subject names the change in the code** (`SeqCurrents: exclude and pin the negative-rating divergence`). The body is as long as the change needs: what changed and why, by area (behaviour, tests added or removed, divergences excluded, data regenerated). A small fix needs no body. The body tells what the commit does, not how the work went. No plan, step, wave, branch, ruling or work-package id in a subject or body, and no path that git ignores (the fetched OpenDSS test suite excepted) or that lies outside the repository.
 - **M2.** A work branch lands as one squash commit.
 - **M3.** Stage files by name, never `git add -A`. Deck droppings are never staged. Once no test run is in flight (the gate queue is empty), whoever left them, delete them by name in the tracked deck families and run `python tools/corpus/vendor.py` for the fetched OpenDSS test suite.
 
@@ -117,9 +117,8 @@ Agents share one machine. Past its capacity every run slows down and the OpenDSS
 - **L3.** After stopping a workflow, check that its scripts no longer queue builds.
 
 ## Git worktrees
-Worktrees under `.claude/worktrees/` hold Windows directory junctions to the main checkout's `.inputs/` and `investigations/` and to the worktree's cargo target. A new worktree runs `python tools/corpus/vendor.py` once (the tarball is cached). `git worktree remove` and any recursive delete (`rm -rf`, `Remove-Item -Recurse`, `rmdir /s`) follow them and delete what they point at: this has wiped the main checkout's `.inputs` twice. **Never batch-remove.** For each worktree, in PowerShell only (under Git Bash `cmd /c rmdir` does nothing and exits 0):
-1. In the main checkout, note `(gci .inputs -Force | measure).Count`.
-2. List the reparse points without following them: `Get-ChildItem -LiteralPath <wt> -Recurse -Force | ? { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }`
-3. Drop each link only: `$_.Delete()` on the `DirectoryInfo`, or `cmd /c rmdir "<path>"` without `/s`.
-4. `Test-Path` of every listed link must be False.
-5. Then `git worktree remove --force <wt>` and `git worktree prune`. The `.inputs` count must equal the one from step 1. Delete merged branches with `git branch -D`.
+Worktrees under `.claude/worktrees/` hold a Windows directory junction to the worktree's cargo target. A new worktree runs `python tools/corpus/vendor.py` once (the tarball is cached). `git worktree remove` and any recursive delete (`rm -rf`, `Remove-Item -Recurse`, `rmdir /s`) follow a junction and delete what it points at: this has wiped a shared directory twice. **Never batch-remove.** For each worktree, in PowerShell only (under Git Bash `cmd /c rmdir` does nothing and exits 0):
+1. List the reparse points without following them: `Get-ChildItem -LiteralPath <wt> -Recurse -Force | ? { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }`
+2. Drop each link only: `$_.Delete()` on the `DirectoryInfo`, or `cmd /c rmdir "<path>"` without `/s`.
+3. `Test-Path` of every listed link must be False.
+4. Then `git worktree remove --force <wt>` and `git worktree prune`. Delete merged branches with `git branch -D`.
