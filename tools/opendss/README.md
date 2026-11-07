@@ -15,7 +15,7 @@ Python in this channel**.
 
 | path | what |
 |---|---|
-| `bin/r4133/` | git-tracked `OpenDSSDirect.dll` (11.0.0.1) + `KLUSolve.dll` (its only non-system import) + `kmetis.exe`/`pmetis.exe` (METIS partitioners the engine spawns from the DLL's own dir for A-Diakoptics tearing) + `License.txt` + `OpenDSS_Documentation.chm` (the OpenDSS documentation, the DSS language specification; how to read it: `bin/README.md`). |
+| `bin/r4133/` | git-tracked `OpenDSSDirect.dll` (11.0.0.1) + `KLUSolve.dll` (its only non-system import) + `kmetis.exe`/`pmetis.exe` (METIS partitioners the engine spawns from the DLL's own dir for A-Diakoptics tearing) + `License.txt` + KLUSolve's `KLUSolve_License.txt`/`KLUSolve_lgpl_2_1.txt` + `OpenDSS_Documentation.chm` (the OpenDSS documentation, the DSS language specification; how to read it: `bin/README.md`). |
 | `bin/SHA256SUMS` | checksums; verify from `bin/` with `sha256sum -c SHA256SUMS`. |
 | `bin/README.md` | binary provenance (sizes, build dates, source tree). |
 | `revisions.json` | `r4133` → `dll` path + `expect_version` (the substring `crates/dss-epri/src/smoke.rs` and `tools/golden/gen_protection.py` assert against — never empty, no silent pass). |
@@ -29,8 +29,9 @@ vendored (no progress popups possible).
 ## Updating the binaries
 
 Copy into `bin/r4133/` the five files from the official distribution's
-`Version8/Distrib/x64` and `Version8/Distrib/Doc/OpenDSS Documentation.chm` as
-`OpenDSS_Documentation.chm`, then rewrite the checksums and the tables in
+`Version8/Distrib/x64`, `Version8/Distrib/Doc/OpenDSS Documentation.chm` as
+`OpenDSS_Documentation.chm`, and `VersionC/klusolve/License.txt` and
+`lgpl_2_1.txt` as `KLUSolve_License.txt` and `KLUSolve_lgpl_2_1.txt`, then rewrite the checksums and the tables in
 `bin/README.md`, and run the smoke test:
 
 ```
@@ -172,5 +173,5 @@ node voltages from the DLL via the line-JSON protocol.
   message-pumping `TThread.WaitFor` that deadlocks in a headless process. The
   worker leaks the library and lets process exit reclaim it (root-caused by
   minidump). Do not "fix" this by unloading.
-- The binaries are © EPRI, distributed under the BSD-style license in each
-  `bin/r4133/License.txt`. The licence of the documentation: `bin/README.md`.
+- The files of `bin/r4133/` serve the tests only, and their licences are in
+  `bin/README.md`.
