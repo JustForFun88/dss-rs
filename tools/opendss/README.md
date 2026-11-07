@@ -1,7 +1,7 @@
 # Official EPRI OpenDSS r4133 — the unified gate's `r4133` channel
 
-This directory holds the **vendored official EPRI OpenDSS r4133 binary** and its
-provenance. It is the second OpenDSS engine of the unified corpus gate
+This directory holds the **vendored official EPRI OpenDSS r4133 binary**, the
+OpenDSS documentation and their provenance. It is the second OpenDSS engine of the unified corpus gate
 (`crates/dss-core/tests/corpus_gate.rs`): the `r4133` channel compares this
 engine against EPRI's `OpenDSSDirect.dll` release 11.0.0.1, alongside the pinned
 dss-python `capi_v0145` channel (`tools/oracle/oracle_server.py`).
@@ -15,7 +15,7 @@ Python in this channel**.
 
 | path | what |
 |---|---|
-| `bin/r4133/` | git-tracked `OpenDSSDirect.dll` (11.0.0.1) + `KLUSolve.dll` (its only non-system import) + `kmetis.exe`/`pmetis.exe` (METIS partitioners the engine spawns from the DLL's own dir for A-Diakoptics tearing) + `License.txt`. |
+| `bin/r4133/` | git-tracked `OpenDSSDirect.dll` (11.0.0.1) + `KLUSolve.dll` (its only non-system import) + `kmetis.exe`/`pmetis.exe` (METIS partitioners the engine spawns from the DLL's own dir for A-Diakoptics tearing) + `License.txt` + `OpenDSS_Documentation.chm` (the OpenDSS documentation, the DSS language specification; how to read it: `bin/README.md`). |
 | `bin/SHA256SUMS` | checksums; verify from `bin/` with `sha256sum -c SHA256SUMS`. |
 | `bin/README.md` | binary provenance (sizes, build dates, source tree). |
 | `revisions.json` | `r4133` → `dll` path + `expect_version` (the substring `crates/dss-epri/src/smoke.rs` and `tools/golden/gen_protection.py` assert against — never empty, no silent pass). |
@@ -28,8 +28,10 @@ vendored (no progress popups possible).
 
 ## Updating the binaries
 
-Copy the five files of `bin/r4133/` from the official distribution's `Version8/Distrib/x64`, then
-rewrite the checksums and the tables in `bin/README.md`, and run the smoke test:
+Copy into `bin/r4133/` the five files from the official distribution's
+`Version8/Distrib/x64` and `Version8/Distrib/Doc/OpenDSS Documentation.chm` as
+`OpenDSS_Documentation.chm`, then rewrite the checksums and the tables in
+`bin/README.md`, and run the smoke test:
 
 ```
 cd tools/opendss/bin && sha256sum r4133/* > SHA256SUMS && cd -
@@ -171,4 +173,4 @@ node voltages from the DLL via the line-JSON protocol.
   worker leaks the library and lets process exit reclaim it (root-caused by
   minidump). Do not "fix" this by unloading.
 - The binaries are © EPRI, distributed under the BSD-style license in each
-  `bin/r4133/License.txt`.
+  `bin/r4133/License.txt`. The licence of the documentation: `bin/README.md`.
