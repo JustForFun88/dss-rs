@@ -45,6 +45,10 @@ on any input.
 - A Monitor keeps the shape its element had when the Monitor was last edited.
 - Save and the JSON export drop `bus2` of a Capacitor or Reactor made with `like=`.
 - A huge `phases=` aborts the process on allocation instead of being refused.
+- A script that redirects into itself overflows the stack and kills the process.
+- The help text of `Dump commands` and the JSON schema export is OpenDSS's wording (`report/help_catalog.rs`), not ours.
+- `dss-metis` `sort.rs` is a port of GKlib's `gk_mksort.h`, which GKlib derives from glibc's `qsort` under LGPL-2.1-or-later: licence-incompatible with the product, to be replaced by a sort of our own.
+- The Monte Carlo random generator (`support/mathutil/rng.rs`) is transcribed from the Free Pascal run-time library (LGPL): to be rewritten from the published MT19937 reference, its seeding pinned by our tests.
 
 ## Next
 1. **Own goldens.** The goldens become snapshots of this engine. The precision quirks and the FPC
