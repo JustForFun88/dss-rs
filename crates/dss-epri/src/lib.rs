@@ -52,6 +52,31 @@
 //! The `epri-worker` binary (`src/bin/epri-worker.rs`) drives all of the above
 //! over the persistent line-JSON `ping`/`run`/`quit` protocol, byte-compatible
 //! with today's `oracle_server.py` responses.
+//!
+//! ## Running the worker
+//!
+//! The DLL and its companions are in `tools/opendss/bin/r4133/` (listed in
+//! `ATTRIBUTION.md`); `tools/opendss/revisions.json` names the DLL and the
+//! version string [`smoke`] asserts. The corpus gate finds or builds the worker
+//! binary (`DSS_EPRI_WORKER`, module doc of `crates/dss-core/tests/corpus_gate.rs`),
+//! and `tools/opendss/epri_worker.py` is the Python client for probes and the
+//! manual golden generators. `epri-worker --smoke` runs the same checks as
+//! [`smoke`]. Three traps of the process, each pinned by `tests/protocol.rs`:
+//!
+//! - **The registry.** The engine reads its base frequency from the user's
+//!   registry at load and, unless [`dss::Engine`] has told it not to, writes it
+//!   back at exit, so a base-frequency-shaped red on decks that were green
+//!   (`frequency 60 vs 50`, a system Y mismatch) is environmental: check
+//!   `reg query HKCU\Software\OpenDSS\MainSect /v BaseFrequency` reads `60`.
+//! - **A stale worker.** The gate rebuilds the worker when it is older than
+//!   this crate's sources. A source restored with a timestamp-preserving copy
+//!   (`cp -p`, `Copy-Item`) defeats that and cargo's fingerprint alike: touch
+//!   the file or `cargo clean -p dss-epri`.
+//! - **A worker wedged at exit.** A process spinning in the DLL's exit teardown
+//!   has set its exit code, so `Stop-Process` and `taskkill` report it gone
+//!   while `tasklist` still shows it burning a core. End it through CIM
+//!   (`Get-CimInstance Win32_Process -Filter "ProcessId=<pid>" | Invoke-CimMethod -MethodName Terminate`)
+//!   or through a handle held since the spawn (`Child::kill`).
 
 #![deny(unsafe_op_in_unsafe_fn)]
 

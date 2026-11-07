@@ -2404,8 +2404,8 @@ DUMP3_AUX = [
     ("dump3_alloc", "alloc", "AllocationFactors.txt"),
 ]
 
-# Line prefixes dropped from BOTH sides of `dump_capacitor_*` (probe-proven
-# ASLR-garbage — see the report_decks README and `investigations/`): the
+# Line prefixes dropped from BOTH sides of `dump_capacitor_*` (the pinned
+# dss_capi prints uninitialized memory there, different in every process): the
 # oracle's captured golden never contains them (stripped at capture time
 # below); the Rust replay drops the same prefixes from its own output before
 # the byte-exact compare (`golden_reports.rs::run_deck_dump_exact_masked`).
@@ -2556,8 +2556,8 @@ def gen_save_decks(d) -> None:
 
 
 # --- Interpolate, gated via `export buscoords` ------------------------------
-# The pre-validated fixture deck (tools/golden/report_decks/interp.dss, see its
-# header + the report_decks README): an EnergyMeter zone where only the anchor
+# The fixture deck (tools/golden/report_decks/interp.dss, see its
+# header): an EnergyMeter zone where only the anchor
 # buses src/b1/b5/c2 carry coordinates (SetBusXY); `interpolate` fills b2/b3/b4
 # evenly between b1 and b5 and c1 between c2 and b3
 # (TEnergyMeterObj.InterpolateCoordinates + CalcBusCoordinates). The golden is

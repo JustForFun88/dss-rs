@@ -43,7 +43,14 @@
 //! (`contig.c`/`minconn.c`), the volume objective, `BlockKWayPartitioning`
 //! (`dbglvl & 512`), `dropedges`, and every multi-constraint routine are **not
 //! reached** and not ported — documented at their call sites and in
-//! `part::mod`. See `tools/golden/gen_metis_reference.md`.
+//! `part::mod`.
+//!
+//! # The C reference goldens
+//! `tests/golden/*.graph.part.N` were written offline by the C original: METIS
+//! at the commit above, built with the default widths and with GKlib's portable
+//! RNG (`USE_GKRAND`), run as `gpmetis <graph> <nparts>` with its CLI defaults,
+//! for `nparts` in {2, 3, 4, 8}. The edgecut of each run is pinned beside the
+//! labels in `tests/golden_part.rs`. No C is compiled or run by `cargo test`.
 
 pub mod graph;
 mod part;

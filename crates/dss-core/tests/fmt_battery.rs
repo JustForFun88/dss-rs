@@ -3,8 +3,12 @@
 //!
 //! `tests/golden/fmt_battery.csv` holds f64 bit patterns rendered by
 //! the **real FPC 3.2.2 RTL** (the compiler of the pinned dss_capi) through
-//! every float→string entry point this engine mirrors — see
-//! `tools/fpc/fmt_battery/README.md`. A regression in the Grisu1 pipeline
+//! every float→string entry point this engine mirrors. Column 1 is the value's
+//! bit pattern, column 2 `FloatToStr` ([`float_to_str`]), columns 3 to 6
+//! `FloatToStrF(v, ffGeneral, N, 0)` for N = 2, 5, 8, 15 ([`fmt_g`]), columns 7
+//! and 8 `Str(v : W)` for W = 0, 14 ([`fpc_sci_w`]). NaN and infinity are out of
+//! contract. The battery is written by `tools/fpc/fmt_battery/gen_values.py` and
+//! `fmt_battery.pas`, by hand only. A regression in the Grisu1 pipeline
 //! silently corrupts every Show/Export/Dump/Save report in the parity lane, so
 //! it is pinned directly, not only incidentally through the report goldens.
 //!

@@ -601,8 +601,8 @@ fn dump_script_policy() -> ExportPolicy {
 
 /// `run_deck_dump_exact` twin for the Capacitor decks: the oracle golden was
 /// captured with the `~ CMatrix=(`/`~ FaultRate=`/`~ pctPerm=` lines already
-/// dropped (probe-proven ASLR-garbage in this pinned build, `tools/golden/
-/// report_decks/README.md`); this drops the same line prefixes from the Rust
+/// dropped (the pinned dss_capi prints uninitialized memory there, different in
+/// every process); this drops the same line prefixes from the Rust
 /// output (which renders the correct, non-garbage values — a genuinely
 /// different line, not comparable) before the byte-exact compare.
 fn run_deck_dump_exact_masked(stem: &str, mask_prefixes: &[&str]) {

@@ -2,7 +2,7 @@
 //! from METIS 5.2.1 (`.inputs/METIS/libmetis`) for the gpmetis CLI default
 //! option path (objtype=CUT, ctype=SHEM, iptype=METISRB, rtype=GREEDY,
 //! no2hop=0, minconn=contig=dropedges=0, ncuts=1, niter=10, seed=-1,
-//! niparts=-1, ufactor=-1 => 30). See `tools/golden/gen_metis_reference.md`.
+//! niparts=-1, ufactor=-1 => 30), the path the C reference goldens were made on.
 //!
 //! # Reachability decisions (default option path, `ncon == 1`)
 //! - `contig` / `minconn` are **0**, so `RefineKWay`'s `EliminateComponents`

@@ -4,7 +4,7 @@
 //! `SpecType=<int>` line (no `~`/`//` prefix — an upstream quirk, faithfully
 //! reproduced).
 //!
-//! **Upstream garbage** (probe-proven, `tools/golden/report_decks/README.md`):
+//! **Upstream garbage** (measured on the pinned dss_capi):
 //! this pinned build prints ASLR-dependent uninitialized memory in
 //! `~ CMatrix=(`/`~ FaultRate=`/`~ pctPerm=` for EVERY capacitor — not
 //! reproduced (nondeterministic UB); the

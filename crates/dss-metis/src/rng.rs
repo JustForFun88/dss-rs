@@ -167,8 +167,8 @@ mod tests {
     use super::*;
 
     // Values harvested from the vendored C build (GKlib compiled with
-    // USE_GKRAND). See tools/golden/gen_metis_reference.md ("RNG harvest").
-    // Probe: gk_randinit(seed); loop gk_randint32()/gk_randint64().
+    // USE_GKRAND): gk_randinit(seed), then a loop of gk_randint32() or
+    // gk_randint64().
 
     const RANDINT32_SEED4321: [u32; 20] = [
         730536298, 1650742698, 670506230, 415317364, 1116827883, 602136892, 678756924, 1895275372,

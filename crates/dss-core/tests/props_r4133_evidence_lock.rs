@@ -58,6 +58,27 @@
 //!    [`R4133_SKIPS`] names. These read live files, so they are the tripwire
 //!    for population drift.
 //!
+//! # Row formats
+//!
+//! `structural_pairs.txt`, `numeric_pairs.txt`, `examples_full.txt` and the two
+//! `*_in_scope.txt` files share the shape
+//! `class.prop | 'left' | 'right' | <number>[ | <number>]`. Parse them with the
+//! quote anchors, `^(\S+) \| '([^']*)' \| '([^']*)' \| (.*)$`, never by splitting
+//! on `|`: a value may contain `|` and never contains `'`, CR, LF or TAB. The
+//! tail is `rows` for the structural pair files, `max_rel | rows` for the
+//! numeric ones and `count` for `examples_full.txt`, which holds one row per
+//! distinct `(rust, r4133)` spelling of a pair, untruncated, pairs sorted
+//! structural first and spellings by descending count. `bins.tsv` is
+//! tab-separated `pair · kind · bin · subbin · cells · cells_in_scope · max_rel ·
+//! max_rel_in_scope`: `kind` is `structural` or `numeric`, `bin` 1 to 7, `subbin`
+//! `case` or `trail` for bin 2 and `-` elsewhere, the `max_rel` columns `-` for a
+//! structural pair or a pair with no in-scope cell. A pair's bin is a label from
+//! its first census row, not a classification of every cell: a bin-2 pair may
+//! carry enum-spelling cells and nine bin-1 pairs carry an echo instead of a
+//! boolean on the r4133 side, so a rule claims cells, never pairs.
+//! `examples_supplement.txt` carries the pairs no frozen row can (the pairs the
+//! shape closures made live), with their bin in its `# BIN <pair> <bin>` header.
+//!
 //! Nothing here needs an OpenDSS engine, a solve or a feature flag: it is a
 //! data lock, green in both lanes.
 //!

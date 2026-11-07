@@ -82,7 +82,7 @@
 //! Every row cites a row of the vendored census at `tests/corpus/props_r4133/`
 //! by the triple *(pair, bin, cells)*: [`NormRow::bin`] and [`NormRow::cells`]
 //! reproduce that pair's `bins.tsv` columns, and [`NormRow::src`] says which
-//! vendored file the line lives in: `bins.tsv`, or the vendored `README.md`
+//! vendored file the line lives in: `bins.tsv`, or the `examples_supplement.txt`
 //! record of the shape closure that made the pair live (such a pair cannot
 //! exist in the frozen extracts: while a class carried a `shape_count` row the
 //! walk never reached the props behind it). The replay test of
@@ -94,7 +94,7 @@
 //!
 //! | kind | what it holds |
 //! |---|---|
-//! | [`BoolFold`](NormRule::BoolFold) | bin 1's pairs **minus the five pure-echo pairs** (`capcontrol.reset`, `recloser.debugtrace`, `regcontrol.idleforward`, `regcontrol.idlereverse`, `upfccontrol.enabled`: no foldable cell at all, vendored `README.md` §"Bin 1 carries nine echo pairs, not three"), plus the pairs the shape closures made live |
+//! | [`BoolFold`](NormRule::BoolFold) | bin 1's pairs **minus the five pure-echo pairs** (`capcontrol.reset`, `recloser.debugtrace`, `regcontrol.idleforward`, `regcontrol.idlereverse`, `upfccontrol.enabled`: no foldable cell at all, the nine echo-carrying pairs of bin 1 that `props_r4133_evidence_lock.rs` re-derives), plus the pairs the shape closures made live |
 //! | [`CaseFold`](NormRule::CaseFold) | bin 2 whole (case-only plus two trailing-space pairs), plus the pairs the shape closures made live, **minus** `invcontrol.voltage_curvex_ref` (an [`EnumSynonym`](NormRule::EnumSynonym) row), **plus three bin-5 pairs** (below) |
 //! | [`ArrayForm`](NormRule::ArrayForm) | bin 4's pairs minus the four no typed rule may claim (below) and minus `swtcontrol.normal`/`state` (below), **plus six bin-5 pairs** (below) |
 //! | [`EnumSynonym`](NormRule::EnumSynonym) | the four source sequence-selector pairs of bin 3 ([`SCAN_TYPE_SYNONYMS`] / [`SEQUENCE_TYPE_SYNONYMS`]) plus [`VOLTAGE_CURVEX_REF_SYNONYMS`]. The other four bin-3 pairs are NOT synonyms (below) |
@@ -133,9 +133,9 @@
 //! is `'close'`/`'Close'` with no cell in scope, so the row would buy no live
 //! compare at all (`the_pairs_routed_elsewhere_have_no_row`).
 //!
-//! All nine sit on pairs whose `bins.tsv` LABEL is 5. The vendored
-//! `README.md` §"A pair's bin is a label, not a per-cell classification" is the
-//! doctrine, and `tests::every_row_cites_a_bin_its_rule_owns` keeps every
+//! All nine sit on pairs whose `bins.tsv` LABEL is 5. A pair's bin is a label,
+//! not a per-cell classification (the module doc of
+//! `props_r4133_evidence_lock.rs`), and `tests::every_row_cites_a_bin_its_rule_owns` keeps every
 //! such row in one enumerated, counted exception list.
 //!
 //! # Bin 3: why only four of the eight pairs take a row
@@ -159,8 +159,8 @@
 //!   units), not a spelling.
 //!
 //! Closing bin 3 also means closing its **cells**, not only its pairs: three
-//! bin-2-labelled pairs carry enum-spelling cells (vendored `README.md` §"A
-//! pair's bin is a label, not a per-cell classification"). `capcontrol.type`
+//! bin-2-labelled pairs carry enum-spelling cells (a bin is a label of the
+//! pair's first row, not of every cell). `capcontrol.type`
 //! (`'pf'`/`'volt'`) and `fault.bus2` (`'b2.0'` vs `'b2.0.0.0'`) are
 //! `PropertyValue[]` echoes and take echo rows beside their untouched
 //! `CaseFold` rows (the mixed-pair pattern the chain order exists for), while
@@ -186,8 +186,8 @@
 //! Two more populations stay unclaimed **inside** rows this table does hold,
 //! by design: the echo cells of the four mixed bin-1 pairs
 //! (`recloser.eventlog`, `regcontrol.idle`, `relay.distreverse`,
-//! `relay.reset`) and the off-bin cells of the heterogeneous pairs the vendored
-//! `README.md` §"A pair's bin is a label" enumerates. Claiming is **per cell**,
+//! `relay.reset`) and the off-bin cells of the heterogeneous pairs
+//! `props_r4133_evidence_lock.rs` counts. Claiming is **per cell**,
 //! first match in the chain, so a row here and an echo row can coexist on one
 //! pair: the rule fires on the foldable cells and the echo row masks the rest.
 //!
@@ -268,7 +268,7 @@ pub enum NormRule {
     /// A side that yields no token is refused (`''`, `'[]'`, `'()'`): an empty
     /// render carries no value to preserve and is bin 5's echo territory. The
     /// dss_capi array render itself returns `''` for an unset array, which is
-    /// exactly the `''`-vs-`[]` shape the vendored README records for
+    /// exactly the `''`-vs-`[]` shape the census records for
     /// `generator.dynout`/`autotrans.bhcurrent`/`windgen.dynout`.
     ArrayForm,
     /// **Enum spelling** (bin 3): an explicit, closed per-row map of
@@ -309,9 +309,9 @@ pub enum Evidence {
     /// [`NormRow::bin`] and [`NormRow::cells`] are that row's `bin` and `cells`
     /// columns.
     BinsTsv,
-    /// The vendored `tests/corpus/props_r4133/README.md` record of the pairs
-    /// the Generator `Rneut`/`Xneut` and Sensor `Action` shape closures make
-    /// live.
+    /// The `tests/corpus/props_r4133/examples_supplement.txt` record of the
+    /// pairs the Generator `Rneut`/`Xneut` and Sensor `Action` shape closures
+    /// make live.
     Rp11,
     /// The same record, the AutoTrans `XfmrCode` shape closure.
     Rp12,
@@ -411,10 +411,8 @@ const SEQUENCE_TYPE_SYNONYMS: &[(&str, &str)] = &[("Positive", "Pos"), ("Negativ
 /// every_row_cites_a_bin_its_rule_owns`] names and counts).
 ///
 /// The pair is bin **2** because its first census row is case-only, but 3 of its
-/// 257 cells (all 3 in scope) are a genuine enum-spelling difference — the
-/// vendored `README.md` §"A pair's bin is a label, not a per-cell
-/// classification" lists it among the "case-or-empty pairs carrying
-/// enum-spelling cells", and the README spells out that admissibility is per
+/// 257 cells (all 3 in scope) are a genuine enum-spelling difference: a bin
+/// is the label of the pair's first census row, and admissibility is per
 /// cell.
 ///
 /// A [`CaseFold`](NormRule::CaseFold) row would claim `'Rated'`/`'rated'` (241
@@ -718,7 +716,8 @@ const NORM_ENUM_SYNONYM_ROWS: usize = 5;
 /// above it is **empty**, and every cut inside it partitions the population the
 /// same way. That emptiness, not a chosen number, is what makes the floor a
 /// classification rather than a fudge, and it is the same argument `bins.tsv`'s
-/// own bin cut rests on (vendored `README.md` §"Numeric pairs (bins 6-7)").
+/// own bin cut rests on (`bin = 7` iff `max_rel >= 1e-4`, re-derived by
+/// `props_r4133_evidence_lock.rs`).
 ///
 /// The census's own metric reports the ABSOLUTE difference for a zero expected
 /// value (`harness::value_verdict`'s `max_rel`). Under this floor's symmetric
@@ -1495,8 +1494,8 @@ pub struct EchoRow {
     /// Which mechanism puts the cell here.
     pub category: EchoCategory,
     /// The pair's census cell count, full census — the same citation column
-    /// [`NormRow::cells`] carries, read back against `bins.tsv` / the vendored
-    /// `README.md` by `props_r4133_replay::every_echo_row_matches_its_cited_evidence`.
+    /// [`NormRow::cells`] carries, read back against `bins.tsv` and
+    /// `examples_supplement.txt` by `props_r4133_replay::every_echo_row_matches_its_cited_evidence`.
     /// It counts the pair's DIVERGENT cells, not the cells this row masks: on a
     /// mixed pair a `PROPS_NORM_R4133` row claims some of them first (the chain
     /// order), and the per-cell split is the census's, measured live. That
@@ -2776,7 +2775,7 @@ pub const ECHO_NARROWED_PURE_PAIRS: &[(&str, &str)] = &[("generator", "model")];
 /// nothing, so a row the gate never visits is silent forever. These eight are
 /// never visited: every corpus deck that declares a `GenDispatcher` or a
 /// `Sensor` gates `capi_v0145` only, so their pairs carry `cells_in_scope = 0`
-/// in the frozen census: `bins.tsv` for six of them, the README's shape-closure
+/// in the frozen census: `bins.tsv` for six of them, the supplement's shape-closure
 /// records for the two `enabled` rows (`gendispatcher.enabled`'s own `(0)`,
 /// `sensor.enabled` through `shape_in_scope.txt`'s `rows_in_scope=0` for its
 /// class). The live anti-rot guard cannot fire on them; the offline replay
@@ -3026,8 +3025,8 @@ mod tests {
     fn every_row_cites_a_bin_its_rule_owns() {
         // The documented exceptions, kept as a list so they stay countable: a
         // pair whose `bins.tsv` LABEL is one bin while the cells this row
-        // claims are another's (vendored README §"A pair's bin is a label, not
-        // a per-cell classification"). One is the live enum getter behind a
+        // claims are another's (a bin is the label of the pair's first census
+        // row, not of every cell). One is the live enum getter behind a
         // bin-2 label (`VOLTAGE_CURVEX_REF_SYNONYMS`), and nine sit on bin-5
         // pairs, so that the echo table cannot mask a cell a typed rule still
         // compares (module doc §"Nine bin-5 pairs that carry comparable
@@ -3105,8 +3104,8 @@ mod tests {
     /// here means rewriting the exclusion argument in the module doc first.
     #[test]
     fn the_pairs_routed_elsewhere_have_no_row() {
-        // Bin 1, pure echo: no foldable cell exists (vendored README
-        // §"Bin 1 carries nine echo pairs, not three"), an echo row wholesale.
+        // Bin 1, pure echo: no foldable cell exists (the echo-carrying pairs
+        // of bin 1), an echo row wholesale.
         for (class, prop) in [
             ("capcontrol", "reset"),
             ("recloser", "debugtrace"),
@@ -3227,8 +3226,7 @@ mod tests {
     /// That matters because `fold_bool` is where "spelling, never value" is
     /// decided for every `BoolFold` row. `on`/`off` is the sharp case: it
     /// is not one of the eleven Delphi boolean spellings r4133's getters print
-    /// (vendored `README.md` §"Bin 1 carries nine echo pairs, not three", and
-    /// `props_r4133_replay::BOOL_SPELLINGS`), so admitting it would let the table
+    /// (`props_r4133_replay::BOOL_SPELLINGS`), so admitting it would let the table
     /// fold a rendering neither engine produces for a boolean — and, in a mixed
     /// bin-1 pair, could swallow a `PropertyValue[]` echo that an echo row must
     /// exclude with a citation instead.
@@ -3337,8 +3335,8 @@ mod tests {
         assert!(claimed("transformer", "conn", "delta", "Delta "));
         assert!(claimed("autotrans", "conn", "wye", "wye "));
         // DISCRIMINATION: a genuinely different spelling is NOT a case fold —
-        // these are bin-3 cells inside a bin-2 pair (vendored README §"A pair's
-        // bin is a label"). `capcontrol.type` and `fault.bus2` are
+        // these are bin-3 cells inside a bin-2 pair (a bin labels the pair, not
+        // every cell). `capcontrol.type` and `fault.bus2` are
         // `PropertyValue[]` echoes that take echo rows
         // (`props_r4133_replay::RP22_ROUTING`), so they must still reach the
         // assert raw HERE; `invcontrol.voltage_curvex_ref` is a live enum

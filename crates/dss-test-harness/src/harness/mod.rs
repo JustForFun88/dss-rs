@@ -8904,9 +8904,8 @@ fn skip_whole_element(class: &str, channel: PropsChannel) -> bool {
 /// contamination is a property of the CAPTURE procedure — the oracle's
 /// `Transformers.Wdg=i` discrete sweep leaves the cursor at NumWindings while
 /// Rust keeps the deck's trailing `wdg=k` — and the r4133 bridge captures the
-/// same way (`tests/corpus/props_r4133/README.md` §"Corrections measured after
-/// freezing", correction 2: the knob drops the same 13 cursor props on both
-/// channels). Nothing about it is 0.14.5-specific.
+/// same way (the knob drops the same 13 cursor props on both channels).
+/// Nothing about it is 0.14.5-specific.
 fn transformer_cursors_disagree(
     class: &str,
     actual: &[(String, String)],

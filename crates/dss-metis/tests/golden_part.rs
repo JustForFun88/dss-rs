@@ -4,7 +4,7 @@
 //! For every committed fixture and every `k in {2,3,4,8}`, the test reads the
 //! `.graph`, calls [`dss_metis::part_graph_kway`], and asserts the returned
 //! partition vector is **bit-identical** to the golden `<fixture>.graph.part.k`
-//! generated offline by the C original (see `tools/golden/gen_metis_reference.md`).
+//! generated offline by the C original (the crate doc names the build).
 //! No tolerance, no relabeling: this crate must reproduce METIS 5.2.1's exact
 //! labels, which pins the coarsening/RNG/refinement pipeline end to end.
 
@@ -20,7 +20,7 @@ fn golden_dir() -> PathBuf {
 // weights equal, `CoarsenGraph`'s `eqewgts` is true at level 0, so the port takes
 // the **Match_RM** (random) matching branch there instead of SHEM. All the other
 // fixtures are fmt=1 with varying weights (SHEM only), so this one pins the RM
-// path in the committed gate. Provenance: `tools/golden/gen_metis_reference.md`.
+// path in the committed gate.
 const FIXTURES: &[&str] = &[
     "radial12",
     "radial40",
@@ -58,8 +58,7 @@ fn run_port(g: &Graph, k: Idx) -> Vec<Idx> {
     part
 }
 
-/// The edgecuts recorded from the C original (`driver.exe <graph> <k>` prints
-/// `edgecut=N` to stderr — see `tools/golden/gen_metis_reference.md`). This
+/// The edgecuts the C original reported for each golden run. This
 /// independently pins the *objective* the port returns, on top of the label
 /// comparison. Order: (fixture, [k2, k3, k4, k8]).
 const C_EDGECUTS: &[(&str, [Idx; 4])] = &[

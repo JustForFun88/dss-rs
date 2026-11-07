@@ -18,11 +18,9 @@ Engineers act on the numbers this engine prints, so a number is right by physics
 - **P5. Reading sources.** Books: `E:\1_WORK\Изучить\` (catalog `_каталог.md`), standards: `D:\OneDrive\0_NORMS\`. Formulas are read off the page image (`pdf_render_pages`). A scan (no text layer in `pdf_info`) is read one page per call: multi-page OCR hangs pdf-mcp until `/mcp`.
 
 ## Clean room
-- **R1. Look from outside.** dss-rs is developed independently, from authoritative published sources (P3) and black-box observation of other programs, never from their code.
-- **R2. Never look inside.** No one reads, translates, disassembles or copies another program's source or binaries beyond the file names a vendoring tool needs. A dependency's source may be read to use it, unless it is GPL, LGPL or AGPL.
-- **R3. Our own words.** Help text, messages and docs are ours. The names the documentation defines (classes, properties, commands, report headers) are the language and stay.
-- **R4. Engine output** is committed only as goldens (T1) and ledger values. A probe's output stays in the scratchpad.
-- **R5. Third-party files.** Each file the repository holds from elsewhere (binaries, fixtures) matches a row of `third_party.toml` (path, author, source, licence), a test fails on an unlisted file or a row that matches nothing, and `NOTICE` carries their licence notices.
+- **R1.** Learn from authoritative published sources (P3), public specifications and observed behaviour. Do not copy another product's code, assets, strings or artwork. Check a dependency's licence before adding it.
+- **R2.** Never read, disassemble or copy anything inside the sources and binaries of the programs this engine is compared with (T1): file names and listings only. Never commit files produced by them. Never copy their wording beyond feature names.
+- **R3.** File formats come from public specifications. Never copy GPL/LGPL/AGPL code.
 
 ## House rules
 - **H1. Verify, don't guess.** Open a definition before using it. Confirm the cause in the code, even when someone names a location.
@@ -55,9 +53,7 @@ Engineers act on the numbers this engine prints, so a number is right by physics
 
 A crate depends only on lower layers. Inside `dss-core` a script flows from the command executive (`exec`) into objects and their properties (`obj`), which make up the circuit (`circuit`, `elements`). `solution` builds the nodal matrix and iterates, `report` writes what was solved. A new element is one more module under `elements` and changes none of this.
 
-Where things are: `tests/golden/` (byte goldens), `tests/corpus/` (our deck families, manifests, `ledger.json`, and the OpenDSS test suite that `tools/corpus/vendor.py` fetches), `tools/golden/` (golden generators and probes), `tools/oracle/` (the server the corpus gate calls for the `capi_v0145` channel), `tools/opendss/` (the r4133 binary and the OpenDSS documentation, `epri_worker.py`), `tools/gate/` (the gate queue), `tools/lanes/` (`lane_diff.ps1`), `investigations/to_opendss/` (the OpenDSS reports, gitignored). A tool's procedures are in its README. A test's knobs (environment variables) are in the module doc of the test that reads them.
-
-`.inputs/` (gitignored) holds third-party sources (OpenDSS, dss_capi, DSS-Python, and METIS with GKlib for `dss-metis`) and the OpenDSS test suite. The sources are not read (R2). A source missing there is never reconstructed: report it and go on with the work that does not need it.
+Where things are: `tests/golden/` (byte goldens), `tests/corpus/` (our deck families, manifests, `ledger.json`, and the OpenDSS test suite that `tools/corpus/vendor.py` fetches), `tools/golden/` (golden generators and probes), `tools/oracle/` (the server the corpus gate calls for the `capi_v0145` channel), `tools/opendss/` (the r4133 binary and the OpenDSS documentation, `epri_worker.py`), `tools/gate/` (the gate queue), `tools/lanes/` (`lane_diff.ps1`), `investigations/to_opendss/` (the OpenDSS reports, gitignored). A tool documents itself in its own file (W6). A test's knobs (environment variables) are in the module doc of the test that reads them.
 
 ## Code
 - **C1.** `#![forbid(unsafe_code)]` in every product crate. `dss-epri` is the one exception (`publish = false`, `#[cfg(windows)]`, `#![deny(unsafe_op_in_unsafe_fn)]`, `// SAFETY` docs) and never ships.
@@ -73,10 +69,10 @@ An engineer's study must not die on a bad script.
 
 ## The DSS language and OpenDSS
 The engine reads the DSS language, and two OpenDSS engines check the numbers of this part. They share code and bugs, so their agreement proves the code path, not the physics.
-- **D1. Where physics is indifferent** (the DSS language, property and command semantics, report layout) the OpenDSS documentation (`tools/opendss/bin/r4133/OpenDSS_Documentation.chm`, readable after `hh.exe -decompile <dir> <chm>`) is the specification. Input it rules out is refused, even where OpenDSS accepts it silently. The language grows only by the user's ruling: an agent adds no syntax, no guessing at intent and no warning in place of a refusal. What the documentation leaves open follows r4133, unless that is a bug.
+- **D1. The OpenDSS documentation specifies the DSS language** (`tools/opendss/bin/r4133/OpenDSS_Documentation.chm`, readable after `hh.exe -decompile <dir> <chm>`): what a script may say and what it means. Input it rules out is refused, even where OpenDSS accepts it silently. The language grows only by the user's ruling: an agent adds no syntax, no guessing at intent and no warning in place of a refusal. A meaning the documentation leaves open follows r4133 where physics (P1) and the input checks (N2) are indifferent. How a refusal is reported, the reports and the exports are ours.
 - **D2. OpenDSS bugs are never reproduced, in any lane.** The divergence is excluded field by field, on the channel of each engine that has the bug (a ledger entry in the corpus gate), and pinned by a test of our value. Each fixed bug gets an OpenDSS report.
 - **D3. No new precision quirk.** The existing ones (truncated constants, FPC rounding and formatting) live in the parity lane, each marked `TODO(compat):` with its clean fix. One leaves when the goldens stay byte-exact without it or become this engine's own.
-- **T1. Channels.** `capi_v0145` is the dss-python pinned in `tools/golden/PIN.txt`, which also produced `tests/golden/` (regenerated only by hand through `tools/golden/*.py`). `r4133` is the EPRI binary at `tools/opendss/bin/r4133/`, driven through `epri-worker` (`tools/opendss/README.md`).
+- **T1. Channels.** `capi_v0145` is the dss-python pinned in `tools/golden/PIN.txt`, which also produced `tests/golden/` (regenerated only by hand through `tools/golden/*.py`). They are the one exception to R2, until they become this engine's own (`ROADMAP.md`). `r4133` is the EPRI binary at `tools/opendss/bin/r4133/`, driven through `epri-worker` (`crates/dss-epri`).
 - **T2. Corpus gate.** `corpus_gate_all_cases_match_engines` (`crates/dss-core/tests/corpus_gate.rs`) runs every manifest case against its channels. Every measured divergence is an entry in `tests/corpus/ledger.json`, and an entry nothing hits fails the gate. A manifest leaves a channel out of `engines` only when that engine cannot run the case, never because of a bug (D2).
 - **T3. A gap with OpenDSS is our bug until proven otherwise.** Tighten the loop tolerance (a gap that collapses means a shared fixpoint), isolate the suspect in a controlled experiment, dump both trajectories and find the first divergence. A gap that vanishes under a tighter tolerance but leaves different iteration counts is a state leak across steps.
 - **T4. A cancellation floor is proven by decomposition, never by a tolerance sweep.** Read the live f64 state on both engines and show that each summand matches to the last ulps while only their difference is loose. Such a floor is neither a precision quirk to mark nor "fixed".
@@ -106,6 +102,7 @@ Every agent reads these texts, so a stale or long sentence costs every session.
 - **W3. No measurement in prose in a committed file**, except the first failure an `exclusion` records in the ledger. Local paths go in your report.
 - **W4. A citation of code names it, never a line number.** In a doc comment the name is an intra-doc link, which rustdoc checks. Elsewhere it is the shortest Rust path that stays unambiguous (`harness::tol_for`, `Solution::converged`). A whole file is cited by its repository path.
 - **W5. Committed text cites no other project's source (no file, routine, line or path), and no comment or doc retells what an OpenDSS engine does.** The OpenDSS documentation (D1), `TODO(compat):` marks (D3) and the `.inputs/` paths a tool reads stay.
+- **W6. No README.** A tool or a test documents itself in the module doc or docstring of its own file: what it is, how it runs, its knobs. The repository has one `README.md`, at the root, and third-party files are listed in `ATTRIBUTION.md`.
 
 ## Commits
 History is read without our plans, so a commit must make sense on its own.
@@ -115,7 +112,7 @@ History is read without our plans, so a commit must make sense on its own.
 
 ## Launching agents and workflows
 Agents share one machine. Past its capacity every run slows down and the OpenDSS runs time out.
-- **L1. Check the machine before every launch, also when the user has just asked for the work**: workflows and work branches in flight, the gate queue (`tools/gate/README.md`, waiting tickets mean full), CPU, memory, `cargo`/`rustc` processes. Ceiling: about three workflows and three to four worktrees building at once.
+- **L1. Check the machine before every launch, also when the user has just asked for the work**: workflows and work branches in flight, the gate queue (`tools/gate/gatelock.py`, waiting tickets mean full), CPU, memory, `cargo`/`rustc` processes. Ceiling: about three workflows and three to four worktrees building at once.
 - **L2.** Free: launch. Short: wait or queue, and report the decision in one line. Ask the user only when the launch widens the scope. A freed slot is not a reason to launch.
 - **L3.** After stopping a workflow, check that its scripts no longer queue builds.
 

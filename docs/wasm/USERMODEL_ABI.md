@@ -821,7 +821,10 @@ pwsh tools/wasm_usermodel/build_wasm.ps1     # rebuilds the .wasm, prints its SH
 A unit test (`crates/dss-usermodel/tests/fixture_pin.rs`) asserts the committed
 file's hash matches the PIN, so drift is red in every `cargo test`; the numeric
 gate compares the guest against the native twin / r4133 oracle at the calibrated
-harness floors (`tools/wasm_usermodel/README.md` has the full chain).
+harness floors: the native twin's recorded values (`tools/wasm_usermodel/twin_probe.py`)
+pin the Rust port bit-exact, the committed `.wasm` replays the same values through
+the `dss-usermodel` API, and the end-to-end decks replay r4133 goldens written with
+the native twin loaded (`crates/dss-epri/tests/gen_wasm_usermodels*.rs`).
 
 **Limits & trap policy (§6 recap).** The sandbox is deterministic: relaxed SIMD
 off, no WASI, no clock/random/filesystem — `dss_env` is the entire import

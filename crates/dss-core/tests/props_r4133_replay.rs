@@ -3030,7 +3030,8 @@ fn data_rows(name: &str, header: Option<&str>) -> Vec<String> {
 }
 
 /// Parse one `class.prop | 'left' | 'right' | tail` row with the quote anchors
-/// the vendored README prescribes — values may contain `|`, never `'`.
+/// (the module doc of `props_r4133_evidence_lock.rs`): values may contain `|`,
+/// never `'`.
 fn parse_row(name: &str, line: &str) -> (String, String, String, String) {
     fn bad(name: &str, line: &str) -> ! {
         panic!("{name}: unparsable row {line:?}")
@@ -3459,9 +3460,9 @@ fn shape_rows() -> Vec<ShapeRow> {
 
 /// The `(pair, rust, r4133)` triple `numeric_pairs.txt` prints for a pair — how
 /// the one name that is BOTH a structural and a numeric pair (`isource.bus1`)
-/// is split between its two `bins.tsv` rows. The README prescribes joining
-/// `examples_full.txt` on the triple; this is that join, read from the file
-/// instead of hard-coded.
+/// is split between its two `bins.tsv` rows. The split is the join of
+/// `examples_full.txt` on the triple, read from the file instead of
+/// hard-coded.
 fn numeric_examples() -> BTreeMap<String, (String, String)> {
     data_rows(
         "numeric_pairs.txt",

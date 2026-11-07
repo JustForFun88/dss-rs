@@ -79,7 +79,7 @@
 //!     cannot represent (a nonzero value also prints a loud banner).
 //! * `tmp/props_census/<channel>/structural_pairs.txt`, `numeric_pairs.txt`,
 //!   `examples_full.txt`, `shape.txt`, `summary.json` — the vendored extract
-//!   formats (`tests/corpus/props_r4133/README.md`), per channel.
+//!   formats (the module doc of `props_r4133_evidence_lock.rs`), per channel.
 //! * `tmp/props_census/run.json` — mode, `gate_only`, cases walked, rows: the
 //!   same provenance stamp next to the extracts a reader actually diffs.
 //! * **claims mode only**, per channel: `claims.txt` — `examples_full.txt`'s
@@ -100,8 +100,7 @@
 //! Two vendored extracts are deliberately NOT re-derived here, because the plain
 //! census does not carry what they need: `bins.tsv` needs the bin policy (the
 //! disposition mode owns it) and the three `*_in_scope` files need the
-//! in-scope case filter. The README's blanket "these same extracts" sentence is
-//! wider than that.
+//! in-scope case filter.
 //!
 //! Deliberate format deviations from the vendored copies, all cosmetic and all
 //! outside the acceptance (which compares cell populations, not bytes): the
@@ -602,9 +601,9 @@ fn trunc(s: &str, n: usize) -> String {
 
 /// Single-quote a value the way the vendored extracts do (Python `repr`).
 ///
-/// The documented quote-anchored parse regex
-/// (`^(\S+) \| '([^']*)' \| '([^']*)' \| (.*)$`,
-/// `tests/corpus/props_r4133/README.md`) is safe only on values without `'`,
+/// The quote-anchored parse regex of the extracts
+/// (`^(\S+) \| '([^']*)' \| '([^']*)' \| (.*)$`, the module doc of
+/// `props_r4133_evidence_lock.rs`) is safe only on values without `'`,
 /// CR, LF or TAB, so those characters are escaped rather than emitted raw. On
 /// every other value this is byte-identical to `repr`.
 ///
@@ -1451,13 +1450,13 @@ mod tests {
         );
     }
 
-    /// Every escape `quote` emits survives the README's quote-anchored parse
+    /// Every escape `quote` emits survives the extracts' quote-anchored parse
     /// regex — the apostrophe included, which is the one the census has never
     /// produced and which a Python-`repr`-faithful `\'` would silently break
     /// (`[^']*` stops at the literal quote no matter what precedes it).
     #[test]
     fn quoted_values_survive_the_documented_parse_regex() {
-        // The README's rule, hand-implemented: field = `'` … up to the next `'`.
+        // The extracts' rule, hand-implemented: field = `'` … up to the next `'`.
         let field = |row: &str| -> String {
             let rest = row.split_once(" | ").expect("a pair row has fields").1;
             let body = rest.strip_prefix('\'').expect("field opens with a quote");

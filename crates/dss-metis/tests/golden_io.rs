@@ -2,8 +2,8 @@
 //!
 //! These exercise the reader against the committed golden fixtures:
 //! the METIS `.graph` reader ([`dss_metis::graph::Graph`]) and the `.part.N`
-//! partition goldens generated offline from the C original (see
-//! `tools/golden/gen_metis_reference.md`).
+//! partition goldens generated offline from the C original (the crate doc
+//! names the build).
 //!
 //! What is asserted here:
 //! - every fixture parses and forms a **structurally valid symmetric CSR**
