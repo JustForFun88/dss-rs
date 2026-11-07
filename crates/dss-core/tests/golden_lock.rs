@@ -1126,7 +1126,7 @@ fn is_rooted(spec: &str) -> bool {
 /// the root's literal prefix matches into it); a content attribute other than
 /// `binary` / `-text` on a locked path; a macro or a quoted pathspec carrying
 /// one. Roots are compared in any ASCII case. A pathspec that cannot reach a
-/// locked root (the vendored corpus) is dropped. Parameterized so
+/// locked root is dropped. Parameterized so
 /// `gitattributes_reader_refuses_what_it_cannot_see` can drive every refusal.
 fn gitattributes_binary_patterns(text: &str, nested: &[String]) -> (Vec<String>, Vec<String>) {
     let mut patterns = Vec::new();

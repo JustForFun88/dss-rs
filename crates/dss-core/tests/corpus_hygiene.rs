@@ -1,21 +1,51 @@
-//! Corpus hygiene: the files a memory-mapped LoadShape reads keep their
-//! committed bytes on checkout.
+//! Corpus hygiene: the fetched OpenDSS test suite is the pinned commit, and the
+//! files a memory-mapped LoadShape reads keep LF records.
 //!
 //! The MMF reader indexes a mapped file by its fixed record and line width, so
-//! a CRLF rewrite of a text fixture changes what the engine and the live oracle
-//! read. `core.autocrlf` is on in this repository, so every such fixture must be
-//! declared `-text` (or `binary`) by a `.gitattributes` on its path: the
-//! repo-root one for the vendored `electricdss-tst` tree, a directory-local one
-//! for the synthetic decks under `tests/corpus/modes`. The declaration covers a
-//! fresh checkout only: git leaves a copy it converted before the declaration
-//! landed as it is, so the text fixtures, all committed with LF records, must
-//! also hold no CR byte.
+//! a CRLF rewrite of a text fixture changes what the engine and the OpenDSS
+//! engines read. `core.autocrlf` is on in this repository, so a committed
+//! fixture must be declared `-text` (or `binary`) by a `.gitattributes` on its
+//! path. The fetched suite under `tests/corpus/electricdss-tst` is written by
+//! `tools/corpus/vendor.py`, not by git, with LF records. The declaration
+//! covers a fresh checkout only: git leaves a copy it converted before the
+//! declaration landed as it is, so every text fixture must also hold no CR byte.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 fn repo_root() -> PathBuf {
     [env!("CARGO_MANIFEST_DIR"), "..", ".."].iter().collect()
+}
+
+/// The fetched OpenDSS test suite, repo-relative.
+const FETCHED: &str = "tests/corpus/electricdss-tst";
+
+/// The suite is fetched by `tools/corpus/vendor.py`, which writes the commit it
+/// unpacked into a marker, so a tree left from another pin or never fetched
+/// fails here instead of running the gate on other decks.
+#[test]
+fn the_fetched_corpus_is_the_pinned_commit() {
+    let root = repo_root();
+    let pin_path = root.join("tests/corpus/PIN.json");
+    let pin: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&pin_path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", pin_path.display())),
+    )
+    .unwrap_or_else(|e| panic!("parse {}: {e}", pin_path.display()));
+    let commit = pin["commit"].as_str().expect("the pin names a commit");
+    let marker = root.join(FETCHED).join(".dss-rs-pin");
+    let held = std::fs::read_to_string(&marker).unwrap_or_else(|e| {
+        panic!(
+            "{}: {e}. Fetch the corpus: python tools/corpus/vendor.py",
+            marker.display()
+        )
+    });
+    assert_eq!(
+        held.trim(),
+        commit,
+        "{FETCHED} holds another commit than tests/corpus/PIN.json pins: \
+         python tools/corpus/vendor.py"
+    );
 }
 
 /// The file arguments of every memory-mapped LoadShape command in one deck's
@@ -118,8 +148,8 @@ fn mapped_fixtures(root: &Path) -> BTreeMap<String, Fixture> {
                 let file = join(&deck_dir, &name);
                 assert!(
                     root.join(&file).is_file(),
-                    "{deck}: the mapped LoadShape file {name:?} resolves to {file}, which is not \
-                     a repository file"
+                    "{deck}: the mapped LoadShape file {name:?} resolves to {file}, which does \
+                     not exist"
                 );
                 let lower = name.to_ascii_lowercase();
                 let binary = key == "sngfile"
@@ -287,16 +317,15 @@ New Load.k bus1=b1 MemoryMapping=Yes file=k.csv
 
     // A scan that broke or stopped seeing a fixture fails here instead of
     // greening: the expected value is the corpus's set of mapped fixtures.
-    const CKT24: &str =
-        "tests/corpus/electricdss-tst/Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24";
+    let ckt24 = format!("{FETCHED}/Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24");
     const MMF: &str = "tests/corpus/modes/inputformat/shape_mmf";
     const MMF_IO: &str = "tests/corpus/modes/inputformat/shape_mmf_io";
     const SINGLECOL: &str = "tests/corpus/modes/upgrade/mmf_singlecol";
     let expected: BTreeSet<String> = [
-        format!("{CKT24}/LS_Phase_AOK.csv"),
-        format!("{CKT24}/LS_Phase_AOK.txt"),
-        format!("{CKT24}/myDBL.dbl"),
-        format!("{CKT24}/mySGL.sng"),
+        format!("{ckt24}/LS_Phase_AOK.csv"),
+        format!("{ckt24}/LS_Phase_AOK.txt"),
+        format!("{ckt24}/myDBL.dbl"),
+        format!("{ckt24}/mySGL.sng"),
         format!("{MMF}/mm8.dbl"),
         format!("{MMF}/mm8.sng"),
         format!("{MMF}/mmpq8.csv"),
@@ -314,8 +343,11 @@ New Load.k bus1=b1 MemoryMapping=Yes file=k.csv
          fixture's .gitattributes and update this expected value"
     );
 
+    // Git checks out only the committed fixtures: the fetched suite's are
+    // written by tools/corpus/vendor.py.
     let normalized: Vec<String> = found
         .iter()
+        .filter(|(file, _)| !file.starts_with(&format!("{FETCHED}/")))
         .filter(|(file, _)| !is_checked_out_verbatim(&root, file))
         .map(|(file, fixture)| format!("{file} (read by {:?})", fixture.decks))
         .collect();

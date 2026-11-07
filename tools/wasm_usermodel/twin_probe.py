@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""twin_probe.py -- drive the NATIVE TWIN (FPC-built vendored IndMach012a.dll,
-tools/wasm_usermodel/build_native.ps1) through a fixed, fully deterministic
+"""twin_probe.py -- drive the NATIVE TWIN (FPC-built IndMach012a.dll,
+tools/wasm_usermodel/twin/) through a fixed, fully deterministic
 scenario and record every observable value bit-exactly.
 
 The recorded values are the numeric spec the wasm fixture is pinned

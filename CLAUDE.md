@@ -5,17 +5,26 @@ dss-rs is a pure-Rust power-system engine. It reads DSS scripts, solves the netw
 ## Start every session here
 Read `ROADMAP.md`: where the product is going and its known defects. `plan/` is the gitignored notebook of the session the user works with (plans, briefs, the work status `plan/STATUS.md`): read `plan/STATUS.md` when it exists, never ask for it and never stop when it is absent.
 
-Your coordinator is whoever gave you the task: the user, when you work with the user, or the session that launched you. You report to your coordinator and ask it your questions (P6, H5).
+An agent launched by a session reports to that session and asks it, not the user, its questions (P6, H5).
+
 - **S1. Only the session the user works with edits `ROADMAP.md` and `plan/STATUS.md`.** `ROADMAP.md` changes in batches, when a milestone lands or the direction changes: a landed milestone becomes one line under Done. `plan/STATUS.md` is rewritten, never appended: what landed leaves it. An agent edits neither and names in its report the milestone or defect it touched.
 
 ## Physics decides
 Engineers act on the numbers this engine prints, so a number is right by physics or it is a bug, whatever the OpenDSS engines print.
-- **P1. No engine, and no engine's source, is an authority.** A behaviour question is decided by a derivation plus a measured balance: conservation of complex power, the circuit laws, what the quantity means to an engineer.
+- **P1. No engine is an authority.** A behaviour question is decided by a derivation plus a measured balance: conservation of complex power, the circuit laws, what the quantity means to an engineer.
 - **P2. Where physics is indifferent** (the DSS language, property and command semantics, report layout) the OpenDSS documentation (its `.chm` is in `.inputs/`, see Architecture) is the specification. Input it rules out is refused, even where OpenDSS accepts it silently. The language grows only by the user's ruling: an agent adds no syntax, no guessing at intent and no warning in place of a refusal. What the documentation leaves open follows r4133, unless that is a bug.
 - **P3. OpenDSS bugs are never reproduced, in any lane.** The divergence is excluded field by field, on the channel of each engine that has the bug (a ledger entry in the corpus gate), and pinned by a test of our value. Each fixed bug gets an OpenDSS report.
 - **P4. No new precision quirk.** The existing ones (truncated constants, FPC rounding and formatting) live in the parity lane, each marked `TODO(compat):` with its clean fix. One leaves when the goldens stay byte-exact without it or become this engine's own.
-- **P5. Sources.** A derivation is checked against preferably two independent published sources (a book quoting another counts once). A decision with one source or none says so. Books by topic: `E:\1_WORK\Изучить\` (catalog `_каталог.md`). Standards: `D:\OneDrive\0_NORMS\` (IEC, IEEE, CIGRE). `pdf_info` shows whether a PDF has a text layer. A scan is OCR'd one page per `pdf_read_pages` call: a multi-page OCR call hangs pdf-mcp until it is restarted (`/mcp`).
+- **P5. Sources.** A derivation is checked against two independent published sources (a book quoting another counts once), and a decision with fewer says so. A doc may cite them, preferably by section and formula. Books: `E:\1_WORK\Изучить\` (catalog `_каталог.md`), standards: `D:\OneDrive\0_NORMS\`. Read formulas off the page image (`pdf_render_pages`). On a scan (no text layer in `pdf_info`) one page per call: multi-page OCR hangs pdf-mcp until `/mcp`.
 - **P6.** A doubtful case goes to the user with the physical argument.
+
+## Clean room
+dss-rs learns from physics, public specifications and what other programs observably do, never from their code.
+- **R1. Look from outside.** Knowledge comes from physics (P5), public specifications (the OpenDSS documentation for the language, P2, standards such as IEC CIM for file formats) and the measured output of the OpenDSS engines (T6).
+- **R2. Never look inside.** No one reads, translates, disassembles or copies the source or binaries of OpenDSS, dss_capi or METIS beyond the file names a vendoring tool needs, and no one reads GPL, LGPL or AGPL code.
+- **R3. Our own words.** Help text, messages and docs are ours. The names the documentation defines (classes, properties, commands, report headers) are the language and stay.
+- **R4. Engine output** is committed only as goldens (T1) and ledger values. A probe's output stays in the scratchpad.
+- **R5. Third-party files.** Each file the repository holds from elsewhere (binaries, fixtures) matches a row of `third_party.toml` (path, author, source, licence), a test fails on an unlisted file or a row that matches nothing, and `NOTICE` carries their licence notices.
 
 ## House rules
 - **H1. Verify, don't guess.** Open a definition before using it. Confirm the cause in the code, even when someone names a location.
@@ -48,9 +57,9 @@ Engineers act on the numbers this engine prints, so a number is right by physics
 
 A crate depends only on lower layers. Inside `dss-core` a script flows from the command executive (`exec`) into objects and their properties (`obj`), which make up the circuit (`circuit`, `elements`). `solution` builds the nodal matrix and iterates, `report` writes what was solved. A new element is one more module under `elements` and changes none of this.
 
-Where things are: `tests/golden/` (byte goldens), `tests/corpus/` (vendored decks, manifests, `ledger.json`), `tools/golden/` (golden generators and probes), `tools/oracle/` (the server the corpus gate calls for the `capi_v0145` channel), `tools/opendss/` (the r4133 binary, `epri_worker.py`), `tools/gate/` (the gate queue), `tools/lanes/` (`lane_diff.ps1`), `investigations/to_opendss/` (the OpenDSS reports, gitignored). A tool's procedures are in its README. A test's knobs (environment variables) are in the module doc of the test that reads them.
+Where things are: `tests/golden/` (byte goldens), `tests/corpus/` (our deck families, manifests, `ledger.json`, and the OpenDSS test suite that `tools/corpus/vendor.py` fetches), `tools/golden/` (golden generators and probes), `tools/oracle/` (the server the corpus gate calls for the `capi_v0145` channel), `tools/opendss/` (the r4133 binary, `epri_worker.py`), `tools/gate/` (the gate queue), `tools/lanes/` (`lane_diff.ps1`), `investigations/to_opendss/` (the OpenDSS reports, gitignored). A tool's procedures are in its README. A test's knobs (environment variables) are in the module doc of the test that reads them.
 
-`.inputs/` (gitignored) holds third-party sources (OpenDSS, dss_capi, DSS-Python, and METIS with GKlib for `dss-metis`), the OpenDSS test suite and the OpenDSS documentation (`electricdss-code-r4133-trunk/Version8/Distrib/Doc/OpenDSS Documentation.chm`, readable after `hh.exe -decompile <dir> <chm>`). Only hand-run tools read it: corpus and binary re-vendoring (`tools/corpus/vendor.py`, `tools/opendss/vendor_binaries.py`), FPC probes and native user-model builds (`tools/fpc/`, `tools/wasm_usermodel/`) and the OpenDSS reports. A source missing there is never reconstructed: report it and go on with the work that does not need it.
+`.inputs/` (gitignored) holds third-party sources (OpenDSS, dss_capi, DSS-Python, and METIS with GKlib for `dss-metis`), the OpenDSS test suite and the OpenDSS documentation (`electricdss-code-r4133-trunk/Version8/Distrib/Doc/OpenDSS Documentation.chm`, readable after `hh.exe -decompile <dir> <chm>`). Of it only the documentation is read, as the specification (R2). A source missing there is never reconstructed: report it and go on with the work that does not need it.
 
 ## Code
 - **C1.** `#![forbid(unsafe_code)]` in every product crate. `dss-epri` is the one exception (`publish = false`, `#[cfg(windows)]`, `#![deny(unsafe_op_in_unsafe_fn)]`, `// SAFETY` docs) and never ships.
@@ -91,17 +100,17 @@ Two OpenDSS engines check the numbers we print. They share code and bugs, so the
 
 ## Writing
 Every agent reads these texts, so a stale or long sentence costs every session.
-- **W1. Comments and docs are short and say what the code does now.** No history.
+- **W1. Comments and docs are short, self-contained and say what the code does now, not its history.** A doc opens with what its item is or does, and a long enumeration in it is a list. The general never names the particular: a trait names no implementors, a helper no callers, a lower layer no higher one.
 - **W2. A test's name says what it checks.** Its doc comment is optional: at most two sentences on what is pinned and why it is right (by physics, P1, or by the documentation, P2). No measured values, OpenDSS readings, dates or report numbers. Expected values live only in the assertions.
-- **W3. A measurement stated in words** (what an OpenDSS engine prints, a gap, a timing) **lives only in `ledger.json` or an OpenDSS report**, as a dated sentence naming the tool and the recipe. A commit message may state the measurement behind its change. A scratch file (`tmp/`, the scratchpad, a worktree probe) is never provenance. Local paths go in the report to the coordinator.
-- **W4. Cite code by name, never by line number.** In a doc comment the name is an intra-doc link, which rustdoc checks. Elsewhere it is the shortest Rust path that stays unambiguous (`harness::tol_for`, `Solution::converged`). A whole file is cited by its repository path.
-- **W5. No OpenDSS or Pascal source cited in committed text**: no `.pas` name, no Pascal routine or line, no path to OpenDSS code. Only the OpenDSS reports cite the source. A tool that reads `.inputs/` names the paths it reads.
+- **W3. No measurement in prose in a committed file**, except the first failure an `exclusion` records in the ledger. Local paths go in your report.
+- **W4. A citation of code names it, never a line number.** In a doc comment the name is an intra-doc link, which rustdoc checks. Elsewhere it is the shortest Rust path that stays unambiguous (`harness::tol_for`, `Solution::converged`). A whole file is cited by its repository path.
+- **W5. Committed text cites no other project's source (no file, routine, line or path), and no comment or doc retells what an OpenDSS engine does.** The OpenDSS documentation (P2), `TODO(compat):` marks (P4) and the `.inputs/` paths a tool reads stay.
 
 ## Commits
 History is read without our plans, so a commit must make sense on its own.
 - **M1. The subject names the change in the code** (`SeqCurrents: exclude and pin the negative-rating divergence`). The body is as long as the change needs: what changed and why, by area (behaviour, tests added or removed, divergences excluded, data regenerated). A small fix needs no body. The body tells what the commit does, not how the work went. No plan, step, wave, branch, ruling or work-package id in a subject or body, no path into `plan/`, `tmp/`, `investigations/` or `.inputs/`.
 - **M2.** A work branch lands as one squash commit.
-- **M3.** Stage files by name, never `git add -A`. Deck droppings under `tests/corpus/electricdss-tst` are never staged. Delete them by name once no test run is in flight (the gate queue is empty), whoever left them.
+- **M3.** Stage files by name, never `git add -A`. Deck droppings are never staged. Once no test run is in flight (the gate queue is empty), whoever left them, delete them by name in the tracked deck families and run `python tools/corpus/vendor.py` for the fetched OpenDSS test suite.
 
 ## Launching agents and workflows
 Agents share one machine. Past its capacity every run slows down and the OpenDSS runs time out.
@@ -110,7 +119,7 @@ Agents share one machine. Past its capacity every run slows down and the OpenDSS
 - **L3.** After stopping a workflow, check that its scripts no longer queue builds.
 
 ## Git worktrees
-Worktrees under `.claude/worktrees/` hold Windows directory junctions to the main checkout's `.inputs/` and `investigations/` and to the worktree's cargo target. `git worktree remove` and any recursive delete (`rm -rf`, `Remove-Item -Recurse`, `rmdir /s`) follow them and delete what they point at: this has wiped the main checkout's `.inputs` twice. **Never batch-remove.** For each worktree, in PowerShell only (under Git Bash `cmd /c rmdir` does nothing and exits 0):
+Worktrees under `.claude/worktrees/` hold Windows directory junctions to the main checkout's `.inputs/` and `investigations/` and to the worktree's cargo target. A new worktree runs `python tools/corpus/vendor.py` once (the tarball is cached). `git worktree remove` and any recursive delete (`rm -rf`, `Remove-Item -Recurse`, `rmdir /s`) follow them and delete what they point at: this has wiped the main checkout's `.inputs` twice. **Never batch-remove.** For each worktree, in PowerShell only (under Git Bash `cmd /c rmdir` does nothing and exits 0):
 1. In the main checkout, note `(gci .inputs -Force | measure).Count`.
 2. List the reparse points without following them: `Get-ChildItem -LiteralPath <wt> -Recurse -Force | ? { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }`
 3. Drop each link only: `$_.Delete()` on the `DirectoryInfo`, or `cmd /c rmdir "<path>"` without `/s`.

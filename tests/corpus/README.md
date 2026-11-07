@@ -1,39 +1,29 @@
-# Vendored `electricdss-tst` corpus
+# Test corpus
 
-Verbatim copy of the OpenDSS test corpus, used by the unified live corpus gate
-(`crates/dss-core/tests/corpus_gate.rs`).
+The decks the unified live corpus gate (`crates/dss-core/tests/corpus_gate.rs`)
+runs on this engine and the OpenDSS engines.
 
-**Do not edit these files by hand.** Re-vendor with `python tools/corpus/vendor.py
---force` and review the `SHA256SUMS` diff.
+## `electricdss-tst/` — the OpenDSS test suite, fetched
 
-**Note:** no test writes here: a case whose deck writes files runs from a scratch
-copy. A manual run of a vendored deck executes it *in place*, so OpenDSS writes outputs
+Not in git. `python tools/corpus/vendor.py` fetches the commit `PIN.json` names
+from github.com/dss-extensions/electricdss-tst into this gitignored directory,
+with LF line ends in text files, and checks every file against `SHA256SUMS`.
+`corpus_hygiene.rs` fails while the tree holds another commit than the pin.
+Relative paths are kept, so masters resolve their `redirect`/`compile` data
+dependencies with no path rewrites.
+
+No test writes here: a case whose deck writes files runs from a scratch copy. A
+manual run of a deck executes it *in place*, so OpenDSS writes outputs
 (EnergyMeter `DI_*.csv`, exports, `LineConstantsCode.dss`, …) into this tree.
-Probe a copy of a deck instead, or restore the pristine mirror with
-`git restore tests/corpus` and a path-limited `git clean` before committing or
-before running the always-on `corpus_manifest` gate.
-
-| field | value |
-|---|---|
-| source | `.inputs/electricdss-tst` |
-| source commit | `3b208397160213cae4a9e2d0a7d1aa3528ce26e1` |
-| vendored (UTC) | 2026-06-14 12:27:55 |
-| files copied | 1544 |
-| of which `.dss` | 915 |
-| total size | 122.0 MiB |
-| excluded | `.git/`, gitignore `['*.pickle.*']` (0 files) |
-
-Relative paths are preserved exactly, so masters resolve their `redirect`/
-`compile` data dependencies internally with no path rewrites. `SHA256SUMS` lists
-every copied file (paths relative to `tests/corpus/`); verify with
-`sha256sum -c SHA256SUMS` from this directory.
+Probe a copy of a deck instead, or run `python tools/corpus/vendor.py` afterwards:
+it lists and undoes what the run wrote.
 
 Every `.dss` file here is accounted for in exactly one manifest under
 `tests/corpus/manifests/` — enforced by `corpus_manifest.rs`.
 
-## Synthetic deck families (siblings of the vendored tree)
+## Synthetic deck families (in git)
 
-Besides the vendored `electricdss-tst/` mirror, three **hand-written /
+Besides the fetched `electricdss-tst/`, three **hand-written /
 generated** deck families live here, each with its own `manifest.json`, a
 structural `<family>_manifest_is_complete` gate, and live comparison inside the
 unified `corpus_gate_all_cases_match_engines` test

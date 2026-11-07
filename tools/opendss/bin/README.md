@@ -5,15 +5,14 @@ Official EPRI OpenDSS `OpenDSSDirect.dll` (+ `KLUSolve.dll`,
 absolute path through the in-house `dss-epri` Rust bridge (`epri-worker`) — the
 r4133 channel of the unified corpus gate. See `tools/opendss/README.md`.
 
-**Do not edit by hand.** Re-vendor with `python tools/opendss/vendor_binaries.py
---force` and review the `SHA256SUMS` diff. Verify from this directory with
-`sha256sum -c SHA256SUMS`.
+Verify from this directory with `sha256sum -c SHA256SUMS`. Updating them:
+`tools/opendss/README.md`.
 
 - **r4133** — OpenDSS SVN r4133 — latest official release, Version 11.0.0.1 (no dss_capi yet) (source: `.inputs/electricdss-code-r4133-trunk/Version8/Distrib/x64`)
 
 Not vendored: `DSSProgress.exe` (progress popups stay impossible) and
 `IndMach012a.dll` (external user-model sample; the corpus uses the built-in
-`indmach012`). Add to `FILES`/`REVISIONS` in `vendor_binaries.py` if needed.
+`indmach012`).
 
 | field | value |
 |---|---|

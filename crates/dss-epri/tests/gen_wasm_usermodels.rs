@@ -16,8 +16,7 @@
 //! **Manual only** (like every golden): `#[ignore]` and gated on
 //! `WASM_TWIN_DLL`. Regenerate with:
 //! ```text
-//! pwsh tools/wasm_usermodel/build_native.ps1   # builds the r4133 twin
-//! WASM_TWIN_DLL="$TEMP/indmach012a_native_twin/IndMach012a.dll" \
+//! WASM_TWIN_DLL="$PWD/tools/wasm_usermodel/twin/IndMach012a.dll" \
 //!   cargo test -p dss-epri --test gen_wasm_usermodels -- --nocapture --ignored
 //! ```
 

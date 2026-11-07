@@ -15,7 +15,7 @@
 //! run it — the committed artifact is gated through `dss-usermodel`).
 //!
 //! The native twin is
-//! the r4133 build (`build_native.ps1`). Its `TGeneratorVars` carries the
+//! the r4133 build (`tools/wasm_usermodel/twin/`). Its `TGeneratorVars` carries the
 //! r4088+/NCIM `deltaQNom` slot (244->252 B, native side only). Because the
 //! IndMach012a model math is byte-identical r3723->r4133 and `deltaQNom` never
 //! reaches the model, EVERY value in `twin_expected.rs` is bit-identical to the

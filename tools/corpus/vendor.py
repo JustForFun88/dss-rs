@@ -1,183 +1,213 @@
-"""Vendor the `electricdss-tst` corpus into the repository.
+"""Fetch the OpenDSS test suite into `tests/corpus/electricdss-tst` (gitignored).
 
-Copies `.inputs/electricdss-tst` -> `tests/corpus/electricdss-tst` **verbatim**,
-preserving every relative path so the copy is self-contained (the engine resolves
-`redirect`/`compile` relative to each master's directory, so no path rewrites are
-needed). The committed copy is what the live corpus gate (`corpus_live.rs`) reads
-at test time — `.inputs` is temporary and must not be a runtime dependency.
+The corpus gate runs the decks of the repository and commit that
+`tests/corpus/PIN.json` names. This script downloads that commit's tarball from
+GitHub once into a cache (`DSS_CORPUS_CACHE`, default `~/.cache/dss-rs`), unpacks
+it into the tree and checks every file against `tests/corpus/SHA256SUMS`. A run
+also repairs the tree: a file it holds beyond the list (a deck's output) is
+deleted and a changed one is written again. The marker `.dss-rs-pin` in the tree
+names the commit it holds.
 
-Exclusions (the ONLY things not copied):
-  - the corpus's own VCS metadata `.git/` (not corpus content);
-  - whatever the corpus's own `.gitignore` excludes (currently `*.pickle.*`).
+Text files get LF line ends, as git stores a file under `core.autocrlf`: a file
+with no NUL byte and no lone CR is text. The memory-mapped LoadShape fixtures
+need it, since the reader indexes their records by a fixed line width
+(`crates/dss-core/tests/corpus_hygiene.rs`).
 
-Also writes:
-  - `tests/corpus/README.md`  — provenance (source commit, date, counts, rules);
-  - `tests/corpus/SHA256SUMS`  — checksum of every copied file (re-vendor / drift
-    detection); verifiable from `tests/corpus/` with `sha256sum -c SHA256SUMS`.
-
-Run once (and again only to re-vendor):
-    python tools/corpus/vendor.py            # refuses if the dest exists
-    python tools/corpus/vendor.py --force     # wipe + recopy
+    python tools/corpus/vendor.py            # fetch, or verify and repair
+    python tools/corpus/vendor.py --rehash   # after a pin change: rewrite SHA256SUMS
 """
 
 from __future__ import annotations
 
-import fnmatch
 import hashlib
-import shutil
-import subprocess
+import io
+import json
+import os
+import re
 import sys
-from datetime import datetime, timezone
-from pathlib import Path
+import tarfile
+import time
+import urllib.request
+from pathlib import Path, PurePosixPath
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SRC = REPO_ROOT / ".inputs" / "electricdss-tst"
 CORPUS_DIR = REPO_ROOT / "tests" / "corpus"
 DST = CORPUS_DIR / "electricdss-tst"
+PIN = CORPUS_DIR / "PIN.json"
+SUMS = CORPUS_DIR / "SHA256SUMS"
+SUMS_PREFIX = "electricdss-tst/"
+MARKER = ".dss-rs-pin"
+READ_TIMEOUT_S = 60
+DOWNLOAD_DEADLINE_S = 1800
+LONE_CR = re.compile(rb"\r(?!\n)")
+COMMIT = re.compile(r"[0-9a-f]{40}")
 
 
-def load_gitignore_patterns(root: Path) -> list[str]:
-    """Simple `.gitignore` patterns (non-empty, non-comment lines)."""
-    gi = root / ".gitignore"
-    if not gi.is_file():
-        return []
-    pats = []
-    for line in gi.read_text().splitlines():
-        line = line.strip()
-        if line and not line.startswith("#"):
-            pats.append(line)
-    return pats
+def fail(msg: str) -> None:
+    sys.exit(f"vendor.py: {msg}")
 
 
-def is_ignored(rel_posix: str, name: str, patterns: list[str]) -> bool:
-    """Match a relative posix path / basename against simple gitignore globs."""
-    for pat in patterns:
-        p = pat.rstrip("/")
-        if fnmatch.fnmatch(name, p) or fnmatch.fnmatch(rel_posix, p):
-            return True
-    return False
-
-
-def source_commit() -> str:
+def load_pin() -> tuple[str, str]:
+    """The pinned `(owner/name, commit)`."""
     try:
-        out = subprocess.run(
-            ["git", "-C", str(SRC), "rev-parse", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=True,
+        pin = json.loads(PIN.read_text(encoding="utf-8"))
+        repo, commit = pin["repo"], pin["commit"]
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        fail(f"cannot read the pin {PIN}: {e}")
+    if not COMMIT.fullmatch(commit):
+        fail(f"{PIN}: commit {commit!r} is not a full 40-digit SHA-1")
+    return repo, commit
+
+
+def cache_dir() -> Path:
+    env = os.environ.get("DSS_CORPUS_CACHE")
+    return Path(env) if env else Path.home() / ".cache" / "dss-rs"
+
+
+def tarball(repo: str, commit: str) -> Path:
+    """The cached tarball of `commit`, downloaded on first use."""
+    path = cache_dir() / f"{repo.replace('/', '_')}-{commit}.tar.gz"
+    if path.is_file():
+        return path
+    url = f"https://codeload.github.com/{repo}/tar.gz/{commit}"
+    print(f"download   : {url}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    part = path.with_suffix(".part")
+    start = time.monotonic()
+    request = urllib.request.Request(url, headers={"User-Agent": "dss-rs-corpus-fetch"})
+    try:
+        with urllib.request.urlopen(request, timeout=READ_TIMEOUT_S) as resp, open(part, "wb") as out:
+            while chunk := resp.read(1 << 20):
+                out.write(chunk)
+                if time.monotonic() - start > DOWNLOAD_DEADLINE_S:
+                    raise TimeoutError(f"not done after {DOWNLOAD_DEADLINE_S} s")
+    except (OSError, TimeoutError) as e:
+        part.unlink(missing_ok=True)
+        fail(f"download of {url} failed: {e}\n  check the network, or put the tarball at {path}")
+    os.replace(part, path)
+    return path
+
+
+def normalize(data: bytes) -> bytes:
+    """LF line ends for a text file, the bytes as they are for any other."""
+    if b"\0" in data or LONE_CR.search(data):
+        return data
+    return data.replace(b"\r\n", b"\n")
+
+
+def unpack(path: Path) -> dict[str, bytes]:
+    """Every file of the tarball, by its path below the top directory."""
+    files: dict[str, bytes] = {}
+    try:
+        with tarfile.open(path, "r:gz") as tar:
+            for member in tar:
+                if member.isdir():
+                    continue
+                parts = PurePosixPath(member.name).parts[1:]
+                if not member.isfile() or not parts or ".." in parts:
+                    fail(f"{path}: refusing tar member {member.name!r}")
+                data = tar.extractfile(member)
+                if data is None:
+                    fail(f"{path}: unreadable tar member {member.name!r}")
+                files["/".join(parts)] = normalize(data.read())
+    except (OSError, tarfile.TarError, EOFError) as e:
+        fail(f"{path} is not a readable tarball ({e}): delete it and run again")
+    if not files:
+        fail(f"{path} holds no file: delete it and run again")
+    return files
+
+
+def digest(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def read_sums() -> dict[str, str]:
+    """The listed digest of every file, by its path below the tree."""
+    sums: dict[str, str] = {}
+    try:
+        lines = SUMS.read_text(encoding="utf-8").splitlines()
+    except OSError as e:
+        fail(f"cannot read {SUMS}: {e}")
+    for n, line in enumerate(lines, 1):
+        sha, sep, name = line.partition("  ")
+        if not sep or len(sha) != 64 or not name.startswith(SUMS_PREFIX):
+            fail(f"{SUMS}:{n}: not a `<sha256>  {SUMS_PREFIX}<path>` line")
+        sums[name.removeprefix(SUMS_PREFIX)] = sha
+    return sums
+
+
+def write_sums(files: dict[str, bytes]) -> None:
+    text = "".join(f"{digest(files[p])}  {SUMS_PREFIX}{p}\n" for p in sorted(files))
+    SUMS.write_text(text, encoding="utf-8", newline="\n")
+
+
+def check(files: dict[str, bytes], sums: dict[str, str]) -> None:
+    missing = sorted(set(sums) - set(files))
+    extra = sorted(set(files) - set(sums))
+    changed = sorted(p for p in set(files) & set(sums) if digest(files[p]) != sums[p])
+    if missing or extra or changed:
+        shown = [f"  listed, not in the tarball: {p}" for p in missing[:5]]
+        shown += [f"  in the tarball, not listed: {p}" for p in extra[:5]]
+        shown += [f"  digest differs: {p}" for p in changed[:5]]
+        fail(
+            f"the tarball does not match {SUMS} ({len(missing)} missing, {len(extra)} extra, "
+            f"{len(changed)} changed); after a pin change run with --rehash\n" + "\n".join(shown)
         )
-        return out.stdout.strip()
-    except Exception as e:  # noqa: BLE001
-        return f"<unknown: {e}>"
+
+
+def write_tree(files: dict[str, bytes], commit: str) -> tuple[list[str], list[str]]:
+    """Make the tree hold exactly `files` and the marker: `(written, removed)`."""
+    written: list[str] = []
+    removed: list[str] = []
+    errors: list[str] = []
+    for rel, data in files.items():
+        out = DST / rel
+        try:
+            if out.is_file() and out.read_bytes() == data:
+                continue
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_bytes(data)
+            written.append(rel)
+        except OSError as e:
+            errors.append(f"  write {out}: {e}")
+    keep = set(files) | {MARKER}
+    for p in sorted(DST.rglob("*"), reverse=True):
+        rel = p.relative_to(DST).as_posix()
+        try:
+            if p.is_dir():
+                if not any(p.iterdir()):
+                    p.rmdir()
+            elif rel not in keep:
+                p.unlink()
+                removed.append(rel)
+        except OSError as e:
+            errors.append(f"  remove {p}: {e}")
+    if errors:
+        fail("the tree could not be brought to the pin (a locked file?):\n" + "\n".join(errors))
+    (DST / MARKER).write_text(commit + "\n", encoding="utf-8", newline="\n")
+    return written, removed
 
 
 def main() -> None:
-    force = "--force" in sys.argv[1:]
-    if not SRC.is_dir():
-        sys.exit(f"source corpus not found: {SRC}")
-    if DST.exists() and any(DST.iterdir()) and not force:
-        sys.exit(f"destination already exists: {DST}\n  re-run with --force to re-sync")
-
-    patterns = load_gitignore_patterns(SRC)
-    print(f"source     : {SRC}")
-    print(f"destination: {DST}")
-    print(f"exclusions : .git/ + gitignore {patterns}")
-
-    # Copy every source file (overwriting), tracking the exact source set. We do
-    # NOT rmtree the destination first: running a case in-place can leave the
-    # tree with a locked dir (AV/indexer) and outputs, so we re-sync file-by-file
-    # and prune extras afterward — robust to locks.
-    copied: list[tuple[str, int]] = []  # (rel_posix under electricdss-tst, size)
-    copied_rel: set[str] = set()
-    skipped_ignored = 0
-    for path in sorted(SRC.rglob("*")):
-        # Prune the corpus's own VCS metadata.
-        parts = path.relative_to(SRC).parts
-        if ".git" in parts:
-            continue
-        rel = path.relative_to(SRC)
-        rel_posix = rel.as_posix()
-        if path.is_dir():
-            continue
-        if is_ignored(rel_posix, path.name, patterns):
-            skipped_ignored += 1
-            continue
-        out = DST / rel
-        out.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(path, out)
-        copied.append((rel_posix, path.stat().st_size))
-        copied_rel.add(rel_posix)
-
-    # Prune anything in the destination not part of the source set — stale files
-    # or outputs generated by running cases in-place (e.g. LineConstantsCode.dss,
-    # EnergyMeter DI_*.csv) — so the copy is an exact mirror of the source.
-    pruned = 0
-    for p in sorted(DST.rglob("*"), reverse=True):
-        if p.is_file() and p.relative_to(DST).as_posix() not in copied_rel:
-            try:
-                p.unlink()
-                pruned += 1
-            except OSError as e:  # noqa: PERF203
-                print(f"  warn: could not prune {p}: {e}")
-        elif p.is_dir():
-            try:
-                p.rmdir()  # only succeeds if now empty
-            except OSError:
-                pass
-
-    # SHA256SUMS over every copied file, paths relative to tests/corpus/ so the
-    # file verifies with `sha256sum -c` run from tests/corpus/.
-    lines = []
-    for rel_posix, _ in copied:
-        digest = hashlib.sha256((DST / rel_posix).read_bytes()).hexdigest()
-        lines.append(f"{digest}  electricdss-tst/{rel_posix}")
-    CORPUS_DIR.mkdir(parents=True, exist_ok=True)
-    (CORPUS_DIR / "SHA256SUMS").write_text("\n".join(lines) + "\n")
-
-    total_bytes = sum(sz for _, sz in copied)
-    n_dss = sum(1 for rel, _ in copied if rel.lower().endswith(".dss"))
-    readme = f"""# Vendored `electricdss-tst` corpus
-
-Verbatim copy of the OpenDSS test corpus, used by the corpus gate
-(`crates/dss-core/tests/corpus_gate.rs`), which compares this engine with the
-OpenDSS engines, and as the in-repo replacement for the temporary
-`.inputs/electricdss-tst`.
-
-**Do not edit these files by hand.** Re-vendor with `python tools/corpus/vendor.py
---force` and review the `SHA256SUMS` diff.
-
-**Note:** no test writes here: a case whose deck writes files runs from a scratch
-copy. A manual run of a vendored deck executes it *in place*, so OpenDSS writes outputs
-(EnergyMeter `DI_*.csv`, exports, `LineConstantsCode.dss`, …) into this tree.
-Probe a copy of a deck instead, or restore the pristine mirror with
-`git restore tests/corpus` and a path-limited `git clean` before committing or
-before running the always-on `corpus_manifest` gate.
-
-| field | value |
-|---|---|
-| source | `.inputs/electricdss-tst` |
-| source commit | `{source_commit()}` |
-| vendored (UTC) | {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")} |
-| files copied | {len(copied)} |
-| of which `.dss` | {n_dss} |
-| total size | {total_bytes / 1024 / 1024:.1f} MiB |
-| excluded | `.git/`, gitignore `{patterns}` ({skipped_ignored} files) |
-
-Relative paths are preserved exactly, so masters resolve their `redirect`/
-`compile` data dependencies internally with no path rewrites. `SHA256SUMS` lists
-every copied file (paths relative to `tests/corpus/`); verify with
-`sha256sum -c SHA256SUMS` from this directory.
-
-Every `.dss` file here is accounted for in exactly one manifest under
-`tests/corpus/manifests/` — enforced by `corpus_manifest.rs`.
-"""
-    (CORPUS_DIR / "README.md").write_text(readme)
-
-    print(
-        f"copied {len(copied)} files ({total_bytes / 1024 / 1024:.1f} MiB), "
-        f"{n_dss} .dss; pruned {pruned} extra; skipped {skipped_ignored} ignored; "
-        f"wrote README.md + SHA256SUMS"
-    )
+    args = sys.argv[1:]
+    if args not in ([], ["--rehash"]):
+        fail("usage: vendor.py [--rehash]")
+    repo, commit = load_pin()
+    files = unpack(tarball(repo, commit))
+    if args == ["--rehash"]:
+        write_sums(files)
+        print(f"wrote      : {SUMS} ({len(files)} files)")
+    else:
+        check(files, read_sums())
+    DST.mkdir(parents=True, exist_ok=True)
+    written, removed = write_tree(files, commit)
+    print(f"tree       : {DST} at {repo}@{commit[:12]}")
+    print(f"files      : {len(files)}, written {len(written)}, removed {len(removed)}")
+    for verb, names in (("written", written), ("removed", removed)):
+        for rel in names[:20]:
+            print(f"  {verb} {rel}")
+        if len(names) > 20:
+            print(f"  ... {len(names) - 20} more {verb}")
 
 
 if __name__ == "__main__":

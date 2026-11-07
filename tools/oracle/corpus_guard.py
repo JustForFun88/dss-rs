@@ -9,9 +9,9 @@ writes can land there, and what does land there belongs to a concurrently
 running sibling case (citations + measurement:
 `crates/dss-epri/src/guard.rs::CorpusGuard::classify`).
 Writes OUTSIDE the case-dir tree (e.g. a manual `dss-cli` run from elsewhere)
-remain uncoverable here — sweep workflows must still end with a
-`git status tests/corpus` check (recovery: `git restore tests/corpus` /
-`git clean`).
+remain uncoverable here — sweep workflows must still end with
+`python tools/corpus/vendor.py`, which lists and undoes them in the fetched
+OpenDSS test suite, and a `git status tests/corpus` check of the tracked decks.
 
 The same classification that decides what to delete is also the gate's
 `compare_run_files` surface (the set of filesystem entries a run created under

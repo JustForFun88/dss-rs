@@ -94,8 +94,8 @@ fn walk_dir(dir: &Path, out: &mut BTreeMap<PathBuf, u64>) {
 
 /// Keeps the vendored deck directory exactly as it was found — the miniature of
 /// `corpus_gate/runner.rs`'s `CorpusGuard`. The two decks this file compiles are
-/// definition-only today (measured: compile + solve + `RelCalc` leaves
-/// `git status -- tests/corpus` clean), so the guard is insurance against a
+/// definition-only today (compile + solve + `RelCalc` write no file), so the
+/// guard is insurance against a
 /// later edit that adds an `Export`/`Show`, not a live need; the pins never
 /// nest a guard inside another, so no shared-snapshot machinery is needed here
 /// (unlike `props_r4133_pins.rs`).

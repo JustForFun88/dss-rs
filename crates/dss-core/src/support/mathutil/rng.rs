@@ -16,9 +16,7 @@
 //! bit-for-bit against a real FPC 3.2.2 run** (2026-07-08, `ppcrossx64`
 //! `x86_64-win64` — the same arch/SSE2 the pinned oracle's dss_capi backend is
 //! built with): every u32, `Random:Double`, `Gauss`, and `QuasiLognormal` pin
-//! matched exactly. The probe `tools/fpc/mtwist/mtwist_probe.pas` + its captured
-//! output `tools/fpc/mtwist/fpc_output_x86_64_win64.txt` regenerate them (arch
-//! matters for `Gauss`/`QuasiLognormal`: build x86_64/SSE2, not i386/x87). The
+//! matched exactly. The
 //! engine's [`FpcRng::randomize`] (time seed) reproduces the documented upstream
 //! nondeterminism.
 //!
@@ -170,8 +168,7 @@ mod tests {
     // Captured FPC-exact: the pins below are the canonical MT19937
     // (`init_genrand`) sequence (verified against `mt19937ar.out` and CPython's
     // MT19937) and were confirmed bit-for-bit against a real FPC 3.2.2 x86_64
-    // run on 2026-07-08 (`tools/fpc/mtwist/mtwist_probe.pas`, captured in
-    // `fpc_output_x86_64_win64.txt`) — every u32, `Random:Double`, `Gauss`, and
+    // run on 2026-07-08 — every u32, `Random:Double`, `Gauss`, and
     // `QuasiLognormal` matched. Expected doubles are compared bit-exactly
     // (`f64::from_bits`).
 

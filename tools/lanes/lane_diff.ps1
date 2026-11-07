@@ -69,6 +69,12 @@ foreach ($line in (& git status --porcelain -- tests/corpus)) {
 # Every cargo call goes through the build/test queue of the shared machine.
 $gatelock = Join-Path $root "tools/gate/gatelock.py"
 
+# The fetched OpenDSS test suite (gitignored) is brought to its pin before the
+# dumps, and again after them to undo what the decks wrote into it.
+$vendor = Join-Path $root "tools/corpus/vendor.py"
+$null | & python $vendor
+if ($LASTEXITCODE -ne 0) { throw "tools/corpus/vendor.py failed (exit $LASTEXITCODE)" }
+
 function Invoke-Lane {
     param(
         [string]$Lane,
@@ -110,17 +116,15 @@ Write-Host "== diff ===================================================="
 $verdict = $LASTEXITCODE
 
 # Corpus hygiene. The decks write their reports next to themselves, so a corpus
-# run leaves artifacts behind, and `git status --short tests/corpus` must be
-# empty afterwards. Two shapes,
+# run leaves artifacts behind. In the fetched suite `tools/corpus/vendor.py`
+# undoes them (below). In the tracked deck families `git status --short
+# tests/corpus` must be empty afterwards. Two shapes there,
 # both handled by exact path (never a wide `git clean`):
 #
-#   ?? untracked  -- a report or a whole `DI_yr_*` directory the deck created
-#                    (the known Test/AutoTrans set, the EnergyMeter DI files):
+#   ?? untracked  -- a report or a whole `DI_yr_*` directory the deck created:
 #                    deleted.
-#   " M" tracked  -- a deck whose own output file is *vendored* under that name
-#                    (`Test/LineConstantsCode.DSS` from `Show LineConstants`,
-#                    the two `IEEE_519_Mon_mpcc_1.csv` monitor exports):
-#                    restored from git.
+#   " M" tracked  -- a deck whose own output file is committed under that
+#                    name: restored from git.
 #
 # A recursive delete is used for the created directories, and only after
 # checking the entry is not a reparse point -- `.inputs`/`.venv` junctions live
@@ -160,5 +164,8 @@ if ($dirty) {
     }
     if ($restore) { & git restore -- $restore }
 }
+Write-Host "== fetched corpus =========================================="
+$null | & python $vendor
+if ($LASTEXITCODE -ne 0) { Write-Warning "tools/corpus/vendor.py failed (exit $LASTEXITCODE)" }
 
 exit $verdict

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """d2_probe_0145.py — drive a wasm_decks/*.dss deck through the PINNED
 dss-python 0.15.7 (backend dss_capi 0.14.5) with @FIXTURE@ substituted by the
-0.14.5-ABI native twin DLL (tools/wasm_usermodel/build_native_r3723.ps1), and
+0.14.5-ABI native twin DLL (tools/wasm_usermodel/twin/IndMach012a.dll), and
 emit the SAME golden schema (variable_names/values + node_voltages) the r4133
 bridge golden uses (crates/dss-epri/tests/gen_wasm_usermodels.rs).
 

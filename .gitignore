@@ -9,5 +9,8 @@ __pycache__/
 .claude
 *SavedVoltages.dbl
 
+# The OpenDSS test suite, fetched by tools/corpus/vendor.py
+/tests/corpus/electricdss-tst/
+
 # Coordinator plans, briefs and the work status (its own git, local only)
 /plan/

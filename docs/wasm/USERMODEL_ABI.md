@@ -712,11 +712,8 @@ CapControl public-data image (WP-WM.5, 2026-07-19 — header decision (c)):
 |---|---|---|
 | P9 `TCapControlVars` (r4133) | FPC `-Mdelphi -dUSER_DLL` compile of the REAL vendored `Version8/Source/Controls/CapControlVars.pas`: **184 B**; `EControlAction` **1 B** (no `{$Z4}`), `Voverride` **Boolean 1 B** — both differ from 0.14.5 (int32 / `LongBool`); `SampleP`@116, `SampleV`@132, `FPendingChange`@111, `ShouldSwitch`@112, `PresentState`@114 (§2.5) | `p9_offsets_capcontrolvars_r4133.txt` |
 
-Probe sources: `tools/fpc/usermodel_abi/` (extraction script + probes + stub
-DLL + oracle driver + build script; `abi_probe_r4133.pas` + the P8 step,
-`abi_probe_capcontrolvars.pas` + the P9 step, of `build_probes.ps1`). The
-native-twin channel is `tools/wasm_usermodel/build_native.ps1` (r4133) +
-`twin_probe.py`.
+The native-twin channel is the committed `tools/wasm_usermodel/twin/IndMach012a.dll`
+driven by `tools/wasm_usermodel/twin_probe.py`.
 
 ## 8. Porting your Delphi/C user model to WASM (worked example)
 

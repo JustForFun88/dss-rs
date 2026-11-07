@@ -13,7 +13,7 @@ make its own tests pass.
 | `PIN.txt` | The toolchain + artifact-hash pin (wasmi, rustc, FPC, SHA-256 of each committed `.wasm`) |
 | `models/indmach012a/` | The reference model: loop-for-loop Rust port of the vendored r3723 example DLL (`Version8/Source/IndMach012a/`: `IndMach012Model.pas` + `MainUnit.pas` + the units it links) to a `wasm32-unknown-unknown` guest. Workspace-excluded crate. |
 | `build_wasm.ps1` | Rebuilds `tests/fixtures/wasm/indmach012a.wasm` reproducibly (clean-build hash-stable) and prints the SHA-256 for `PIN.txt` |
-| `build_native.ps1` | Builds the **native twin** on demand — the *same vendored Pascal* compiled by FPC 3.2.2 (`ppcrossx64 -Mdelphi -O2`, the flags of `docs/wasm/probes/p2_indmach_fpc_build.txt`). Never committed; default output in `%TEMP%` |
+| `twin/` | The committed **native twin** `IndMach012a.dll`: the OpenDSS example compiled by FPC 3.2.2 (`ppcrossx64 -Mdelphi -O2`), with its provenance and licence |
 | `twin_probe.py` | Drives the native twin through a fixed deterministic scenario (ctypes, packed record images per the frozen ABI offsets) and records every observable value bit-exactly. Default output = evidence (`docs/wasm/probes/p6_twin_expected.txt`); `--rust` output = the generated test fragment `models/indmach012a/tests/twin_expected.rs` |
 
 ## The gate chain for the fixture
@@ -42,12 +42,11 @@ make its own tests pass.
 # the committed wasm fixture (then update PIN.txt with the printed SHA-256)
 pwsh tools/wasm_usermodel/build_wasm.ps1
 
-# the native twin (on demand; never committed)
-pwsh tools/wasm_usermodel/build_native.ps1            # -> %TEMP%\indmach012a_native_twin
-# re-record the expected values (goldens discipline: manual, then commit both outputs)
-python tools/wasm_usermodel/twin_probe.py $env:TEMP\indmach012a_native_twin\IndMach012a.dll `
+# re-record the expected values from the committed native twin
+# (goldens discipline: manual, then commit both outputs)
+python tools/wasm_usermodel/twin_probe.py tools/wasm_usermodel/twin/IndMach012a.dll `
     > docs/wasm/probes/p6_twin_expected.txt
-python tools/wasm_usermodel/twin_probe.py $env:TEMP\indmach012a_native_twin\IndMach012a.dll --rust `
+python tools/wasm_usermodel/twin_probe.py tools/wasm_usermodel/twin/IndMach012a.dll --rust `
     > tools/wasm_usermodel/models/indmach012a/tests/twin_expected.rs
 ```
 

@@ -953,8 +953,8 @@ mod tests {
                 let binary = f.any(|a| a == "binary" || a == "-text");
                 // Only declarations that can classify a locked artifact: the
                 // lock scope (tests/golden/** plus the registered
-                // out-of-tree r3723 witness). The vendored corpus's `-text`
-                // pathspecs classify nothing this module can write.
+                // out-of-tree r3723 witness). Other `-text` pathspecs classify
+                // nothing this module can write.
                 let in_scope = LOCK_SCOPE_PREFIXES.iter().any(|r| pattern.starts_with(r));
                 (binary && in_scope).then(|| pattern.to_string())
             })

@@ -74,7 +74,7 @@ fn every_dss_is_accounted_for_exactly_once() {
     let root = corpus_root();
     assert!(
         root.is_dir(),
-        "vendored corpus missing: {} (run tools/corpus/vendor.py)",
+        "fetched corpus missing: {} (run python tools/corpus/vendor.py)",
         root.display()
     );
 
@@ -338,16 +338,14 @@ mod extras_population {
         assert!(lossy.contains("em2"));
     }
 
-    /// The census root is the vendored corpus the gate actually runs, not
-    /// `.inputs/` (which is gitignored and absent on a fresh clone).
     #[test]
-    fn the_census_root_is_the_vendored_corpus() {
+    fn the_census_root_is_the_fetched_corpus() {
         let root: PathBuf = [env!("CARGO_MANIFEST_DIR"), "..", "..", "tests", "corpus"]
             .iter()
             .collect();
         assert!(
             Path::new(&root).join("electricdss-tst").is_dir(),
-            "the vendored corpus is missing at {}",
+            "the fetched corpus is missing at {} (run python tools/corpus/vendor.py)",
             root.display()
         );
     }

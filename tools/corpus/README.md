@@ -1,12 +1,15 @@
-# tools/corpus — corpus vendoring + classification tooling
+# tools/corpus — corpus fetching + classification tooling
 
-Machinery for the vendored `tests/corpus/electricdss-tst` mirror and its
+Machinery for the OpenDSS test suite in `tests/corpus/electricdss-tst` and its
 manifests (the "no silent omission" bijection enforced by `corpus_manifest.rs`).
 
-- **`vendor.py`** — copy `.inputs/electricdss-tst` → `tests/corpus/electricdss-tst`
-  and prune extras (`--force`); writes `SHA256SUMS`. Re-vendor with
-  `python tools/corpus/vendor.py --force`, then review the
-  `tests/corpus/SHA256SUMS` diff.
+- **`vendor.py`** — fetch the commit `tests/corpus/PIN.json` pins from GitHub
+  into the gitignored `tests/corpus/electricdss-tst`, checked against
+  `tests/corpus/SHA256SUMS`. Run it once per checkout or worktree (the tarball
+  is cached in `DSS_CORPUS_CACHE`, default `~/.cache/dss-rs`), and again after a
+  manual deck run: it lists and undoes what the run wrote. To move the pin, edit
+  `PIN.json`, run `python tools/corpus/vendor.py --rehash` and review the
+  `SHA256SUMS` diff.
 - **`seed_manifests.py`**, **`apply_classify.py`** — build / update the
   classification manifests (`solvable_now` vs `skipped_*`); `apply_classify.py`
   turns a `DSS_LIVE_CLASSIFY=1` report into manifest moves.

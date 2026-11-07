@@ -65,7 +65,7 @@ def redirect_targets(f: Path, text: str) -> list[Path]:
 def main() -> None:
     force = "--force" in sys.argv[1:]
     if not DST.is_dir():
-        sys.exit(f"vendored corpus not found: {DST}\n  run tools/corpus/vendor.py first")
+        sys.exit(f"fetched corpus not found: {DST}\n  run python tools/corpus/vendor.py first")
     MANIFESTS.mkdir(parents=True, exist_ok=True)
     existing = list(MANIFESTS.glob("*.json"))
     if existing and not force:

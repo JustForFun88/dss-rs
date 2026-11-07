@@ -12,7 +12,7 @@
 //! golden-class binary: rebuilt MANUALLY ONLY via
 //! `tools/wasm_usermodel/build_wasm.ps1` with the toolchain pinned in
 //! `tools/wasm_usermodel/PIN.txt`. Its numeric spec is the *native twin* —
-//! the same vendored Pascal compiled by FPC (`build_native.ps1`) —
+//! the same Pascal compiled by FPC (`tools/wasm_usermodel/twin/`) —
 //! probed via `tools/wasm_usermodel/twin_probe.py`; expected values live in
 //! `docs/wasm/probes/p6_twin_expected.txt` and are pinned bit-exact by
 //! `tests/twin_parity.rs` (host target) and through the `dss-usermodel`

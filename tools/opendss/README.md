@@ -19,7 +19,6 @@ Python in this channel**.
 | `bin/SHA256SUMS` | checksums; verify from `bin/` with `sha256sum -c SHA256SUMS`. |
 | `bin/README.md` | binary provenance (sizes, build dates, source tree). |
 | `revisions.json` | `r4133` → `dll` path + `expect_version` (the substring `crates/dss-epri/src/smoke.rs` and `tools/golden/gen_protection.py` assert against — never empty, no silent pass). |
-| `vendor_binaries.py` | re-vendors `bin/r4133/` from `.inputs/electricdss-code-r4133-trunk/Version8/Distrib/x64` and rewrites `SHA256SUMS` + `bin/README.md`. |
 | `epri_worker.py` | Python client for the worker's `exec`/`read`/`chdir` scripting surface (`crates/dss-epri/src/script.rs`) + an `IOddieDSS`-shaped shim for ad-hoc scripting. Used by the manual golden regen (`tools/golden/gen_protection.py` r4133 arm, `tools/golden/gen_flicker.py`) and probes, never by the gate. Builds `epri-worker` on first use. `DSS_EPRI_WORKER` names a worker binary to use instead. |
 | `probe_59n.py` | re-runnable 59NRelayDemo read on r4133 (the no-trip and chaotic pole-slip classification; see `relay/tests.rs` and `skipped_needs_investigation.json`), driven through `epri_worker.py`. |
 
@@ -27,13 +26,13 @@ The DLLs are **git-tracked**, so worktrees need no junction for the bridge and
 the gate has no external download step. `DSSProgress.exe` is deliberately not
 vendored (no progress popups possible).
 
-## Re-vendor procedure
+## Updating the binaries
 
-Needs the vendored EPRI source/distrib tree `.inputs/electricdss-code-r4133-trunk`.
+Copy the five files of `bin/r4133/` from the official distribution's `Version8/Distrib/x64`, then
+rewrite the checksums and the tables in `bin/README.md`, and run the smoke test:
 
 ```
-python tools/opendss/vendor_binaries.py --force   # wipe + recopy bin/r4133
-git diff tools/opendss/bin/SHA256SUMS             # review the checksum diff
+cd tools/opendss/bin && sha256sum r4133/* > SHA256SUMS && cd -
 python tools/gate/gatelock.py --label vendor -- cargo test -p dss-epri --test smoke
 ```
 
@@ -90,7 +89,8 @@ node voltages from the DLL via the line-JSON protocol.
   after a compile; the bridge resolves everything up front and the corpus guard
   (`crates/dss-epri/src/guard.rs`, a port of `tools/oracle/corpus_guard.py`)
   snapshots + restores the case dir so `Show`/`Export`/`Save` writes never
-  pollute the vendored corpus (`git status tests/corpus` must stay clean).
+  pollute the vendored corpus (`python tools/corpus/vendor.py` lists and undoes
+  any that did).
 - **UI suppression**: the bridge's init sequence calls `DSSI(8, 0)`, which sets
   the engine's `NoFormsAllowed := TRUE` (`DDSS.pas` mode 8 — note the inverted
   argument), and restates it through the executive with `Set AllowForms=No`
