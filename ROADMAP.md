@@ -37,19 +37,6 @@ on any input.
 - Data access that cannot read stale or foreign state, so a forgotten check is a compile error.
   Objects are stored apart from their class descriptions, one typed vector per class.
 - Tests pin the engine's own behaviour. Docs and comments state what the code does, briefly.
-- The known defects below are fixed first.
-
-## Known defects
-- A solve with NaN voltages reads as converged.
-- The IndMach012 admittance in dynamics and harmonics ignores the machine's connection.
-- After a bus rebuild the node vectors can be shorter than the bus list.
-- A Monitor keeps the shape its element had when the Monitor was last edited.
-- Save and the JSON export drop `bus2` of a Capacitor or Reactor made with `like=`.
-- A huge `phases=` aborts the process on allocation instead of being refused.
-- A script that redirects into itself overflows the stack and kills the process.
-- The help text of `Dump commands` and the JSON schema export is OpenDSS's wording (`report/help_catalog.rs`), not ours.
-- `dss-metis` `sort.rs` is a port of GKlib's `gk_mksort.h`, which GKlib derives from glibc's `qsort` under LGPL-2.1-or-later: licence-incompatible with the product, to be replaced by a sort of our own.
-- The Monte Carlo random generator (`support/mathutil/rng.rs`) is transcribed from the Free Pascal run-time library (LGPL): to be rewritten from the published MT19937 reference, its seeding pinned by our tests.
 
 ## Next
 1. **Own goldens.** The goldens become snapshots of this engine. The precision quirks and the FPC

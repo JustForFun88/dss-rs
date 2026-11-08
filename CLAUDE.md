@@ -3,7 +3,7 @@
 dss-rs is a pure-Rust power-system engine. It reads DSS scripts, solves the network (power flow, time series, harmonics, dynamics, fault studies) and reports the result. The product is the library `dss-core` plus the `dss-cli` binary. It grows into a suite for power-system design studies (`ROADMAP.md`), in idiomatic Rust, with wasm-sandboxed user models and results that are right by physics and by the standards the studies follow.
 
 ## Start every session here
-Read `ROADMAP.md`: where the product is going and its known defects. `plan/` is the gitignored notebook of the session the user works with (plans, briefs, the work status `plan/STATUS.md`, the defect files `plan/defects/`): read `plan/STATUS.md` when it exists, never ask for it and never stop when it is absent.
+Read `ROADMAP.md`: where the product is going. `plan/` is the gitignored notebook of the session the user works with (plans, briefs, the work status `plan/STATUS.md`, the defect files `plan/defects/`): read `plan/STATUS.md` when it exists, never ask for it and never stop when it is absent.
 
 An agent reports to the session that launched it, and its questions go to that session, not the user (P4, H5).
 

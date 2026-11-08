@@ -53,5 +53,5 @@ which reproduces the OpenDSS precision and is byte-exact on the goldens in
 
 ## Where to read next
 
-- **`ROADMAP.md`** — where the product is going and its known defects.
+- **`ROADMAP.md`** — where the product is going.
 - **`CLAUDE.md`** — the rules for working on the code.

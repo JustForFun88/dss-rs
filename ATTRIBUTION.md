@@ -44,5 +44,5 @@ copied unchanged from the works themselves.
 | `OpenDSS.txt` | 1,760 | OpenDSS, © 2008–2026 EPRI (`tools/opendss/bin/r4133/License.txt`) | BSD-3-Clause |
 | `dss_capi.txt` | 1,575 | DSS C-API, © 2017–2024 Paulo Meira, © 2018–2024 DSS-Extensions contributors | BSD-3-Clause |
 | `METIS.txt` | 659 | METIS 5.2.1, © 1995–2013 Regents of the University of Minnesota | Apache-2.0 |
-| `GKlib.txt` | 1,080 | GKlib, © 1995–2018 Regents of the University of Minnesota | Apache-2.0 (its own notice names LGPL and BSD-3 parts, see `ROADMAP.md` Known defects for the sort) |
+| `GKlib.txt` | 1,080 | GKlib, © 1995–2018 Regents of the University of Minnesota | Apache-2.0 (its own notice names LGPL and BSD-3 parts) |
 | `MT19937.txt` | 1,589 | MT19937-64, © 2004 Makoto Matsumoto and Takuji Nishimura | BSD-3-Clause |
