@@ -33,6 +33,7 @@ on any input.
 ## Now: hardening
 - No panic on any input. An error is a result, and input numbers are checked where they enter:
   the DSS script and the files it names.
+- The DSS parser is rewritten and moved into code of its own.
 - Data access that cannot read stale or foreign state, so a forgotten check is a compile error.
   Objects are stored apart from their class descriptions, one typed vector per class.
 - Tests pin the engine's own behaviour. Docs and comments state what the code does, briefly.
