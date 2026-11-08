@@ -312,8 +312,8 @@ const MANIFESTS: &[(&str, &str)] = &[
 /// `*_in_scope.txt` extracts and `shape_in_scope.txt` are all measured over
 /// exactly these cases, and `props_r4133_replay.rs` uses `max_rel_in_scope` as
 /// a ceiling. Derived by applying the filter to the four manifests as the
-/// census's vendoring commit `6db7f202` holds them
-/// (`git show 6db7f202:<manifest>`).
+/// census's vendoring commit `a59f1a23` holds them
+/// (`git show a59f1a23:<manifest>`).
 const CENSUS_IN_SCOPE: (usize, &str) = (
     462,
     "4bb3fa6ff02c9ba8f1581c42f14cb394134b17b0849cddd910ce286464418e03",
@@ -336,7 +336,7 @@ const IN_SCOPE_ADDED_SINCE_CENSUS: &[&str] = &[
 
 /// The census-time cases of [`MANIFESTS`] the in-scope filter left out — the
 /// `capi_v0145` cases, sorted, derived like [`CENSUS_IN_SCOPE`] from
-/// `git show 6db7f202:<manifest>`. Their census cells were measured *outside*
+/// `git show a59f1a23:<manifest>`. Their census cells were measured *outside*
 /// the in-scope population, so none of them may join it unnoticed: a flip to
 /// `both`/`r4133` fails with its label, and naming it in
 /// [`IN_SCOPE_ADDED_SINCE_CENSUS`] cannot make that pass (a subtraction of the
@@ -404,7 +404,7 @@ const CENSUS_OUT_OF_SCOPE: &[&str] = &[
 ];
 
 /// All census-time labels of [`MANIFESTS`], any `engines`, as `(count,
-/// digest)` in [`CENSUS_IN_SCOPE`]'s form (`git show 6db7f202:<manifest>`).
+/// digest)` in [`CENSUS_IN_SCOPE`]'s form (`git show a59f1a23:<manifest>`).
 /// The census in-scope set and [`CENSUS_OUT_OF_SCOPE`]
 /// must add up to it, so that list cannot lose or gain a label unnoticed.
 const CENSUS_ALL: (usize, &str) = (
@@ -1650,7 +1650,7 @@ fn the_in_scope_population_is_the_census_one_plus_named_additions() {
          IN_SCOPE_ADDED_SINCE_CENSUS. A census case that was removed or renamed, or that left \
          the {{both, r4133}} scope (live `capi_v0145` cases the census did not have as \
          `capi_v0145`: {left:?}), means the frozen in-scope measurements no longer cover what \
-         the r4133 channel compares (diff the labels against `git show 6db7f202:<manifest>` of \
+         the r4133 channel compares (diff the labels against `git show a59f1a23:<manifest>` of \
          the four MANIFESTS): re-derive them (the census knob), never re-baseline this pin",
         added.len(),
         live.len(),
@@ -1662,7 +1662,7 @@ fn the_in_scope_population_is_the_census_one_plus_named_additions() {
         (all.len(), label_digest(&all).as_str()),
         CENSUS_ALL,
         "the census in-scope set and CENSUS_OUT_OF_SCOPE no longer add up to the census's 521 \
-         labels: CENSUS_OUT_OF_SCOPE is census evidence (`git show 6db7f202:<manifest>`), never \
+         labels: CENSUS_OUT_OF_SCOPE is census evidence (`git show a59f1a23:<manifest>`), never \
          edited to let a case into the scope"
     );
 }

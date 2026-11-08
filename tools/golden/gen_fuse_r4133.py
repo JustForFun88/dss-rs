@@ -41,7 +41,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OUT = REPO_ROOT / "tests" / "golden" / "props" / "fuse.json"
 # The 0.14.5 golden — the rendering baseline this engine reproduces.
-BASELINE_REF = "1287ec4:tests/golden/props/fuse.json"
+BASELINE_REF = "af29089:tests/golden/props/fuse.json"
 SCHEMA = 1
 
 

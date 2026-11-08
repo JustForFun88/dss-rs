@@ -80,7 +80,7 @@ def backbone(fixed_taps: bool) -> list[str]:
         if i == REACTOR_SEG:
             out += [
                 f"! Backbone segment {i}: the Z1<>Z2 series reactor (the",
-                "! non-reciprocal-YPrim class of the 03c63f2 stamp bug) mid-chain.",
+                "! non-reciprocal-YPrim class of the 23f30c9 stamp bug) mid-chain.",
                 f"new reactor.rser phases=3 bus1={a} bus2={b}",
                 "~ Z1=[0.35 0.62] Z2=[0.08 0.21] Z0=[0.5 0.9]",
             ]

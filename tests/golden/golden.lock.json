@@ -5,70 +5,70 @@
       "path": "crates/dss-core/tests/data/adiakoptics/r3723_ref/ieee123/PROVENANCE.txt",
       "sha256": "7c5cbebd1204d6b25e702ff84602f2a9d9c5cafd23781fca020feee6bc3e97e0",
       "anchor": "r3723",
-      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py, which c060c0b2 retired together with that revision (recoverable from history); the tree is frozen.",
+      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py, which 0ddd343e retired together with that revision (recoverable from history); the tree is frozen.",
       "produced_by": null
     },
     {
       "path": "crates/dss-core/tests/data/adiakoptics/r3723_ref/ieee123/voltages.csv",
       "sha256": "9e2486500b706c6208f7252f0d388b15672ea90d3b4d8acb8d0255999f213c87",
       "anchor": "r3723",
-      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py, which c060c0b2 retired together with that revision (recoverable from history); the tree is frozen.",
+      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py, which 0ddd343e retired together with that revision (recoverable from history); the tree is frozen.",
       "produced_by": null
     },
     {
       "path": "crates/dss-core/tests/data/adiakoptics/r3723_ref/ieee123/y4.csv",
       "sha256": "a444d5211ba0ba31c97a25215e9131ba8635d2b70921613e696dd3aacff8d7b2",
       "anchor": "r3723",
-      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py, which c060c0b2 retired together with that revision (recoverable from history); the tree is frozen.",
+      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py, which 0ddd343e retired together with that revision (recoverable from history); the tree is frozen.",
       "produced_by": null
     },
     {
       "path": "crates/dss-core/tests/data/adiakoptics/r3723_ref/ieee123/zcc.csv",
       "sha256": "64794410671b102a5ad98150f18ac818c5bda4c71f9fe0c1202c197c9d03931d",
       "anchor": "r3723",
-      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py, which c060c0b2 retired together with that revision (recoverable from history); the tree is frozen.",
+      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py, which 0ddd343e retired together with that revision (recoverable from history); the tree is frozen.",
       "produced_by": null
     },
     {
       "path": "crates/dss-core/tests/data/adiakoptics/r3723_ref/ieee123/zll.csv",
       "sha256": "93f8cf9bf5156671b864f3a7a692ec6e47d5e9ef6e0c52969d41d1fb09c84e5e",
       "anchor": "r3723",
-      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py, which c060c0b2 retired together with that revision (recoverable from history); the tree is frozen.",
+      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py, which 0ddd343e retired together with that revision (recoverable from history); the tree is frozen.",
       "produced_by": null
     },
     {
       "path": "crates/dss-core/tests/data/adiakoptics/r3723_ref/ieee13/PROVENANCE.txt",
       "sha256": "a92c72bcd428a5e41040ba3dfa9807a01351adc882823fc0c527c35913e3973d",
       "anchor": "r3723",
-      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py, which c060c0b2 retired together with that revision (recoverable from history); the tree is frozen.",
+      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py, which 0ddd343e retired together with that revision (recoverable from history); the tree is frozen.",
       "produced_by": null
     },
     {
       "path": "crates/dss-core/tests/data/adiakoptics/r3723_ref/ieee13/voltages.csv",
       "sha256": "b851548f06d051a9e38fae94d05d2cb7abc6957f9bf51cd7f387d73f88766fb7",
       "anchor": "r3723",
-      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py, which c060c0b2 retired together with that revision (recoverable from history); the tree is frozen.",
+      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py, which 0ddd343e retired together with that revision (recoverable from history); the tree is frozen.",
       "produced_by": null
     },
     {
       "path": "crates/dss-core/tests/data/adiakoptics/r3723_ref/ieee13/y4.csv",
       "sha256": "2e0d759b8ef67fbe0f1e7eb46d1a52c5ab5677a14b2d17ecb38da9c7aa627512",
       "anchor": "r3723",
-      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py, which c060c0b2 retired together with that revision (recoverable from history); the tree is frozen.",
+      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py, which 0ddd343e retired together with that revision (recoverable from history); the tree is frozen.",
       "produced_by": null
     },
     {
       "path": "crates/dss-core/tests/data/adiakoptics/r3723_ref/ieee13/zcc.csv",
       "sha256": "598f8ddffe062991ecf286b40e162ae76a244b3dabcad631c755112591a019be",
       "anchor": "r3723",
-      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py, which c060c0b2 retired together with that revision (recoverable from history); the tree is frozen.",
+      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py, which 0ddd343e retired together with that revision (recoverable from history); the tree is frozen.",
       "produced_by": null
     },
     {
       "path": "crates/dss-core/tests/data/adiakoptics/r3723_ref/ieee13/zll.csv",
       "sha256": "bb0c616a66e23385ca47075730f5be0c70831c82eff7924bf3f6e207e9a44388",
       "anchor": "r3723",
-      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py, which c060c0b2 retired together with that revision (recoverable from history); the tree is frozen.",
+      "reason": "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official EPRI r3723 engine by tools/opendss/gen_ad_reference.py, which 0ddd343e retired together with that revision (recoverable from history); the tree is frozen.",
       "produced_by": null
     },
     {
@@ -1973,7 +1973,7 @@
       "path": "tests/golden/reports/dump3_bare.txt",
       "sha256": "6de7ee60b397b8c2caf39da43843083950e954a3aeb1183d01c7c38bc7d3a967",
       "anchor": "capi_v0145",
-      "reason": "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: 702adcbd hand-edited two kinds of lines in to match this engine's render: the 0.15.x default BH-curve lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` in every Transformer object block, and in the RegControl object block `~ RevThreshold=-100` (the signed-threshold default) where the pinned 0.14.5 engine renders 100, plus the 0.15.x lines `~ Idle=No`, `~ IdleReverse=No`, `~ IdleForward=No`, `~ FwdThreshold=100`. The pinned engine renders none of those lines as landed, so golden_reports.rs pins them SELF-REFERENTIALLY against our own render, while every other line is still the tools/golden/gen_reports.py capture on the pinned engine. A regen on the pinned engine reverts them and must re-land them.",
+      "reason": "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: 856979fa hand-edited two kinds of lines in to match this engine's render: the 0.15.x default BH-curve lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` in every Transformer object block, and in the RegControl object block `~ RevThreshold=-100` (the signed-threshold default) where the pinned 0.14.5 engine renders 100, plus the 0.15.x lines `~ Idle=No`, `~ IdleReverse=No`, `~ IdleForward=No`, `~ FwdThreshold=100`. The pinned engine renders none of those lines as landed, so golden_reports.rs pins them SELF-REFERENTIALLY against our own render, while every other line is still the tools/golden/gen_reports.py capture on the pinned engine. A regen on the pinned engine reverts them and must re-land them.",
       "produced_by": null
     },
     {
@@ -1998,7 +1998,7 @@
       "path": "tests/golden/reports/dump3_commands.txt",
       "sha256": "ee449c29845edc495f379cae2fa74684354444649afc438863b6544a16d45ec6",
       "anchor": "capi_v0145",
-      "reason": "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: the [Relay]/[Recloser]/[Fuse]/[SwtControl] blocks are the r4133 property surfaces (Relay 71, Recloser 46, Fuse 12, SwtControl 9 props; help verbatim from the r4133 binary's own Dump commands via tools/golden/r4133_help.py; 845fdd2f, 288afc35), and the 0.15.x property lines of [CNData] (SemiconLayer), [LineSpacing] (Detailed/EqDistPhPh/EqDistPhN/AvgPhaseHeight/AvgNeutralHeight), [Transformer]/[AutoTrans] (BHPoints/BHCurrent/BHFlux) and [RegControl] (Idle/IdleReverse/IdleForward/FwdThreshold) were hand-edited in to match this engine's render (2a20b97c, d9ee3f1c, 702adcbd). The pinned engine renders none of them, so all of them are pinned SELF-REFERENTIALLY against our own render by golden_reports.rs::dump3_commands_matches_oracle. The anchor stays capi_v0145 because every other block ([execcommands], [execoptions] and the remaining class sections) is still the tools/golden/gen_reports.py capture on the pinned engine, as is the deck sidecar dump3_commands.meta.json (untouched since 34b15a12). A regen on the pinned engine reverts every hand-landed block; it must re-land them.",
+      "reason": "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: the [Relay]/[Recloser]/[Fuse]/[SwtControl] blocks are the r4133 property surfaces (Relay 71, Recloser 46, Fuse 12, SwtControl 9 props; help verbatim from the r4133 binary's own Dump commands via tools/golden/r4133_help.py; f1596730, 243fb8dc), and the 0.15.x property lines of [CNData] (SemiconLayer), [LineSpacing] (Detailed/EqDistPhPh/EqDistPhN/AvgPhaseHeight/AvgNeutralHeight), [Transformer]/[AutoTrans] (BHPoints/BHCurrent/BHFlux) and [RegControl] (Idle/IdleReverse/IdleForward/FwdThreshold) were hand-edited in to match this engine's render (fed78cc7, 0f5c8262, 856979fa). The pinned engine renders none of them, so all of them are pinned SELF-REFERENTIALLY against our own render by golden_reports.rs::dump3_commands_matches_oracle. The anchor stays capi_v0145 because every other block ([execcommands], [execoptions] and the remaining class sections) is still the tools/golden/gen_reports.py capture on the pinned engine, as is the deck sidecar dump3_commands.meta.json (untouched since 4c53d4ab). A regen on the pinned engine reverts every hand-landed block; it must re-land them.",
       "produced_by": null
     },
     {
@@ -2011,7 +2011,7 @@
       "path": "tests/golden/reports/dump3_debug.txt",
       "sha256": "640fb0b48b03105475aca5007affb426cd313d7d2883595390f12e5e8d6d0867",
       "anchor": "capi_v0145",
-      "reason": "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: 702adcbd hand-edited two kinds of lines in to match this engine's render: the 0.15.x default BH-curve lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` in every Transformer object block, and in the RegControl object block `~ RevThreshold=-100` (the signed-threshold default) where the pinned 0.14.5 engine renders 100, plus the 0.15.x lines `~ Idle=No`, `~ IdleReverse=No`, `~ IdleForward=No`, `~ FwdThreshold=100`. The pinned engine renders none of those lines as landed, so golden_reports.rs pins them SELF-REFERENTIALLY against our own render, while every other line is still the tools/golden/gen_reports.py capture on the pinned engine. A regen on the pinned engine reverts them and must re-land them.",
+      "reason": "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: 856979fa hand-edited two kinds of lines in to match this engine's render: the 0.15.x default BH-curve lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` in every Transformer object block, and in the RegControl object block `~ RevThreshold=-100` (the signed-threshold default) where the pinned 0.14.5 engine renders 100, plus the 0.15.x lines `~ Idle=No`, `~ IdleReverse=No`, `~ IdleForward=No`, `~ FwdThreshold=100`. The pinned engine renders none of those lines as landed, so golden_reports.rs pins them SELF-REFERENTIALLY against our own render, while every other line is still the tools/golden/gen_reports.py capture on the pinned engine. A regen on the pinned engine reverts them and must re-land them.",
       "produced_by": null
     },
     {
@@ -2048,7 +2048,7 @@
       "path": "tests/golden/reports/dump_autotrans.txt",
       "sha256": "159ee8f6b2cbea34f40a0acdf09962bd522b7db6a888f412597fefff91e4e167",
       "anchor": "capi_v0145",
-      "reason": "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: 702adcbd hand-edited the 0.15.x default BH-curve lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` into every Transformer/AutoTrans object block to match this engine's render. The pinned 0.14.5 engine has no BH property, so golden_reports.rs pins those three lines SELF-REFERENTIALLY against our own render, while every other line is still the tools/golden/gen_reports.py capture on the pinned engine. A regen on the pinned engine drops them and must re-land them.",
+      "reason": "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: 856979fa hand-edited the 0.15.x default BH-curve lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` into every Transformer/AutoTrans object block to match this engine's render. The pinned 0.14.5 engine has no BH property, so golden_reports.rs pins those three lines SELF-REFERENTIALLY against our own render, while every other line is still the tools/golden/gen_reports.py capture on the pinned engine. A regen on the pinned engine drops them and must re-land them.",
       "produced_by": null
     },
     {
@@ -2061,7 +2061,7 @@
       "path": "tests/golden/reports/dump_autotrans3.txt",
       "sha256": "bcde48944261c3f8f2ca5aa96c99c04705f44516b98bd81c040703495b98c83c",
       "anchor": "capi_v0145",
-      "reason": "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: 702adcbd hand-edited the 0.15.x default BH-curve lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` into every Transformer/AutoTrans object block to match this engine's render. The pinned 0.14.5 engine has no BH property, so golden_reports.rs pins those three lines SELF-REFERENTIALLY against our own render, while every other line is still the tools/golden/gen_reports.py capture on the pinned engine. A regen on the pinned engine drops them and must re-land them.",
+      "reason": "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: 856979fa hand-edited the 0.15.x default BH-curve lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` into every Transformer/AutoTrans object block to match this engine's render. The pinned 0.14.5 engine has no BH property, so golden_reports.rs pins those three lines SELF-REFERENTIALLY against our own render, while every other line is still the tools/golden/gen_reports.py capture on the pinned engine. A regen on the pinned engine drops them and must re-land them.",
       "produced_by": null
     },
     {
@@ -2398,7 +2398,7 @@
       "path": "tests/golden/reports/dump_regcontrol.txt",
       "sha256": "3978444a76269df7b1b57d1157fbc0abb2cac030a21288f456bd0deac92dc7bf",
       "anchor": "capi_v0145",
-      "reason": "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: 702adcbd hand-edited the RegControl object block to match this engine's render: `~ RevThreshold=-100` (the signed-threshold default) where the pinned 0.14.5 engine renders 100, plus the 0.15.x lines `~ Idle=No`, `~ IdleReverse=No`, `~ IdleForward=No`, `~ FwdThreshold=100`, props the pinned engine does not have. golden_reports.rs pins them SELF-REFERENTIALLY against our own render, while every other line is still the tools/golden/gen_reports.py capture on the pinned engine. A regen on the pinned engine reverts them and must re-land them.",
+      "reason": "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: 856979fa hand-edited the RegControl object block to match this engine's render: `~ RevThreshold=-100` (the signed-threshold default) where the pinned 0.14.5 engine renders 100, plus the 0.15.x lines `~ Idle=No`, `~ IdleReverse=No`, `~ IdleForward=No`, `~ FwdThreshold=100`, props the pinned engine does not have. golden_reports.rs pins them SELF-REFERENTIALLY against our own render, while every other line is still the tools/golden/gen_reports.py capture on the pinned engine. A regen on the pinned engine reverts them and must re-land them.",
       "produced_by": null
     },
     {
@@ -2423,7 +2423,7 @@
       "path": "tests/golden/reports/dump_transformer.txt",
       "sha256": "4346c56bcdc0c2471766c7f3436abbc0da89b4f222447b4a8baf41ed62f8f684",
       "anchor": "capi_v0145",
-      "reason": "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: 702adcbd hand-edited the 0.15.x default BH-curve lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` into every Transformer/AutoTrans object block to match this engine's render. The pinned 0.14.5 engine has no BH property, so golden_reports.rs pins those three lines SELF-REFERENTIALLY against our own render, while every other line is still the tools/golden/gen_reports.py capture on the pinned engine. A regen on the pinned engine drops them and must re-land them.",
+      "reason": "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: 856979fa hand-edited the 0.15.x default BH-curve lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` into every Transformer/AutoTrans object block to match this engine's render. The pinned 0.14.5 engine has no BH property, so golden_reports.rs pins those three lines SELF-REFERENTIALLY against our own render, while every other line is still the tools/golden/gen_reports.py capture on the pinned engine. A regen on the pinned engine drops them and must re-land them.",
       "produced_by": null
     },
     {
@@ -2436,7 +2436,7 @@
       "path": "tests/golden/reports/dump_transformer3.txt",
       "sha256": "df8600c6c21f6207ec378e454fb198c4e3d94a418590159a83c2684357b63e90",
       "anchor": "capi_v0145",
-      "reason": "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: 702adcbd hand-edited the 0.15.x default BH-curve lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` into every Transformer/AutoTrans object block to match this engine's render. The pinned 0.14.5 engine has no BH property, so golden_reports.rs pins those three lines SELF-REFERENTIALLY against our own render, while every other line is still the tools/golden/gen_reports.py capture on the pinned engine. A regen on the pinned engine drops them and must re-land them.",
+      "reason": "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: 856979fa hand-edited the 0.15.x default BH-curve lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` into every Transformer/AutoTrans object block to match this engine's render. The pinned 0.14.5 engine has no BH property, so golden_reports.rs pins those three lines SELF-REFERENTIALLY against our own render, while every other line is still the tools/golden/gen_reports.py capture on the pinned engine. A regen on the pinned engine drops them and must re-land them.",
       "produced_by": null
     },
     {
@@ -2449,7 +2449,7 @@
       "path": "tests/golden/reports/dump_transformer_disabled.txt",
       "sha256": "dd79e5ad4241957a8c85096cb579faf5bd12e370576df851b07557eeb50baf65",
       "anchor": "capi_v0145",
-      "reason": "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: 702adcbd hand-edited the 0.15.x default BH-curve lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` into every Transformer/AutoTrans object block to match this engine's render. The pinned 0.14.5 engine has no BH property, so golden_reports.rs pins those three lines SELF-REFERENTIALLY against our own render, while every other line is still the tools/golden/gen_reports.py capture on the pinned engine. A regen on the pinned engine drops them and must re-land them.",
+      "reason": "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: 856979fa hand-edited the 0.15.x default BH-curve lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` into every Transformer/AutoTrans object block to match this engine's render. The pinned 0.14.5 engine has no BH property, so golden_reports.rs pins those three lines SELF-REFERENTIALLY against our own render, while every other line is still the tools/golden/gen_reports.py capture on the pinned engine. A regen on the pinned engine drops them and must re-land them.",
       "produced_by": null
     },
     {

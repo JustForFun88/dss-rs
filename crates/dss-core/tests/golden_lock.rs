@@ -368,7 +368,7 @@ const FPC_REASON: &str = "a Free Pascal 3.2.2 RTL print capture (the %g/%f spell
 const R3723_TREE: &str = "crates/dss-core/tests/data/adiakoptics/r3723_ref/";
 
 const R3723_REASON: &str = "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official \
-     EPRI r3723 engine by tools/opendss/gen_ad_reference.py, which c060c0b2 retired together \
+     EPRI r3723 engine by tools/opendss/gen_ad_reference.py, which 0ddd343e retired together \
      with that revision (recoverable from history); the tree is frozen.";
 
 /// Residue rows whose bytes **no engine wrote** — script-generated input decks
@@ -446,22 +446,22 @@ const CAPI_V0145_OVERLAYS: &[(&str, &str)] = &[
 const DUMP3_COMMANDS_OVERLAY: &str = "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: the [Relay]/[Recloser]/[Fuse]/\
      [SwtControl] blocks are the r4133 property surfaces (Relay 71, Recloser 46, Fuse 12, \
      SwtControl 9 props; help verbatim from the r4133 binary's own Dump commands via \
-     tools/golden/r4133_help.py; 845fdd2f, 288afc35), and the 0.15.x property lines of \
+     tools/golden/r4133_help.py; f1596730, 243fb8dc), and the 0.15.x property lines of \
      [CNData] (SemiconLayer), [LineSpacing] (Detailed/EqDistPhPh/EqDistPhN/AvgPhaseHeight/\
      AvgNeutralHeight), [Transformer]/[AutoTrans] (BHPoints/BHCurrent/BHFlux) and [RegControl] \
      (Idle/IdleReverse/IdleForward/FwdThreshold) were hand-edited in to match this engine's render \
-     (2a20b97c, d9ee3f1c, 702adcbd). The pinned engine renders none of them, so all of them are \
+     (fed78cc7, 0f5c8262, 856979fa). The pinned engine renders none of them, so all of them are \
      pinned SELF-REFERENTIALLY against our own render by \
      golden_reports.rs::dump3_commands_matches_oracle. The anchor stays capi_v0145 because \
      every other block ([execcommands], [execoptions] and the remaining class sections) is \
      still the tools/golden/gen_reports.py capture on the pinned engine, as is the deck \
-     sidecar dump3_commands.meta.json (untouched since 34b15a12). A regen on the pinned \
+     sidecar dump3_commands.meta.json (untouched since 4c53d4ab). A regen on the pinned \
      engine reverts every hand-landed block; it must re-land them.";
 
-/// The five object dumps whose only hand-landed lines are 702adcbd's BH-curve
+/// The five object dumps whose only hand-landed lines are 856979fa's BH-curve
 /// props: `dump_{autotrans,autotrans3}` (one AutoTrans each) and
 /// `dump_{transformer,transformer3,transformer_disabled}` (one Transformer each).
-const DUMP_BH_OVERLAY: &str = "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: 702adcbd \
+const DUMP_BH_OVERLAY: &str = "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: 856979fa \
      hand-edited the 0.15.x default BH-curve lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` into \
      every Transformer/AutoTrans object block to match this engine's render. The pinned 0.14.5 \
      engine has no BH property, so golden_reports.rs pins those three lines \
@@ -469,8 +469,8 @@ const DUMP_BH_OVERLAY: &str = "PARTLY HAND-LANDED, not purely the pinned capi_v0
      tools/golden/gen_reports.py capture on the pinned engine. A regen on the pinned engine \
      drops them and must re-land them.";
 
-/// `dump_regcontrol`: 702adcbd's RegControl lines only.
-const DUMP_REGCONTROL_OVERLAY: &str = "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: 702adcbd \
+/// `dump_regcontrol`: 856979fa's RegControl lines only.
+const DUMP_REGCONTROL_OVERLAY: &str = "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: 856979fa \
      hand-edited the RegControl object block to match this engine's render: `~ RevThreshold=-100` \
      (the signed-threshold default) where the pinned 0.14.5 engine renders 100, plus the \
      0.15.x lines `~ Idle=No`, `~ IdleReverse=No`, `~ IdleForward=No`, `~ FwdThreshold=100`, \
@@ -479,9 +479,9 @@ const DUMP_REGCONTROL_OVERLAY: &str = "PARTLY HAND-LANDED, not purely the pinned
      capture on the pinned engine. A regen on the pinned engine reverts them and must re-land \
      them.";
 
-/// `dump3_bare` / `dump3_debug`: both kinds of 702adcbd lines (two Transformers
+/// `dump3_bare` / `dump3_debug`: both kinds of 856979fa lines (two Transformers
 /// and one RegControl in the `dump3.dss` fixture).
-const DUMP_BH_REGCONTROL_OVERLAY: &str = "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: 702adcbd \
+const DUMP_BH_REGCONTROL_OVERLAY: &str = "PARTLY HAND-LANDED, not purely the pinned capi_v0145 capture: 856979fa \
      hand-edited two kinds of lines in to match this engine's render: the 0.15.x default BH-curve \
      lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` in every Transformer object block, and in \
      the RegControl object block `~ RevThreshold=-100` (the signed-threshold default) where the \
@@ -2393,7 +2393,7 @@ fn residue_reasons_and_capi015_payloads_classify_as_registered() {
         seed_metadata("tests/golden/reports/dump3_commands.meta.json"),
         (Anchor::CapiV0145, String::new(), None)
     );
-    // The eight other Dump goldens 702adcbd hand-landed lines into, each naming
+    // The eight other Dump goldens 856979fa hand-landed lines into, each naming
     // what a pinned regen would revert. An untouched Dump golden of the same
     // generator keeps the plain residue.
     for (path, landed) in [
@@ -2416,7 +2416,7 @@ fn residue_reasons_and_capi015_payloads_classify_as_registered() {
         assert_eq!((anchor, produced_by), (Anchor::CapiV0145, None), "{path}");
         assert!(
             reason.starts_with("PARTLY HAND-LANDED")
-                && reason.contains("702adcbd")
+                && reason.contains("856979fa")
                 && reason.contains(landed),
             "{path}: {reason}"
         );

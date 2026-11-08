@@ -71,7 +71,7 @@ fn load_scenarios() -> Vec<Scenario> {
         .filter(|p| p.extension().is_some_and(|x| x == "json"))
         .collect();
     files.sort();
-    // Pin the scenario count: the per-file split (fcda714) reads a directory, so
+    // Pin the scenario count: the per-file split (ce4320e) reads a directory, so
     // a deleted/empty `tests/golden/timeseries_controls/` would otherwise make this gate pass
     // vacuously. Bump this when adding a timeseries_controls scenario file.
     assert_eq!(
