@@ -63,7 +63,7 @@ Where things are: `tests/golden/` (byte goldens), `tests/corpus/` (our deck fami
 
 ## Code
 - **C1.** `#![forbid(unsafe_code)]` in every workspace crate. `dss-epri` is the one exception (`publish = false`, `#[cfg(windows)]`, `#![deny(unsafe_op_in_unsafe_fn)]`, `// SAFETY` docs) and never ships. Prefer pure-Rust crates: a dependency is safe to use from safe code.
-- **C2.** Write idiomatic Rust.
+- **C2.** Idiomatic Rust in the functional style: behaviour as methods on its types, work as chains of methods, iterators and combinators, no free-standing function beyond `main`, tests and exported symbols. Mutation is explicit (`&mut self`), never hidden or global.
 - **C3.** No code is frozen: passing tests are the only contract. A module that grows large or mixes concerns becomes a directory module (`foo/mod.rs` plus submodules) with no behaviour change.
 - **C4.** Unit tests stay inline as `#[cfg(test)]` modules, in a sibling `tests.rs` only when the file is large, the `#[cfg(test)] mod tests;` line right after the module doc. A comparison with an OpenDSS engine goes through `dss-test-harness`. No test reads a document (`.md`).
 
