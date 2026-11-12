@@ -35,7 +35,7 @@ A program run only as a separate process (the OpenDSS engines, T1) may have any 
 - **H3. Review the diff before you hand it over.** Identifiers exist as used, the test fails without the fix, nothing unrelated changed, and the report is true.
 - **H4. Report only what ran.** Say what you tested and what you could not run. Never claim a run you did not do.
 - **H5. Stop and ask only about** a physics case you cannot settle (P4), a licence outside the allowlist, work beyond the request, publishing, a new remote, secrets, spending money, destructive git, and anything else hard to undo, such as deleting files outside your task. Deleting a work branch after it landed is not destructive git. Otherwise keep working and report the decision.
-- **H6. Found more work? Report it, don't widen the change.** A gap or a dependency you find goes into your report, and the session the user works with queues it in `plan/STATUS.md`.
+- **H6. Found more work? Report it, don't widen the change. Can't finish? Stop, don't narrow it.** A gap or a dependency you find goes into your report, and the session the user works with queues it in `plan/STATUS.md`. Work that cannot be done as its task and plan say (it outgrows one agent, or the design meets an obstacle) stops with the reason, and the session that launched it cuts it finer: a smaller scope, another design or a remainder left for later never lands, even as a disclosed deviation. A plan has no fallback stop point.
 - **H7. Guards say why.** A check that looks removable says what it prevents. Read that before changing it.
 - **H8. Keep secrets and personal details out** of the repository, logs and requests.
 - **H9. No agent attribution.** A commit does not say an agent wrote it: no trailers.
