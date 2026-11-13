@@ -11,6 +11,12 @@
 //! local-monitoring case (`MonBuses` empty ⇒ no signals) is what the `cim_der`
 //! gate exercises. See [`Ieee1547Controller::find_signal_terminals`].
 
+// BUG(C2): the class queries, the bus scan, the signal match and the snapshot constructors are
+// free functions; each belongs to the type whose data it reads or changes (the class registry,
+// `Circuit`, `RemoteSignal`, the snapshot types), and the driver to the exporter type.
+// BUG(C5): the export takes the circuit mutably and never writes it, takes the class list
+// mutably only for lazy UUIDs, and reaches each DER and control through a bare `ElemId` checked
+// by downcast or a class found by its name; typed handles and a non-mutating UUID read fix both.
 use crate::circuit::Circuit;
 use crate::elements::pc::pvsystem::PVSystem;
 use crate::elements::pc::storage::Storage;
@@ -38,6 +44,9 @@ struct RemoteSignal {
     uuid: Uuid,
 }
 
+// BUG(C5): a copy of an InvControl's inputs, built by `inv_snap` so that `write_cim` can then
+// take the circuit and the class list mutably, and copied again into the controller; the
+// controller reads the control itself, or takes this value by move.
 /// The `PullFrom*` snapshot of one control's inputs (released before `write_cim`
 /// takes its `&mut Circuit`/`&mut [DssClass]` borrows).
 struct InvSnap {
@@ -56,6 +65,8 @@ struct InvSnap {
     ar_gra_hi_v: f64,
 }
 
+// BUG(C5): the same borrow-driven copy as `InvSnap`, of an ExpControl's inputs, copied again
+// into the controller; the controller reads the control itself, or takes this value by move.
 struct ExpSnap {
     name: String,
     der_names: Vec<String>,
@@ -66,6 +77,9 @@ struct ExpSnap {
     q_v_slope: f64,
 }
 
+// BUG(C2): one flat record holds the nameplate, the applied nameplate, five settings groups, the
+// control identity and the signal set, and each method changes one of them through `&mut self`;
+// each part is a type with its own operations, and `write_cim` only coordinates them.
 /// Pascal `TIEEE1547Controller` (`ExportCIMXML.pas:155`): the accumulated
 /// nameplate + settings state, reused across every control in one export (so
 /// `PullFromExpControl`'s **appending** `pDERNames.Add` — vs `PullFromInvControl`'s
@@ -234,6 +248,8 @@ impl Ieee1547Controller {
     // (compat-tagged at its use site), reproduced verbatim for byte parity.
     #[allow(clippy::if_same_then_else, clippy::approx_constant)]
     fn pull_from_inv_control(&mut self, s: &InvSnap, inv_uuid: Uuid) {
+        // BUG(C5): the snapshot's name and lists, already copies of the control, are copied a
+        // second time here and below; the controller takes them by move.
         self.inv_name = s.name.clone();
         self.inv_uuid = inv_uuid;
         // `pDERNames.Assign` — replaces.
@@ -472,6 +488,8 @@ impl Ieee1547Controller {
 
     /// Pascal `PullFromExpControl` (`ExportCIMXML.pas:2846`).
     fn pull_from_exp_control(&mut self, s: &ExpSnap, exp_uuid: Uuid) {
+        // BUG(C5): the snapshot's name and DER names, already copies of the control, are copied
+        // a second time here and below; the controller takes them by move.
         self.inv_name = s.name.clone();
         self.inv_uuid = exp_uuid;
         // NOTE: `pDERNames.Add` (append) — NOT a replacing `Assign`; the reused
@@ -564,6 +582,8 @@ impl Ieee1547Controller {
         if self.mon_buses.is_empty() {
             return;
         }
+        // BUG(C5): the first MonBus is copied though the method later writes only
+        // `self.signals`, a field apart from `self.mon_buses`; borrowing it gives the same result.
         // Only the first MonBus (IEEE 1547 forbids different main buses).
         let raw = self.mon_buses[0].clone();
         let mut sig = RemoteSignal {
@@ -597,6 +617,8 @@ impl Ieee1547Controller {
         self.signals.push(sig);
     }
 
+    // BUG(C5): takes the circuit mutably and never writes it, and the class list mutably only for
+    // lazy UUIDs; with a UUID read that does not write both are shared borrows.
     /// Pascal `WriteCIM` (`ExportCIMXML.pas:3024`) — the `DERIEEEType1` block into
     /// the Dyn profile.
     fn write_cim(
@@ -625,6 +647,8 @@ impl Ieee1547Controller {
             // `3052` — the element lists carry disabled units too, so the guard
             // is load-bearing). Unlike the named-DER branch below, which emits
             // regardless (Pascal `SetElementActive` + unconditional `RefNode`).
+            // BUG(C5): this and the PVSystem loop below copy the handle list though their bodies
+            // never borrow `ckt` mutably; iterating the list gives the same result.
             for &r in &ckt.storages.clone() {
                 let enabled = classes[r.class_ord()]
                     .arena
@@ -654,6 +678,9 @@ impl Ieee1547Controller {
                 }
             }
         } else {
+            // BUG(C5): the DER name list is copied because the body calls
+            // `set_element_nameplate` through `&mut self`, which changes only the nameplate; with
+            // the nameplate a part of its own the loop borrows `self.der_names` directly.
             for name in &self.der_names.clone() {
                 let Some(r) = find_elem(classes, name) else {
                     continue;
@@ -908,6 +935,8 @@ impl Ieee1547Controller {
         writer::end_instance(buf, prf, "VoltWattSettings");
     }
 
+    // BUG(C5): tells a PVSystem from a Storage by trying one downcast and then the other; a
+    // typed handle of the DER gives its class without the run-time check.
     /// Pascal `SetElementNameplate` (`3013`): dispatch by class, once.
     fn set_element_nameplate(&mut self, classes: &[DssClass], r: ElemId) {
         if self.b_nameplate_set {
@@ -924,6 +953,8 @@ impl Ieee1547Controller {
     }
 }
 
+// BUG(C5): this and `StoragePlate` below copy a PVSystem's or a Storage's values only to hand
+// them to the nameplate setters, which only read them; the setters read the element.
 struct PvPlate {
     present_kv: f64,
     vmaxpu: f64,
@@ -976,6 +1007,8 @@ fn storage_plate(classes: &[DssClass], r: ElemId) -> Option<StoragePlate> {
     })
 }
 
+// BUG(C5): finds the class by its name and the object by a linear name scan, then builds the
+// `ElemId` by hand from the two bare positions; the registry resolves a name to a typed handle.
 /// Resolve `Class.Name` to an [`ElemId`] (Pascal `SetElementActive`).
 fn find_elem(classes: &[DssClass], full_name: &str) -> Option<ElemId> {
     let (cls_name, obj_name) = full_name.split_once('.')?;
@@ -998,6 +1031,9 @@ fn signal_terminal_uuid(cim: &mut CimExporter, classes: &[DssClass], sig: &Remot
         .arena
         .try_ckt_elem(r.index())
         .expect("signal element");
+    // BUG(C5): the object type is looked up by the class name at run time, and the element name
+    // is copied though `get_term_uuid` borrows nothing of the classes; the element's class gives
+    // the type, and the name is borrowed.
     let class_name = classes[r.class_ord()].props.class_name();
     let dss_obj_type = cktelem_dss_obj_type(class_name).unwrap_or(0);
     let name = ce.cd().obj.name().to_string();
@@ -1119,6 +1155,8 @@ fn elements_at_bus(ckt: &Circuit, classes: &[DssClass], bus_idx: usize, pd: bool
     out
 }
 
+// BUG(C5): takes the circuit mutably and never writes it, and the class list mutably only for
+// lazy UUIDs; with a UUID read that does not write both are shared borrows.
 /// Pascal `ExportCDPSM` l.3614-3634: build one controller and pull each enabled
 /// `InvControl` then each enabled `ExpControl`, writing a `DERIEEEType1` per pull.
 pub(super) fn write_ieee1547_controllers(
@@ -1127,6 +1165,9 @@ pub(super) fn write_ieee1547_controllers(
     ckt: &mut Circuit,
     cim: &mut CimExporter,
 ) {
+    // BUG(C5): every handle of the two control classes is gathered into a `Vec` and walked in
+    // place of iterating the class, so that the body can take the classes mutably; with a
+    // UUID read that does not write the loops iterate the control classes directly.
     let inv_refs = class_refs(classes, "InvControl");
     let exp_refs = class_refs(classes, "ExpControl");
     if inv_refs.is_empty() && exp_refs.is_empty() {
@@ -1152,6 +1193,8 @@ pub(super) fn write_ieee1547_controllers(
     }
 }
 
+// BUG(C5): finds the class by its name and builds each `ElemId` by hand from bare positions;
+// the registry hands out the typed handles of a class.
 /// The `(cls, idx)` refs of every object of class `name`, in creation order.
 fn class_refs(classes: &[DssClass], name: &str) -> Vec<ElemId> {
     classes

@@ -11,6 +11,12 @@
 //! combined (`Export CIM100`, `ExportOptions.pas` ptr 21) and fragments (`Export
 //! CIM100Fragments`, ptr 20).
 
+// BUG(C2): every operation of this module is a free function: the class lookups belong to the
+// class registry, the phase strings to a bus-spec type, and the sweeps and terminal writers to
+// an exporter type that owns the `Writer`, the `CimExporter` and the op-limit and ECP sets.
+// BUG(C5): the sweeps hold the class list and the circuit mutably though they write only lazy
+// UUID slots, and reach each element through a bare `ElemId` checked by downcast or a class
+// found by its name; typed handles and a UUID read without `&mut` narrow both.
 use std::collections::HashMap;
 
 use crate::circuit::Circuit;
@@ -101,6 +107,8 @@ const CAP_CTRL_KVAR: i32 = 2;
 const CAP_CTRL_TIME: i32 = 3;
 const CAP_CTRL_PF: i32 = 4;
 
+// BUG(C2): a free function over one `CktElementData` that copies the terminals' buses out as
+// bare `usize` positions; it is a method of `CktElementData` returning a typed bus handle.
 /// The bus index of each terminal, empty for an element without a node map on
 /// the present bus list, which the export leaves out as it leaves out a disabled
 /// one.
@@ -112,6 +120,8 @@ fn mapped_bus_refs(cd: &crate::elements::ckt::CktElementData) -> Vec<usize> {
     }
 }
 
+// BUG(C2): a free table that maps a class name string to the class's object-type number at run
+// time; the number is a property of each class, read through the class registry by its type.
 /// The Pascal `TDSSCktElement.DSSObjType` integer (`DSSClassDefs.pas`
 /// element-type constant OR the PD/PC/NON-PCPD category bits) for a circuit
 /// element's class, used as the `GetTermUuid` key prefix (`ExportCIMXML.pas:
@@ -177,6 +187,8 @@ struct Ecp {
     connections: Vec<Uuid>,
 }
 
+// BUG(C2): a type without operations: the free `add_*_ecp` functions below index `idx` and
+// `list` by hand and write its find-or-insert twice; that find-or-insert is a method of `EcpList`.
 /// The `ECPList`/`ECPHash` pair as a keyed, insertion-ordered list (Pascal
 /// `AddECP`/`GetECP`, `ExportCIMXML.pas:910-929`): `idx` maps the localName key
 /// to the `list` slot so a second element with the same shape/spectrum profile
@@ -852,6 +864,8 @@ pub(crate) fn write_positions(
     }
 }
 
+// BUG(C5): takes the whole `Circuit` mutably only to create one bus's lazy UUID; with a UUID
+// read that does not write it takes the buses it reads as a shared borrow.
 /// Pascal `TCIMExporterHelper.WriteReferenceTerminals` (`ExportCIMXML.pas:2073`).
 #[allow(clippy::too_many_arguments)]
 fn write_reference_terminals(
@@ -897,6 +911,8 @@ fn write_reference_terminals(
             "ACDCTerminal.sequenceNumber",
             j as i64,
         );
+        // BUG(C2): writes the UUID slot of a `Bus` from outside the bus; `Bus` owns its UUID
+        // and hands it out through a method.
         let bus_uuid = crate::cim::get_or_create_uuid(&mut ckt.buses[bus_ref].uuid);
         writer::write_cim_ln(
             buf,
@@ -918,6 +934,9 @@ fn write_reference_terminals(
             };
             let limit_name = writer::op_lim_i_name(norm, emerg);
             let key = limit_name.to_ascii_lowercase();
+            // BUG(C2): the find-or-insert of the op-limit set is written here over its two
+            // loose halves and again for the transformer limits; it is one method of an
+            // op-limit set type.
             let limit_uuid = match op_limit_idx.get(&key) {
                 Some(&idx) => op_limits[idx].uuid,
                 None => {
@@ -943,6 +962,8 @@ fn write_reference_terminals(
     }
 }
 
+// BUG(C5): takes the whole `Circuit` mutably only for the bus UUIDs that
+// `write_reference_terminals` creates; with a UUID read that does not write it takes `&Circuit`.
 /// Pascal `TCIMExporterHelper.WriteTerminals` (`ExportCIMXML.pas:2117`):
 /// `WriteReferenceTerminals(pElem, pElem.UUID, norm, emerg)` +
 /// `WritePositions(pElem, geoUUID, crsUUID)`.
@@ -1091,6 +1112,9 @@ fn write_load_model(
     writer::write_cim_ln(buf, ProfileChoice::Fun, "</cim:LoadResponseCharacteristic>");
 }
 
+// BUG(C5): resolves a catalog object again by class name and object name, with the whole class
+// list held mutably, because a `Line` keeps its own copies of its geometry, spacing and wires;
+// the line refers to the masters by typed handles and the UUID is read from the master.
 /// The UUID of a **master** named catalog object (`Class.name`) from the class
 /// list — the CIM ref must point at the master the catalog sweep writes (whose
 /// UUID the fixture preloads by `Class.name`, `exec/uuids_cmd.rs`), never the
@@ -1192,6 +1216,9 @@ pub(crate) fn phase_order_string(
     }
 }
 
+// BUG(C5): takes the class list mutably though it only reads it, finds the controls of a class
+// by comparing class names, and reads the fuse rating by a bare property index; it takes
+// `&[DssClass]` and reaches each control class through a typed handle.
 /// Pascal `TCIMExporterHelper.ParseSwitchClass` (`ExportCIMXML.pas:451`): pick the
 /// CIM switch class + ratings from an attached protective device. Default
 /// `LoadBreakSwitch` (ratings = the line's NormAmps); a controlling **Fuse**
@@ -1435,6 +1462,9 @@ fn write_conc_data(
 /// NIL `FetchConductorData`).
 type ConductorRef = Option<(String, &'static str)>;
 
+// BUG(C5): a copy of a `Line`, built with a placeholder UUID that is replaced after
+// `data_mut()`, only so that the sweep can take the class list mutably afterwards; with a UUID
+// read that does not write, the sweep borrows the line once it passes its filter.
 /// A `Line`'s CIM-relevant state, snapshotted so the class-list borrow is
 /// released before the master-UUID lookups (`class_obj_uuid`) run.
 struct LineSnap {
@@ -1611,6 +1641,8 @@ fn conductor_geom_amps<T: ArenaClass + ConductorData>(
     arena.get::<T>(oi).map(|c| (c.geom(), c.amps().0))
 }
 
+// BUG(C5): finds a class by a case-insensitive name scan at run time, and its callers then
+// downcast the objects; the registry hands out a class by its type.
 /// The index of the (case-insensitive) class in the class list, or `None`.
 pub(crate) fn class_index(classes: &[DssClass], name: &str) -> Option<usize> {
     classes
@@ -1618,6 +1650,8 @@ pub(crate) fn class_index(classes: &[DssClass], name: &str) -> Option<usize> {
         .position(|c| c.props.class_name().eq_ignore_ascii_case(name))
 }
 
+// BUG(C5): takes the whole class list mutably though it changes only the LineCode class (its
+// units and lazy UUIDs); it takes that class mutably and reads the lines through a shared borrow.
 /// Pascal LineCode catalog sweep (`ExportCIMXML.pas:4493-4547`): a
 /// `PerLengthSequenceImpedance` (symmetric-components 3-phase) or a
 /// `PerLengthPhaseImpedance` + lower-triangular `PhaseImpedanceData` per
@@ -1647,6 +1681,9 @@ fn write_line_code_catalog(
         if !is_none {
             continue;
         }
+        // BUG(C5): this name, and the name, `z` and `yc` of the loop below, are copied though
+        // nothing borrows the classes mutably while they are read; borrowing them gives the same
+        // result.
         let lc_name = classes[ci].arena[oi].data().name().to_string();
         if let Some(code) = find_line_units_for_linecode(classes, ckt, &lc_name) {
             classes[ci].arena[oi].set_i32(lc_prop::UNITS, code);
@@ -1853,6 +1890,8 @@ fn write_wire_data_catalog(buf: &mut writer::Writer, classes: &mut [DssClass]) {
     };
     for oi in 0..classes[ci].arena.len() {
         let uuid = classes[ci].arena[oi].data_mut().uuid();
+        // BUG(C5): the name is copied though only shared borrows of the arena follow;
+        // borrowing it gives the same result.
         let name = classes[ci].arena[oi].data().name().to_string();
         let Some((geom, norm)) = conductor_geom_amps::<WireDataObj>(&classes[ci].arena, oi) else {
             continue;
@@ -1872,6 +1911,8 @@ fn write_ts_data_catalog(buf: &mut writer::Writer, classes: &mut [DssClass]) {
     };
     for oi in 0..classes[ci].arena.len() {
         let uuid = classes[ci].arena[oi].data_mut().uuid();
+        // BUG(C5): the name is copied though only shared borrows of the arena follow;
+        // borrowing it gives the same result.
         let name = classes[ci].arena[oi].data().name().to_string();
         let Some((geom, norm)) = conductor_geom_amps::<TsDataObj>(&classes[ci].arena, oi) else {
             continue;
@@ -1910,6 +1951,8 @@ fn write_cn_data_catalog(buf: &mut writer::Writer, classes: &mut [DssClass]) {
     };
     for oi in 0..classes[ci].arena.len() {
         let uuid = classes[ci].arena[oi].data_mut().uuid();
+        // BUG(C5): the name is copied though only shared borrows of the arena follow;
+        // borrowing it gives the same result.
         let name = classes[ci].arena[oi].data().name().to_string();
         let Some((geom, norm)) = conductor_geom_amps::<CnDataObj>(&classes[ci].arena, oi) else {
             continue;
@@ -1973,6 +2016,8 @@ fn write_line_geometry_catalog(
     };
     for oi in 0..classes[ci].arena.len() {
         let uuid = classes[ci].arena[oi].data_mut().uuid();
+        // BUG(C5): the name and the coordinate lists below are copied though nothing borrows the
+        // classes mutably while they are read; borrowing the geometry gives the same result.
         let name = classes[ci].arena[oi].data().name().to_string();
         let (nwires, is_overhead, xs, ys, us) = {
             let Some(g) = classes[ci].arena.get::<LineGeometryObj>(oi) else {
@@ -2046,6 +2091,8 @@ fn write_line_spacing_catalog(
     };
     for oi in 0..classes[ci].arena.len() {
         let uuid = classes[ci].arena[oi].data_mut().uuid();
+        // BUG(C5): the name and the coordinate lists below are copied though nothing borrows the
+        // classes mutably while they are read; borrowing the spacing gives the same result.
         let name = classes[ci].arena[oi].data().name().to_string();
         let (nwires, units, xs, ys) = {
             let Some(s) = classes[ci].arena.get::<LineSpacingObj>(oi) else {
@@ -2104,6 +2151,9 @@ fn write_line_spacing_catalog(
     }
 }
 
+// BUG(C5): holds the class list, the circuit, the exporter and the error log mutably for the
+// whole export, though it writes the model only in lazy UUID slots, the feeder UUID and the
+// LineCode units; each of those takes its owner mutably and the rest is a shared borrow.
 /// Pascal `TCIMExporter.ExportCDPSM` (`ExportCIMXML.pas:3203`). Drives the whole
 /// export through a [`writer::Writer`] (`combined` = `Export CIM100` ptr 21, else
 /// `Export CIM100Fragments` ptr 20) and returns it; the caller
@@ -2142,8 +2192,8 @@ pub(crate) fn export_cdpsm(
     }
     // `StartBankList`/`StartECPList`/`StartOpLimitList` (`ExportCIMXML.pas:3308-
     // 3310`): always-fresh, always-freed-at-the-end *local* scratch state (no
-    // "if not assigned" guard, unlike UuidList) — modeled as plain Rust locals
-    // (`op_limits`/`op_limit_idx` below).
+    // "if not assigned" guard, unlike UuidList), local to one export call and never
+    // kept on `CimExporter`.
 
     // `FD_Create` (`ExportCIMXML.pas:4729`): open the writer + emit the
     // per-file `StartCIMFile` preamble(s). `combined = true` → one FUN buffer
@@ -2152,6 +2202,8 @@ pub(crate) fn export_cdpsm(
     let cim_ver_uuid = cim.get_dev_uuid(UuidChoice::CIMVer, "IEC", 1);
     let mut buf = writer::Writer::new(combined, cim_ver_uuid);
 
+    // BUG(C5): the circuit name is copied though the only write to `ckt` while it is in use goes
+    // to the separate `uuid` field; borrowing `&ckt.name` gives the same result.
     let ckt_name = ckt.name.clone();
 
     // CoordinateSystem (`ExportCIMXML.pas:3316-3322`).
@@ -2228,6 +2280,8 @@ pub(crate) fn export_cdpsm(
     );
     writer::end_instance(&mut buf, ProfileChoice::Geo, "Location");
 
+    // BUG(C2): the exporter writes the public `uuid` field of `Circuit`; `Circuit` keeps it
+    // private and sets it through a method.
     ckt.uuid = Some(fdr_uuid);
     writer::start_instance(&mut buf, ProfileChoice::Fun, "Feeder", fdr_uuid, &ckt_name);
     writer::ref_node(
@@ -2354,6 +2408,8 @@ pub(crate) fn export_cdpsm(
 
     // BaseVoltage + OperationalLimitSet + 4 VoltageLimits per LegalVoltageBases
     // entry (`3412-3458`).
+    // BUG(C5): the base list is copied though the loop body never touches `ckt`; iterating
+    // `&ckt.legal_voltage_bases` gives the same result.
     for &kvbase in &ckt.legal_voltage_bases.clone() {
         let s = writer::base_v_name(kvbase);
         let base_v_uuid = cim.get_dev_uuid(UuidChoice::BaseV, &s, 1);
@@ -2493,6 +2549,8 @@ pub(crate) fn export_cdpsm(
     // Buses -> TopologicalNode/ConnectivityNode (`3460-3483`; the Pascal
     // `Buses[i].localName := BusList.NameOfIndex(i)` assignment is a no-op here
     // — Rust's `Bus.name` is already the same lowercased display name).
+    // BUG(C5): the loop runs by index and copies each bus name because the bus's UUID slot is
+    // written below; `ckt.buses.iter_mut()` borrows the name and the slot as disjoint fields.
     for i in 0..ckt.buses.len() {
         let bus_name = ckt.buses[i].name.clone();
         let geo_uuid = cim.get_dev_uuid(UuidChoice::Topo, &bus_name, 1);
@@ -2517,6 +2575,8 @@ pub(crate) fn export_cdpsm(
         );
         writer::end_instance(&mut buf, ProfileChoice::Topo, "TopologicalNode");
 
+        // BUG(C2): writes the UUID slot of a `Bus` from outside the bus; `Bus` owns its UUID
+        // and hands it out through a method.
         let bus_uuid = crate::cim::get_or_create_uuid(&mut ckt.buses[i].uuid);
         writer::start_free_instance(&mut buf, ProfileChoice::Topo, "ConnectivityNode", bus_uuid);
         writer::string_node(
@@ -2564,6 +2624,8 @@ pub(crate) fn export_cdpsm(
             continue;
         }
         let bus_ref = vsrc.cd.terminals[0].bus_idx();
+        // BUG(C5): the swing bus name is copied though this loop never borrows `ckt` mutably;
+        // borrowing it gives the same result.
         let bus_name = ckt.buses[bus_ref].name.clone();
         let swing_geo_uuid = cim.get_dev_uuid(UuidChoice::Topo, &bus_name, 1);
         writer::start_instance(
@@ -2583,19 +2645,20 @@ pub(crate) fn export_cdpsm(
         break;
     }
 
-    // Shared local scratch (Pascal `OpLimitList`/`OpLimitHash` +
-    // `ECPList`/`ECPHash`, started at `3308-3310`, freed at `4698-4700`): the
-    // per-(norm,emerg) `OperationalLimitSet`s that `write_reference_terminals`
-    // creates on the fly, and the per-shape/spectrum `EnergyConnectionProfile`s
-    // that `add_load_ecp` (and the DER ECP helpers) accumulate.
-    // Threaded through every per-object sweep and flushed by the two closing
-    // sweeps below.
+    // BUG(C2): the op-limit set is two loose locals, a list and its key index, threaded as two
+    // `&mut` arguments through every terminal writer; an op-limit set type owns both and its
+    // find-or-insert. Both sets live for one export, and the closing sweeps flush them.
     let mut op_limits: Vec<OpLimit> = Vec::new();
     let mut op_limit_idx: HashMap<String, usize> = HashMap::new();
     let mut ecps = EcpList::default();
 
     // Generators -> SynchronousMachine (`3503-3522`).
+    // BUG(C5): each element sweep below copies its handle list so that the body can pass `ckt`
+    // mutably to the terminal writers; with a UUID read that does not write it iterates the list.
     for &r in &ckt.generators.clone() {
+        // BUG(C5): each sweep below copies its element into a local snapshot so that
+        // `data_mut().uuid()` can follow; reading the UUID once the element passes its filter,
+        // then borrowing the element while the writers run, gives the same result.
         struct GenSnap {
             enabled: bool,
             name: String,
@@ -3522,6 +3585,8 @@ pub(crate) fn export_cdpsm(
         // `aVRDelay` = the OnDelay of the last CapControl whose `This_Capacitor`
         // is this bank (Pascal loops all CapControls, last match wins, `3714-3718`).
         let mut avr_delay = 0.0;
+        // BUG(C5): the CapControls are found by downcasting every handle of the mixed control
+        // list at run time; a typed CapControl list gives them without the class check.
         for &cr in &ckt.controls {
             if let Some(cc) = classes[cr.class_ord()].arena.get::<CapControl>(cr.index())
                 && cc.controlled_element() == Some(r)
@@ -3595,6 +3660,8 @@ pub(crate) fn export_cdpsm(
     }
 
     // CapControls -> RegulatingControl (`3733-3781`).
+    // BUG(C5): the control list is copied though this loop body never borrows `ckt` mutably;
+    // iterating `&ckt.controls` gives the same result.
     for &cr in &ckt.controls.clone() {
         struct CcSnap {
             cc_name: String,
@@ -4074,6 +4141,8 @@ pub(crate) fn export_cdpsm(
                 "ConductingEquipment.BaseVoltage",
                 vbase_uuid,
             );
+            // BUG(C5): this and the two branches below copy a name out of the local snapshot,
+            // which `class_obj_uuid` does not borrow; `if let Some(n) = &snap.<name>` is enough.
             if let Some(lc_name) = snap.line_code_name.clone() {
                 let mut vlen = v1;
                 if snap.user_length_units == LineUnits::None {

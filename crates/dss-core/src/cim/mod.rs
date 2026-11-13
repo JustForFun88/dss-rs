@@ -76,6 +76,8 @@ impl Default for Uuid {
     }
 }
 
+// BUG(C2): a free function over a bare `Option<Uuid>` slot that creates the UUID on its first
+// read, so every reader of a UUID needs `&mut`; a UUID-slot type owns the slot and its read.
 /// Lazily-created UUID slot shared by every named object (`TNamedObject.pUuid`,
 /// `NamedObject.pas:47-52`): `Get_UUID` creates a **random v4** on first read.
 /// Free function (not a method) because the slot lives on plain structs

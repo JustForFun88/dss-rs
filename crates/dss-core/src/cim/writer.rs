@@ -8,6 +8,9 @@
 //! routes each line to its own per-profile buffer with
 //! the auto-`StartFreeInstance` / close-every-open-profile logic.
 
+// BUG(C2): the operations of `Writer` are free functions here that read and write its private
+// fields, and belong to it as methods. The name helpers make the keys of the exporter's UUID
+// families and belong to the type of those keys.
 use super::Uuid;
 
 /// Pascal `ProfileChoice` (`ExportCIMXML.pas:39`). Threaded through every writer
@@ -126,6 +129,9 @@ impl Writer {
 /// `roots`/`ids` *before* it writes), then routes the line to that profile's file.
 pub fn write_cim_ln(buf: &mut Writer, prf: ProfileChoice, s: &str) {
     if buf.separate && prf != ProfileChoice::Fun && buf.roots[prf.idx()].is_empty() {
+        // BUG(C5): the open FUN root is copied only so that `start_free_instance` can take the
+        // whole writer; a `Writer` method that copies it into the profile's slot in place
+        // needs no temporary.
         let root = buf.roots[ProfileChoice::Fun.idx()].clone();
         let id = buf.ids[ProfileChoice::Fun.idx()];
         start_free_instance(buf, prf, &root, id);
@@ -513,6 +519,8 @@ pub fn op_lim_i_name(norm: f64, emerg: f64) -> String {
     format!("OpLimI_{}_{}", ff_fixed(norm, 1), ff_fixed(emerg, 1))
 }
 
+// BUG(C2): a free query on a raw bus-spec string, written again with the same body in the
+// element code; a bus-spec type owns it once.
 /// Pascal `IsGroundBus` (`ExportCIMXML.pas:2025`): `True` (ground) unless the raw
 /// bus-spec string (with its `.N` node suffixes, e.g. `"sourcebus.1.2.3"`)
 /// contains a plain **substring** `.1`/`.2`/`.3` (not a per-node-token parse —

@@ -13,6 +13,12 @@
 //! *bank* ([`CimBank`] = Pascal `TCIMBankObject`), whose vector group is built
 //! from the accumulated winding phases/connections.
 
+// BUG(C2): the transformer, regulator, bank and op-limit operations here are free functions;
+// each belongs to the type whose data it reads or changes (a bank set, an op-limit set,
+// `XfmrCodeData`, `WdgData`), and the sweeps to the exporter type that coordinates them.
+// BUG(C5): the sweeps hold the class list and the circuit mutably though they write only lazy
+// UUID slots, and reach each transformer, code and control through a bare `ElemId` or a class
+// name checked at run time; typed handles and a UUID read without `&mut` narrow both.
 use std::collections::HashMap;
 
 use crate::circuit::Circuit;
@@ -184,6 +190,9 @@ struct WdgData {
     node_j2: usize,
 }
 
+// BUG(C5): a full copy of a transformer, its `WdgData` windings included, held through the
+// transformer export so that the class list can be taken mutably for the UUIDs; with a UUID
+// read that does not write the sweeps borrow the transformer itself.
 /// Snapshot of one enabled `Transformer` (all data the CIM arm reads, captured
 /// before the mutable write phase to sidestep the class-registry borrow).
 struct XfSnap {
@@ -234,6 +243,9 @@ struct AutoWdg {
     term_bus_cim_id: String,
 }
 
+// BUG(C5): a full copy of an autotransformer, its `AutoWdg` windings included, held through the
+// transformer export though its sweep takes nothing of the class list mutably; that sweep
+// borrows the autotransformer itself.
 /// Snapshot of one enabled `AutoTrans`. (The autotransformer object's own UUID
 /// is never referenced by the Pascal arm — ends/terminals hang off the bank and
 /// the `Wdg`/`Term` device UUIDs — so it is not captured.)
@@ -276,6 +288,8 @@ fn synth_code_name(xf_name: &str) -> String {
     format!("CIMXfmrCode_{xf_name}").to_ascii_lowercase()
 }
 
+// BUG(C2): the find-or-create of the bank set, written free over its two loose halves; it is a
+// method of a bank set type that owns the list and its key index.
 /// Find-or-create the bank named `s_bank` (Pascal `GetBank`/`AddBank` over a
 /// case-insensitive `THashList`); banks are written in insertion order.
 fn ensure_bank(
@@ -578,6 +592,8 @@ fn xfmr_tank_phases_and_ground(buf: &mut writer::Writer, w: &WdgData) {
     );
 }
 
+// BUG(C2): repeats over the two loose halves of the op-limit set the find-or-insert that the
+// export's terminal writer also does inline; it is one method of an op-limit set type.
 /// The HV-winding (terminal 1) `OperationalLimitSet` — Pascal
 /// `ExportCIMXML.pas:3916-3927/4138-4150`: find-or-create the `(norm, emerg)`
 /// current-limit and reference it on terminal 1. A normal rating that is not set
@@ -618,6 +634,9 @@ fn hv_current_limit(
     );
 }
 
+// BUG(C5): takes the class list and the circuit mutably for the whole transformer export,
+// though the only writes are lazy UUID slots; with a UUID read that does not write both are
+// shared borrows.
 /// Pascal `ExportCIMXML.pas:3783-4195` — the transformer / autotransformer /
 /// bank arm of `ExportCDPSM` (combined mode). `crs_uuid`/`fdr_uuid`/`sqrt3` are
 /// the caller's already-computed constants.
@@ -636,6 +655,8 @@ pub(crate) fn write_transformers(
     // Aux-list sizing (`3783-3790`): maxWdg = max(3, max NumWindings over enabled
     // transformers). Only regular transformers widen it (autos are ≤ 3).
     let mut max_wdg = 3usize;
+    // BUG(C5): the handle list is copied though this loop body never borrows `ckt` mutably;
+    // iterating `&ckt.transformers` gives the same result.
     for &r in &ckt.transformers.clone() {
         let Some(t) = classes[r.class_ord()].arena.get::<Transformer>(r.index()) else {
             continue;
@@ -645,8 +666,8 @@ pub(crate) fn write_transformers(
         }
     }
 
-    // --- snapshot every enabled autotransformer + transformer (drops the class
-    // borrow before the mutable write phase). ---
+    // BUG(C5): the two handle lists are copied before the snapshot loops below, though those
+    // loops write only `ckt.buses`, a field apart from the lists; they iterate the lists directly.
     let auto_refs = ckt.auto_transformers.clone();
     let xf_refs = ckt.transformers.clone();
 
@@ -664,6 +685,8 @@ pub(crate) fn write_transformers(
             for i in 1..=nw {
                 let bus_ref = au.cd.terminals[i - 1].bus_idx();
                 let kvbase = ckt.buses[bus_ref].kv_base;
+                // BUG(C2): this and the transformer loop below write the UUID slot of a `Bus`
+                // from outside the bus; `Bus` owns its UUID and hands it out through a method.
                 let cim_id = get_or_create_uuid(&mut ckt.buses[bus_ref].uuid).to_cim_string();
                 wdgs.push(AutoWdg {
                     kvll: au.winding_kvll(i),
@@ -755,9 +778,9 @@ pub(crate) fn write_transformers(
         };
         let mut snap = snap;
         snap.uuid = classes[r.class_ord()].arena[r.index()].data_mut().uuid();
-        // Resolve the XfmrCode object UUID (case 2) if `xfmrcode=` resolved. The
-        // handle is an `Idx<XfmrCodeObj>`, so its class is static; the `get`
-        // guard is the arena bounds check (a miss is treated as no code).
+        // BUG(C5): the transformer is downcast a second time to read its code handle, and the
+        // typed `Idx<XfmrCodeObj>` is lowered to a bare index into the class list; the registry
+        // resolves the typed handle. A miss of the case-2 code UUID is treated as no code.
         let code_ref = classes[r.class_ord()]
             .arena
             .get::<Transformer>(r.index())
@@ -778,6 +801,8 @@ pub(crate) fn write_transformers(
     }
 
     // --- AutoTransformer sweep (`3804-3932`). ---
+    // BUG(C2): the bank set is two loose locals, a list and its key index, joined only by the
+    // free `ensure_bank` and indexed by a bare position; a bank set type owns both.
     let mut banks: Vec<CimBank> = Vec::new();
     let mut bank_idx: HashMap<String, usize> = HashMap::new();
     for au in &autos {
@@ -789,6 +814,8 @@ pub(crate) fn write_transformers(
         let bi = ensure_bank(&mut banks, &mut bank_idx, cim, max_wdg, &s_bank);
         banks[bi].add_auto_transformer(au);
         let geo_uuid = cim.get_dev_uuid(UuidChoice::XfLoc, &au.name, 1);
+        // BUG(C5): this and each `write_positions` call below collect the terminal bus refs into
+        // a fresh `Vec` per call; `write_positions` reading them through an iterator needs none.
         write_positions(
             buf,
             ckt,
@@ -1001,6 +1028,9 @@ pub(crate) fn write_transformers(
     if let Some(ci) = class_index(classes, "xfmrcode") {
         let n = classes[ci].arena.len();
         for k in 0..n {
+            // BUG(C5): each code, and each synthesized one below, is copied into `XfmrCodeData`
+            // with its windings and `xsc` only to hand `write_xfmr_code` one shape that it
+            // reads; a borrowed view of the code or of the snapshot gives the same result.
             let code = {
                 let obj = &classes[ci].arena[k];
                 let Some(c) = classes[ci].arena.get::<XfmrCodeObj>(k) else {
@@ -1347,6 +1377,8 @@ pub(crate) fn write_transformers(
     // --- Bank write (`4157-4173`). ---
     for bank in &mut banks {
         bank.build_vector_group();
+        // BUG(C5): the bank name is copied only to pass a `&str`; the stripped slice of
+        // `bank.local_name` gives the same result.
         // Strip a leading '=' (temporary, no-bank name); still unique.
         let name = bank
             .local_name
@@ -1378,6 +1410,8 @@ pub(crate) fn write_transformers(
     }
 }
 
+// BUG(C5): takes the whole class list mutably for one lazy UUID per RegControl; with a UUID
+// read that does not write it takes the classes as a shared borrow.
 /// Pascal `ExportCIMXML.pas:4198-4270` — the RegControl arm of `ExportCDPSM`:
 /// each RegControl on a `Transformer` (autotransformer-controlled ones are
 /// skipped, `4202`) → a `TapChangerControl` + `RatioTapChanger`.
@@ -1387,8 +1421,12 @@ pub(crate) fn write_reg_controls(
     ckt: &Circuit,
     cim: &mut CimExporter,
 ) {
+    // BUG(C5): the control list is copied though `ckt` is a shared borrow that nothing can
+    // write; iterating `&ckt.controls` gives the same result.
     for cr in &ckt.controls.clone() {
-        // Snapshot the RegControl + its controlled transformer.
+        // BUG(C5): the RegControl and its controlled transformer are copied into a `RegSnap`
+        // so that `data_mut().uuid()` can follow; reading the UUID once the filters pass, then
+        // borrowing the control and the transformer, gives the same result.
         let snap = {
             let Some(reg) = classes[cr.class_ord()].arena.get::<RegControl>(cr.index()) else {
                 continue;
@@ -1459,6 +1497,8 @@ pub(crate) fn write_reg_controls(
     }
 }
 
+// BUG(C5): a copy of a RegControl and of its transformer that exists only for the UUID borrow;
+// `write_one_reg_control` reads the two objects instead.
 /// Snapshot of one Transformer-controlling RegControl for the CIM arm.
 struct RegSnap {
     local_name: String,
