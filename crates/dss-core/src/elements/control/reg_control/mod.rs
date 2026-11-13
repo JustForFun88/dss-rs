@@ -105,6 +105,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 39; // incl. Like
 }
 
+// BUG(C2): a free function that builds the class property table. It belongs to
+// `RegControl` as an associated function.
 /// `TRegControl.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
@@ -178,17 +180,25 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
 /// writes (both sides apply the identical clamp).
 type TapSnap = (f64, f64, f64, f64);
 
+// BUG(C5): derives `Clone` though it owns the tap-changing state it carries across steps.
 /// `TRegControlObj`.
 #[derive(Debug, Clone)]
 pub struct RegControl {
     pub ccd: ControlElemData,
     /// Dump name of the controlled transformer (Pascal renders `Name`).
     controlled_name: String,
+    // BUG(C5): a copy of the controlled transformer's shape, stale after an edit of the
+    // transformer. The transformer owns it.
     /// Parse-time shape snapshot of the controlled transformer.
     snapshot: Option<RefSnapshot>,
+    // BUG(C5): a copy of the transformer's taps, stale between resyncs. `set_tap_num` writes
+    // the copy and queues the same write to the transformer. The transformer owns the taps
+    // and should be read and written live.
     /// Per-winding tap data of the controlled transformer (1-based winding i
     /// at `tap_snap[i-1]`).
     tap_snap: Vec<TapSnap>,
+    // BUG(C2): requests parked in state for the executive to take later. The property edit
+    // should return them to its caller.
     /// Deferred `TapNum` writes for the executive to apply post-edit.
     pending_actions: Vec<RefAction>,
 
@@ -548,6 +558,8 @@ impl RegControl {
             ));
             return;
         }
+        // BUG(C5): the snapshot and both bus names below are cloned to read them while `ccd`
+        // is written. `ccd` is a disjoint field, so they can be borrowed in place.
         let snap = self.snapshot.clone().unwrap_or_default();
 
         if self.using_regulated_bus {
@@ -589,8 +601,9 @@ impl RegControl {
                 }
             };
             self.ccd.cd.set_bus(1, &bus);
-            // Pascal also (re)allocates the VBuffer/CBuffer sampling buffers
-            // here; `sample` allocates them as locals instead.
+            // BUG(C5): the voltage and current sampling buffers are not sized here, and
+            // `sample` allocates them on every pass. The control should size them here and
+            // keep them between samples.
         }
     }
 }

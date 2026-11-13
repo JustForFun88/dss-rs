@@ -4,6 +4,7 @@
 
 use super::{GenDispatchEnv, GenDispatcher};
 
+// BUG(C2): `GenDispatcher` keeps its weighted generator list as loose fields with no type.
 impl GenDispatcher {
     /// Pascal `TGenDispatcherObj.MakeGenList`: build (or rebuild) the resolved
     /// generator pointer list. A named list resolves each entry against the
@@ -91,6 +92,8 @@ impl GenDispatcher {
     /// the monitored element and attach the control's single terminal to the
     /// monitored terminal's bus.
     pub(super) fn recalc(&mut self) {
+        // BUG(C5): the snapshot and the bus name below are cloned to read them while `ccd`
+        // is written. `ccd` is a disjoint field, so they can be borrowed in place.
         let Some(mon) = self.mon_snap.clone() else {
             // Pascal `DoSimpleMsg('Monitored Element in %s is not set', 372)`.
             self.ccd.cd.obj.push_error(crate::diag::DssDiagnostic::msg(

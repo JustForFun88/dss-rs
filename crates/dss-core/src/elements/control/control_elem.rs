@@ -120,6 +120,9 @@ impl ControlAction {
     }
 }
 
+// BUG(C5): the `sample` and `do_pending_action` of each control that takes this context
+// receive it whole and use only a few of its fields. Each operation should receive only
+// the parts it reads or changes.
 /// Scalar/queue/event context handed to a control's `Sample` and
 /// `DoPendingAction`: the disjoint-borrow stand-in for the
 /// Pascal `ActiveCircuit.Solution.*` / `ActiveCircuit.ControlQueue` /
@@ -152,6 +155,10 @@ pub struct CtrlCtx<'a> {
     pub self_ref: ElemId,
 }
 
+// BUG(C2): every field is public, and each control writes these fields and the nested
+// `CktElementData` fields directly, keeping their invariants by hand. The fields should be
+// private, changed through methods of `ControlElemData` and `CktElementData`.
+// BUG(C5): derives `Clone` though it holds the running state of a control.
 /// `TControlElem` shared state (the base-class fields every control carries).
 /// Embeds [`CktElementData`] exactly as `TControlElem` extends
 /// `TDSSCktElement`.
@@ -252,6 +259,10 @@ impl ControlElemData {
     }
 }
 
+// BUG(C2): the fields are public, and Relay and SwtControl rewrite them one by one. They
+// should be private, set only through methods of `RefSnapshot`.
+// BUG(C5): a copy of another element's phases, terminals and bus names, kept by the control
+// and stale after an edit of that element. The element owns them and should be read live.
 /// A read-only snapshot of a controlled/monitored circuit element, captured
 /// when the `transformer=`/`element=`/`capacitor=` reference is resolved during
 /// parsing. Pascal reads the live element through a pointer in

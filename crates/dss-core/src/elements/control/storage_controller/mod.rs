@@ -196,6 +196,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 40; // incl. Like
 }
 
+// BUG(C2): a free function that builds the class property table. It belongs to
+// `StorageController` as an associated function.
 /// `TStorageController.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
@@ -280,12 +282,18 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("StorageController", defs, true)
 }
 
+// BUG(C2): the weighted Storage fleet (names, weights, fleet size, total weight, resolved
+// fleet) is loose fields resynced by hand, as in each fleet control. A fleet type should
+// own them and their operations.
+// BUG(C5): derives `Clone` though it owns the dispatch state it carries across samples.
 /// `TStorageControllerObj`.
 #[derive(Debug, Clone)]
 pub struct StorageController {
     pub ccd: ControlElemData,
     /// Dump name of the monitored element (Pascal renders `FullName`).
     monitored_full_name: String,
+    // BUG(C5): a copy of the monitored element's shape, stale after an edit of that element.
+    // The element owns it.
     /// Parse-time shape snapshot of the monitored reference.
     mon_snap: Option<RefSnapshot>,
 
@@ -308,6 +316,8 @@ pub struct StorageController {
     storage_name_list: Vec<String>,
     /// `FWeights` (one per list entry; default 1.0).
     weights: Vec<f64>,
+    // BUG(C5): a count beside the lists it counts, set from the name list and from the
+    // resolved fleet at different times. The length of the list should be read instead.
     /// `FleetSize`.
     fleet_size: i32,
     fleet_list_changed: bool,
@@ -325,6 +335,8 @@ pub struct StorageController {
     yearly_shape: String,
     daily_shape: String,
     duty_shape: String,
+    // BUG(C5): this shape and the two below are clones of LoadShape objects kept by the
+    // control, so a later edit of a shape does not reach it. Each shape should be read live.
     /// Snapshot-clones of the resolved dispatch shapes (Pascal
     /// `YearlyShapeObj`/`DailyShapeObj`/`DutyShapeObj`) — read by `DoLoadShapeMode`.
     yearly_shape_obj: Option<LoadShapeObj>,
@@ -367,6 +379,8 @@ pub struct StorageController {
     /// `Wait4Step` — defer charging one step after a discharge→charge transition.
     wait4step: bool,
 
+    // BUG(C2): a cache the executive fills before each render so that a `&self` property
+    // getter prints it. The fleet totals should reach the getter as an argument.
     /// The render cache behind the four live read-only aggregates
     /// (`kWhTotal`/`kWTotal`/`kWhActual`/`kWActual`) — see [`FleetAggregates`].
     /// Refreshed from the live fleet by the read surfaces' choke point
@@ -554,6 +568,8 @@ pub(crate) struct StorageSnap {
     pub inverter_on: bool,
 }
 
+// BUG(C5): the env reads and writes any Storage element by any `ElemId`, not only the
+// monitored element and the fleet. It should lend only the objects the control uses.
 /// The executive surface `Sample`/`Reset` need to reach the monitored element
 /// and the dispatched Storage fleet (the Rust stand-in for Pascal's live object
 /// pointers + `ActiveCircuit.Solution`/`ControlQueue`/`EventStrings` reach).

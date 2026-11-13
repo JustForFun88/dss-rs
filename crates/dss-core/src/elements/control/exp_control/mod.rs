@@ -95,6 +95,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 17; // incl. Like
 }
 
+// BUG(C2): a free function that builds the class property table. It belongs to
+// `ExpControl` as an associated function.
 /// `TExpControl.DefineProperties`.
 pub fn class_props() -> ClassProps {
     use prop::*;
@@ -136,6 +138,7 @@ pub fn class_props() -> ClassProps {
     ClassProps::new("ExpControl", defs, true)
 }
 
+// BUG(C5): derives `Clone` though it holds the running state of one DER across steps.
 /// Pascal's per-controlled-PVSystem runtime arrays (`FPriorVpu`/`FPresentVpu`/
 /// `FPendingChange`/`FLastIterQ`/`FLastStepQ`/`FTargetQ`/`FWithinTol`/`FVregs`),
 /// gathered into one record per fleet member (1:1 with `fleet`).
@@ -180,6 +183,7 @@ impl ExpVars {
     }
 }
 
+// BUG(C5): derives `Clone` though it owns the fleet state it carries across steps.
 /// `TExpControlObj`. The parse-time property surface plus the
 /// runtime state: the resolved PVSystem fleet (`fleet`), the per-DER [`ExpVars`]
 /// (`ctrl_vars`), and the derived open-loop time constant (`f_open_tau`).
@@ -187,10 +191,14 @@ impl ExpVars {
 pub struct ExpControl {
     pub ccd: ControlElemData,
 
+    // BUG(C5): one list of names stored twice, bare and class-prefixed, and kept in sync by
+    // hand in the side effects. One list should be stored and the other form derived.
     /// `FPVSystemNameList` — the bare PVSystem names (PVSystemList backing).
     pvsystem_name_list: Vec<String>,
     /// `DERNameList` — the class-prefixed names (`PVSystem.<n>`; DERList backing).
     der_name_list: Vec<String>,
+    // BUG(C5): a count beside the lists it counts, set from the fleet and from either name
+    // list at different times. The length of the list it describes should be read instead.
     /// `FListSize` — set from the active list's count in the side effect.
     f_list_size: i32,
 
@@ -233,9 +241,9 @@ pub struct ExpControl {
     /// One [`ExpVars`] per fleet member (1:1 with `fleet`).
     ctrl_vars: Vec<ExpVars>,
 
-    // --- parse-time resolved monitored-DER bus (Pascal `Setbus(1,
-    // MonitoredElement.Firstbus)`; the executive resolves it at edit-completion
-    // since `recalc_element_data` has no store access) ---
+    // BUG(C2): the executive writes the first PVSystem's bus and the phase count here
+    // through `set_resolved_monitored` so that `recalc` reads them at `end_edit`. They
+    // should reach `recalc` as arguments.
     /// The first PVSystem's `Firstbus` (the bus the control's terminal attaches to).
     mon_bus: String,
     /// The (last) PVSystem's phase count (Pascal `FNphases :=

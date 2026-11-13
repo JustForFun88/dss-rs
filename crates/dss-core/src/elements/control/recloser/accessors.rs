@@ -63,6 +63,8 @@ impl CktElement for Recloser {
             self.ccd.cd.nphases = m.nphases;
             self.ccd.cd.set_nconds(m.nphases);
             let t = self.monitored_element_terminal as usize;
+            // BUG(C5): the bus name is cloned out of `ctx` only to be passed as `&str`. The
+            // borrowed name can be passed to `set_bus` directly.
             let bus = t
                 .checked_sub(1)
                 .and_then(|k| m.bus_names.get(k))
@@ -418,6 +420,8 @@ impl DssObject for Recloser {
             MONITORED_OBJ => {
                 self.ccd.controlled_element = self.ccd.monitored_element;
                 self.switched_full_name = self.monitored_full_name.clone();
+                // BUG(C5): the monitored element's snapshot is copied again as the switched
+                // one. Read live from the element, neither copy is needed.
                 self.ctrl_snap = self.mon_snap.clone();
             }
             MONITORED_TERM => self.ccd.element_terminal = self.monitored_element_terminal,
@@ -437,6 +441,8 @@ impl DssObject for Recloser {
     }
 }
 
+// BUG(C2): a free function that maps a curve name to its dump name, written again in the
+// Relay module. It belongs to a type for the curve reference, shared by both.
 /// Map a resolved TCC-curve reference name to the stored dump name: an empty
 /// (unresolved / `none`) reference renders `none` (Pascal `GetPropertyValue`
 /// `if Curve <> nil then Curve.Name else 'none'`).

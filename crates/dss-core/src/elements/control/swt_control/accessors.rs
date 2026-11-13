@@ -62,13 +62,17 @@ impl CktElement for SwtControl {
             self.ccd.cd.set_nconds(c.nphases);
             // Setbus(1, ControlledElement.GetBus(ElementTerminal))
             let t = self.ccd.element_terminal as usize;
+            // BUG(C5): the bus name is cloned out of `ctx` only to be passed as `&str`. The
+            // borrowed name can be passed to `set_bus` directly.
             let bus = t
                 .checked_sub(1)
                 .and_then(|k| c.bus_names.get(k))
                 .cloned()
                 .unwrap_or_default();
             self.ccd.cd.set_bus(1, &bus);
-            // The live controlled-element shape the render/drive bound reads.
+            // BUG(C5): the controlled element's snapshot is rewritten field by field so that
+            // the render and drive bound read the new phase count from the copy. They should
+            // read the controlled element live, and the copy should go.
             if let Some(snap) = self.ctrl_snap.as_mut() {
                 snap.nphases = c.nphases;
                 snap.nterms = c.bus_names.len(); // `BusNames[1..NTerms]`

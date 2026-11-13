@@ -28,11 +28,14 @@ use super::{
 /// Pascal `EPSILON` (the idling-output guard band).
 const EPSILON: f64 = 0.001;
 
+// BUG(C2): a free function that formats a number, written again outside this module. One
+// shared operation on the value should replace both.
 /// `%-.6g` (the format the Pascal event-log messages use for kW/kWh values).
 fn g6(v: f64) -> String {
     fmt_g(v, 6)
 }
 
+// BUG(C2): `StorageController` keeps its weighted Storage fleet as loose fields with no type.
 impl StorageController {
     /// Pascal `TStorageControllerObj.Get_DynamicTarget` (StorageController.pas
     /// l.1020): the seasonal kW target. `t_high` selects `SeasonTargets`
@@ -76,6 +79,7 @@ impl StorageController {
     }
 }
 
+// BUG(C2): `StorageController` keeps its weighted Storage fleet as loose fields with no type.
 impl StorageController {
     /// Pascal `TStorageControllerObj.RecalcElementData` (parse-time subset):
     /// validate the monitored element, attach the control's single terminal to
@@ -84,6 +88,8 @@ impl StorageController {
     /// `SetAllFleetValues`) needs store access, so it is deferred to the first
     /// `Sample` (see [`StorageController::ensure_fleet`]).
     pub(super) fn recalc(&mut self) {
+        // BUG(C5): the snapshot and the bus name below are cloned to read them while `ccd`
+        // is written. `ccd` is a disjoint field, so they can be borrowed in place.
         let Some(mon) = self.mon_snap.clone() else {
             // Pascal `DoSimpleMsg('Monitored Element in %s is not set', 372)`.
             self.ccd.cd.obj.push_error(crate::diag::DssDiagnostic::msg(
@@ -253,12 +259,18 @@ impl StorageController {
     pub(super) fn get_fleet_kw(&self, env: &dyn StorageDispatchEnv) -> f64 {
         self.fleet.iter().map(|&r| env.present_kw(r)).sum()
     }
+    // BUG(C5): builds a full snapshot of each Storage element to read one field of it. The
+    // env should lend the element to read that field in place.
     pub(super) fn get_fleet_kwh(&self, env: &dyn StorageDispatchEnv) -> f64 {
         self.fleet.iter().map(|&r| env.snap(r).kwh_stored).sum()
     }
+    // BUG(C5): builds a full snapshot of each Storage element to read one field of it. The
+    // env should lend the element to read that field in place.
     fn fleet_kwh_rating(&self, env: &dyn StorageDispatchEnv) -> f64 {
         self.fleet.iter().map(|&r| env.snap(r).kwh_rating).sum()
     }
+    // BUG(C5): builds a full snapshot of each Storage element to read one field of it. The
+    // env should lend the element to read that field in place.
     fn fleet_reserve_kwh(&self, env: &dyn StorageDispatchEnv) -> f64 {
         self.fleet.iter().map(|&r| env.snap(r).kwh_reserve).sum()
     }
@@ -679,6 +691,9 @@ impl StorageController {
         // is idling).
         if self.fleet_state != StorageState::Idling {
             let n = self.fleet.len();
+            // BUG(C5): this loop and the two below build a full snapshot of a Storage
+            // element on every sample to read a few fields. The env should lend the element
+            // to read them in place.
             for i in 0..n {
                 if env.snap(self.fleet[i]).state != StorageState::Idling {
                     break;
@@ -921,6 +936,9 @@ impl StorageController {
         // Check if the fleet is idling.
         if self.fleet_state != StorageState::Idling {
             let n = self.fleet.len();
+            // BUG(C5): this loop and the one below build a full snapshot of a Storage element
+            // on every sample to read a few fields. The env should lend the element to read
+            // them in place.
             for i in 0..n {
                 if env.snap(self.fleet[i]).state != StorageState::Idling {
                     break;

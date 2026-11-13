@@ -17,6 +17,8 @@ use super::{
     ReacPowerRef, VoltWattYAxis, VoltageCurveXRef, prop,
 };
 
+// BUG(C2): a free function over a curve and a control mode. It belongs to `XyCurveObj` or
+// to `InvControlMode` as a method.
 /// Pascal `ValidateXYCurve(curve, mode)`: VOLTWATT requires the per-unit Y
 /// values in `[0, 1]`; WATTPF/WATTVAR require `[-1, 1]`. A violating curve is
 /// dropped (error 381). VOLTVAR is unchecked. Returns `false` (and the caller
@@ -47,6 +49,7 @@ fn validate_xy_curve(curve: &XyCurveObj, mode: InvControlMode) -> Result<(), ()>
     Ok(())
 }
 
+// BUG(C2): `InvControl` gathers the per-DER operations that belong to `InvVars`.
 impl InvControl {
     /// The parse-time tail of Pascal `RecalcElementData`: with the first DER's bus
     /// resolved (by the executive at edit-completion), set the control's phase count
@@ -64,6 +67,8 @@ impl InvControl {
         }
         self.ccd.cd.nphases = self.mon_nphases;
         self.ccd.cd.set_nconds(self.mon_nphases);
+        // BUG(C5): `mon_bus` is cloned to pass it while `ccd` is written. The two are
+        // disjoint fields, so `&self.mon_bus` can be passed directly.
         let bus = self.mon_bus.clone();
         self.ccd.cd.set_bus(1, &bus);
     }
@@ -192,6 +197,8 @@ impl CktElement for InvControl {
             // Populated path: MonitoredElement := 1st DER; Setbus(1,
             // MonitoredElement.Firstbus); FNphases := MonitoredElement.NPhases;
             // Nconds := Nphases.
+            // BUG(C5): the bus name is cloned out of `ctx` only to be passed as `&str`. The
+            // borrowed name can be passed to `set_bus` directly.
             let bus = m.bus_names.first().cloned().unwrap_or_default();
             self.ccd.cd.set_bus(1, &bus);
             self.ccd.cd.nphases = m.nphases;
@@ -210,6 +217,7 @@ impl CktElement for InvControl {
     }
 }
 
+// BUG(C2): `InvControl` gathers the per-DER operations that belong to `InvVars`.
 impl InvControl {
     /// Pascal `TInvControlObj.MakeLike` — copies the parse-time control settings
     /// (incl. the parsed `FMonBuses`/`FMonBusesNodes` arrays). The per-DER fleet
@@ -458,6 +466,8 @@ impl DssObject for InvControl {
     /// The five control curves resolve against XYcurve (snapshot-clone). The
     /// per-mode range check runs in `side_effects` (`ValidateXYCurve`).
     fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
+        // BUG(C5): the class of the resolved object is checked again at run time, though
+        // each property admits only XYcurve. A typed reference makes it a type.
         let obj = resolved.and_then(|o| o.cloned::<XyCurveObj>());
         match idx {
             prop::VVC_CURVE1
@@ -526,6 +536,9 @@ impl DssObject for InvControl {
                 // simple `bus[.node...]` tokens — no vars / auto-increment).
                 let mut parser = dss_parser::Parser::new();
                 let vars = dss_parser::ParserVars::new();
+                // BUG(C5): the name list is cloned to loop over it while `mon_buses` and
+                // `mon_buses_nodes` are written. They are disjoint fields, so the loop can
+                // iterate `&self.mon_buses_name_list`.
                 let entries = self.mon_buses_name_list.clone();
                 let full = format!("InvControl.{}", self.ccd.cd.obj.name());
                 self.mon_buses.clear();

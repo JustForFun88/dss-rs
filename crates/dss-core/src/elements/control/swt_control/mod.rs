@@ -124,6 +124,8 @@ pub(crate) enum SwtStateProp {
     Normal,
 }
 
+// BUG(C2): a free function that builds the class property table. It belongs to
+// `SwtControl` as an associated function.
 /// `TSwtControl.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
@@ -175,6 +177,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("SwtControl", defs, true)
 }
 
+// BUG(C2): a free function that parses a state token, written again in the Relay module.
+// It belongs to `ControlAction` as an associated function shared by both.
 /// r4133 `case LowerCase(DataStr2)[1] of 'o': CTRL_OPEN; 'c': CTRL_CLOSE`
 /// (`SwtControl.pas:438-441` ganged, `:464-467` per-phase) — tokens match on
 /// the FIRST CHARACTER ONLY, case-insensitively, and any other first char
@@ -187,12 +191,15 @@ fn match_state_token(token: &str) -> Option<ControlAction> {
     }
 }
 
+// BUG(C5): derives `Clone` though it owns the switch state it carries across steps.
 /// `TSwtControlObj`.
 #[derive(Debug, Clone)]
 pub struct SwtControl {
     pub ccd: ControlElemData,
     /// Dump name of the switched (controlled) element (Pascal `FullName`).
     switched_full_name: String,
+    // BUG(C5): a copy of the controlled element's shape, stale after an edit of that element.
+    // The element owns it.
     /// Parse-time shape snapshot of the controlled element.
     ctrl_snap: Option<RefSnapshot>,
 
@@ -214,6 +221,9 @@ pub struct SwtControl {
     /// into Normal once, on the first `State`/`Action` write (`:221-228`).
     normal_state_set: bool,
 
+    // BUG(C5): a copy of the ganged view of `present_state` or `normal_state`, resynced by
+    // hand at each edit, and it disagrees with them in the cases `sample` documents. The
+    // per-phase arrays own the state, and the ganged view should be derived from them.
     /// `CurrentAction` — the 0.14.5 scalar action field the port's
     /// `Sample`/`DoPendingAction` control-queue machinery (pinned by the
     /// capi-lane `swtcontrol_lock.dss`) still reads. r4133 has no such field
@@ -232,6 +242,8 @@ pub struct SwtControl {
     /// Informational only; not used in power flow or reporting.
     rated_current: f64,
 
+    // BUG(C2): requests parked in state for the executive to take later. The property edit
+    // should return them to its caller.
     /// Deferred parse-time element forces (the `State=`/`Reset` side effects).
     pending_ref_actions: Vec<RefAction>,
 }
@@ -647,8 +659,9 @@ impl SwtControl {
         }
         let term = self.ccd.element_terminal.max(1) as usize;
         let n = ctrl.cd().nphases.min(SW_MAX);
-        // The executive's `SetConductorsClosed` application idiom
-        // (`exec/command.rs`): enumerate + 1-based conductor.
+        // BUG(C5): the states are collected into a Vec only to be iterated once, though
+        // `normal_state` and `ctrl` do not conflict. The loop can walk `1..=n` and set each
+        // 1-based conductor from `normal_state` directly.
         let closed: Vec<bool> = (1..=n)
             .map(|i| self.normal_state[i] != ControlAction::Open)
             .collect();
@@ -689,6 +702,8 @@ impl SwtControl {
     /// conductors per phase from `FPresentState` (`:347-355`). With no
     /// `SwitchedObj`, Pascal raises error 387 and exits.
     fn recalc(&mut self) {
+        // BUG(C5): the snapshot and the bus name below are cloned to read them while `ccd`
+        // is written. `ccd` is a disjoint field, so they can be borrowed in place.
         let Some(ctrl) = self.ctrl_snap.clone() else {
             self.ccd.cd.obj.push_error(format!(
                 "SwtControl: \"{}\": SwitchedObj is not set. Element must be defined previously. (Error 387)",

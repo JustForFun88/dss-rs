@@ -21,6 +21,8 @@ use super::{ExpControl, prop};
 #[allow(clippy::approx_constant)]
 const LN10_TRUNCATED: f64 = 2.3026;
 
+// BUG(C2): a free function that parses an object name. It belongs to a type for the
+// class-prefixed object name.
 /// Pascal `StripClassName` — everything past the first '.' (the whole string when
 /// there is no '.').
 fn strip_class_name(s: &str) -> String {
@@ -45,6 +47,8 @@ impl ExpControl {
         }
         self.ccd.cd.nphases = self.mon_nphases;
         self.ccd.cd.set_nconds(self.mon_nphases);
+        // BUG(C5): `mon_bus` is cloned to pass it while `ccd` is written. The two are
+        // disjoint fields, so `&self.mon_bus` can be passed directly.
         let bus = self.mon_bus.clone();
         self.ccd.cd.set_bus(1, &bus);
     }
@@ -93,6 +97,8 @@ impl CktElement for ExpControl {
             // Populated path: MonitoredElement := 1st PVSystem; Setbus(1,
             // MonitoredElement.Firstbus); FNphases := MonitoredElement.NPhases;
             // Nconds := Nphases.
+            // BUG(C5): the bus name is cloned out of `ctx` only to be passed as `&str`. The
+            // borrowed name can be passed to `set_bus` directly.
             let bus = m.bus_names.first().cloned().unwrap_or_default();
             self.ccd.cd.set_bus(1, &bus);
             self.ccd.cd.nphases = m.nphases;

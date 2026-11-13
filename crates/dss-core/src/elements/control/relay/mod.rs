@@ -117,6 +117,8 @@ enum RelayStateProp {
     Normal,
 }
 
+// BUG(C2): a free function that parses a state token, written again in the SwtControl
+// module. It belongs to `ControlAction` as an associated function shared by both.
 /// r4133 `case LowerCase(DataStr2)[1] of 'o': CTRL_OPEN; 'c': CTRL_CLOSE`
 /// (`Relay.pas:1249-1251`/`:1263-1265`/`:1271-1273` ganged, `:1289-1300`
 /// per-phase) — tokens match on the FIRST CHARACTER ONLY, case-insensitively,
@@ -263,6 +265,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 74; // incl. Like
 }
 
+// BUG(C2): a free function that builds the class property table. It belongs to
+// `Relay` as an associated function.
 /// `TRelay.DefineProperties` (r4133). Property names match the oracle's
 /// `AllPropertyNames` (the `?`-query dump keys) exactly, in `AddProperty` order.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
@@ -355,6 +359,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("Relay", defs, true)
 }
 
+// BUG(C2): one struct holds the fields and logic of every protection function (overcurrent,
+// voltage, 46/47, distance, TD21, DOC, generic). Each should be a type owning its fields
+// and logic, with `Relay` only dispatching to the selected one.
+// BUG(C5): derives `Clone` though it owns the trip and reclose state it carries across steps.
 /// `TRelayObj` (r4133).
 #[derive(Debug, Clone)]
 pub struct Relay {
@@ -362,6 +370,8 @@ pub struct Relay {
     /// Dump names of the monitored / switched (controlled) elements.
     monitored_full_name: String,
     switched_full_name: String,
+    // BUG(C5): both snapshots copy the shape of the monitored and the switched element,
+    // stale after an edit of either. The referenced elements own it.
     /// Parse-time shape snapshots of the two references.
     mon_snap: Option<RefSnapshot>,
     ctrl_snap: Option<RefSnapshot>,
@@ -377,6 +387,8 @@ pub struct Relay {
     ov_curve_name: String,
     uv_curve_name: String,
     doc_phase_curve_inner_name: String,
+    // BUG(C5): this curve and the four below are clones of TCC curves kept by the control,
+    // so a later edit of a curve does not reach it. Each curve should be read live.
     phase_curve: Option<TccCurveObj>,
     ground_curve: Option<TccCurveObj>,
     ov_curve: Option<TccCurveObj>,
@@ -456,6 +468,8 @@ pub struct Relay {
     // --- Generic (PC state-variable relay) ---
     monitor_variable: String,
     monitor_var_index: i32,
+    // BUG(C5): a copy of the monitored element's variable names, taken when the reference
+    // resolves and stale after an edit of that element. The element owns them.
     monitor_var_names: Vec<String>,
     over_trip: f64,
     under_trip: f64,
@@ -493,6 +507,8 @@ pub struct Relay {
     /// `DebugTrace` — write extra `Debug Sample:` detail lines to the event log.
     debug_trace: bool,
 
+    // BUG(C2): requests parked in state for the executive to take later. The property edit
+    // should return them to its caller.
     /// Deferred parse-time element forces (the `RecalcElementData` `Closed[i]` sync).
     pending_ref_actions: Vec<RefAction>,
 }
@@ -928,6 +944,8 @@ impl Relay {
     /// from the monitored element, compute the derived pickups/impedances, and
     /// sync the controlled element **per phase** to `FPresentState`.
     fn recalc(&mut self) {
+        // BUG(C5): the snapshot and the bus name below are cloned to read them while `ccd`
+        // is written. `ccd` is a disjoint field, so they can be borrowed in place.
         if let Some(mon) = self.mon_snap.clone() {
             self.ccd.cd.nphases = mon.nphases;
             if self.monitored_element_terminal > mon.nterms as i32 {
@@ -1375,6 +1393,8 @@ impl Relay {
     }
 }
 
+// BUG(C2): a free function that spells a boolean for the debug trace. It belongs to
+// `Relay`, which writes that line, as an associated function.
 /// Pascal `BoolToStr(b, TRUE)` — the `True`/`False` spelling used by the
 /// `DebugTrace` `DoPendingAction` line.
 fn bool_to_str(b: bool) -> &'static str {

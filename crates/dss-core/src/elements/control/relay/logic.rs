@@ -24,6 +24,7 @@ use super::Relay;
 /// discriminator for the relay-target label.
 const EPSILON: f64 = 1.0e-12;
 
+// BUG(C2): `Relay` holds the fields and logic of every protection function in one struct.
 impl Relay {
     /// 0-based `(cond_offset, nphases)` for the monitored terminal.
     fn mon_offset(&self, mon: &dyn CktElement) -> (usize, usize) {
@@ -74,6 +75,8 @@ impl Relay {
     pub(super) fn overcurrent_logic(&mut self, mon: &mut dyn CktElement, ctx: &mut CtrlCtx) {
         let (cond_offset, nphases) = self.mon_offset(mon);
         let n = self.state_size();
+        // BUG(C5): the current buffer is allocated on every sample. The relay should keep
+        // it between samples and reuse it.
         let mut cbuffer = vec![Complex64::ZERO; mon.cd().yorder.max(1)];
         mon.get_currents(ctx.sys, ctx.node_v, &mut cbuffer);
         // Pascal `cBuffer` is 1-based (`cBuffer^[i+CondOffset]`); keep 1-based math.
@@ -394,6 +397,8 @@ impl Relay {
             return;
         }
         let n = self.state_size();
+        // BUG(C5): the voltage buffer is allocated on every sample. The relay should keep
+        // it between samples and reuse it.
         let mut vbuffer = vec![Complex64::ZERO; mon.cd().nconds.max(1)];
         mon.get_term_voltages(
             self.monitored_element_terminal.max(1) as usize,
@@ -572,6 +577,8 @@ impl Relay {
     pub(super) fn neg_seq46_logic(&mut self, mon: &mut dyn CktElement, ctx: &mut CtrlCtx) {
         let g = self.idx_multi_ph;
         let (cond_offset, _) = self.mon_offset(mon);
+        // BUG(C5): the current buffer is allocated on every sample. The relay should keep
+        // it between samples and reuse it.
         let mut cbuffer = vec![Complex64::ZERO; mon.cd().yorder.max(1)];
         mon.get_currents(ctx.sys, ctx.node_v, &mut cbuffer);
         let phases = [
@@ -619,6 +626,8 @@ impl Relay {
     /// lockout. Ganged-only.
     pub(super) fn neg_seq47_logic(&mut self, mon: &mut dyn CktElement, ctx: &mut CtrlCtx) {
         let g = self.idx_multi_ph;
+        // BUG(C5): the voltage buffer is allocated on every sample. The relay should keep
+        // it between samples and reuse it.
         let mut vbuffer = vec![Complex64::ZERO; mon.cd().nconds.max(3)];
         mon.get_term_voltages(
             self.monitored_element_terminal.max(1) as usize,
@@ -658,6 +667,8 @@ impl Relay {
         let idx = self.monitor_var_index;
         let var_value = if idx >= 1 {
             let n = mon.num_variables();
+            // BUG(C5): the state-variable buffer is allocated on every sample. The relay
+            // should keep it between samples and reuse it.
             let mut states = vec![0.0_f64; n];
             mon.read_variables(ctx.sys, ctx.node_v, &mut states);
             states.get((idx - 1) as usize).copied().unwrap_or(-9999.99)
@@ -697,6 +708,8 @@ impl Relay {
             return;
         }
         let (cond_offset, nphases) = self.mon_offset(mon);
+        // BUG(C5): this current buffer, the voltage buffer and the target list below are
+        // built on every sample. The relay should keep them between samples and reuse them.
         let mut cbuffer = vec![Complex64::ZERO; mon.cd().yorder.max(1)];
         mon.get_currents(ctx.sys, ctx.node_v, &mut cbuffer);
         if self.dist_reverse {
@@ -769,6 +782,8 @@ impl Relay {
                 self.relay_target[g] = format!("21 {min_distance:.3} pu dist");
                 for tgt in &targets {
                     self.relay_target[g].push(' ');
+                    // BUG(C5): the target is cloned only to be read. `tgt` can be passed to
+                    // `push_str` directly.
                     let t = tgt.clone();
                     self.relay_target[g].push_str(&t);
                 }
@@ -845,6 +860,8 @@ impl Relay {
             return solution_abort;
         }
 
+        // BUG(C5): this current buffer, the voltage buffer and the target list below are
+        // built on every sample. The relay should keep them between samples and reuse them.
         let mut cbuffer = vec![Complex64::ZERO; mon.cd().yorder.max(1)];
         mon.get_currents(ctx.sys, ctx.node_v, &mut cbuffer);
         if self.dist_reverse {
@@ -977,6 +994,8 @@ impl Relay {
                 self.relay_target[g] = format!("TD21 {min_distance:.3} pu dist");
                 for tgt in &targets {
                     self.relay_target[g].push(' ');
+                    // BUG(C5): the target is cloned only to be read. `tgt` can be passed to
+                    // `push_str` directly.
                     let t = tgt.clone();
                     self.relay_target[g].push_str(&t);
                 }
@@ -1036,6 +1055,8 @@ impl Relay {
         }
         let nconds = mon.cd().nconds;
         let cond_offset = (self.monitored_element_terminal.max(1) as usize - 1) * nconds;
+        // BUG(C5): the current and voltage buffers are allocated on every call. The relay
+        // should keep them between samples and reuse them.
         let mut cbuffer = vec![Complex64::ZERO; mon.cd().yorder.max(1)];
         mon.get_currents(ctx.sys, ctx.node_v, &mut cbuffer);
         let mut cvbuffer = vec![Complex64::ZERO; nconds.max(3)];
@@ -1106,6 +1127,8 @@ impl Relay {
             }
         }
 
+        // BUG(C5): the current and voltage buffers and the phase-current buffer below are
+        // allocated on every sample. The relay should keep them and reuse them.
         let mut cbuffer = vec![Complex64::ZERO; mon.cd().yorder.max(1)];
         mon.get_currents(ctx.sys, ctx.node_v, &mut cbuffer);
         let mut cvbuffer = vec![Complex64::ZERO; mon.cd().nconds.max(1)];

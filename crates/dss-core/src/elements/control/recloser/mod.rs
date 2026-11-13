@@ -126,6 +126,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 49; // incl. Like
 }
 
+// BUG(C2): a free function that builds the class property table. It belongs to
+// `Recloser` as an associated function.
 /// `TRecloser.DefineProperties` (r4133).
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
@@ -195,6 +197,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("Recloser", defs, true)
 }
 
+// BUG(C5): derives `Clone` though it owns the trip and reclose state it carries across steps.
 /// `TRecloserObj` (r4133).
 #[derive(Debug, Clone)]
 pub struct Recloser {
@@ -203,6 +206,8 @@ pub struct Recloser {
     monitored_full_name: String,
     /// Dump name of the switched (controlled) element (Pascal `FullName`).
     switched_full_name: String,
+    // BUG(C5): both snapshots copy the shape of the monitored and the switched element,
+    // stale after an edit of either. The referenced elements own it.
     /// Parse-time shape snapshots of the two references.
     mon_snap: Option<RefSnapshot>,
     ctrl_snap: Option<RefSnapshot>,
@@ -214,6 +219,8 @@ pub struct Recloser {
     ph_slow_name: String,
     gnd_fast_name: String,
     gnd_slow_name: String,
+    // BUG(C5): this curve and the three below are clones of TCC curves kept by the control,
+    // so a later edit of a curve does not reach it. Each curve should be read live.
     /// Resolved curve clones (resolved by the executive from the names). A `None`
     /// curve never trips its branch (the inert default).
     ph_fast: Option<TccCurveObj>,
@@ -278,6 +285,8 @@ pub struct Recloser {
     /// `DebugTrace` — write extra `Debug Sample:` lines to the event log.
     debug_trace: bool,
 
+    // BUG(C2): requests parked in state for the executive to take later. The property edit
+    // should return them to its caller.
     /// Deferred parse-time element forces (the `RecalcElementData` `Closed[i]` sync).
     pending_ref_actions: Vec<RefAction>,
 }
@@ -435,6 +444,8 @@ impl Recloser {
     /// the monitored element, attach the control's terminal to the monitored bus,
     /// and sync the controlled element **per phase** to `FPresentState`.
     fn recalc(&mut self) {
+        // BUG(C5): the snapshot and the bus name below are cloned to read them while `ccd`
+        // is written. `ccd` is a disjoint field, so they can be borrowed in place.
         if let Some(mon) = self.mon_snap.clone() {
             self.ccd.cd.nphases = mon.nphases;
             if self.monitored_element_terminal > mon.nterms as i32 {
@@ -560,6 +571,8 @@ impl Recloser {
 
         let nphases = mon.cd().nphases;
         let cond_offset = (self.monitored_element_terminal.max(1) as usize - 1) * mon.cd().nconds;
+        // BUG(C5): the current buffer is allocated on every sample. The control should keep
+        // it between samples and reuse it.
         let mut cbuffer = vec![Complex64::ZERO; mon.cd().yorder.max(1)];
         mon.get_currents(ctx.sys, ctx.node_v, &mut cbuffer);
         // Pascal `cBuffer` is 1-based; index arithmetic below stays 1-based
@@ -604,6 +617,8 @@ impl Recloser {
         };
 
         // ---- Ground trip (shared) ----
+        // BUG(C5): the selected curve is cloned on every sample to call `get_tcc_time`, so
+        // the curve's hunt cache is lost with the clone. `&mut` access to the field keeps it.
         let (mut gc_clone, td_ground, gnd_mult, ground_type) = {
             let (gc, td, mult, ty) = self.ground_selection(max_op);
             (gc.cloned(), td, mult, ty)
@@ -675,6 +690,8 @@ impl Recloser {
             }
             let mut trip_time = if ground_time > 0.0 { ground_time } else { -1.0 };
 
+            // BUG(C5): the selected curve is cloned for each phase to call `get_tcc_time`, so
+            // its hunt cache is lost with the clone. `&mut` access to the field keeps it.
             let (mut pc_clone, td_phase, ph_mult, phase_type) = {
                 let (pc, td, mult, ty) = self.phase_selection(self.operation_count[i]);
                 (pc.cloned(), td, mult, ty)
@@ -783,6 +800,8 @@ impl Recloser {
         cur: &dyn Fn(usize) -> Complex64,
     ) {
         let g = self.idx_multi_ph;
+        // BUG(C5): the selected curve is cloned on every sample to call `get_tcc_time`, so
+        // the curve's hunt cache is lost with the clone. `&mut` access to the field keeps it.
         let (mut pc_clone, td_phase, ph_mult, phase_type) = {
             let (pc, td, mult, ty) = self.phase_selection(max_op);
             (pc.cloned(), td, mult, ty)

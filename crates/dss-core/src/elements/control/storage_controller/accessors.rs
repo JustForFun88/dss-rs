@@ -48,6 +48,8 @@ impl CktElement for StorageController {
             self.ccd.cd.set_nconds(m.nphases);
             // Setbus(1, MonitoredElement.GetBus(ElementTerminal))
             let t = self.ccd.element_terminal as usize;
+            // BUG(C5): the bus name is cloned out of `ctx` only to be passed as `&str`. The
+            // borrowed name can be passed to `set_bus` directly.
             let bus = t
                 .checked_sub(1)
                 .and_then(|k| m.bus_names.get(k))
@@ -68,6 +70,7 @@ impl CktElement for StorageController {
     }
 }
 
+// BUG(C2): `StorageController` keeps its weighted Storage fleet as loose fields with no type.
 impl StorageController {
     /// Pascal `TStorageControllerObj.MakeLike` — copies essentially every
     /// dispatch setting (unlike GenDispatcher's terminal-only copy).
@@ -317,6 +320,8 @@ impl DssObject for StorageController {
     /// `element=`/`yearly=`/`daily=`/`duty=` resolution.
     fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use prop::*;
+        // BUG(C5): the class of the resolved object is checked again at run time, though
+        // each shape property admits only LoadShape. A typed reference makes it a type.
         let load_shape = || resolved.and_then(|o| o.cloned::<LoadShapeObj>());
         match idx {
             ELEMENT => {

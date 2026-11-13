@@ -107,6 +107,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 26; // incl. Like
 }
 
+// BUG(C2): a free function that builds the class property table. It belongs to
+// `CapControl` as an associated function.
 /// `TCapControl.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
@@ -157,6 +159,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("CapControl", defs, true)
 }
 
+// BUG(C5): derives `Clone` though it owns the switching state it carries across steps.
 /// `TCapControlObj` (+ the parse-relevant `TCapControlVars` fields).
 #[derive(Debug, Clone)]
 pub struct CapControl {
@@ -165,12 +168,16 @@ pub struct CapControl {
     controlled_name: String,
     /// Dump name of the monitored element (Pascal renders `FullName`).
     monitored_full_name: String,
+    // BUG(C5): both snapshots copy the shape of the capacitor and of the monitored element,
+    // stale after an edit of either. The referenced elements own it.
     /// Parse-time shape snapshots of the two references.
     ctrl_snap: Option<RefSnapshot>,
     mon_snap: Option<RefSnapshot>,
     /// Dump name of the `ControlSignal` LoadShape (bare object name, like
     /// `StorageController`'s `Yearly`/`Daily`/`Duty`).
     control_signal_name: String,
+    // BUG(C5): a clone of the `ControlSignal` LoadShape kept by the control, so a later edit
+    // of the shape does not reach it. The shape owns its data and should be read live.
     /// `ctrlSignalShape`: a snapshot-clone of the resolved `ControlSignal`
     /// LoadShape, read by the
     /// FOLLOWCONTROL arm of `Sample`.
@@ -223,6 +230,8 @@ pub struct CapControl {
     /// The bound sandboxed model (Pascal `UserModel`). `None` = absent (built-in
     /// control solves). Re-created lazily after a `MakeLike` clone.
     user_model: Option<Box<user_model::CapControlUserModelSlot>>,
+    // BUG(C2): requests parked in state for the executive to take later. The property edit
+    // should return them to its caller.
     /// Deferred `UserModel=`/`UserData=` load/edit requests queued by the
     /// property side effects, resolved by the executive before `EndEdit`
     /// (the setter cannot reach the filesystem).
@@ -393,6 +402,8 @@ impl CapControl {
             ));
             return;
         }
+        // BUG(C5): the snapshots and the bus name below are cloned to read them while `ccd`
+        // is written. `ccd` is a disjoint field, so they can be borrowed in place.
         let ctrl = self.ctrl_snap.clone().unwrap_or_default();
 
         // Force number of phases to be same as the controlled capacitor.
@@ -465,6 +476,8 @@ impl CapControl {
     }
 }
 
+// BUG(C2): a free function over a complex power value. It belongs to a type of its own or
+// to `CapControl` as an associated function.
 /// Pascal `Sample`'s local `PF1to2`: power factor mapped onto `0..2` with the
 /// leading range `1..2` (`im < 0` ⇒ `2 − PF`); unity when the apparent power is
 /// zero.

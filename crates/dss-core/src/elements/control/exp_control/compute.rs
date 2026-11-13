@@ -15,6 +15,8 @@ use crate::util::fmt_g;
 
 use super::{ExpControl, ExpPendingChange, ExpVars};
 
+// BUG(C2): a free function over a number, written again in the InvControl module. One
+// shared operation on the value it signs should replace both.
 /// Pascal `Math.Sign` — returns -1.0 / 0.0 / 1.0.
 fn pas_sign(x: f64) -> f64 {
     if x < 0.0 {
@@ -55,6 +57,8 @@ pub(crate) struct PvSnap {
     pub bus_kvbase: f64,
 }
 
+// BUG(C5): the env reads and writes any PVSystem by any `ElemId`, not only the fleet of
+// this control. It should lend only the fleet members the control uses.
 /// The executive surface `Sample`/`DoPendingAction`/`UpdateExpControl` need to
 /// reach the controlled PVSystem fleet (the Rust stand-in for Pascal's live
 /// `TPVSystemObj` pointers + `ActiveCircuit.Solution`/`ControlQueue`/
@@ -138,8 +142,9 @@ impl ExpControl {
         self.fleet.clear();
 
         if self.f_list_size > 0 {
-            // Named list — use it (clone to release the immutable borrow of self
-            // before the &mut env calls).
+            // BUG(C5): the name list is cloned to loop over it while `fleet` is pushed to.
+            // The two are disjoint fields, so the loop can iterate `&self.pvsystem_name_list`.
+            // Named list — use it.
             for name in self.pvsystem_name_list.clone() {
                 if let PvFind::Found(r) = env.find_pvsystem(&name) {
                     self.fleet.push(r);
@@ -187,9 +192,13 @@ impl ExpControl {
 
         for i in 0..self.fleet.len() {
             let r = self.fleet[i];
+            // BUG(C5): a full snapshot of the PVSystem, its name cloned, is built on every
+            // sample to read a few fields. The env should lend the PVSystem to read them.
             let snap = env.pv_snap(r);
 
             // Present average voltage magnitude (per-unit on the L-N base).
+            // BUG(C5): a new Vec of magnitudes is returned on every sample. The control
+            // should keep the buffer between samples and have it filled in place.
             let mags = env.pv_vterminal_mags(r);
             let vpresent: f64 = mags.iter().take(snap.nphases).sum();
             self.ctrl_vars[i].f_present_vpu =
@@ -267,6 +276,8 @@ impl ExpControl {
                 continue;
             }
             let r = self.fleet[i];
+            // BUG(C5): a full snapshot of the PVSystem, its name cloned, is built on every
+            // pass to read a few fields. The env should lend the PVSystem to read them.
             let snap = env.pv_snap(r);
 
             env.pv_set_vw_mode(r, false);
@@ -370,6 +381,8 @@ impl ExpControl {
     pub(crate) fn update_exp_control(&mut self, env: &mut dyn ExpDispatchEnv) {
         for j in 0..self.fleet.len() {
             let r = self.fleet[j];
+            // BUG(C5): a full snapshot of the PVSystem, its name cloned, is built on every
+            // step to read its name. The env should lend the PVSystem to read it.
             let snap = env.pv_snap(r);
             self.ctrl_vars[j].f_last_step_q = env.pv_present_kvar(r);
             let verr = if self.vreg_tau > 0.0 {

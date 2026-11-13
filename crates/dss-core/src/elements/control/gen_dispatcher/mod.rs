@@ -66,6 +66,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 10; // incl. Like
 }
 
+// BUG(C2): a free function that builds the class property table. It belongs to
+// `GenDispatcher` as an associated function.
 /// `TGenDispatcher.DefineProperties`.
 pub fn class_props(_enums: &EnumRegistry) -> ClassProps {
     use prop::*;
@@ -100,6 +102,8 @@ pub fn class_props(_enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("GenDispatcher", defs, true)
 }
 
+// BUG(C5): the env reads and writes any generator by any `ElemId`, not only the monitored
+// element and the generators of the list. It should lend only the objects the control uses.
 /// The executive surface `Sample` needs to reach the monitored element and the
 /// dispatched generators (the Rust stand-in for Pascal's live object pointers).
 /// `ElemId`s returned by the lookups are passed back to the accessors.
@@ -119,12 +123,18 @@ pub(crate) trait GenDispatchEnv {
     fn set_gen_kvar_base(&mut self, g: ElemId, value: f64);
 }
 
+// BUG(C2): the weighted generator list (names, weights, list size, total weight, resolved
+// list) is loose fields resynced by hand, as in each fleet control. A fleet type should
+// own them and their operations.
+// BUG(C5): derives `Clone` though it owns the state it carries across samples.
 /// `TGenDispatcherObj`.
 #[derive(Debug, Clone)]
 pub struct GenDispatcher {
     pub ccd: ControlElemData,
     /// Dump name of the monitored element (Pascal renders `FullName`).
     monitored_full_name: String,
+    // BUG(C5): a copy of the monitored element's shape, stale after an edit of that element.
+    // The element owns it.
     /// Parse-time shape snapshot of the monitored reference.
     mon_snap: Option<RefSnapshot>,
 
@@ -133,6 +143,8 @@ pub struct GenDispatcher {
     half_kw_band: f64,
     f_kvar_limit: f64,
     total_weight: f64,
+    // BUG(C5): a count beside the lists it counts, set from the name list and from the
+    // resolved list at different times. The length of the list should be read instead.
     /// `FListSize` — the dispatched-generator count (the GenList length once a
     /// list is given, else the enabled-generator count discovered on first
     /// `Sample`).

@@ -61,6 +61,8 @@ impl CktElement for CapControl {
         if let Some(e) = eff {
             // Setbus(1, effElement.GetBus(ElementTerminal))
             let t = self.ccd.element_terminal as usize;
+            // BUG(C5): the bus name is cloned out of `ctx` only to be passed as `&str`. The
+            // borrowed name can be passed to `set_bus` directly.
             let bus = t
                 .checked_sub(1)
                 .and_then(|k| e.bus_names.get(k))
@@ -318,6 +320,8 @@ impl DssObject for CapControl {
             // `Sample` (running well after `EndEdit`) can no longer borrow.
             CONTROLSIGNAL => {
                 self.control_signal_name = name;
+                // BUG(C5): the class of the resolved object is checked again at run time,
+                // though the property admits only LoadShape. A typed reference makes it a type.
                 self.ctrl_signal_shape = resolved.and_then(|o| o.cloned::<LoadShapeObj>());
             }
             _ => unreachable!("CapControl has no object-ref property {idx}"),

@@ -64,6 +64,8 @@ use super::{
     VoltageCurveXRef,
 };
 
+// BUG(C2): a free function over the monitored-phase choice. It belongs to `MonPhase` as a
+// method.
 /// Reduce the explicit-`MonBus` complex voltage buffer to a scalar by
 /// `MonVoltageCalc` (Pascal `GetMonVoltage`'s `FUsingMonBuses` `case`):
 /// AVG/MAX/MIN over `|cBuffer[j]|`, else a specific phase.
@@ -86,6 +88,8 @@ fn reduce_mon_phase(cbuffer: &[Complex64], mon_phase: MonPhase) -> f64 {
     }
 }
 
+// BUG(C2): a free function over a number, written again in the ExpControl module. One
+// shared operation on the value it signs should replace both.
 /// Pascal `Math.Sign` — returns -1.0 / 0.0 / 1.0.
 fn pas_sign(x: f64) -> f64 {
     if x < 0.0 {
@@ -154,6 +158,8 @@ pub(crate) struct DerSnap {
     pub vw_state_requested: bool,
 }
 
+// BUG(C5): the env reads and writes any DER by any `ElemId`, not only the fleet of this
+// control. It should lend only the fleet members the control uses.
 /// The executive surface `Sample`/`DoPendingAction`/`UpdateInvControl` need to
 /// reach the controlled DER fleet (the Rust stand-in for Pascal's live object
 /// pointers + `ActiveCircuit.Solution`/`ControlQueue`/`EventStrings`). Mirrors the
@@ -335,6 +341,7 @@ pub(crate) enum MonitorVar {
     WvOperation,
 }
 
+// BUG(C2): `InvControl` does the per-DER work of `InvVars` here, by a fleet index per call.
 impl InvControl {
     /// Pascal `TInvControlObj.MakeDERList`. A named `DERList` resolves each entry
     /// against the PVSystem/Storage class (keeping only enabled ones; a *missing*
@@ -347,6 +354,8 @@ impl InvControl {
         if self.f_list_size > 0 {
             // Named list — use it.
             for i in 0..self.der_name_list.len() {
+                // BUG(C5): each entry is cloned to read it while `fleet` is pushed to. The two
+                // are disjoint fields, so the loop can iterate `&self.der_name_list`.
                 let entry = self.der_name_list[i].clone();
                 let (class, bare) = split_class_name(&entry);
                 match class.to_ascii_lowercase().as_str() {
@@ -426,6 +435,8 @@ impl InvControl {
         self.f_using_mon_buses = !self.mon_buses.is_empty();
 
         for i in 0..self.fleet.len() {
+            // BUG(C5): a full snapshot of the DER is built to read its phase and conductor
+            // counts. The env should lend the DER to read them in place.
             let snap = env.der_snap(self.fleet[i]);
             self.ctrl_vars[i].nphases_der = snap.nphases;
             self.ctrl_vars[i].nconds_der = snap.nconds;
@@ -446,6 +457,9 @@ impl InvControl {
         }
     }
 
+    // BUG(C5): copies the DER's present output, ratings and limits into `InvVars` on every
+    // sample, through a full snapshot of the DER. The DER owns them, and the control should
+    // read them from the DER where it uses them.
     /// Pascal `TInvControlObj.UpdateDERParameters(i)` — refresh `CtrlVars[i]` from
     /// the controlled DER.
     fn update_der_parameters(&mut self, i: usize, env: &mut dyn InvDispatchEnv) {
@@ -484,6 +498,8 @@ impl InvControl {
     /// reduces the DER's own terminal-voltage magnitudes the same way.
     fn get_mon_voltage(&self, i: usize, basekv: f64, env: &mut dyn InvDispatchEnv) -> f64 {
         if self.f_using_mon_buses {
+            // BUG(C5): the voltage buffer is allocated on every sample. The control should
+            // keep it between samples and reuse it.
             // The complex per-bus monitored voltages (Pascal `cBuffer[0..len-1]`).
             let mut cbuffer: Vec<Complex64> = Vec::with_capacity(self.mon_buses.len());
             for j in 0..self.mon_buses.len() {
@@ -528,6 +544,8 @@ impl InvControl {
         // DER it is the line-to-line difference `Vterminal[j] -
         // Vterminal[NextDeltaPhase(j)]`. `NextDeltaPhase(j)`
         // is 1-based `j+1`, wrapping to 1 past `NCondsDER`.
+        // BUG(C5): the terminal voltages and their magnitudes below are new Vecs on every
+        // sample. The control should keep both buffers between samples and refill them.
         let vterm = env.der_vterminal(self.fleet[i]);
         let is_delta = env.der_is_delta(self.fleet[i]);
         let nconds = self.ctrl_vars[i].nconds_der;
@@ -588,6 +606,8 @@ impl InvControl {
         for i in 0..self.fleet.len() {
             self.update_der_parameters(i, env);
             let r = self.fleet[i];
+            // BUG(C5): a second full snapshot of the same DER in this sample, after
+            // `update_der_parameters` took one. The env should lend the DER to read it.
             let snap = env.der_snap(r);
 
             let basekv = self.ctrl_vars[i].f_vbase / 1000.0; // L-N voltage
@@ -1286,6 +1306,9 @@ impl InvControl {
         }
     }
 
+    // BUG(C5): takes the whole dispatch env to read only the step size, and `&mut self`
+    // where one `InvVars` record changes. The direct form takes the step, `lpf_tau` and
+    // `&mut InvVars`.
     /// Pascal `CalcLPF(m, powertype, LPF_desiredpu)` — the first-order low-pass
     /// filter `out(t) = desired·(1−α) + prior·α`, `α = exp(−h/LPFTau)`, against the
     /// prior time step's option value (`FPrior*Optionpu`). `is_vars` selects
@@ -1303,6 +1326,9 @@ impl InvControl {
         }
     }
 
+    // BUG(C5): takes the whole dispatch env to read only the step size, and `&mut self`
+    // where one `InvVars` record changes. The direct form takes the step,
+    // `rise_fall_limit` and `&mut InvVars`.
     /// Pascal `CalcRF(m, powertype, RF_desiredpu)` — clamp the per-step change to
     /// `±FRiseFallLimit·h` around the prior step's option value, else take the
     /// request unchanged. `is_vars` selects `QDesireOptionpu` vs `PLimitOptionpu`.
@@ -1328,6 +1354,9 @@ impl InvControl {
         }
     }
 
+    // BUG(C5): takes the whole dispatch env only to pass the step size on, and `&mut self`
+    // where one `InvVars` record changes. The direct form takes the step, the settings it
+    // reads and `&mut InvVars`.
     /// The `DoPendingAction` reactive-power tail shared by VOLTVAR / DRC / VV_DRC:
     /// apply the LPF / Rise-Fall filter (if active) then the `Check_Qlimits`
     /// kVA/kvar clamp, leaving `QDesireEndpu`. With rate-of-change active the clamp
@@ -1355,6 +1384,9 @@ impl InvControl {
         }
     }
 
+    // BUG(C5): takes the whole dispatch env only to pass the step size on, and `&mut self`
+    // where one `InvVars` record changes. The direct form takes the step, the settings it
+    // reads and `&mut InvVars`.
     /// The `DoPendingAction` active-power tail shared by VOLTWATT / VV_VW: apply the
     /// LPF / Rise-Fall filter (if active) then the `Check_Plimits` kVA/pctPmpp
     /// clamp, leaving `PLimitEndpu`. With rate-of-change active the clamp runs on
@@ -1432,6 +1464,8 @@ impl InvControl {
     /// l.1445/1450).
     fn do_pending_voltwatt(&mut self, k: usize, env: &mut dyn InvDispatchEnv) {
         let r = self.fleet[k];
+        // BUG(C5): a full snapshot of the DER is built on every action to read a few fields.
+        // The env should lend the DER to read them in place.
         let snap = env.der_snap(r);
         env.der_set_vw_mode(r, true); // DERElem.VWmode := TRUE
 
@@ -1502,6 +1536,8 @@ impl InvControl {
     /// the PVSystem or Storage path per the DER (Pascal l.1511-1564).
     fn do_pending_vv_vw(&mut self, k: usize, env: &mut dyn InvDispatchEnv) {
         let r = self.fleet[k];
+        // BUG(C5): a full snapshot of the DER is built on every action to read a few fields.
+        // The env should lend the DER to read them in place.
         let snap = env.der_snap(r);
         // DERElem.VWmode := TRUE; Varmode := VARMODEKVAR; VVmode := TRUE;
         env.der_set_modes(r, true, true, VarMode::Kvar);
@@ -2753,6 +2789,8 @@ impl InvControl {
     }
 }
 
+// BUG(C2): a free function that parses an object name. It belongs to a type for the
+// class-prefixed object name.
 /// Split a `DERList` entry `"PVSystem.pv1"` into `("PVSystem", "pv1")` (Pascal
 /// `StripExtension` / `StripClassName`). A bare name keeps an empty class.
 fn split_class_name(full: &str) -> (String, String) {

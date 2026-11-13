@@ -61,8 +61,11 @@ impl CktElement for RegControl {
             // The `transformer=` proxy accepts only Transformer / AutoTrans
             // (RegControl.pas:264), so `ControlledElement.DSSClassName` is always
             // one of those two and the Setbus + VBuffer/CBuffer realloc always
-            // run. The buffers have no persistent field here (the sampler sizes
-            // them as locals each `Sample`).
+            // run.
+            // BUG(C5): the sampling buffers have no field, so `sample` allocates them on every
+            // pass. The control should keep them and resize them here.
+            // BUG(C5): `regulated_bus` and the bus name of `ctx` below are cloned only to be
+            // passed as `&str`. Both can be borrowed and passed to `set_bus` directly.
             let bus = if self.using_regulated_bus {
                 self.regulated_bus.clone() // hopefully this will actually exist
             } else {
@@ -300,6 +303,9 @@ impl DssObject for RegControl {
                 // `transformer=` resolves against either class (Pascal
                 // `Transf_Or_AutoTrans_ProxyClass`).
                 let name = o.name();
+                // BUG(C2): the tap-data body is written once per transformer class. One
+                // operation shared by `Transformer` and `AutoTrans` should yield it, so the
+                // class test only selects the object.
                 let (full_name, tap_snap) = if let Some(xf) = o.get::<Transformer>() {
                     (
                         format!("Transformer.{name}"),

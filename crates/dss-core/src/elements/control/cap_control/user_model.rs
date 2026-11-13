@@ -29,6 +29,9 @@ use crate::obj::base::{UserModelAction, UserModelLoad, UserModelSlot};
 
 use super::{CapControl, CapControlType};
 
+// BUG(C2): this slot (model name, module bytes, edit string, live instance, and their load,
+// reload and edit) is written again for each element class with a user model. One slot
+// type, generic over the instance, should own them.
 /// One bound CapControl user model — the dss-core wrapper around a
 /// [`UserModelHost`] + [`CapControlInstance`] (Pascal `TCapUserControl`).
 ///
@@ -53,13 +56,15 @@ pub struct CapControlUserModelSlot {
     live: Option<Box<CapControlInstance>>,
 }
 
+// BUG(C5): a `Clone` that drops the live instance, written so that `CapControl` can derive
+// `Clone`. The copy has no model until `ensure_live` reloads it. A slot that owns a live
+// instance should not be `Clone`, and a `MakeLike` copy should load its own model.
 impl Clone for CapControlUserModelSlot {
     fn clone(&self) -> Self {
         Self {
             model: self.model.clone(),
             wasm: Arc::clone(&self.wasm),
             data: self.data.clone(),
-            // Drop the live instance — re-created lazily (Pascal MakeLike re-News).
             live: None,
         }
     }
@@ -129,6 +134,8 @@ impl CapControlUserModelSlot {
         let instance = CapControlInstance::new(&host, Box::new(NoCallbacks))?;
         self.live = Some(Box::new(instance));
         if !self.data.is_empty() {
+            // BUG(C5): `data` is cloned to pass it while `live` is borrowed mutably. The two
+            // are disjoint fields, so `&self.data` can be passed directly.
             let data = self.data.clone();
             self.live
                 .as_mut()
@@ -350,6 +357,8 @@ impl CapControl {
     }
 }
 
+// BUG(C2): a free function that writes the error log, written again in each user-model
+// module. It belongs to the shared user-model slot type.
 /// Map a load-time [`UserModelError`] onto the Pascal load-failure diagnostic:
 /// a missing export → 569 ("Does Not Have Required Function"), anything else →
 /// 570 ("… Not Loaded", warn-and-fallback). The model stays absent either way
@@ -369,6 +378,8 @@ fn push_load_failure(name: &str, model_name: &str, e: &UserModelError, errors: &
     }
 }
 
+// BUG(C2): a free function that writes the error log. It belongs to the user-model slot
+// that drains the effects.
 /// Route a non-control-queue effect (a `Msg`) into the error sink. A
 /// `ControlQueuePush` from `edit`/`do_pending` (rather than `sample`) has no
 /// queue in scope. It is surfaced loudly rather than silently dropped. The

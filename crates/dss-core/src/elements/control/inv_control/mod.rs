@@ -362,6 +362,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 37; // incl. Like
 }
 
+// BUG(C2): a free function that builds the class property table. It belongs to
+// `InvControl` as an associated function.
 /// `TInvControl.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
@@ -425,6 +427,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("InvControl", defs, true)
 }
 
+// BUG(C2): a second copy of the PI controller `PiCtrl` of `support::mathutil`, field for
+// field, and its gains are public and written by `InvControl`. One controller type with
+// private fields should serve both.
+// BUG(C5): derives `Clone` though it holds the filter history of one DER across samples.
 /// Pascal `TPICtrl` (`Shared/mathutil.pas` l.21) — the two-tap discrete PI
 /// controller InvControl runs for the Exponential `ControlModel`. `kNum`/`kDen`
 /// are recomputed from the object-level `FdeltaQ_factor` before every `SolvePI`
@@ -468,6 +474,9 @@ impl PICtrl {
     }
 }
 
+// BUG(C2): every field is public and `InvControl` works on them one by one. The per-DER
+// state machine should be methods of `InvVars`, with private fields.
+// BUG(C5): derives `Clone` though it holds the running state of one DER across steps.
 /// Pascal `TInvVars` — the per-controlled-DER runtime state (one record per fleet
 /// member). Carries the fields the dispatch (VOLTVAR /
 /// VOLTWATT / VV_VW / DRC / VV_DRC / WATTPF / WATTVAR / AVR) + the shared machinery
@@ -673,6 +682,12 @@ impl InvVars {
     }
 }
 
+// BUG(C2): the per-DER state machine lives here: most methods take a fleet index and work
+// on one `InvVars` record. `InvVars`, or a per-DER type that holds it with its DER handle,
+// should own those operations, with `InvControl` only coordinating.
+// BUG(C2): `fleet` and `mon_buses` are open to the crate and read from outside. They should
+// be private behind methods.
+// BUG(C5): derives `Clone` though it owns the fleet state it carries across steps.
 /// `TInvControlObj`. The parse-time surface plus the dispatch state: the
 /// resolved DER fleet (`fleet`), the per-DER [`InvVars`] (`ctrl_vars`), and the
 /// rolling-average solution-voltage bookkeeping.
@@ -683,6 +698,8 @@ pub struct InvControl {
     /// `DERNameList` — the named PVSystem/Storage fleet (also the backing of the
     /// deprecated `PVSystemList`).
     der_name_list: Vec<String>,
+    // BUG(C5): a count beside the lists it counts, set from the fleet and from the name list
+    // at different times. The length of the list it describes should be read instead.
     /// `FListSize` — set from `DERNameList.count` in the DERList side effect.
     f_list_size: i32,
 
@@ -691,6 +708,8 @@ pub struct InvControl {
     /// `CombiMode` (`TInvControlCombiMode`).
     combi_mode: InvCombiMode,
 
+    // BUG(C5): this curve and the four below are clones of XYcurve objects kept by the
+    // control, so a later edit of a curve does not reach it. Each curve should be read live.
     /// `Fvvc_curve` — volt-var curve (name + snapshot-clone).
     vvc_curve_name: String,
     vvc_curve: Option<XyCurveObj>,
@@ -786,9 +805,9 @@ pub struct InvControl {
     /// (drives `GetMonVoltage`'s per-bus path; set in `ensure_fleet`).
     f_using_mon_buses: bool,
 
-    // --- parse-time resolved monitored-DER bus (the `Setbus(1, MonitoredElement.
-    // Firstbus)` carry-forward; the executive resolves it at edit-completion since
-    // `recalc_element_data` has no store access) ---
+    // BUG(C2): the executive writes the first DER's bus and the phase count here through
+    // `set_resolved_monitored` so that `recalc` reads them at `end_edit`. They should reach
+    // `recalc` as arguments.
     /// The first DER's `Firstbus` (the bus the control's terminal attaches to).
     mon_bus: String,
     /// The (last) DER's phase count (Pascal `FNphases := ControlledElement[i].NPhases`

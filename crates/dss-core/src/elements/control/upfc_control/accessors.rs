@@ -45,6 +45,8 @@ impl CktElement for UpfcControl {
             self.ccd.cd.set_nconds(c.nphases);
             // Setbus(1, MonitoredElement.GetBus(ElementTerminal))
             let t = self.ccd.element_terminal as usize;
+            // BUG(C5): the bus name is cloned out of `ctx` only to be passed as `&str`. The
+            // borrowed name can be passed to `set_bus` directly.
             let bus = t
                 .checked_sub(1)
                 .and_then(|k| m.bus_names.get(k))
@@ -66,6 +68,7 @@ impl CktElement for UpfcControl {
     }
 }
 
+// BUG(C2): `UpfcControl` keeps its weighted UPFC list as loose fields with no type.
 impl UpfcControl {
     /// Pascal `TUPFCControlObj.MakeLike` — copies only the phase count, terminal,
     /// and controlled/monitored element refs (plus the base `PrpSequence`); the

@@ -140,6 +140,8 @@ impl CapControl {
         let mon_nconds = mon.cd().nconds;
         let mon_nphases = mon.cd().nphases;
         let cond_offset = (element_terminal - 1) * mon_nconds;
+        // BUG(C5): the current buffer is allocated on every sample. The control should keep
+        // it between samples and reuse it.
         let mut cbuffer = vec![Complex64::ZERO; mon.cd().yorder.max(1)];
 
         // First, voltage override (skipped for VOLTAGECONTROL).
@@ -445,6 +447,9 @@ impl CapControl {
         cond_offset: usize,
         mon_nphases: usize,
     ) -> bool {
+        // BUG(C5): the user model is moved out of `self` and put back on each exit, though
+        // `build_sample_context` only reads `self`. Building the context first and then
+        // borrowing `self.user_model` mutably gives the same result.
         // Pascal `if UserModel.Exists` — nothing to do without a loaded model.
         let Some(mut um) = self.user_model.take() else {
             return false;
@@ -527,6 +532,8 @@ impl CapControl {
         mon_nphases: usize,
     ) -> CapControlVars {
         let element_terminal = self.ccd.element_terminal as usize;
+        // BUG(C5): the current buffer is allocated on every sample. The control should keep
+        // it between samples and reuse it.
         let mut cbuffer = vec![Complex64::ZERO; mon.cd().yorder.max(1)];
 
         // `SampleP := MonitoredElement.Power[ElementTerminal] * 0.001` (kW+jkvar).
@@ -637,6 +644,8 @@ impl CapControl {
             // The guest scheduled its own queue code (upstream `USER_BASE_ACTION_CODE
             // = 100` and up), so this is the one open arm of the action channel.
             self.set_pending_change(ControlAction::from_ordinal(code));
+            // BUG(C5): the user model is moved out and put back below, though the body uses
+            // only `self.ccd` and `ctx` beside it. `self.user_model.as_mut()` borrows it.
             if let Some(mut um) = self.user_model.take() {
                 let mut abort = false;
                 if um.exists() {

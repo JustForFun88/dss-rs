@@ -47,6 +47,8 @@ impl CktElement for EspvlControl {
             self.ccd.cd.set_nconds(c.nphases);
             // Setbus(1, MonitoredElement.GetBus(ElementTerminal))
             let t = self.ccd.element_terminal as usize;
+            // BUG(C5): the bus name is cloned out of `ctx` only to be passed as `&str`. The
+            // borrowed name can be passed to `set_bus` directly.
             let bus = t
                 .checked_sub(1)
                 .and_then(|k| m.bus_names.get(k))
@@ -68,6 +70,7 @@ impl CktElement for EspvlControl {
     }
 }
 
+// BUG(C2): `EspvlControl` keeps its weighted list of local controls as loose fields.
 impl EspvlControl {
     /// Pascal `TESPVLControlObj.MakeLike` — copies *only* the phase count,
     /// monitored element, and terminal (plus the base `PrpSequence`); `Type`, the

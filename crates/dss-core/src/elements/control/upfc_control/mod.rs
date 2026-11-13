@@ -40,6 +40,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 4; // incl. Like
 }
 
+// BUG(C2): a free function that builds the class property table. It belongs to
+// `UpfcControl` as an associated function.
 /// `TUPFCControl.DefineProperties`.
 pub fn class_props(_enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
@@ -57,6 +59,8 @@ pub fn class_props(_enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("UPFCControl", defs, true)
 }
 
+// BUG(C5): the env reaches any UPFC by any `ElemId`, not only the fleet of this control.
+// It should lend only the fleet members the control uses.
 /// The executive surface `Sample`/`DoPendingAction` need to reach the controlled
 /// UPFC fleet (the Rust stand-in for Pascal's live `UPFCList` object pointers).
 pub(crate) trait UpfcDispatchEnv {
@@ -71,6 +75,10 @@ pub(crate) trait UpfcDispatchEnv {
     fn upload_currents(&mut self, u: ElemId);
 }
 
+// BUG(C2): the weighted UPFC list (names, weights, total weight, list size, resolved list)
+// is loose fields resynced by hand, as in each fleet control. A fleet type should own them
+// and their operations.
+// BUG(C5): derives `Clone` though it owns the fleet state it carries across samples.
 /// `TUPFCControlObj`.
 #[derive(Debug, Clone)]
 pub struct UpfcControl {
@@ -83,6 +91,8 @@ pub struct UpfcControl {
     weights: Vec<f64>,
     /// `TotalWeight`.
     total_weight: f64,
+    // BUG(C5): a count beside the resolved list it counts, kept as a second copy of its
+    // length. The length of the list should be read instead.
     /// `ListSize` — the controlled-UPFC count (set to the enabled-UPFC count on
     /// the first `Sample`; never set from the name list, per upstream).
     list_size: i32,

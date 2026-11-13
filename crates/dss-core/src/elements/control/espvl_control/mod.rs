@@ -129,6 +129,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 14; // incl. Like
 }
 
+// BUG(C2): a free function that builds the class property table. It belongs to
+// `EspvlControl` as an associated function.
 /// `TESPVLControl.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
@@ -167,6 +169,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("ESPVLControl", defs, true)
 }
 
+// BUG(C5): the env reads and writes any element by any `ElemId`, not only the monitored
+// element and the controls of the list. It should lend only the objects the control uses.
 /// The executive surface `Sample` needs to reach the monitored element and the
 /// ESPVLControl "fleet" (the Rust stand-in for Pascal's live `ParentClass`
 /// pointers). The list entries are *other ESPVLControl objects*, not generators —
@@ -188,12 +192,18 @@ pub(crate) trait EspvlDispatchEnv {
     fn set_local_kw_base(&mut self, r: ElemId, value: f64);
 }
 
+// BUG(C2): the weighted list of local controls (names, weights, list size, total weight,
+// resolved list) is loose fields resynced by hand, as in each fleet control. A fleet type
+// should own them and their operations.
+// BUG(C5): derives `Clone` though it owns the state it carries across samples.
 /// `TESPVLControlObj`.
 #[derive(Debug, Clone)]
 pub struct EspvlControl {
     pub ccd: ControlElemData,
     /// Dump name of the monitored element (Pascal renders `FullName`).
     monitored_full_name: String,
+    // BUG(C5): a copy of the monitored element's shape, stale after an edit of that element.
+    // The element owns it.
     /// Parse-time shape snapshot of the monitored reference.
     mon_snap: Option<RefSnapshot>,
 
@@ -217,6 +227,8 @@ pub struct EspvlControl {
     local_control_name_list: Vec<String>,
     /// `FLocalControlWeights` (one per list entry; default 1.0).
     local_control_weights: Vec<f64>,
+    // BUG(C5): a count beside the lists it counts, set from different lists at different
+    // times. The length of the list it describes should be read instead.
     /// `FLocalControlListSize`.
     local_control_list_size: i32,
     /// `FLocalControlPointerList` — resolved lazily on the first `Sample` (empty
@@ -358,6 +370,8 @@ impl EspvlControl {
     /// the monitored element and attach the control's single terminal to the
     /// monitored terminal's bus.
     pub(super) fn recalc(&mut self) {
+        // BUG(C5): the snapshot and the bus name below are cloned to read them while `ccd`
+        // is written. `ccd` is a disjoint field, so they can be borrowed in place.
         let Some(mon) = self.mon_snap.clone() else {
             // Pascal `DoSimpleMsg('Monitored Element in %s is not set', 372)`.
             self.ccd.cd.obj.push_error(crate::diag::DssDiagnostic::msg(

@@ -16,6 +16,7 @@
 
 use std::collections::VecDeque;
 
+// BUG(C5): derives `Clone` though it owns the sample history it carries across samples.
 /// Pascal `TRollAvgWindow`. Field names mirror the unit (`bufferlength`,
 /// `runningsumsample`, ...) for a 1:1 read against the Pascal.
 #[derive(Debug, Clone, Default)]

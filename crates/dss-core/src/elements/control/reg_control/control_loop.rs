@@ -220,6 +220,8 @@ impl RegControl {
         }
 
         // 2) Control voltage.
+        // BUG(C5): this voltage buffer and the current buffer below are allocated on every
+        // sample. The control should keep both between samples and reuse them.
         let mut vbuffer = vec![Complex64::ZERO; nphases];
         let mut vcontrol = if self.using_regulated_bus {
             let conn = tr.wdg_connection(element_terminal);

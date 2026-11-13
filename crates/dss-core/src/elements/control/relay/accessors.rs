@@ -16,6 +16,7 @@ use crate::obj::base::{DssObjData, DssObject, RefAction};
 
 use super::{RCMAX, Relay};
 
+// BUG(C2): `Relay` holds the fields and logic of every protection function in one struct.
 impl Relay {
     /// Executive hook: the five TCC curve names to resolve against the TCC_Curve
     /// registry, in the [`Self::set_resolved_curves`] order. `none` (the default)
@@ -65,6 +66,8 @@ impl CktElement for Relay {
             self.ccd.cd.nphases = m.nphases;
             self.ccd.cd.set_nconds(m.nphases);
             let t = self.monitored_element_terminal as usize;
+            // BUG(C5): the bus name is cloned out of `ctx` only to be passed as `&str`. The
+            // borrowed name can be passed to `set_bus` directly.
             let bus = t
                 .checked_sub(1)
                 .and_then(|k| m.bus_names.get(k))
@@ -72,18 +75,13 @@ impl CktElement for Relay {
                 .unwrap_or_default();
             self.ccd.cd.set_bus(1, &bus);
         }
-        // The state arrays are not touched here. After `makeposseq` the
-        // rendered state shrinks to the pos-seq element's phase count because
-        // `Normal`/`State` render, `Sample`, `Reset` and `RecalcElementData` all
-        // loop the live `Min(RELAYCONTROLMAXDIM, ControlledElement.Nphases)`.
-        // This engine's stand-in for that live read is the controlled-element
-        // snapshot, so refresh its shape from the now-pos-seq element.
-        // Otherwise [`Relay::state_size`] keeps answering the FROZEN parse-time
-        // count (3), the render prints three tokens off a 1-conductor element
-        // and `Sample` reads phases 2..3 past its end as *open* (the
-        // `modes/makeposseq/makeposseq_ctrl.dss` census cell).
-        // `PosSeqElemInfo` has no `nterms`, so `nterms = bus_names.len()`
-        // (`BusNames[1..NTerms]`).
+        // The state arrays are not touched here. After `makeposseq` the state render,
+        // `Sample`, `Reset` and `RecalcElementData` loop over the pos-seq element's phase
+        // count, so `Relay::state_size` must answer that count, not the parse-time one.
+        // `PosSeqElemInfo` has no `nterms`, so `nterms = bus_names.len()`.
+        // BUG(C5): the controlled element's snapshot is rewritten field by field so that
+        // `state_size` reads the new count from the copy. The count should be read from the
+        // controlled element live, and the copy should go.
         if let Some(c) = &ctx.controlled
             && let Some(snap) = self.ctrl_snap.as_mut()
         {
@@ -106,6 +104,7 @@ impl CktElement for Relay {
     }
 }
 
+// BUG(C2): `Relay` holds the fields and logic of every protection function in one struct.
 impl Relay {
     /// Pascal `TRelayObj.MakeLike` (r4133).
     pub(crate) fn make_like(&mut self, other: &Self) {
@@ -565,6 +564,8 @@ impl DssObject for Relay {
             MONITORED_OBJ => {
                 self.ccd.controlled_element = self.ccd.monitored_element;
                 self.switched_full_name = self.monitored_full_name.clone();
+                // BUG(C5): the monitored element's snapshot is copied again as the switched
+                // one. Read live from the element, neither copy is needed.
                 self.ctrl_snap = self.mon_snap.clone();
             }
             MONITORED_TERM => self.ccd.element_terminal = self.monitored_element_terminal,
@@ -595,6 +596,8 @@ impl DssObject for Relay {
     }
 }
 
+// BUG(C2): a free function that maps a curve name to its dump name, written again in the
+// Recloser module. It belongs to a type for the curve reference, shared by both.
 /// Map a resolved TCC-curve reference name to the stored dump name: an empty
 /// (unresolved / `none`) reference renders `none`.
 fn curve_name(name: String) -> String {
