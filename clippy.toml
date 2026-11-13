@@ -1,0 +1,8 @@
+# Clippy configuration of the whole workspace.
+
+# State has one owner (CLAUDE.md C5): shared ownership and interior mutability
+# are no way around a borrow conflict.
+disallowed-types = [
+    { path = "std::rc::Rc", reason = "state has one owner (CLAUDE.md C5)" },
+    { path = "std::cell::RefCell", reason = "state has one owner (CLAUDE.md C5)" },
+]

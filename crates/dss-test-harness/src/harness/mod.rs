@@ -21,6 +21,13 @@
 //! gate. Unset by default: the assertions run.
 #![allow(dead_code)]
 
+// BUG(C2): the functions of this module are free functions. Each comparator belongs to the
+// capture it compares (`ElementCap`, `BusCap`, `PdElementCap`), the census functions to a
+// census type, the band helpers to `Tolerances`, the skip lookups to `PropsPolicy`.
+// BUG(C5): comparators such as `compare_injection` and `compare_bus` take the whole `Dss`
+// where they read only the views they compare; each should receive those views. The `&mut`
+// ones follow from the `Dss` view methods that take `&mut self`.
+
 // Command-replay scenario gate shared by `golden_line_constants.rs`,
 // `golden_der_controls.rs`, and `golden_harmonics.rs`.
 pub mod scenario;
@@ -2036,6 +2043,8 @@ fn no_polar_payload(mag: &[f64], ang: &[f64]) -> bool {
     (mag.is_empty() || mag == [0.0]) && ang.is_empty()
 }
 
+// BUG(C2): a long free function that compares an `ElementCap` against the engine's
+// `ElementSnapshot`; the comparison is a method of `ElementCap`, the capture it compares.
 /// Compare one element's **derived polar channels** against a capture:
 /// `Enabled`, `CurrentsMagAng`, `VoltagesMagAng`, `Residuals`.
 ///
@@ -2934,6 +2943,9 @@ pub fn compare_element_extras(
 // The multi-control census
 // ---------------------------------------------------------------------------
 
+// BUG(C5): process-wide counters that `record_control_census` writes during the gate and
+// `control_census_counters` reads back. A census value owned by the gate run and passed to
+// the recorder should hold them.
 /// Oracle `NumControls` values the **gating** extras compare has seen…
 static CONTROL_CENSUS_SEEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 /// …how many of them carried at least one control…
@@ -3153,6 +3165,8 @@ pub fn total_power_band(
         .sum()
 }
 
+// BUG(C2): a long free function that compares an `ElementCap` against the engine's
+// `ElementSnapshot`; the comparison is a method of `ElementCap`, the capture it compares.
 /// Compare one element's `PhaseLosses` against a capture — the numeric member of
 /// the extras group.
 ///
@@ -4535,6 +4549,8 @@ const SEQ_ARM_CENSUS_MEASURED: (usize, usize, usize) = (297_867, 78, 4);
 /// deliberate.
 const SEQ_ARM_CENSUS_FLOORS: (usize, usize) = (200_000, 60);
 
+// BUG(C5): process-wide counters that `record_seq_arm` writes and `seq_arm_counters` reads
+// back. A census value owned by the gate run and passed to the recorder should hold them.
 /// How many gated element rows the corpus gate's derived loop has recorded
 /// (the arm [`compare_element_seq`] classified and handed back).
 static SEQ_ARM_SEEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -4683,6 +4699,8 @@ fn check_seq_arm_population(seen: usize, posseq_capi: usize, posseq_r4133: usize
     );
 }
 
+// BUG(C2): a long free function that compares an `ElementCap` against the engine's
+// `ElementSnapshot`; the comparison is a method of `ElementCap`, the capture it compares.
 /// Compare one element's **sequence channels** against a capture: `SeqCurrents`,
 /// `SeqVoltages`, `SeqPowers`.
 ///
@@ -8923,6 +8941,9 @@ fn transformer_cursors_disagree(
     cursor_of(actual) != cursor_of(oracle)
 }
 
+// BUG(C2): a free function whose long argument list is the settings of the property compare
+// with no type of their own. A property-compare type holding the policy, the allowlist and
+// the band should own this walk.
 /// The property-list comparison core of [`compare_all_properties`], factored out
 /// so the [`PROPS_015X`] allowlist can be injected for the self-tests (the
 /// shipped table is empty). `actual` is the Rust `?`-surface list, `oracle` the
@@ -9428,6 +9449,8 @@ pub fn collect_prop_divergences(
     blind
 }
 
+// BUG(C2): the collecting twin of `compare_prop_lists` takes the same loose settings; the
+// property-compare type that should own that walk should own this one too.
 /// The collecting twin of [`compare_prop_lists`]: the SAME policy chain — the
 /// same [`oracle_name_set`]/[`filter_015x`] shape relief, the same index walk
 /// ("property-index order is the contract"), the same
@@ -10567,6 +10590,9 @@ pub const PD_SKIP_FIELDS: &[PdSkipRow] = &[
 /// `pd_elements_tests::every_pd_skip_row_pin_is_a_test_that_exists`.
 const PD_PINS_FILE: &str = "crates/dss-core/tests/pd_elements_pins.rs";
 
+// BUG(C5): the four counter statics below are process-wide state that `compare_pd_elements`
+// writes on every walk and `pd_walk_counters` reads back. A census value owned by the gate
+// run and passed to the comparator should hold them.
 /// Per-row visit counter, indexed exactly like [`PD_SKIP_FIELDS`]: cells the
 /// row was consulted about.
 static PD_SKIP_VISITS: [AtomicUsize; PD_SKIP_FIELDS.len()] =
@@ -11707,6 +11733,8 @@ pub fn compare_all_bus_vmag_pu(
 // `corpus_gate.rs` for the one case that has one.
 // ---------------------------------------------------------------------------
 
+// BUG(C5): process-wide counters that `record_distance_compare` writes and
+// `distance_counters` reads back. A census value owned by the gate run should hold them.
 /// Gating distance compares that carried at least one NON-ZERO distance — one
 /// per [`compare_bus_distances`] call made from the corpus gate's runner.
 static DISTANCE_WALKS: AtomicUsize = AtomicUsize::new(0);
@@ -12072,6 +12100,10 @@ mod bus_distance_comparator_tests {
         all_node[3] = 42.0;
         all_node[4] = 42.0;
         all_node[5] = 42.0;
+        #[expect(
+            clippy::disallowed_types,
+            reason = "BUG(C5): interior mutability records what the comparator asked, since its mask is a `&dyn Fn`"
+        )]
         let asked = std::cell::RefCell::new(Vec::<String>::new());
         let only_b1 = |name: &str| {
             asked.borrow_mut().push(name.to_string());
@@ -12323,6 +12355,8 @@ fn interleave(v: &[Complex64]) -> Vec<f64> {
 // The GLOBAL guard: was a real short-circuit matrix ever compared?
 // ---------------------------------------------------------------------------
 
+// BUG(C5): process-wide counters that `record_sc_study_compare` writes and
+// `sc_study_counters` reads back. A census value owned by the gate run should hold them.
 /// Gating short-circuit compares that carried a real matrix — one per
 /// [`compare_bus_short_circuit`] call, made from the corpus gate's runner, that
 /// value-compared at least one full `n x n` `ZscMatrix`/`YscMatrix`.
@@ -13487,6 +13521,10 @@ mod bus_short_circuit_tests {
         let mut dss = sc_deck();
         fault_study(&mut dss);
         for ch in [PropsChannel::CapiV0145, PropsChannel::R4133] {
+            #[expect(
+                clippy::disallowed_types,
+                reason = "BUG(C5): interior mutability records what the comparator asked, since its mask is a `&dyn Fn`"
+            )]
             let asked = std::cell::RefCell::new(Vec::new());
             let masked = |bus: &str| {
                 asked.borrow_mut().push(bus.to_string());
@@ -14086,6 +14124,8 @@ pub struct SeqVllCounts {
 // alias these counters spell is local.
 use std::sync::atomic::Ordering::Relaxed as AtomicRelaxed;
 
+// BUG(C5): process-wide counters that `record_seq_vll_populations` writes and
+// `seq_vll_counters` reads back. A census value owned by the gate run should hold them.
 /// Gating comparator calls that met each exception class at all, and the buses
 /// they met it on — one `(walks, buses)` pair per class, in the same shape and
 /// for the same reason as [`SC_STUDY_WALKS`]/[`SC_STUDY_BUSES`].
@@ -14242,6 +14282,8 @@ pub fn check_seq_vll_populations(got: SeqVllPopulation) {
     }
 }
 
+// BUG(C2): a long free function that compares the `BusCap` list against the engine's bus
+// voltages; the comparison is a method of the bus capture it compares.
 /// Compare every bus's captured sequence and line-to-line voltages against the
 /// engine's, in `BusList` order.
 ///
@@ -15444,6 +15486,8 @@ pub struct AtBusCounts {
     pub pce_declines: usize,
 }
 
+// BUG(C5): process-wide counters that `record_at_bus_populations` writes and
+// `at_bus_counters` reads back. A census value owned by the gate run should hold them.
 /// Gating comparator calls that met each class at all, and the (bus, element)
 /// records they met it on — one `(walks, records)` pair per class, in the shape
 /// and for the reason [`SEQ_SENTINEL_WALKS`]/[`SEQ_SENTINEL_BUSES`] are.
@@ -15894,6 +15938,8 @@ fn at_bus_missing(from: &[String], of: &[String]) -> Vec<String> {
         .collect()
 }
 
+// BUG(C2): a long free function that compares the `BusCap` list against the engine's
+// at-bus element lists; the comparison is a method of the bus capture it compares.
 /// Compare every bus's `AllPCEatBus`/`AllPDEatBus` against the engine's, in
 /// `BusList` order.
 ///
@@ -17440,6 +17486,9 @@ pub const RELIABILITY_SKIP_FIELDS: &[ReliabilitySkipRow] = &[
     },
 ];
 
+// BUG(C5): the six counter statics below are process-wide state that `compare_reliability`
+// and `compare_bus_reliability` write on every walk and `reliability_walk_counters` reads
+// back. A census value owned by the gate run and passed to the comparators should hold them.
 /// Per-row visit counter, indexed exactly like [`RELIABILITY_SKIP_FIELDS`]:
 /// cells the row was consulted about.
 static RELIABILITY_SKIP_VISITS: [AtomicUsize; RELIABILITY_SKIP_FIELDS.len()] =
