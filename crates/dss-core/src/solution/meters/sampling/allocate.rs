@@ -2,6 +2,9 @@
 //! EnergyMeter and Sensor computes against its measured peak, and the scaling
 //! of every meter zone's loads by them.
 
+// BUG(C2): the allocation sweeps are free functions over the circuit and the store; a meter's
+// allocation is an operation of `EnergyMeter` given its zone loads, and the sweeps belong to
+// the owner of the circuit and the store.
 use crate::circuit::Circuit;
 use crate::elements::meter::energymeter::EnergyMeter;
 use crate::elements::meter::sensor::Sensor;
@@ -49,6 +52,8 @@ pub(crate) fn allocate_loads(ckt: &mut Circuit, env: &mut SolveEnv, max_iters: u
 /// measured peak.
 fn calc_allocation_factors_all(ckt: &Circuit, store: &mut dyn ElemStore, sys: &SysCtx) {
     let node_v = &ckt.solution.node_v;
+    // BUG(C5): this loop and the sensor loop below each copy their handle list, though `ckt`
+    // is only read and each body touches only `store`; both can iterate the lists in place.
     for meter_ref in ckt.energy_meters.clone() {
         // A disabled meter contributes no allocation factors.
         if !meter_mut(store, meter_ref).enabled() {
@@ -89,6 +94,8 @@ fn allocate_load_all(
     sys: &SysCtx,
 ) -> Result<Vec<String>, String> {
     let mut pending: Vec<(ElemId, f64)> = Vec::new();
+    // BUG(C5): copies the meter list though `ckt` is only read and the body touches only
+    // `store`; the loop can iterate `&ckt.energy_meters` in place.
     for meter_ref in ckt.energy_meters.clone() {
         // A disabled meter does not adjust its zone loads.
         if !meter_mut(store, meter_ref).enabled() {
@@ -121,6 +128,8 @@ fn allocate_load_all(
     Ok(skips)
 }
 
+// BUG(C5): takes `store` as `&mut` though it only reads it, which makes it copy the meter's
+// load list below; it should take the store shared.
 /// Walk the meter's zone loads and push to `pending` each one's factor
 /// scaled by its upstream sensor's allocation factor (single-phase loads use
 /// the connected-phase factor, poly-phase loads the average factor). The
@@ -133,6 +142,8 @@ fn allocate_load_for_meter(
 ) {
     // The meter's `load_list` holds the zone's loads in branch-tree order, and
     // each load is scaled independently of the others.
+    // BUG(C5): copies the meter's load list because `store` is held `&mut`; the loop only
+    // reads the store, so a shared borrow of the list serves.
     let loads = meter_mut(store, meter_ref).load_list().to_vec();
     for load_ref in loads {
         let (nphases, sensor_ref, alloc_factor, node_ref0) = {
@@ -187,6 +198,8 @@ fn allocate_load_for_meter(
     }
 }
 
+// BUG(C5): returns a copy of the per-phase factors on every call, which the caller only
+// reads; it should return a borrowed slice.
 /// The phase count, the average allocation factor and the per-phase factors
 /// of a metering device, a [`Sensor`] or an [`EnergyMeter`] (both embed
 /// `MeterElementData`).

@@ -3,6 +3,8 @@
 //! backward fault-rate sweep, the forward interruption sweep (counting the
 //! feeder sections delimited by OCP devices), then SAIFI/SAIDI/CAIDI.
 
+// BUG(C2): the reliability sweeps are free functions over the circuit and the store; a meter's
+// sweep is an operation of `EnergyMeter` given its zone elements and the buses.
 use crate::circuit::controls::control_category;
 use crate::circuit::{Bus, Circuit};
 use crate::elements::ckt::{ElemFlags, OcpDeviceType};
@@ -24,6 +26,8 @@ fn pd_from_bus(store: &dyn ElemStore, r: ElemId) -> usize {
     .bus_idx()
 }
 
+// BUG(C5): takes the whole `Circuit` to read `control_attach_order` alone; it should take the
+// list it reads.
 /// Pascal `GetOCPDeviceType(PD_Elem)` (r4133 `Common/Utilities.pas:3165-3184`,
 /// dss_capi `Common/Utilities.pas:1996-2018`), evaluated **live** at the one
 /// place the sweep asks for it — r4133 `Meters/EnergyMeter.pas:2538` under
@@ -77,12 +81,16 @@ pub(crate) fn calc_all_reliability_indices(
     assume_restoration: bool,
 ) -> Vec<String> {
     // initialize bus quantities
+    // BUG(C2): assigns reliability fields of `Bus` from outside it; zeroing them belongs to a
+    // method of `Bus`.
     for b in ckt.buses.iter_mut() {
         b.bus_flt_rate = 0.0;
         b.bus_num_interrupt = 0.0;
     }
 
     let mut errors = Vec::new();
+    // BUG(C5): copies the meter list because `calc_reliability_indices` takes the whole circuit
+    // to write `ckt.buses` alone; with that narrowed the loop iterates the list in place.
     let meters = ckt.energy_meters.clone();
     for meter_ref in meters {
         if let Err(e) = calc_reliability_indices(meter_ref, assume_restoration, ckt, store) {
@@ -92,6 +100,10 @@ pub(crate) fn calc_all_reliability_indices(
     errors
 }
 
+// BUG(C2): the meter's own reliability sweep, done from outside `EnergyMeter`; it should be a
+// method of the meter given its zone elements and the buses.
+// BUG(C5): takes the whole `Circuit` as `&mut` and writes only `ckt.buses`; it should take the
+// buses it writes and the control list it reads.
 /// Pascal `TEnergyMeterObj.CalcReliabilityIndices` (r4133
 /// `Version8/Source/Meters/EnergyMeter.pas:2449`, dss_capi `:2411`): store the
 /// `AssumeRestoration` flag and re-run the customer roll-up, then the backward
@@ -110,6 +122,9 @@ fn calc_reliability_indices(
     store: &mut dyn ElemStore,
 ) -> Result<(), String> {
     let meter_full = format!("EnergyMeter.{}", store.obj(meter_ref).data().name());
+    // BUG(C5): copies the meter's sequence and load lists so that the sweeps can write other
+    // elements through the same store that owns the meter; direct access borrows the lists
+    // beside the zone elements.
     let (seq, load_list, source_num_int, source_int_dur) = {
         let em = meter_mut(store, meter_ref);
         (
@@ -175,6 +190,8 @@ fn calc_reliability_indices(
         };
         let accumulated_br = ckt.buses[to_bus].bus_flt_rate + rel.branch_flt_rate;
         let accumulated_miles = ckt.buses[to_bus].bus_total_miles + rel.miles_this_line;
+        // BUG(C2): this sweep and those below assign fields of `CktElementData` and `Bus` from
+        // outside those types; each assignment belongs to a method of the element or the bus.
         {
             let cd = store.ckt_elem_mut(r).cd_mut();
             cd.to_terminal = Some(if from_t == 1 { 0 } else { 1 });

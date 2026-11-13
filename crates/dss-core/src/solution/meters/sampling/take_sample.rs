@@ -5,6 +5,9 @@
 //! read/mutated through the store, and the registers are written back at the
 //! end. Split out of `sampling/mod.rs` (no behavioral change).
 
+// BUG(C2): the meter sample and its sweeps are free functions over the circuit and the store;
+// a meter's sample is an operation of `EnergyMeter` given its zone elements, and the sweeps
+// belong to the owner of the circuit and the store.
 use num_complex::Complex64;
 
 use crate::circuit::{Circuit, ElemKind};
@@ -29,6 +32,8 @@ pub(crate) fn reset_all_meters(
     errors: &mut crate::diag::ErrorLog,
 ) {
     super::super::demand_interval::reset_all_di(ckt, store, output_directory, errors);
+    // BUG(C5): this loop and the three below each copy their handle list, though each body
+    // touches only `store`; the loops can iterate the lists of `ckt` in place.
     let meters = ckt.energy_meters.clone();
     for meter_ref in meters {
         meter_mut(store, meter_ref).reset_registers();
@@ -66,6 +71,8 @@ pub(crate) fn reset_all_meters(
 /// with no `EnergyMeter` defined.
 pub(crate) fn take_sample_all(ckt: &mut Circuit, store: &mut dyn ElemStore, sys: &SysCtx) {
     let save_di = ckt.em_di.save_demand_interval;
+    // BUG(C5): copies the meter list because `write_meter_demand_interval_data` takes the whole
+    // circuit to add into `ckt.em_di` alone; with that narrowed the loop iterates in place.
     let meters = ckt.energy_meters.clone();
     for meter_ref in meters {
         let enabled = store
@@ -98,6 +105,8 @@ fn sample_all_der(ckt: &Circuit, store: &mut dyn ElemStore, sys: &SysCtx) {
     let trapezoidal = ckt.trapezoidal_integration;
     let positive_sequence = ckt.positive_sequence;
     let price_signal = ckt.price_signal;
+    // BUG(C5): this loop and the two below each copy their handle list, though `ckt` is only
+    // read and each body touches only `store`; the loops can iterate the lists in place.
     for r in ckt.generators.clone() {
         store
             .typed_mut::<Generator>(r)
@@ -127,6 +136,8 @@ fn branch_kind(store: &dyn ElemStore, r: ElemId) -> (bool, bool, usize) {
     (is_line, is_xfmr, nphases)
 }
 
+// BUG(C2): the meter's own sample, done from outside `EnergyMeter`; it should be a method of
+// the meter given the zone elements it reads.
 /// Pascal `TEnergyMeterObj.TakeSample` (l.1289).
 fn take_sample_one(meter_ref: ElemId, ckt: &Circuit, store: &mut dyn ElemStore, sys: &SysCtx) {
     let trapezoidal = ckt.trapezoidal_integration;
@@ -135,8 +146,10 @@ fn take_sample_one(meter_ref: ElemId, ckt: &Circuit, store: &mut dyn ElemStore, 
     let norm_min = ckt.normal_min_volts;
     let emerg_min = ckt.emerg_min_volts;
 
-    // CheckBranchList: exit if the zone was never built. Take the tree and the
-    // register accumulators out of the meter for the walk.
+    // CheckBranchList: exit if the zone was never built.
+    // BUG(C5): the branch tree and the registers are moved out of the meter here and must reach
+    // `end_take_sample` on every path; direct access is the sample as a method of `EnergyMeter`
+    // that borrows its registers beside the zone elements.
     let Some((mut tree, mut st)) = meter_mut(store, meter_ref).begin_take_sample(trapezoidal)
     else {
         return;
@@ -203,6 +216,8 @@ fn take_sample_one(meter_ref: ElemId, ckt: &Circuit, store: &mut dyn ElemStore, 
     } else {
         let mut cur = tree.first();
         while let Some(branch) = cur {
+            // BUG(C5): copies the node's shunt list here and in the pass below, though the tree
+            // is a local that nothing changes before `go_forward`; both can borrow it in place.
             let (from_terminal, shunts) = {
                 let n = tree.present_node();
                 (n.from_terminal, n.shunts.clone())
@@ -234,6 +249,9 @@ fn take_sample_one(meter_ref: ElemId, ckt: &Circuit, store: &mut dyn ElemStore, 
                     let pc = store.ckt_elem(p).cd();
                     (pc.overload_een, pc.overload_ue)
                 };
+                // BUG(C2): assigns fields of the branch's `CktElementData` here and the EEN/UE
+                // factors of `Load` below from outside those types; each assignment belongs to
+                // a method of its type.
                 let cd = store.ckt_elem_mut(branch).cd_mut();
                 cd.overload_een = cd.overload_een.max(p_een);
                 cd.overload_ue = cd.overload_ue.max(p_ue);

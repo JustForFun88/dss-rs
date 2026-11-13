@@ -3,6 +3,11 @@
 //! and invoke `Sample`/`DoPendingAction`/`Reset`. Includes the GenDispatcher
 //! environment that reaches generators through the class registry.
 
+// BUG(C2): the dispatch functions of this module are free and take the whole circuit; they
+// belong to the owner of the circuit and the element store, each control op to its class.
+// BUG(C2): the circuit's control and fleet lists hold class-erased `ElemId`s, so this module
+// narrows each handle again with `typed::<T>(..).expect(..)`; the lists should hold typed
+// handles of their class.
 use num_complex::Complex64;
 
 use crate::circuit::Circuit;
@@ -42,6 +47,9 @@ use crate::solution::{ControlMode, SolveMode};
 
 use super::ControlOp;
 
+// BUG(C2): `ControlKind` is a run-time mirror of a control's class and refs, rebuilt on every
+// dispatch so that `dispatch_control` can switch over the classes; each control class should
+// run a `ControlOp` through one method of its own.
 /// Which concrete control class an [`ElemId`] names, plus its element refs.
 #[derive(Clone, Copy)]
 enum ControlKind {
@@ -117,6 +125,11 @@ enum ControlKind {
     },
 }
 
+// BUG(C2): a free function that matches every control class itself; the loop over the queue
+// and the controls should call one method of the control.
+// BUG(C5): takes the whole circuit, the solve environment and the queue for every control op
+// while each arm uses a few fields of `ckt.solution`; this width makes the callers move the
+// queue out of the solution and copy `ckt.controls`. Each arm should get the parts it uses.
 /// The dispatch core: split the borrows, downcast, and invoke `Sample` /
 /// `DoPendingAction` / `Reset` on the control with its controlled (and
 /// monitored) elements. Errors map to Pascal's `EControlProblem` path
@@ -131,10 +144,9 @@ pub(super) fn dispatch_control(
     let sys = sys_ctx(ckt);
     let SolveEnv { store, errors, .. } = env;
 
-    // Identify the control and read its target refs (immutable peek) through
-    // the `ControlElem` behavior trait — R0 replaces the `Any` downcast
-    // chain. The concrete `ControlKind` mirror (with the captured refs the
-    // borrow-split below needs) is built from `control_kind()` + `ccd()`.
+    // BUG(C5): the control is looked up here only to copy its class and refs into `ControlKind`,
+    // then looked up again in each arm once the store is free (`expect("kind matched above")`);
+    // direct access is one lookup whose borrow serves the arm.
     let (kind, full_name) = {
         let obj = store.obj(r);
         let Some(control) = obj.as_control() else {
@@ -212,8 +224,9 @@ pub(super) fn dispatch_control(
             let Some(mon) = monitored else {
                 return Err(abort(errors, &full_name, "Monitored element not set"));
             };
-            // Clone the dispatcher out so the env can hold the store mutably;
-            // `Sample` only mutates the cached generator list, copied back after.
+            // BUG(C5): the dispatcher is cloned out of the store and written back after
+            // `sample`, which changes its cached generator list, so that `GenDispEnv` can hold
+            // the store mutably. Direct access borrows it beside the generators it dispatches.
             let mut gd = store
                 .typed::<GenDispatcher>(r)
                 .expect("kind matched above")
@@ -256,8 +269,9 @@ pub(super) fn dispatch_control(
         {
             return Err(abort(errors, &full_name, "Monitored element not set"));
         }
-        // Clone the controller out so the store can be borrowed mutably for the
-        // fleet; `Sample`/`Reset` mutate the cached fleet + flags, copied back.
+        // BUG(C5): the controller is cloned out of the store and written back after the op,
+        // which changes its cached fleet and flags, so that `StorageDispEnv` can hold the store
+        // mutably. Direct access borrows the controller beside the fleet it dispatches.
         let mut sc = store
             .typed::<StorageController>(r)
             .expect("kind matched above")
@@ -308,15 +322,17 @@ pub(super) fn dispatch_control(
     // GenDispatcher / StorageController above — it needs the whole class registry
     // and none of the `CtrlCtx`; handle it before the shared context is built.
     if let ControlKind::Inv = kind {
-        // Clone the control out so the store can be borrowed mutably for the fleet;
-        // `Sample`/`DoPendingAction` mutate the cached fleet + per-DER state, copied
-        // back afterwards.
+        // BUG(C5): the control is cloned out of the store and written back after the op, which
+        // changes its cached fleet and per-DER state, so that `InvDispEnv` can hold the store
+        // mutably. Direct access borrows the control beside the fleet it dispatches.
         let mut ic = store
             .typed::<InvControl>(r)
             .expect("kind matched above")
             .clone();
         // Resolve the control's `MonBus` names to per-bus `RefNo` slices for the
         // `GetMonVoltage` MonBus path (empty when unused or a name is unknown).
+        // BUG(C5): the `MonBus` names are resolved through `bus_list.find` into a fresh `Vec`
+        // on every dispatch; the control should keep the resolved refs between passes.
         let mon_bus_refs: Vec<&[usize]> = ic
             .mon_buses
             .iter()
@@ -385,6 +401,9 @@ pub(super) fn dispatch_control(
     // GenDispatcher / StorageController / InvControl above — it reaches the fleet
     // through the whole class registry and none of the `CtrlCtx`; handle it here.
     if let ControlKind::Exp = kind {
+        // BUG(C5): the control is cloned out of the store and written back after the op so that
+        // `ExpDispEnv` can hold the store mutably; direct access borrows the control beside the
+        // fleet it dispatches.
         let mut ec = store
             .typed::<ExpControl>(r)
             .expect("kind matched above")
@@ -432,8 +451,9 @@ pub(super) fn dispatch_control(
     // StorageController / InvControl / ExpControl above — it reaches the fleet
     // through the whole class registry and none of the `CtrlCtx`; handle it here.
     if let ControlKind::Upfc = kind {
-        // Clone the control out so the store can be borrowed mutably for the fleet;
-        // `Sample`/`DoPendingAction` mutate the cached pointer list, copied back.
+        // BUG(C5): the control is cloned out of the store and written back after the op, which
+        // changes its cached fleet list, so that `UpfcDispEnv` can hold the store mutably.
+        // Direct access borrows the control beside the fleet it drives.
         let mut uc = store
             .typed::<UpfcControl>(r)
             .expect("kind matched above")
@@ -475,15 +495,18 @@ pub(super) fn dispatch_control(
     } = kind
     {
         if let ControlOp::Sample = op {
-            // Clone the control out so the store can be borrowed mutably for the
-            // fleet; `Sample` mutates the cached pointer list + phantom field,
-            // copied back afterwards.
+            // BUG(C5): the control is cloned out of the store and written back after `sample`,
+            // which changes its cached fleet list and phantom field, so that `EspvlDispEnv` can
+            // hold the store mutably. Direct access borrows it beside the fleet it supervises.
             let mut ec = store
                 .typed::<EspvlControl>(r)
                 .expect("kind matched above")
                 .clone();
             // The fleet = every ESPVLControl object (Pascal scans `ParentClass`),
             // in creation order.
+            // BUG(C5): the fleet handles are collected into a fresh `Vec` on every sample so
+            // that `EspvlDispEnv` can then hold the store mutably; the env can filter
+            // `ckt.controls` through its own store borrow when the control asks.
             let espvls: Vec<ElemId> = ckt
                 .controls
                 .iter()
@@ -617,9 +640,9 @@ pub(super) fn dispatch_control(
                         return Err(abort(ctx.errors, &full_name, "Monitored element not set"));
                     };
                     if mon == target {
-                        // The monitored role only *reads* solved state, so an
-                        // owned clone of the controlled element stands in for the
-                        // second live borrow (currents recompute from node_v).
+                        // BUG(C5): a clone of the controlled element stands in for the
+                        // monitored one, and what `sample` writes into it is dropped; one
+                        // borrow of the element should serve both roles.
                         let mon_clone = store.arena(target.class_ord()).clone_ckt(target.index());
                         let (fuse, tobj) = store.typed_ckt_pair_mut::<Fuse>(r, target);
                         let Some(ctrl) = tobj else {
@@ -687,9 +710,9 @@ pub(super) fn dispatch_control(
                         return Err(abort(ctx.errors, &full_name, "Monitored element not set"));
                     };
                     if mon == target {
-                        // The monitored role only *reads* solved state, so an
-                        // owned clone of the controlled element stands in for the
-                        // second live borrow (currents recompute from node_v).
+                        // BUG(C5): a clone of the controlled element stands in for the
+                        // monitored one, and what `sample` writes into it is dropped; one
+                        // borrow of the element should serve both roles.
                         let mon_clone = store.arena(target.class_ord()).clone_ckt(target.index());
                         let (rec, tobj) = store.typed_ckt_pair_mut::<Recloser>(r, target);
                         let Some(ctrl) = tobj else {
@@ -778,9 +801,9 @@ pub(super) fn dispatch_control(
                         return Err(abort(ctx.errors, &full_name, "Monitored element not set"));
                     };
                     if mon == target {
-                        // The monitored role only *reads* solved state, so an
-                        // owned clone of the controlled element stands in for the
-                        // second live borrow (currents recompute from node_v).
+                        // BUG(C5): a clone of the controlled element stands in for the
+                        // monitored one, and what `sample` writes into it is dropped; one
+                        // borrow of the element should serve both roles.
                         let mon_clone = store.arena(target.class_ord()).clone_ckt(target.index());
                         let (rel, tobj) = store.typed_ckt_pair_mut::<Relay>(r, target);
                         let Some(ctrl) = tobj else {
@@ -907,8 +930,6 @@ pub(super) fn dispatch_control(
                     let mon = monitored.unwrap_or(target);
                     if mon == target {
                         // Time/Follow control: the capacitor monitors itself.
-                        // The monitored role only *reads* solved state, so a
-                        // clone stands in for the second live borrow.
                         let (cc, capobj) = store.typed_pair_mut::<CapControl, Capacitor>(r, target);
                         let Some(cap) = capobj else {
                             return Err(abort(
@@ -917,6 +938,9 @@ pub(super) fn dispatch_control(
                                 "Controlled element is not a Capacitor",
                             ));
                         };
+                        // BUG(C5): a clone of the capacitor stands in for the monitored
+                        // element, and what `sample` writes into it is dropped; one borrow
+                        // of the capacitor should serve both roles.
                         let mut mon_clone = cap.clone();
                         solution_abort_requested = cc.sample(cap, &mut mon_clone, &mut ctx);
                     } else {
@@ -1028,6 +1052,8 @@ impl GenDispatchEnv for GenDispEnv<'_> {
     fn gen_kw_base(&self, g: ElemId) -> f64 {
         Self::generator(self.store, g).kw_base
     }
+    // BUG(C2): this setter and `set_gen_kvar_base` assign fields of `Generator` from outside
+    // it; each assignment belongs to a method of `Generator`.
     fn set_gen_kw_base(&mut self, g: ElemId, value: f64) {
         Self::generator_mut(self.store, g).kw_base = value;
     }
@@ -1176,10 +1202,15 @@ pub(crate) fn storage_controller_recalc_fleet(r: ElemId, ckt: &mut Circuit, env:
             sc.ccd.element_terminal.max(1) as usize,
         )
     };
+    // BUG(C5): the controller is looked up again, cloned out of the store and written back
+    // after `recalc_fleet` so that `StorageDispEnv` can hold the store mutably; direct access
+    // is one lookup whose borrow sits beside the fleet.
     let mut sc = store
         .typed::<StorageController>(r)
         .expect("checked above")
         .clone();
+    // BUG(C5): the queue is moved out of the solution and put back, though the destructure
+    // below can borrow `control_queue` beside the other solution fields.
     let mut queue = std::mem::take(&mut ckt.solution.control_queue);
     {
         let Solution {
@@ -1401,6 +1432,8 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
         self.errors.push(diag);
     }
 
+    // BUG(C5): copies fields of the Storage into a `StorageSnap` on every call, which the
+    // controller only reads; it should borrow the Storage, or a view type the Storage owns.
     fn snap(&self, r: ElemId) -> StorageSnap {
         let st = Self::storage(self.store, r);
         StorageSnap {
@@ -1425,6 +1458,8 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
     fn set_kw(&mut self, r: ElemId, kw: f64) {
         Self::storage_mut(self.store, r).set_kw(kw);
     }
+    // BUG(C2): this setter and the four below assign fields of `Storage` from outside it; each
+    // assignment belongs to a method of `Storage`.
     fn set_pct_kw_out(&mut self, r: ElemId, pct: f64) {
         Self::storage_mut(self.store, r).pct_kw_out = pct;
     }
@@ -1558,13 +1593,18 @@ pub(crate) fn update_all_inv_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
     } = solution;
 
     for &r in controls.iter() {
+        // BUG(C2): the InvControls are found by trying the class of every control; the circuit
+        // should keep a list of typed `InvControl` handles.
         if store.typed::<InvControl>(r).is_none() || !store.ckt_elem(r).cd().enabled {
             continue;
         }
+        // BUG(C5): the control is looked up again, cloned out of the store and written back on
+        // every time step so that `InvDispEnv` can hold the store mutably; direct access
+        // borrows the control beside the fleet.
         let mut ic = store.typed::<InvControl>(r).expect("checked above").clone();
-        // Resolve this control's `MonBus` names to per-bus `RefNo` slices (disjoint
-        // from the `&mut ckt.solution` borrow held above; empty for the common
-        // no-MonBus control, so zero cost there).
+        // BUG(C5): the `MonBus` names are resolved through `bus_list.find` into a fresh `Vec` of
+        // `RefNo` slices on every time step; the control should keep the resolved refs between
+        // passes.
         let mon_bus_refs: Vec<&[usize]> = ic
             .mon_buses
             .iter()
@@ -1656,6 +1696,9 @@ impl InvDispEnv<'_> {
     }
 }
 
+// BUG(C2): the `der_*` methods below try `PVSystem` then `Storage` at run time and read or
+// assign the DER's fields from here; each is an operation of the DER, a method of the base
+// that `PVSystem` and `Storage` share.
 impl InvDispatchEnv for InvDispEnv<'_> {
     fn find_pvsystem(&self, name: &str) -> InvFleetFind {
         self.find("pvsystem", name)
@@ -1673,6 +1716,8 @@ impl InvDispatchEnv for InvDispEnv<'_> {
         self.errors.push(diag);
     }
 
+    // BUG(C5): copies fields of the PVSystem or Storage into a `DerSnap` on every call, which
+    // the control only reads; it should borrow the DER, or a view type the DER owns.
     fn der_snap(&self, r: ElemId) -> DerSnap {
         if let Some(pv) = self.store.typed::<PVSystem>(r) {
             DerSnap {
@@ -1743,6 +1788,8 @@ impl InvDispatchEnv for InvDispEnv<'_> {
         elem.cd_mut().compute_vterminal(self.node_v);
         let cd = elem.cd();
         let n = cd.nphases;
+        // BUG(C5): hands the control an owned copy of terminal voltages it only reads; a
+        // borrowed slice serves.
         cd.vterminal[..n].to_vec()
     }
 
@@ -2117,9 +2164,14 @@ pub(crate) fn update_all_exp_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
     } = solution;
 
     for &r in controls.iter() {
+        // BUG(C2): the ExpControls are found by trying the class of every control; the circuit
+        // should keep a list of typed `ExpControl` handles.
         if store.typed::<ExpControl>(r).is_none() || !store.ckt_elem(r).cd().enabled {
             continue;
         }
+        // BUG(C5): the control is looked up again, cloned out of the store and written back on
+        // every time step so that `ExpDispEnv` can hold the store mutably; direct access
+        // borrows the control beside the fleet.
         let mut ec = store.typed::<ExpControl>(r).expect("checked above").clone();
         {
             let mut env2 = ExpDispEnv {
@@ -2201,6 +2253,8 @@ impl ExpDispatchEnv for ExpDispEnv<'_> {
             .collect()
     }
 
+    // BUG(C5): copies fields of the PVSystem into a `PvSnap` on every call, which the control
+    // only reads; it should borrow the PVSystem, or a view type the PVSystem owns.
     fn pv_snap(&self, r: ElemId) -> PvSnap {
         let pv = Self::pvsystem(self.store, r);
         let bus_ref = pv.cd.terminals[0].bus_ref;
@@ -2223,6 +2277,8 @@ impl ExpDispatchEnv for ExpDispEnv<'_> {
         let elem = self.store.ckt_elem_mut(r);
         elem.cd_mut().compute_vterminal(self.node_v);
         let cd = elem.cd();
+        // BUG(C5): builds a fresh `Vec` of voltage magnitudes on every call, which the caller
+        // only sums; the caller should iterate the terminal voltages in place.
         (0..cd.nphases).map(|i| cd.vterminal[i].norm()).collect()
     }
     fn pv_present_kvar(&self, r: ElemId) -> f64 {
@@ -2232,6 +2288,8 @@ impl ExpDispatchEnv for ExpDispEnv<'_> {
         Self::pvsystem(self.store, r).present_kw()
     }
 
+    // BUG(C2): the `pv_set_*` methods here assign fields of `PVSystem` from outside it, all
+    // but `pv_set_nominal`; each assignment belongs to a method of `PVSystem`.
     fn pv_set_avr_mode(&mut self, r: ElemId, value: bool) {
         Self::pvsystem_mut(self.store, r).base.avr_mode = value;
     }

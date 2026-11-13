@@ -6,6 +6,10 @@
 //! store (the `solution::meters` pattern): the meter's branch tree is taken
 //! out for the walk and put back at the end.
 
+// BUG(C2): the zone interpolation is written as free functions over the circuit and the store;
+// it is an operation of `EnergyMeter` given the zone elements and the buses.
+// BUG(C5): each function here takes the whole `Circuit` and uses only `ckt.buses`; each should
+// take the buses.
 use crate::circuit::Circuit;
 use crate::circuit::ckt_tree::CktTree;
 use crate::elements::ckt::ElemFlags;
@@ -22,6 +26,8 @@ fn coord_defined(ckt: &Circuit, bus: Option<usize>) -> bool {
         .is_some_and(|b| b.coord_defined)
 }
 
+// BUG(C2): the meter's own zone walk, done from outside `EnergyMeter`; it should be a method
+// of the meter given the zone elements and the buses.
 /// Pascal `TEnergyMeterObj.InterpolateCoordinates` (`EnergyMeter.pas:2298`):
 /// start at the ends of the zone and work toward the start, interpolating
 /// between known coordinates.
@@ -32,6 +38,9 @@ pub(crate) fn interpolate_coordinates(
     errors: &mut crate::diag::ErrorLog,
 ) {
     // Pascal `CheckBranchList(529)`.
+    // BUG(C5): the meter's branch tree is moved out and put back at the end so that the walk
+    // can set the `CHECKED` flags of other elements through the same store; direct access
+    // borrows the tree beside the zone elements it marks.
     let Some(tree) = meter_mut(store, meter_ref).take_branch_list() else {
         errors
             .push("Meter Zone Lists need to be built. Do Solve or Makebuslist first!".to_string());
@@ -76,6 +85,8 @@ pub(crate) fn interpolate_coordinates(
 
             let mut p = start_node;
             loop {
+                // BUG(C2): writes `CktElementData::flags` of a zone element from outside it;
+                // the walk should keep its visited marks itself or set them by a method.
                 store
                     .ckt_elem_mut(ckt_elem)
                     .cd_mut()

@@ -20,6 +20,12 @@
 //! two — so every `CloseMHandler` append flag is its `FALSE` default and the
 //! port always creates the file fresh.
 
+// BUG(C2): the demand-interval streams are opened, written and closed by free functions:
+// those that touch only `ckt.em_di` belong to `EmDiState`, a meter's rows to `EnergyMeter`,
+// and the sweeps over the circuit and the store to the owner of both, calling those methods.
+// BUG(C5): most functions here take the whole `Circuit` as `&mut` and write only `ckt.em_di`,
+// or only read the circuit; each should take the parts it reads and changes, which also
+// removes the copies their callers make.
 use std::path::Path;
 
 use num_complex::Complex64;
@@ -31,6 +37,8 @@ use crate::util::{fmt_g, sqrt3};
 
 use super::meter_mut;
 
+// BUG(C5): derives `Clone` though it accumulates a file body across time steps, because
+// `EnergyMeter`, which holds two streams, is `Clone`; neither should be.
 /// The Pascal memory-map text builder (`Create_Meter_Space` +
 /// `WriteintoMem`/`WriteintoMemStr` + the `CloseMHandler` render loop):
 /// strings are emitted verbatim (a `\n` restarts the line-head state), doubles
@@ -98,6 +106,10 @@ impl MeterStream {
     }
 }
 
+// BUG(C5): derives `Clone` though it integrates the system registers across time steps; the
+// right shape has no `Clone`.
+// BUG(C2): the free functions of this module set `this_meter_di_file_is_open` and read the
+// peaks past the methods below; each such step should be a method of `SystemMeter`.
 /// Pascal `TSystemMeter` (EnergyMeter.pas l.181): the circuit-wide aggregate
 /// meter — total source energy in/out, peak kW/kVA, total losses — sampled by
 /// `TEnergyMeter.SampleAll` alongside the zone meters.
@@ -237,6 +249,10 @@ impl SystemMeter {
     }
 }
 
+// BUG(C5): derives `Clone` though it owns the open streams and the running register totals;
+// the right shape has no `Clone`.
+// BUG(C2): every field is `pub` or `pub(crate)`, and the free functions of this module and
+// the executive assign them directly; the fields should be private, changed through methods.
 /// The `TEnergyMeter` **class-level** demand-interval state (+ the DSS-context
 /// `DIFilesAreOpen` flag): the `Set DemandInterval/DIVerbose/Overloadreport/
 /// Voltexceptionreport=` switches, the `DI_yr_<year>` output directory, the
@@ -331,6 +347,8 @@ fn total_power_from_sources(ckt: &Circuit, store: &mut dyn ElemStore, sys: &SysC
     Complex64::ZERO - ckt.source_power(store, sys)
 }
 
+// BUG(C5): takes the whole `Circuit` to read `energy_meters` alone; it should take the meter
+// list it reads.
 /// The first meter of the circuit's EnergyMeter list (Pascal
 /// `EnergyMeters.First()` — creation order, enabled or not), used for the
 /// register-name header rows of the totals files.
@@ -443,6 +461,8 @@ fn open_meter_di_file(
     }
 }
 
+// BUG(C5): takes the whole `Circuit` as `&mut` to write `ckt.em_di.emt` alone, which makes
+// its caller copy the meter list; it should take the stream it writes.
 /// Pascal `TEnergyMeterObj.CloseDemandIntervalFile` (l.2867): flush the meter's
 /// DI (+ PHV) stream to `DI_Dir/<name>_1.csv`, then append the meter's
 /// registers row to the `EnergyMeterTotals` stream (unconditionally — even a
@@ -453,6 +473,8 @@ fn close_meter_di_file(
     store: &mut dyn ElemStore,
     errors: &mut crate::diag::ErrorLog,
 ) {
+    // BUG(C5): copies the output directory here and the meter's registers below, though both
+    // can be borrowed in place: the meter lives in `store`, apart from `ckt`.
     let di_dir = ckt.em_di.di_dir.clone();
     let em = meter_mut(store, meter_ref);
     let name = em.med.cd.obj.name().to_string();
@@ -484,6 +506,8 @@ fn close_meter_di_file(
     }
 }
 
+// BUG(C2): a free function over the circuit and the store; it should be a sweep of their
+// owner that calls methods of `EnergyMeter` and `EmDiState` to open each stream.
 /// Pascal `TEnergyMeter.OpenAllDIFiles` (l.3752): create every demand-interval
 /// stream (meters, system meter, optional overload/voltage reports, the
 /// `DI_Totals`) and raise `DIFilesAreOpen`. No-op unless `Set
@@ -494,6 +518,8 @@ pub(crate) fn open_all_di_files(ckt: &mut Circuit, store: &mut dyn ElemStore) {
     }
     ckt.em_di.clear_di_totals();
 
+    // BUG(C5): copies the meter list though `open_meter_di_file` only reads the circuit; the
+    // loop can iterate `&ckt.energy_meters` in place.
     for meter_ref in ckt.energy_meters.clone() {
         if meter_mut(store, meter_ref).enabled() {
             open_meter_di_file(meter_ref, ckt, store);
@@ -519,6 +545,8 @@ pub(crate) fn open_all_di_files(ckt: &mut Circuit, store: &mut dyn ElemStore) {
     ckt.em_di.di_files_are_open = true;
 }
 
+// BUG(C2): a free function over the circuit and the store; it should be a sweep of their
+// owner that calls methods of `EnergyMeter` and `EmDiState` to close each stream.
 /// Pascal `TEnergyMeter.CloseAllDIFiles` (l.3010): write every open
 /// demand-interval stream to its file under `DI_Dir` and drop the open flags.
 /// Called at the end of the daily/duty/peak-day solves, by `ResetAll`, by
@@ -534,6 +562,8 @@ pub(crate) fn close_all_di_files(
     // While closing DI files, write all meter registers to one file.
     create_meter_totals(ckt, store);
 
+    // BUG(C5): copies the meter list because `close_meter_di_file` takes the whole circuit to
+    // write `ckt.em_di.emt` alone; with that narrowed the loop iterates the list in place.
     for meter_ref in ckt.energy_meters.clone() {
         if meter_mut(store, meter_ref).enabled() {
             close_meter_di_file(meter_ref, ckt, store, errors);
@@ -543,6 +573,8 @@ pub(crate) fn close_all_di_files(
     write_totals_file(ckt, store, errors); // Totals_1.csv
 
     // `TSystemMeter.CloseDemandIntervalFile` (l.3376) + `Save` (l.3452).
+    // BUG(C5): copies the output directory because `system_meter_save` takes the whole circuit
+    // to read the year and `ckt.em_di`; with narrower access `&ckt.em_di.di_dir` serves.
     let di_dir = ckt.em_di.di_dir.clone();
     if ckt.em_di.system_meter.this_meter_di_file_is_open {
         if let Some(sdi) = ckt.em_di.sdi.take() {
@@ -585,6 +617,8 @@ pub(crate) fn close_all_di_files(
     }
 }
 
+// BUG(C5): takes the whole `Circuit` as `&mut` though it only reads the year and
+// `ckt.em_di`; it should take shared borrows of what it reads.
 /// Pascal `TSystemMeter.Save` (l.3452): the cumulative system-meter registers
 /// → `SystemMeter_1.csv` (in `DI_Dir` on this path — `CloseAllDIFiles` only
 /// runs under `SaveDemandInterval`). Pascal also sets `GlobalResult` /
@@ -643,6 +677,8 @@ fn write_totals_file(ckt: &mut Circuit, store: &dyn ElemStore, errors: &mut crat
     );
 }
 
+// BUG(C5): takes the whole `Circuit` as `&mut` to add into `ckt.em_di.di_register_totals`
+// alone, which makes its caller copy the meter list; it should take the totals it changes.
 /// Pascal `TEnergyMeterObj.WriteDemandIntervalData` (l.2944), called from the
 /// `TakeSample` tail under `SaveDemandInterval`: the per-meter DI row (verbose
 /// only), the class `DI_RegisterTotals` accumulation (always), and the
@@ -657,6 +693,8 @@ pub(super) fn write_meter_demand_interval_data(
     let em = meter_mut(store, meter_ref);
 
     if di_verbose && em.di_file_is_open() {
+        // BUG(C5): copies the meter's derivatives to write a row into the meter's own stream
+        // from outside it; as a method of `EnergyMeter` the row borrows both in place.
         let derivatives = em.derivatives().to_vec();
         if let Some(di) = em.di_stream_mut() {
             di.write_dbl(dbl_hour);
@@ -668,6 +706,8 @@ pub(super) fn write_meter_demand_interval_data(
     }
 
     // Add to Class demand interval registers.
+    // BUG(C5): `contrib` here and `rows` below are fresh vectors on every sample of every
+    // meter; the totals can take the products in place and the row be written as computed.
     let contrib: Vec<f64> = em
         .derivatives()
         .iter()
@@ -714,6 +754,8 @@ pub(super) fn write_meter_demand_interval_data(
     }
 }
 
+// BUG(C2): a free function over the circuit and the store that writes the system-meter and
+// totals rows itself; those rows belong to `SystemMeter` and `EmDiState`, called from a sweep.
 /// The `TEnergyMeter.SampleAll` demand-interval tail (l.911-925): the system
 /// meter sample (+ its SDI row), then — under `SaveDemandInterval` — the
 /// `DI_Totals` row, the class-totals clear, and the optional overload /
@@ -748,6 +790,8 @@ pub(super) fn sample_all_di_tail(ckt: &mut Circuit, store: &mut dyn ElemStore, s
 
     if ckt.em_di.save_demand_interval {
         // Write Totals Demand interval file row.
+        // BUG(C5): copies the register totals on every time step to write them into
+        // `ckt.em_di.tdi`, a disjoint field of the same `EmDiState`; both can be borrowed.
         let totals = ckt.em_di.di_register_totals.clone();
         if let Some(tdi) = ckt.em_di.tdi.as_mut() {
             tdi.write_dbl(dbl_hour);
@@ -766,6 +810,8 @@ pub(super) fn sample_all_di_tail(ckt: &mut Circuit, store: &mut dyn ElemStore, s
     }
 }
 
+// BUG(C2): a free function over the circuit and the store; it should be a sweep of their
+// owner that hands each row to a method of `EmDiState`.
 /// Pascal `TEnergyMeter.WriteOverloadReport` (l.3171): one `DI_Overloads` row
 /// per overloaded, non-shunt, enabled PD element. Seasonal ratings (dss_capi
 /// 0.15.x `55400a29`): the entry gate uses the element's BASE
@@ -777,6 +823,8 @@ pub(super) fn sample_all_di_tail(ckt: &mut Circuit, store: &mut dyn ElemStore, s
 /// state-mutating `DSS.SeasonalRating := FALSE`-on-miss (not reproduced; the
 /// index is precomputed at solve time by `sync_seasonal_rating_idx`).
 fn write_overload_report(ckt: &mut Circuit, store: &mut dyn ElemStore, sys: &SysCtx) {
+    // BUG(C5): copies the whole node voltage vector on every time step, which the loop only
+    // reads while it writes the store and `ckt.em_di.ov`; direct access borrows it in place.
     let node_v = ckt.solution.node_v.clone();
     let dbl_hour = ckt.solution.dbl_hour;
     let seasonal_idx = ckt.seasonal_rating_idx;
@@ -876,6 +924,8 @@ struct VoltScan {
     max_bus: Option<usize>,
 }
 
+// BUG(C2): a free function that reads the buses, the node voltages and the voltage limits of
+// `Circuit`; it is an operation of `Circuit`.
 fn scan_voltages(ckt: &Circuit, select: impl Fn(f64) -> bool) -> VoltScan {
     let node_v = &ckt.solution.node_v;
     let mut s = VoltScan {
@@ -918,6 +968,8 @@ fn scan_voltages(ckt: &Circuit, select: impl Fn(f64) -> bool) -> VoltScan {
     s
 }
 
+// BUG(C2): a free function that writes one row into `ckt.em_di.vr`; the row belongs to a
+// method of `EmDiState` given the two scans and the bus names.
 /// Pascal `TEnergyMeter.WriteVoltageReport` (l.3612): the `DI_VoltExceptions`
 /// row — the primary (> 1 kV base) scan then the LV (0 < base ≤ 1 kV) scan.
 fn write_voltage_report(ckt: &mut Circuit) {

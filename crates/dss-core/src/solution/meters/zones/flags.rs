@@ -3,6 +3,8 @@
 //! metered element (and seed its `sensor_obj` back-pointer) before the zone
 //! walk. Split out of `zones/mod.rs` (no behavioral change).
 
+// BUG(C2): the flag passes are free functions over the circuit and the store; each belongs to
+// the owner of both, setting the flags through a method of the element.
 use crate::circuit::Circuit;
 use crate::elements::ckt::ElemFlags;
 use crate::elements::meter::energymeter::EnergyMeter;
@@ -12,6 +14,8 @@ use crate::elements::traits::{ElemStore, TypedStore};
 /// Pascal `TEnergyMeter.SetHasMeterFlag` (l.1752): clear `HasEnergyMeter` on all
 /// PD elements, then set it on each enabled meter's metered element.
 pub(super) fn set_has_meter_flag(ckt: &Circuit, store: &mut dyn ElemStore) {
+    // BUG(C2): this loop and the one below change the flags in `CktElementData` from outside
+    // the type; each change belongs to a method of the element data.
     for &r in &ckt.pd_elements {
         store
             .ckt_elem_mut(r)
@@ -41,6 +45,8 @@ pub(super) fn set_has_meter_flag(ckt: &Circuit, store: &mut dyn ElemStore) {
 /// each sensor's metered element. The metered element's own sensor wins over the
 /// upstream one the zone walk would otherwise propagate.
 pub(super) fn set_has_sensor_flag(ckt: &Circuit, store: &mut dyn ElemStore) {
+    // BUG(C2): this loop and the one below change the flags and `sensor_obj` in
+    // `CktElementData` from outside the type; each change belongs to a method of it.
     for &r in ckt.pd_elements.iter().chain(&ckt.pc_elements) {
         store
             .ckt_elem_mut(r)

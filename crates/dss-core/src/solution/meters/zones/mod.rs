@@ -11,6 +11,9 @@
 //! passes live in [`flags`]; this module keeps the `DoResetMeterZones` entry and
 //! the `ResetMeterZonesAll` orchestration that drives them.
 
+// BUG(C2): the zone reset and build are free functions over the circuit and the store; a
+// meter's zone build is an operation of `EnergyMeter`, and the reset sweep belongs to the
+// owner of the circuit and the store.
 use crate::circuit::Circuit;
 use crate::circuit::ckt_tree::build_active_bus_adjacency_lists;
 use crate::elements::ckt::ElemFlags;
@@ -56,6 +59,8 @@ fn reset_meter_zones_all(ckt: &mut Circuit, store: &mut dyn ElemStore) {
 
     // Initialize the Checked/IsIsolated flags and TerminalsChecked for every
     // circuit element.
+    // BUG(C2): this loop and those below assign fields of `CktElementData` and `Bus` from
+    // outside those types; each reset belongs to a method of the element data or the bus.
     for &r in &ckt.ckt_elements {
         let cd = store.ckt_elem_mut(r).cd_mut();
         cd.flags.exclude(ElemFlags::CHECKED);
@@ -91,6 +96,8 @@ fn reset_meter_zones_all(ckt: &mut Circuit, store: &mut dyn ElemStore) {
         bus.bus_checked = false;
     }
 
+    // BUG(C5): copies the meter list because `make_meter_zone_lists` takes the whole circuit to
+    // write `ckt.buses` alone; with that narrowed the loop iterates the list in place.
     let meters = ckt.energy_meters.clone();
     for meter_ref in meters {
         make_meter_zone_lists(meter_ref, ckt, store, &adj);

@@ -5,6 +5,12 @@
 //! taken out of the object for the walk and written back at the end, while the
 //! zone's other elements and the buses are read/mutated through the store.
 
+// BUG(C2): the zone build, sample, allocation and reliability of a meter are free functions
+// over the circuit and the store, and so is `sync_seasonal_rating_idx`; each meter operation
+// belongs to `EnergyMeter`, each sweep to the owner of the circuit and the store.
+// BUG(C2): `ckt.energy_meters` and the other per-kind lists hold class-erased `ElemId`s, so the
+// meter code narrows each handle again with `typed::<T>(..).expect(..)`; the lists should hold
+// typed handles of their class.
 use crate::circuit::Circuit;
 use crate::elements::meter::energymeter::EnergyMeter;
 use crate::elements::traits::{ElemId, ElemStore, TypedStore};
@@ -44,6 +50,8 @@ pub(crate) fn sync_seasonal_rating_idx(ckt: &mut Circuit, store: &mut dyn ElemSt
     }
 }
 
+// BUG(C2): narrows a class-erased handle with an `expect` on every use; `ckt.energy_meters`
+// should hold typed `EnergyMeter` handles that need no narrowing.
 /// The [`EnergyMeter`] behind a registry handle, as a mutable ref. Shared by all
 /// three submodules' write-back paths (`ckt.energy_meters` only ever holds
 /// `EnergyMeter` objects, so the narrowing is infallible).

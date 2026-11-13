@@ -76,6 +76,8 @@ pub trait ControlActioner {
     );
 }
 
+// BUG(C5): `ControlQueue` derives `Clone` though it owns the pending actions across control
+// iterations; the right shape has no `Clone`.
 /// Pascal `TControlQueue`.
 #[derive(Debug, Clone, Default)]
 pub struct ControlQueue {

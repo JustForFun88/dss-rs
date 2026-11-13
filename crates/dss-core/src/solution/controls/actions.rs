@@ -2,6 +2,8 @@
 //! the `ControlActioner` callback that routes popped records back into
 //! `dispatch_control`.
 
+// BUG(C2): the functions of this module are free and take the whole circuit; the dispatch
+// belongs to the owner of the circuit and the element store, each action to its control.
 use crate::circuit::Circuit;
 use crate::elements::traits::ElemId;
 use crate::solution::control_queue::{ControlActioner, ControlQueue};
@@ -42,6 +44,9 @@ pub(crate) fn do_control_actions(ckt: &mut Circuit, env: &mut SolveEnv) -> Solve
             }
         }
         ControlMode::MultiRate => {
+            // BUG(C5): the control queue is moved out of the solution and put back so that
+            // `do_multi_rate` can take the whole circuit beside it. Direct access lends the
+            // queue beside the parts of the circuit the dispatch changes.
             let mut queue = std::mem::take(&mut ckt.solution.control_queue);
             let result = do_multi_rate(ckt, env, &mut queue);
             ckt.solution.control_queue = queue;
@@ -61,6 +66,9 @@ fn run_nearest_actions(
     hour: &mut i32,
     sec: &mut f64,
 ) -> Result<bool, String> {
+    // BUG(C5): the queue is moved out of the solution and put back after the walk so that
+    // `Actioner` can hold the whole circuit; direct access lends the queue beside the parts
+    // of the circuit the dispatch changes.
     let mut queue = std::mem::take(&mut ckt.solution.control_queue);
     let mut act = Actioner {
         ckt,
@@ -78,6 +86,9 @@ fn run_nearest_actions(
 
 /// `ControlQueue.DoActions` over the live circuit.
 fn run_actions(ckt: &mut Circuit, env: &mut SolveEnv, hour: i32, sec: f64) -> Result<bool, String> {
+    // BUG(C5): the queue is moved out of the solution and put back after the walk so that
+    // `Actioner` can hold the whole circuit; direct access lends the queue beside the parts
+    // of the circuit the dispatch changes.
     let mut queue = std::mem::take(&mut ckt.solution.control_queue);
     let mut act = Actioner {
         ckt,
@@ -93,6 +104,9 @@ fn run_actions(ckt: &mut Circuit, env: &mut SolveEnv, hour: i32, sec: f64) -> Re
     }
 }
 
+// BUG(C2): `ControlActioner::do_pending_action` returns nothing, so the first dispatch error
+// is parked in `failure` and taken out after the walk; the action should return its result
+// and the queue walk stop at the first error.
 /// The [`ControlActioner`] the queue dispatchers call back into: routes each
 /// popped record to `dispatch_control`, capturing the first hard error (the
 /// trait method returns `()`; Pascal propagates by exception).

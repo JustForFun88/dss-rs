@@ -3,6 +3,9 @@
 //! `TotalUpDownstreamCustomers`, with the zone-eligibility predicates and
 //! `AddToVoltBaseList`. Split out of `zones/mod.rs` (no behavioral change).
 
+// BUG(C2): the zone walk and its predicates are free functions over the circuit and the store;
+// the walk is an operation of `EnergyMeter`, and `is_line`, `check_parallel` and
+// `is_pd_element`, each written again in another module, belong to the element kinds.
 use crate::circuit::ckt_tree::{BusAdjLists, CktTree};
 use crate::circuit::{Circuit, ElemKind};
 use crate::elements::ckt::ElemFlags;
@@ -33,6 +36,8 @@ fn is_zone_pce(store: &dyn ElemStore, r: ElemId) -> bool {
     )
 }
 
+// BUG(C2): a free predicate on the element kind, written again in another module with other
+// tests; it belongs to `ElemKind`.
 /// Whether the element at `r` is a Power Delivery element (Pascal
 /// `(DSSObjType and BaseClassMask) = PD_ELEMENT`), used by the manual
 /// `ZoneList` filter. Matches exactly the five concrete types the old downcast
@@ -85,6 +90,10 @@ fn add_to_volt_base_list(
     }
 }
 
+// BUG(C2): the meter's own zone build, done from outside `EnergyMeter`; it should be a method
+// of the meter given the zone elements and the buses.
+// BUG(C5): takes the whole `Circuit` as `&mut` and writes only `ckt.buses`; it should take the
+// buses.
 /// Pascal `TEnergyMeterObj.MakeMeterZoneLists` (l.1773): walk outward from the
 /// metered element's far terminal, collecting branches (the `BranchList`
 /// `CktTree`), zone loads/generators (shunt objects), and feeder ends.
@@ -95,6 +104,8 @@ pub(super) fn make_meter_zone_lists(
     adj: &BusAdjLists,
 ) {
     // Peek the meter's parse-time state.
+    // BUG(C5): copies the meter's zone list of names so that the walk can write other elements
+    // through the same store that owns the meter; direct access borrows the list beside them.
     let (enabled, metered_element, metered_terminal, defined_zone_list, assume_restoration) = {
         let em = store
             .typed::<EnergyMeter>(meter_ref)
@@ -159,6 +170,9 @@ pub(super) fn make_meter_zone_lists(
 
     // The metered element acquires this meter as its sensor + meter; the head
     // bus is the zone origin (DistFromMeter = 0, not a radial bus).
+    // BUG(C2): this block and the walk below assign fields of `CktElementData`, `Bus` and the
+    // nodes of `CktTree` from outside those types; each assignment belongs to a method of the
+    // type that owns the field.
     let from_bus = {
         let cd = store.ckt_elem_mut(metered).cd_mut();
         cd.sensor_obj = Some(meter_ref);
@@ -209,6 +223,9 @@ pub(super) fn make_meter_zone_lists(
 
         // Read the active branch's shape once (counts, buses, line length, the
         // sensor it passes down to its children/shunts).
+        // BUG(C5): copies the branch's terminal buses and `terminals_checked` here, and each
+        // test branch's buses below, so that the walk can write other elements through the
+        // same store; direct access borrows them beside the elements the walk marks.
         let (nterms, term_bus, terminals_checked, active_is_line, len_km, active_sensor) = {
             let elem = store.ckt_elem(active_ref);
             let cd = elem.cd();
@@ -430,6 +447,8 @@ pub(in crate::solution::meters) fn total_up_downstream_customers(
     store: &mut dyn ElemStore,
 ) {
     // Init totals + clear the Checked flag.
+    // BUG(C2): this loop and those below assign fields of `CktElementData` from outside it;
+    // each assignment belongs to a method of the element data.
     for &r in sequence_list {
         let cd = store.ckt_elem_mut(r).cd_mut();
         cd.flags.exclude(ElemFlags::CHECKED);

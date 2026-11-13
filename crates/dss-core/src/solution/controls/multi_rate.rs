@@ -2,6 +2,8 @@
 //! `Restore_Time_Step` helpers — the multi-rate control sweep that re-solves and
 //! re-samples the circuit window-by-window between control actions.
 
+// BUG(C2): the multi-rate sweep and its clock helpers are free functions over the whole
+// circuit; the sweep belongs to the owner of the circuit and the store, the clock to `Solution`.
 use crate::circuit::Circuit;
 use crate::solution::control_queue::{ControlQueue, TimeRec};
 use crate::solution::solution::{SolveEnv, solve_circuit};
@@ -55,6 +57,9 @@ pub(super) fn do_multi_rate(
     temp_dbl[7] = ckt.solution.t; // Saving the current time (secs)
     temp_int[2] = ckt.solution.int_hour; // Saving the current time (hour)
     temp_dbl[2] = temp_dbl[6];
+    // BUG(C2): the solution clock is overwritten here and restored below so that
+    // `dispatch_control`, `solve_circuit` and the sampling read the action time, and each `?`
+    // in between returns with the clock moved; the time should be passed as an argument.
     // Simulation time is recalculated considering the next control action event.
     recalc_time_step(ckt, &mut ltimer, &mut temp_int, &mut temp_dbl);
     // Downloads the next action without removing it from the queue.
@@ -117,6 +122,8 @@ pub(super) fn do_multi_rate(
     Ok(result)
 }
 
+// BUG(C5): takes the whole circuit and changes only the solution clock; it should take the
+// clock it sets.
 /// Pascal `TControlQueue.Recalc_Time_Step`.
 fn recalc_time_step(
     ckt: &mut Circuit,
@@ -136,6 +143,8 @@ fn recalc_time_step(
     ckt.solution.update_dbl_hour();
 }
 
+// BUG(C5): takes the whole circuit and changes only the solution clock; it should take the
+// clock it restores.
 /// Pascal `TControlQueue.Restore_Time_Step`.
 fn restore_time_step(ckt: &mut Circuit, temp_int: &[i32; 3], temp_dbl: &[f64; 8]) {
     ckt.solution.int_hour = temp_int[2];
