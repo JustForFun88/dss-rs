@@ -16,6 +16,10 @@
 //! capability-complete channel of [`crate::families`]) and [`handle_ymatrix`]
 //! (the standalone `YMatrix.*` helpers). Both are additive and gate-neutral.
 
+// BUG(C2): the request handlers are free functions over the whole `&Engine` and a JSON
+// request, the converters free functions over `FfiOut` and `VData`. A request-handler type
+// should own the handlers, `FfiOut` and `VData` their conversions.
+
 use serde_json::{Value, json};
 
 use crate::dss::{Engine, EngineError, FfiCall, FfiOut};

@@ -29,6 +29,10 @@
 //! Knob: `DSS_GATE_ONLY`, when set (a filtered partial run), skips the count
 //! lock. Unset by default, so the lock runs.
 
+// BUG(C2): the operations here are free functions: the lookup `excuse` and the reading
+// `reads_not_set` belong to `NotSetRatingRow` and its table, `channel_slot` to `PropsChannel`,
+// and `hits` and the count lock to a census type.
+
 use super::PropsChannel;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -144,6 +148,9 @@ pub const NOT_SET_RATING_HITS: [(usize, usize); LANE_NOT_SET_RATINGS.len()] = [
     (485, 519),
 ];
 
+// BUG(C5): process-wide counters that `excuse`, a lookup that reads as a predicate, writes and
+// `hits` reads back. A census value owned by the gate run and passed to the seam should hold
+// them.
 /// Cells [`excuse`] excused, per row of [`LANE_NOT_SET_RATINGS`] and per
 /// channel (`[capi_v0145, r4133]`).
 static HITS: [[AtomicUsize; 2]; LANE_NOT_SET_RATINGS.len()] =

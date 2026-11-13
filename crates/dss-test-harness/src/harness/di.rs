@@ -104,6 +104,10 @@
 //! refuses `compare_di` loudly on any other platform rather than comparing
 //! nothing (`corpus_gate::runner::compare_with_result`).
 
+// BUG(C2): the operations here are free functions. `compare_di` and its walkers belong to a
+// DI-tree type (`DiTree` is a bare map alias), `column_specs` and `classify_member` to
+// `DiFileKind`, whose `ColumnSpec` lists they build, the census readers to a census type.
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -547,6 +551,9 @@ fn register_name_matches(r: usize, spelled: &str) -> bool {
 // The census — re-derived on every gate run, pinned by the scheduler.
 // ---------------------------------------------------------------------------
 
+// BUG(C5): process-wide state that `compare_di` and `compare_di_file` write and `di_census`,
+// `di_account` and the other readers below copy out. A census value owned by the gate run
+// and passed to the comparator should hold it.
 /// Case labels whose demand-interval tree was non-empty on at least one channel.
 static DI_CASES: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
 /// `(case label, ledger key)` for every column an applicable ledger scope

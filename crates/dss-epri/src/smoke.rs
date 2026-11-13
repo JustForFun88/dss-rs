@@ -14,6 +14,10 @@
 //! `DSS_EPRI_EXPECT` overrides the expected version substring (default the
 //! `r4133.expect_version` of `tools/opendss/revisions.json`).
 
+// BUG(C2): the functions of this module are free functions. `run_smoke` is the constructor
+// of `SmokeReport`, `copy_dir` an operation of `Ieee13Copy`, and the path helpers belong to
+// a type for the workspace layout.
+
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -80,6 +84,8 @@ impl Ieee13Copy {
     /// Copy the closure into a fresh `<temp>/dss-epri-scratch/ieee13-<nonce>/`,
     /// which must not exist yet.
     pub fn new() -> Result<Ieee13Copy, String> {
+        // BUG(C5): a process-wide counter for scratch-directory names that no value owns.
+        // The caller that makes the copies should own the counter and pass the name to `new_in`.
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -220,6 +226,8 @@ pub fn refuse_vendored(deck: &str) -> Result<(), String> {
     Ok(())
 }
 
+// BUG(C2): a free function, written again in the test harness's `scratch` module. One owner
+// of the directory copy should serve both crates.
 /// Copy `src`'s regular files (and, when `recursive`, its subtrees) into `dst`.
 fn copy_dir(src: &Path, dst: &Path, recursive: bool) -> Result<(), String> {
     std::fs::create_dir_all(dst)

@@ -44,6 +44,9 @@
 
 #![forbid(unsafe_code)]
 
+// BUG(C2): the functions of this module are free: the content grading belongs to a parsed
+// source type, the repository access to a repository type and the diff entry checks to
+// `Change`.
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::Command;

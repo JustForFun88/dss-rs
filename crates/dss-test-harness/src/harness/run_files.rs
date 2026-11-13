@@ -120,6 +120,10 @@
 //! (`corpus_gate::runner::compare_with_result`) instead of silently comparing
 //! nothing.
 
+// BUG(C2): the comparators (`compare_run_files`, `compare_run_file_contents`), the sidecar
+// reader `read_sidecar` and the census readers are free functions. A run-file set type should
+// own the reads and the compares, a census type the counts.
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -325,6 +329,9 @@ impl RunFileProbe {
 // scheduler (fail-on-stale in BOTH directions).
 // ---------------------------------------------------------------------------
 
+// BUG(C5): process-wide state that `compare_run_files` writes and `scratch_census` and
+// `scratch_decline_table` read back. A census value owned by the gate run and passed to the
+// comparator should hold it.
 /// `(case label, scratch name)` for every engine-internal scratch file an ORACLE
 /// channel reported and the port, by design, does not write.
 static SCRATCH_DECLINES: Mutex<BTreeSet<(String, String)>> = Mutex::new(BTreeSet::new());
@@ -398,6 +405,8 @@ pub struct MatchedRunFile {
     pub port: String,
 }
 
+// BUG(C5): process-wide counters that `compare_run_file_contents` writes and
+// `contents_census` reads back. A census value owned by the gate run should hold them.
 /// Files whose contents were handed to the comparison, and their total decoded
 /// byte count — the non-vacuity half of this surface, exactly as
 /// [`COMPARED`] is for the SET.
@@ -514,6 +523,9 @@ pub fn compare_run_file_contents(
         capture_guard::require_capture_opt("compare_run_files (contents)", channel, oracle, &ctx);
 
     let mut excluded_names: BTreeSet<String> = BTreeSet::new();
+    // BUG(C5): `keep` copies every name and text of both maps into new maps only to filter
+    // and read them, and the loop below copies each port text again into `MatchedRunFile`.
+    // Filtering the borrowed pairs, with `MatchedRunFile` borrowing the texts, reads the same.
     let mut keep = |m: &BTreeMap<String, String>| -> BTreeMap<String, String> {
         m.iter()
             .filter(|(n, _)| {

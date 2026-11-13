@@ -116,6 +116,10 @@
 //! decline-population pin [`assert_declines_are_the_pinned_population`]. Unset
 //! by default, so the pin runs.
 
+// BUG(C2): the operations here are free functions. `compare_inc_matrix` and the shape checks
+// belong to `IncMatrixCap`, the capture they compare, `compare_names` is written again in
+// `topology` and needs one owner, and the census recorders and readers belong to a census type.
+
 use std::collections::BTreeSet;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrd};
@@ -436,6 +440,9 @@ fn compare_names(what: &str, actual: &[String], expected: &[String], ctx: &str) 
 // The decline census — re-derived on every gate run, pinned both ways
 // ---------------------------------------------------------------------------
 
+// BUG(C5): process-wide state that `compare_inc_matrix` writes, also through
+// `record_row_decline`, and `decline_census` and `decline_report` read back. A census value
+// owned by the gate run should hold it.
 /// `(case label, step)` pairs where upstream's row cursor and the port's dense
 /// rows part company (settlement S-INC). A `both` case that declines on both
 /// channels is ONE entry — the pinned population counts cases and case-steps,
@@ -661,6 +668,8 @@ fn check_census(census: DeclineCensus, report: &str, requested: RequestedChannel
 // The comparator
 // ---------------------------------------------------------------------------
 
+// BUG(C5): takes the whole `Dss` where it reads only `Dss::inc_matrix_view`; it should receive
+// the view it compares. The `&mut` follows from `Dss::inc_matrix_view`, which takes `&mut self`.
 /// Compare the port's `Dss::inc_matrix_view` against one channel's capture. Zero
 /// tolerance throughout: two exact integer streams and two ordered,
 /// case-insensitive identifier lists.

@@ -46,6 +46,10 @@
 //! (`compare_derived`, `compare_bus`, `compare_zsc`, …) uses the rule, so it is
 //! written once and tested once, and the live gate exercises it on every case.
 
+// BUG(C2): the checks here are free functions over a loose `(flag, channel, ctx)` triple; a
+// requested-surface type holding those should own `require_capture`, `require_capture_opt`
+// and the message.
+
 /// Shape wording for a capture that arrived but carries no item.
 const EMPTY: &str = "empty (0 items)";
 

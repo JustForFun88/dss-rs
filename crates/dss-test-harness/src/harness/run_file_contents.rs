@@ -45,6 +45,10 @@
 //! scheduler's fail-on-stale `TRACE_READBACK_RECORDS` epilogue (the read-back
 //! tail rule).
 
+// BUG(C2): the operations of this module are free functions: the `*_layout` functions are
+// constructors of `Layout`, `compare_cell` and `compare_angle` belong to `Col`, `compare_one`
+// to `ReportKind`, and the census readers to a census type.
+
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -777,6 +781,9 @@ pub const CONTENTS_NOT_SELECTED: [(&str, &str); 8] = [
 // The census.
 // ---------------------------------------------------------------------------
 
+// BUG(C5): process-wide counters that `compare_run_file_cells` writes on every file and
+// `cell_census` and `cell_census_by_kind` read back. A census value owned by the gate run and
+// passed to the comparator should hold them.
 static FILES: AtomicUsize = AtomicUsize::new(0);
 static COMPARED_CELLS: AtomicUsize = AtomicUsize::new(0);
 static DECLINED_CELLS: AtomicUsize = AtomicUsize::new(0);
@@ -840,6 +847,8 @@ impl TraceTail {
     }
 }
 
+// BUG(C5): a process-wide list that `compare_run_file_cells` appends to and
+// `trace_tail_census` copies out. The census value owned by the gate run should hold it.
 static TRACE_TAILS: Mutex<Vec<TraceTail>> = Mutex::new(Vec::new());
 
 /// Every read-back tail this process measured, in comparison order.

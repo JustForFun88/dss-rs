@@ -15,6 +15,8 @@ use std::path::PathBuf;
 
 const USAGE: &str = "usage: gate-kind --base <rev> [--head <rev>]";
 
+// BUG(C2): a free function that parses the command line; it is the constructor of an
+// argument type.
 fn parse_args(args: &[String]) -> Result<(String, Option<String>), String> {
     let mut base = None;
     let mut head = None;
@@ -48,6 +50,7 @@ fn parse_args(args: &[String]) -> Result<(String, Option<String>), String> {
     Ok((base, head))
 }
 
+// BUG(C2): a free function besides `main`; it is a method of the argument type.
 fn run() -> Result<gate_kind::DiffReport, String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (base, head) = parse_args(&args)?;

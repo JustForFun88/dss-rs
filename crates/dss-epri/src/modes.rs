@@ -50,6 +50,10 @@
 //! sweep of the `else` branches, and confirmed live against the vendored DLL by
 //! a mode probe.
 
+// BUG(C2): the lookups of this module are free functions over the static tables keyed by
+// family name. The `classify_*` functions are constructors of `ModeStatus`, the family
+// lookups belong to `Family` or `ModeSpec`.
+
 /// One of the four uniform DDLL ABI shapes ([`crate::ffi`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModeKind {

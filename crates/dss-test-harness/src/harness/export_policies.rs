@@ -8,6 +8,9 @@
 //! [`super::run_file_contents`] (D40(1)), and these values keep gating the
 //! committed golden bytes.
 
+// BUG(C2): the policies are free functions that build `ExportPolicy` values; they are named
+// constructors of `ExportPolicy`, and `ang_tol` a constructor of `ColTol`.
+
 use super::{ColSel, ColTol, ExportPolicy, GateSpec, RowPolicy};
 
 /// The noise gate for the angle columns of a paired magnitude/angle report: the

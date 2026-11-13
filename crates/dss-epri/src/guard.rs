@@ -32,6 +32,10 @@
 //! silence a LATER producer's created set by leaving the file behind as
 //! "pre-existing".
 
+// BUG(C2): the path and name rules of this module are free functions. `classify_created`,
+// `classify_into` and `collect_tree` build `Created` and belong to it, the name rules to a
+// run-file-name type, the copy and read of selected contents to `CorpusGuard`.
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 

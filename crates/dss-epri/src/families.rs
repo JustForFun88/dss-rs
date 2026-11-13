@@ -533,6 +533,8 @@ impl VData {
     }
 }
 
+// BUG(C2): `decode_v` and the `decode_string_raw`, `encode_v_set` and `vset_len` below are
+// free functions over `VData`: its constructor and its methods.
 /// Decode a raw V buffer (`myType` tag + bytes) into [`VData`].
 pub fn decode_v(tag: i32, bytes: &[u8]) -> VData {
     match tag {

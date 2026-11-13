@@ -215,6 +215,8 @@ impl Dll {
     }
 }
 
+// BUG(C2): a free function that resolves a symbol of the loaded library; it belongs to the
+// type that owns the `Library`.
 /// Copy a symbol's function pointer out of the library.
 ///
 /// # Safety
@@ -320,6 +322,8 @@ impl Dll {
     }
 }
 
+// BUG(C2): `cstr_to_string` and `to_cstring` below are free conversions of the DLL's string
+// replies and arguments; a DLL string type should own both directions.
 /// Read a borrowed `\0`-terminated `PAnsiChar` the DLL returned into an owned
 /// `String` (lossy UTF-8, matching dss-python's `codec='UTF8'` decode of the
 /// same bytes for ASCII corpus content). A null pointer yields `""`.

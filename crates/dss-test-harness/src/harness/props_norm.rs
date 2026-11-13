@@ -202,6 +202,11 @@
 //! bare-vs-delimited and token-count behaviour, shown on rows the table still
 //! holds) and by `props_r4133_replay`'s `RP22_S6`/`RP22_ROUTING` accounting.
 
+// BUG(C2): the lookups and seams over the static `NormRow` and `EchoRow` tables (`find_row`,
+// `lookup_claim`, `normalize_r4133`, `find_echo_row`, `echo_excluded_r4133`, `claim_value`)
+// are free functions; a table type should own them, and `row`, `echo`, `narrowed` are the
+// constructors of `NormRow`, `EchoRow`, `EchoNarrowedRow`.
+
 use std::borrow::Cow;
 use std::cell::Cell;
 use std::cmp::Ordering;
@@ -1075,6 +1080,9 @@ pub fn under_display_floor_r4133(rust: &str, oracle: &str) -> bool {
     claimed
 }
 
+// BUG(C5): process-wide counters that `under_display_floor_r4133`, a lookup that reads as a
+// predicate, writes and `display_floor_counters` reads back. A census value owned by the gate
+// run and passed to the seam should hold them.
 /// Cells that reached the floor seam on the r4133 channel.
 static FLOOR_VISITS: AtomicUsize = AtomicUsize::new(0);
 /// …and how many of them it claimed.
@@ -1108,6 +1116,8 @@ pub struct SeamTouches {
     pub floor: (usize, usize),
 }
 
+// BUG(C5): a per-thread static that every seam writes through `record_touch` and
+// `seam_touches_here` reads back. A census value passed to the seams should hold the touches.
 thread_local! {
     static SEAM_TOUCHES: Cell<SeamTouches> = const { Cell::new(SeamTouches {
         norm: (0, 0),
@@ -1262,6 +1272,9 @@ pub fn normalize_r4133<'v>(
     (Cow::Borrowed(rust), Cow::Borrowed(oracle))
 }
 
+// BUG(C5): process-wide counters that `normalize_r4133`, a lookup that reads as a pure
+// re-spelling, writes on every cell and the liveness checks read back. A census value owned
+// by the gate run and passed to the seam should hold them.
 /// Per-row visit counter, indexed exactly like [`PROPS_NORM_R4133`]: how many
 /// cells of that `(class, prop)` reached the seam on the r4133 channel.
 static NORM_VISITS: [AtomicUsize; PROPS_NORM_R4133.len()] =
@@ -2421,6 +2434,9 @@ pub fn echo_excluded_r4133(class: &str, prop: &str, rust: &str, oracle: &str) ->
     }
 }
 
+// BUG(C5): process-wide counters that `echo_excluded_r4133`, a lookup that reads as a
+// predicate, writes on every cell and the liveness checks read back. A census value owned by
+// the gate run and passed to the seam should hold them.
 /// Per-row visit counter, indexed exactly like [`PROPS_ECHO_R4133`].
 static ECHO_VISITS: [AtomicUsize; PROPS_ECHO_R4133.len()] =
     [const { AtomicUsize::new(0) }; PROPS_ECHO_R4133.len()];
@@ -2565,6 +2581,9 @@ fn check_echo_rows_are_live(table: &[EchoRow], visits: &[usize], hits: &[usize])
 // The GLOBAL guard: did the r4133 property compare run at all?
 // ---------------------------------------------------------------------------
 
+// BUG(C5): process-wide counters that `record_r4133_props_walk` writes and
+// `r4133_props_walk_counters` reads back. A census value owned by the gate run should hold
+// them.
 /// Gating r4133 property walks this process has run — one per
 /// `harness::compare_all_properties` call whose channel is
 /// [`PropsChannel::R4133`], i.e. one per compared checkpoint of one case.

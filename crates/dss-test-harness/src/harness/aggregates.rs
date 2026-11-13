@@ -86,6 +86,10 @@
 //! `Common/Circuit.pas:2436-2443`), the other four carry their arm's own
 //! `cmulreal(..., 0.001)` and are **kW/kvar**.
 
+// BUG(C2): the operations here are free functions: `compare_aggregates` belongs to
+// `AggregatesCap`, `compare_solution_scalars` to `SolutionScalarsCap` and
+// `element_loss_allowance_kw` to `ElementCap`, the captures they read.
+
 use std::collections::BTreeMap;
 
 use dss_core::exec::{Dss, ElementSnapshot};
@@ -233,6 +237,10 @@ fn term_loss_w(
     })
 }
 
+// BUG(C2): a free function whose long argument list is a comparison context with no type of
+// its own; a type holding that context should own this comparison of `AggregatesCap`.
+// BUG(C5): takes the whole `Dss` where it reads only the aggregate terms and the loss and power
+// views; it should receive those. The `&mut` follows from those `Dss` views taking `&mut self`.
 /// Compare one checkpoint's five circuit aggregates — arms P1, P1b and P2.
 ///
 /// `channels` is [`lane::elem_channels_for`]'s verdict for the case: on the two
@@ -351,6 +359,8 @@ pub fn compare_aggregates(
              oracles count: a stale row"
         );
     }
+    // BUG(C5): copies the port's summand names into a new `Vec<String>` only to read them;
+    // a list of `&str` borrowed from `terms` and the bank names reads the same.
     let oracle_losses_terms: Vec<String> = terms
         .losses
         .iter()
@@ -635,6 +645,8 @@ pub fn compare_aggregates(
     }
 }
 
+// BUG(C5): takes the whole `Dss` where it reads only the `Solution` and the load multiplier
+// of its circuit; it should receive those.
 /// Compare one checkpoint's ten `Solution` scalars.
 ///
 /// `oracle_iterations` is the checkpoint's already-compared `Iterations`, used

@@ -71,6 +71,11 @@
 //!
 //! No golden driver calls these helpers yet.
 
+// BUG(C2): the snapshot entry points (`snapshot_text`, `snapshot_bytes` and their `*_with`
+// bodies) are free functions over a `Rails` they fetch or receive, and the path rules
+// (`is_binary_artifact`, `assert_path_shape`) are free checks of a bare `&str`. The entry
+// points are `Rails` methods, the path rules methods of a repository-relative path type.
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -348,6 +353,9 @@ pub struct Rails {
     root: PathBuf,
     rows: BTreeMap<String, LockRow>,
     lane: Lane,
+    // BUG(C5): `announced` and `reminded` are interior mutability, so that the shared
+    // `&'static Rails` of the process-wide `RAILS` can record what it printed. With a writer
+    // that its driver owns they are plain fields changed through `&mut self`.
     /// Paths already announced, so a driver looping over a family does not
     /// print the same refusal once per scenario.
     announced: Mutex<BTreeSet<String>>,
@@ -375,6 +383,8 @@ impl Rails {
             .unwrap_or_else(|e| panic!("cannot parse the golden provenance lock: {e}"));
         let mut rows = BTreeMap::new();
         for row in doc.artifacts {
+            // BUG(C5): a second copy of the path, kept only for the duplicate-row message;
+            // `prev.path` names the same path, so the copy for the map key is enough.
             let path = row.path.clone();
             if let Some(prev) = rows.insert(path.clone(), row) {
                 panic!(
@@ -489,6 +499,9 @@ fn assert_path_shape(rel: &str) {
     );
 }
 
+// BUG(C5): a process-wide golden writer reached through `regen`, which `snapshot_text` and
+// `snapshot_bytes` read instead of receiving a writer, so each needs a `*_with` twin. The
+// golden driver should own its `Rails` and pass it in.
 static RAILS: OnceLock<Option<Rails>> = OnceLock::new();
 
 /// The process-wide rails: `Some` iff `DSS_UPDATE_GOLDENS` is set.

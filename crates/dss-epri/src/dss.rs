@@ -174,6 +174,12 @@ pub(crate) const USER_MODEL: &[i32] = &[567, 570, 1570];
 /// of [`TOLERATED_COMPILE`]: the tolerance exists for one command only.
 const RELCALC_TOLERATED: &[i32] = &[52902];
 
+// BUG(C2): `Engine` gathers the operations of every DLL interface family in one impl. The
+// `ym_*` group touches only `ymatrix`, and each cursor family (bus, element, meter, PD walk)
+// reads one family's entry points: each should be a type of its own.
+// BUG(C5): every call that changes the DLL's state (`clear`, `compile`, `solve`, the cursor
+// moves, the Y-matrix writes) takes `&self`, so a holder of `&Engine` changes the engine.
+// These calls should take `&mut self`.
 /// The engine handle: the DLL entry points plus its self-reported version.
 ///
 /// Loaded and driven on a single thread. The DLL is **never `FreeLibrary`'d**:
@@ -791,6 +797,8 @@ impl Engine {
 
     // ---- V-protocol decode ------------------------------------------------
 
+    // BUG(C5): takes `&self` and reads no field of it, only the entry point `f`. The call
+    // belongs to the entry-point kind `FnV` or a typed wrapper of it.
     /// Call a V getter for `mode` and copy the returned byte buffer out (the DLL
     /// hands back a borrowed pointer + type tag + byte size). Alignment-safe: the
     /// bytes are copied through a `u8` view (align 1), then reinterpreted.
@@ -833,6 +841,8 @@ impl Engine {
         decode_string_array(&bytes)
     }
 
+    // BUG(C5): these call helpers, down to `call_f`, take `&self` and read no field of it,
+    // only the entry point `f`. They belong to the entry-point kinds (`FnS`, `FnI`, `FnF`).
     fn call_s(&self, f: crate::ffi::FnS, mode: i32) -> String {
         let empty = to_cstring("");
         // SAFETY: `empty` is a live NUL-terminated buffer; result copied now.
@@ -2817,6 +2827,8 @@ pub struct Ycsc {
     pub vals: Vec<f64>,
 }
 
+// BUG(C2): `decode_string_array` and the `copy_i32`, `copy_f64` below are free decoders of
+// DLL buffers; a DLL-buffer type should own them, with `families::decode_string_raw`.
 /// Decode a V-protocol string buffer (type tag 4) into the token list
 /// dss-python's Oddie backend produces for the *same* bytes.
 ///

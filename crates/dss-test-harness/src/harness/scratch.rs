@@ -51,6 +51,11 @@
 //! [`TreePhoto`] sees a writer only while it overlaps the corpus gate's own
 //! walk.
 
+// BUG(C2): the operations of this module are free functions: `closure_of` is the constructor
+// of `Closure`, the path helpers (`lexical`, `fold`, `is_under`, `rel`, `corpus_root`,
+// `scratch_root`) belong to a corpus-path type, `in_copy` and `remove_run_dir` to
+// `ScratchCopy`.
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -332,6 +337,9 @@ pub fn closure_of(deck: &Path) -> Closure {
 
 /// One closure per vendored deck per process (a pure function of the tree).
 pub fn cached_closure(deck: &str) -> Arc<Closure> {
+    // BUG(C5): a process-wide cache of deck closures that no value owns; the `Arc` exists so
+    // that a caller holds a closure without holding the lock. The gate run should own the
+    // cache and lend its closures.
     static CACHE: OnceLock<Mutex<BTreeMap<String, Arc<Closure>>>> = OnceLock::new();
     let key = fold(Path::new(deck));
     let cache = CACHE.get_or_init(|| Mutex::new(BTreeMap::new()));
@@ -355,6 +363,8 @@ fn copy_file(src: &Path, dst: &Path) {
         .unwrap_or_else(|e| panic!("scratch copy: cannot copy {src:?} -> {dst:?}: {e}"));
 }
 
+// BUG(C2): a free function, written again in `dss_epri::smoke`. One owner of the directory
+// copy should serve both crates.
 /// Copy a directory's regular files (and, when `recursive`, its subtrees).
 fn copy_dir(src: &Path, dst: &Path, recursive: bool) {
     std::fs::create_dir_all(dst)
@@ -405,6 +415,8 @@ pub fn case_digest(folded: &str) -> u64 {
 /// directory left by an earlier process with a recycled pid cannot collide)
 /// plus a counter.
 fn run_nonce() -> String {
+    // BUG(C5): a process-wide nonce counter and a lazily fixed process tag that no value owns.
+    // The owner of the scratch root should keep both and hand out the nonces.
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     static TAG: OnceLock<u32> = OnceLock::new();
     let tag = *TAG.get_or_init(|| {

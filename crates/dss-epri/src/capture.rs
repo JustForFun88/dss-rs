@@ -11,6 +11,10 @@
 //! stale-`Iterminal` bug), which every read line declares with a
 //! `capture-order:` marker.
 
+// BUG(C2): the engine walks below are free functions over the whole `&Engine`, and the
+// converters free functions over the DTOs they build. A capture type that owns the engine
+// borrow and the request should own the walks, each DTO (`YMat`, `YPrim`) its converter.
+
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -968,6 +972,9 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
             let aggregates = capture_aggregates(engine, warn)?;
             let solution_scalars = capture_solution_scalars(engine)?;
 
+            // BUG(C5): the `else` arm clones the request's element list only to iterate it
+            // by reference. Borrowing `req.selected_elements` (a `Cow` beside the list the
+            // `*` arm builds) reads the same names.
             // selected_elements=["*"] -> every YPrim-bearing element (rebuilt each
             // solve so a deck that adds an element mid-solve is covered).
             let sel: Vec<String> = if star {

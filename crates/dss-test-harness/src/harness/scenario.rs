@@ -6,6 +6,9 @@
 //! only manually via `tools/golden/gen_der_lines_harmonics.py` with the pinned
 //! oracle).
 
+// BUG(C2): `load_scenarios` and `check_family` are free functions over a family directory
+// name; a scenario-family type should own the load of its `Scenario` files and the check.
+
 use std::path::PathBuf;
 
 use dss_core::exec::Dss;

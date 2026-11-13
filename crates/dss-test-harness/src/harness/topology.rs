@@ -125,6 +125,10 @@
 //!   silently. Population constant:
 //!   `corpus_gate::scheduler::LOOPED_PAIR_WINDOW_DECLINES`.
 
+// BUG(C2): the operations here are free functions. `compare_topology` and its arms belong to
+// `TopologyCap`, the capture they compare, the name and pair list helpers to a list type of
+// their own, and the census recorders and readers to a census type.
+
 use std::collections::BTreeSet;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrd};
@@ -396,6 +400,9 @@ pub struct IsolationSnapshot {
 // The decline census — re-derived on every gate run, pinned by the scheduler
 // ---------------------------------------------------------------------------
 
+// BUG(C5): process-wide state that `compare_topology` writes, also through
+// `record_stale_decline` and `record_window_decline`, and `decline_census` and
+// `decline_report` read back. A census value owned by the gate run should hold it.
 /// `(case label, step)` pairs whose ISOLATION half was answered from upstream's
 /// stale tree (D15). A `both` case that declines on both channels is ONE entry —
 /// the pinned population counts cases and case-steps, not channel visits.
@@ -490,6 +497,8 @@ fn record_window_decline(case: &str, step: usize) {
     lock(&WINDOW_DECLINES).insert((case.to_string(), step));
 }
 
+// BUG(C5): takes the whole `Dss` where it reads only `Dss::topology_view`; it should receive
+// the view it compares. The `&mut` follows from `Dss::topology_view`, which takes `&mut self`.
 /// Compare the port's `Dss::topology_view` against one channel's capture. Zero
 /// tolerance: three exact counts and three ordered, case-insensitive identifier
 /// lists.
@@ -639,6 +648,8 @@ pub fn compare_topology(
     }
 
     // --- 6. the isolation half (D15) ---------------------------------------
+    // BUG(C5): copies the two isolated lists out of `view`, which nothing reads afterwards;
+    // moving them into the snapshot gives the same value.
     let now = IsolationSnapshot {
         num_isolated_branches: view.num_isolated_branches,
         num_isolated_loads: view.num_isolated_loads,

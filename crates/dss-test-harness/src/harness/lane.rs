@@ -66,6 +66,10 @@
 //! pass in the default lane and FAIL in the parity lane, in whichever lane the
 //! suite is running.
 
+// BUG(C2): the lane policy is free functions: the lookups by case label (`elem_channels_for`,
+// `expected_eventlog`), the comparators (`compare_json`, `compare_report`,
+// `compare_iterations`) and the liveness checks. A lane type should own them as its methods.
+
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::{ColSel, ColTol, ElemChannels, ExportPolicy, GateSpec, RowPolicy, compare_export};
@@ -351,6 +355,9 @@ pub fn expected_eventlog(
     out
 }
 
+// BUG(C5): process-wide counters that `expected_eventlog`, a lookup that reads as a pure
+// transform, writes on every call and `assert_reround_cells_are_live` reads back. A census
+// value owned by the gate run and passed to the lookup should hold them.
 /// Per-cell counters behind [`assert_reround_cells_are_live`], indexed exactly
 /// like [`EVENTLOG_REROUNDED`].
 ///
@@ -553,11 +560,16 @@ fn is_monitor_pad(capture: &[f64]) -> bool {
 /// rewrite without poisoning the counters of whatever test binary they run in.
 fn strip_monitor_pad(flushed_records: usize, capture: &[f64]) -> Vec<f64> {
     if flushed_records != 0 || !is_monitor_pad(capture) {
+        // BUG(C5): copies the capture on the path that leaves it unchanged, though the caller
+        // only reads the result; returning the borrowed slice (a `Cow`) gives the same view.
         return capture.to_vec();
     }
     Vec::new()
 }
 
+// BUG(C5): process-wide counters that `expected_monitor_channel`, a lookup that reads as a
+// pure transform, writes and `assert_monitor_pad_is_live` reads back. A census value owned
+// by the gate run and passed to the lookup should hold them.
 /// Counters behind [`assert_monitor_pad_is_live`]: unflushed-monitor channel
 /// captures that **were** the client placeholder, and those that were not.
 static MONITOR_PAD_HITS: AtomicUsize = AtomicUsize::new(0);
