@@ -31,11 +31,16 @@ on any input.
   build exist (`crates/dss-core/benches`).
 
 ## Now: hardening
+- Ownership and structure by `CLAUDE.md` C2 and C5, with priority over the rest of this stage:
+  each piece of state has one owner, and an operation is a method of the smallest type that
+  holds its data. Today types gather the operations of their parts, functions stand free over
+  the whole circuit, and borrow conflicts are worked around with copies and values moved out and
+  back. A target architecture is designed first, and the code then moves to it.
+- Data access that cannot read stale or foreign state, so a forgotten check is a compile error.
+  Objects are stored apart from their class descriptions, one typed vector per class.
 - No panic on any input. An error is a result, and input numbers are checked where they enter:
   the DSS script and the files it names.
 - The DSS parser is rewritten and moved into code of its own.
-- Data access that cannot read stale or foreign state, so a forgotten check is a compile error.
-  Objects are stored apart from their class descriptions, one typed vector per class.
 - Tests pin the engine's own behaviour. Docs and comments state what the code does, briefly.
 
 ## Next
