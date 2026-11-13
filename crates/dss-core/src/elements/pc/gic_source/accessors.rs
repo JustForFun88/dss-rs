@@ -6,6 +6,8 @@ use num_complex::Complex64;
 use super::GicSource;
 use crate::obj::base::{DssObjData, DssObject, RefAction};
 
+// BUG(C2): `GicSource` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `GicSource` derives `Clone` while it owns mutable state.
 impl GicSource {
     /// Pascal `TGICsourceObj.MakeLike` (GICsource.pas:243).
     pub(crate) fn make_like(&mut self, other: &Self) {
@@ -39,6 +41,8 @@ impl GicSource {
     }
 }
 
+// BUG(C2): `GicSource` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `GicSource` derives `Clone` while it owns mutable state.
 impl DssObject for GicSource {
     fn data(&self) -> &DssObjData {
         &self.cd.obj

@@ -10,7 +10,12 @@ use crate::solution::{SolveMode, USEDAILY, USEDUTY, USEYEARLY};
 use crate::support::complexutil::{pdeg_to_complex, rotate_phasor_deg};
 use crate::util::EPSILON2;
 
+// BUG(C2): `VSource` exposes its fields to outside writers and writes `cd` fields by hand.
+// BUG(C5): `VSource` derives `Clone` while it owns mutable state.
 impl VSource {
+    // BUG(C2): this and the two `calc_*_mult` methods below each read one shape copy of the
+    // source and call its multiplier. A shape reference (name, handle, copy) is a part with
+    // no type of its own, and the multiplier lookup belongs to that type.
     /// Pascal `CalcDailyMult`: `ShapeFactor`/`ShapeIsActual` from the daily
     /// shape; the default `(PerUnit, 0)` reproduces the normal magnitude.
     fn calc_daily_mult(&mut self, hr: f64) {
@@ -143,6 +148,8 @@ impl VSource {
     /// `InjCurrent`).
     pub(super) fn compute_inj_currents(&mut self, sys: &SysCtx) -> Vec<Complex64> {
         self.get_vterminal_for_source(sys);
+        // BUG(C5): a new vector is allocated on every solver iteration. The injection is
+        // written in place into storage the element keeps between iterations.
         let mut inj = vec![Complex64::ZERO; self.cd.yorder];
         if let Some(yprim) = &self.cd.yprim {
             yprim.mv_mult(&mut inj, &self.cd.vterminal);

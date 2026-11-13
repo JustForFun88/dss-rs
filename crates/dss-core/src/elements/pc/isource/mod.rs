@@ -64,6 +64,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 15; // incl. the auto-appended Like
 }
 
+// BUG(C2): a free function that builds the property table of `Isource`. It belongs to
+// `Isource` as an associated function.
 /// Build the `Isource` property table (`TIsource.DefineProperties`).
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
@@ -100,6 +102,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("Isource", defs, true)
 }
 
+// BUG(C2): the methods of `Isource` write the fields of its `CktElementData` part by hand
+// (`self.cd.<field> = ..`). Those writes belong to methods of `CktElementData`.
+// BUG(C5): `Isource` derives `Clone` while it owns mutable state (solve buffers, shape
+// copies). The derive goes.
 /// `TIsourceObj`.
 #[derive(Debug, Clone)]
 pub struct Isource {
@@ -123,6 +129,9 @@ pub struct Isource {
     pub daily_shape: String,
     pub duty_shape: String,
     pub spectrum: String,
+    // BUG(C5): `spectrum_obj` and the three `*_shape_obj` fields below keep copies of arena
+    // objects beside their names and handles, stale after an edit of the source object. Each
+    // is read through a handle from the store that owns it.
     /// Resolved harmonic spectrum (Pascal `SpectrumObj`), snapshot-cloned at
     /// edit-completion; inherited `DefaultGeneral` = `"default"` (Isource does
     /// not override the base `TPCElement.Create` default the way Load/Vsource

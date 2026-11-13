@@ -13,6 +13,8 @@ use crate::report::save::dump::{self, DumpCtx};
 
 use super::GicSource;
 
+// BUG(C2): `GicSource` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `GicSource` derives `Clone` while it owns mutable state.
 impl GicSource {
     pub(crate) fn dump_body(&self, out: &mut String, cx: &DumpCtx, complete: bool) {
         dump::prefix_pc(out, cx, self, &self.cd, complete);

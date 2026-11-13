@@ -13,7 +13,12 @@ use crate::util::{CDOUBLEONE, inv_sqrt3_x1000};
 
 use super::{Connection, Load, LoadModel, LoadSpec, LoadStatus, prop};
 
+// BUG(C2): `Load` exposes its fields to outside writers and writes `cd` fields by hand.
+// BUG(C5): `Load` derives `Clone` while it owns mutable state.
 impl Load {
+    // BUG(C2): this and the four `calc_*_mult` methods below each read one shape copy of the
+    // load and call its multiplier. A shape reference (name, handle, copy) is a part with no
+    // type of its own, and the multiplier lookup belongs to that type.
     /// Pascal `GrowthFactor` (SVN r3723 and later):
     /// year 0 → 1.0 (use base values), UNLESS a `GrowthShape` is assigned — then
     /// the factor tracks the *simulated hours* so a >8760 h Year=0 run advances
@@ -292,6 +297,9 @@ impl Load {
         self.m95i = (self.i_base - self.i_low) / (self.v_base95 - self.v_base_low);
     }
 
+    // BUG(C5): `recalc` saves the derived fields in a `Derived` copy, derives into `self` and
+    // writes the copy back on a refusal. The derive returns the values as one value of their
+    // own type, committed to the load only when they are finite.
     /// Recompute the derived values, refused when an input makes the
     /// admittance or a power base not a finite number: the edit logs the
     /// refusal, every derived value keeps what it held and the stamp is
@@ -610,6 +618,9 @@ impl Load {
         if self.cd.recalc_refusal.is_some() {
             return None;
         }
+        // BUG(C5): the whole load, shape copies included, is cloned for a dry run of the
+        // derive. The derived values are computed as a value from the inputs and the factor,
+        // with no copy of the load.
         let mut trial = self.clone();
         match command {
             AllocationCommand::Set => trial.set_kva_allocation_factor(factor),
@@ -806,6 +817,8 @@ impl Derived {
     }
 }
 
+// BUG(C2): a free function over a kW and kvar pair. The magnitude belongs as a method to the
+// type of that power pair.
 /// `sqrt(a² + b²)`, through `hypot` where the sum of the squares overflows,
 /// so a kVA base whose powers are finite is never read as infinite (pinned by
 /// `exec::tests::rating_refusals::a_finite_power_whose_square_overflows_is_built`).

@@ -15,12 +15,17 @@ use crate::support::cmatrix::CMatrix;
 use crate::support::complexutil::{pdeg_to_complex, rotate_phasor_deg};
 use crate::util::EPSILON2;
 
+// BUG(C2): `Isource` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `Isource` derives `Clone` while it owns mutable state.
 impl Isource {
     /// Pascal `TIsourceObj.RecalcElementData`: reallocate `InjCurrent`.
     pub(super) fn recalc(&mut self) {
         self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
     }
 
+    // BUG(C2): this and the two `calc_*_mult` methods below each read one shape copy of the
+    // source and call its multiplier. A shape reference (name, handle, copy) is a part with
+    // no type of its own, and the multiplier lookup belongs to that type.
     /// Pascal `CalcDailyMult`: `ShapeFactor`/`ShapeIsActual` from the daily
     /// shape; the default `(PerUnit, 0)` reproduces the normal magnitude.
     fn calc_daily_mult(&mut self, hr: f64) {
@@ -113,6 +118,8 @@ impl Isource {
     fn base_inj_currents(&mut self, sys: &SysCtx) -> Vec<Complex64> {
         let nphases = self.cd.nphases;
         let mut base_curr = self.get_base_curr(sys); // applies spectrum if needed
+        // BUG(C5): a new vector is allocated on every call, once per solver iteration. The
+        // injection is written in place into storage the element keeps between iterations.
         let mut curr = vec![Complex64::ZERO; self.cd.yorder];
         for i in 0..nphases {
             curr[i] = base_curr;
@@ -151,6 +158,8 @@ impl Isource {
     }
 }
 
+// BUG(C2): `Isource` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `Isource` derives `Clone` while it owns mutable state.
 impl CktElement for Isource {
     fn cd(&self) -> &CktElementData {
         &self.cd
@@ -186,6 +195,10 @@ impl CktElement for Isource {
         }
     }
 
+    // BUG(C2): the body installs `yprim_series`, `yprim_shunt` and `yprim` into `cd` by hand.
+    // The install is an operation of `CktElementData`.
+    // BUG(C5): every Y build allocates new matrices. Their owner keeps the storage between
+    // builds and each build refills it.
     /// Pascal `TIsourceObj.CalcYPrim`: build only YPrim_Series, left all-zero
     /// (ideal current source — no self-impedance), then the standard
     /// open-conductor fold.

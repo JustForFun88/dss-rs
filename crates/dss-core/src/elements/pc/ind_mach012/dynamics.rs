@@ -23,6 +23,8 @@ const RADIANS_TO_DEGREES: f64 = 180.0 / std::f64::consts::PI;
 
 const NUM_VARIABLES: usize = 22;
 
+// BUG(C2): `IndMach012` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `IndMach012` derives `Clone` while it owns mutable state.
 impl IndMach012 {
     /// Pascal `TIndMach012Obj.InitStateVars` — seed the internal voltages and
     /// shaft state from the present (power-flow) operating point.

@@ -16,6 +16,8 @@ use crate::support::cmatrix::CMatrix;
 use crate::support::complexutil::pdeg_to_complex;
 use crate::util::EPSILON2;
 
+// BUG(C2): a free function over the bus name of a Line. It belongs to `GicSource` as a
+// method, or to the type of a bus name.
 /// Pascal `CompareTextShortest('GIC_', LineBus2) = 0`: the (case-insensitive)
 /// leading-substring compare over the shorter of the two strings — true iff the
 /// Line's Bus2 already begins with the `GIC_` bus prefix (splice already done).
@@ -24,6 +26,8 @@ fn line_bus2_is_gic(bus2: &str) -> bool {
     bus2[..n].eq_ignore_ascii_case(&"GIC_"[..n])
 }
 
+// BUG(C2): `GicSource` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `GicSource` derives `Clone` while it owns mutable state.
 impl GicSource {
     /// Pascal `TGICSourceObj.RecalcElementData` (GICsource.pas:326): splice a
     /// `GIC_<name>` bus in front of the associated Line, then (unless specified)
@@ -41,6 +45,8 @@ impl GicSource {
                 ));
             }
         } else {
+            // BUG(C5): the bus name is copied though `line_bus2` and `cd` are disjoint fields.
+            // Direct access passes `&self.line_bus2` to `self.cd.set_bus`.
             let line_bus2 = self.line_bus2.clone();
             // If LineBus2 already begins with GIC, don't insert the GIC bus.
             if !line_bus2_is_gic(&line_bus2) {
@@ -98,6 +104,8 @@ impl GicSource {
     /// `ComplexBuffer` scratch).
     fn compute_inj_currents(&mut self, sys: &SysCtx) -> Vec<Complex64> {
         self.get_vterminal_for_source(sys);
+        // BUG(C5): a new vector is allocated on every solver iteration and on every current
+        // read. The injection is written in place into storage the element keeps between them.
         let mut inj = vec![Complex64::ZERO; self.cd.yorder];
         if let Some(yprim) = &self.cd.yprim {
             yprim.mv_mult(&mut inj, &self.cd.vterminal);
@@ -107,6 +115,8 @@ impl GicSource {
     }
 }
 
+// BUG(C2): `GicSource` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `GicSource` derives `Clone` while it owns mutable state.
 impl CktElement for GicSource {
     fn cd(&self) -> &CktElementData {
         &self.cd
@@ -131,6 +141,10 @@ impl CktElement for GicSource {
         }
     }
 
+    // BUG(C2): the body installs `yprim_series`, `yprim_shunt` and `yprim` into `cd` by hand.
+    // The install is an operation of `CktElementData`.
+    // BUG(C5): every Y build allocates new matrices. Their owner keeps the storage between
+    // builds and each build refills it.
     /// Pascal `TGICSourceObj.CalcYPrim` (GICsource.pas:361): a fixed 10000-mho
     /// (0.0001 Ω) series conductance block — the source's own tiny impedance.
     fn calc_yprim(&mut self, _sys: &SysCtx) {

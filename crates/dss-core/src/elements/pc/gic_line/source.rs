@@ -9,6 +9,8 @@ use crate::elements::traits::SysCtx;
 use crate::support::complexutil::{pdeg_to_complex, rotate_phasor_deg};
 use crate::util::EPSILON2;
 
+// BUG(C2): `GicLine` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `GicLine` derives `Clone` while it owns mutable state.
 impl GicLine {
     /// Pascal `TGICLineObj.GetVterminalForSource` (GICLine.pas:524): fill
     /// `Vterminal` with the source phasors — zero sequence by default (all
@@ -77,6 +79,8 @@ impl GicLine {
     /// (Pascal writes into the `ComplexBuffer` scratch there, never `InjCurrent`).
     pub(super) fn compute_inj_currents(&mut self, sys: &SysCtx) -> Vec<Complex64> {
         self.get_vterminal_for_source(sys);
+        // BUG(C5): a new vector is allocated on every solver iteration and on every current
+        // read. The injection is written in place into storage the element keeps between them.
         let mut inj = vec![Complex64::ZERO; self.cd.yorder];
         if let Some(yprim) = &self.cd.yprim {
             yprim.mv_mult(&mut inj, &self.cd.vterminal);

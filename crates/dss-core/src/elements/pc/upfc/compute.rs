@@ -10,6 +10,8 @@ use crate::support::complexutil::{c_to_polar, p_to_complex, to_polar};
 
 use super::{NUM_UPFC_VARIABLES, Upfc};
 
+// BUG(C2): `Upfc` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `Upfc` derives `Clone` while it owns mutable state.
 impl Upfc {
     /// Pascal `TUPFCObj.CalcUPFCLosses(Vpu)` — the active-power loss factor read
     /// off the loss curve at the per-unit input voltage.
@@ -288,6 +290,8 @@ impl Upfc {
     /// present in both paths upstream.
     pub(super) fn compute_inj_currents(&mut self, node_v: &[Complex64]) -> Vec<Complex64> {
         let nphases = self.cd.nphases;
+        // BUG(C5): a new vector is allocated on every solver iteration and on every current
+        // read. The injection is written in place into storage the element keeps between them.
         let mut inj = vec![Complex64::ZERO; self.cd.yorder];
         for i in 0..nphases {
             self.vbin = node_v[self.cd.node_ref[i]];

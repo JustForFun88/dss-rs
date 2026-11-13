@@ -58,6 +58,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 17; // incl. Like
 }
 
+// BUG(C2): a free function that builds the property table of `Vccs`. It belongs to `Vccs`
+// as an associated function.
 /// `TVCCS.DefineProperties`. (The enum registry is unused — `RMSMode` is a plain
 /// `Boolean` property, not a mapped enum — but the signature mirrors the other PC
 /// classes for uniform registration.)
@@ -97,6 +99,10 @@ pub fn class_props(_enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("VCCS", defs, true)
 }
 
+// BUG(C2): the methods of `Vccs` write the fields of its `CktElementData` part by hand
+// (`self.cd.<field> = ..`). Those writes belong to methods of `CktElementData`.
+// BUG(C5): `Vccs` derives `Clone` while it owns mutable state (filter state, ring buffers,
+// curve copies). The derive goes, with the held copy of `recalc` that uses it.
 /// `TVCCSObj`.
 #[derive(Debug, Clone)]
 pub struct Vccs {
@@ -107,6 +113,9 @@ pub struct Vccs {
     pub vrated: f64,
     pub ppct: f64,
 
+    // BUG(C5): `fbp1`, `fbp2` and `ffilter` keep copies of arena XYcurves beside their names,
+    // stale after an edit of a curve. Each curve is read through a handle from the store that
+    // owns it.
     /// Object-reference curves (`bp1`/`bp2`/`filter`), stored by name plus a
     /// snapshot clone (the established Generator/PVSystem object-ref pattern).
     pub bp1_name: String,
@@ -169,6 +178,8 @@ pub(super) enum CurveGap {
     Empty(&'static str, String),
 }
 
+// BUG(C2): `map_idx` and `offset_idx` below are free functions of ring-cursor arithmetic
+// over the history buffers. They belong to `RingBuf` as methods.
 /// Wrap a 1-based ring-buffer index into the range `1..=len` (add `len` while
 /// `idx <= 0`, then `idx mod (len+1)` with a 0 result mapped to 1). The inputs
 /// can go negative. A ring has at least one slot: a VCCS whose filter has no
@@ -191,6 +202,8 @@ fn offset_idx(idx: i64, offset: i64, len: i64) -> usize {
     map_idx(idx + offset, len)
 }
 
+// BUG(C5): `RingBuf` derives `Clone` while it owns the filter history, which changes on
+// every step. The derive goes.
 /// The z-domain filter history ring — a `pDoubleArray` (Pascal) accessed both
 /// directly at a known slot and via the wrap-around tap `MapIdx(idx, len)`.
 /// Physical storage keeps the Pascal 1-based layout (slot 0 dead, valid
@@ -317,6 +330,9 @@ impl Vccs {
     /// them finite (pinned by
     /// `exec::tests::rating_refusals::an_input_that_makes_a_stamp_non_finite_is_refused_at_the_recalc`).
     pub(super) fn recalc(&mut self) {
+        // BUG(C5): `recalc` clones the whole source, derives into `self` and writes the clone
+        // back on a refusal. The derive returns the values as one value of their own type,
+        // committed to the source only when they are finite.
         let held = self.clone();
         self.derive();
         let finite = [self.irated, self.base_curr, self.fkv, self.fki]
@@ -440,6 +456,8 @@ impl Vccs {
         node_v: &[Complex64],
     ) -> Vec<Complex64> {
         let nphases = self.cd.nphases;
+        // BUG(C5): a new vector is allocated on every solver iteration and on every current
+        // read. The injection is written in place into storage the element keeps between them.
         let mut inj = vec![Complex64::ZERO; self.cd.yorder];
         // Pascal `if not Closed[1]` (the active terminal's first conductor).
         if !self.cd.conductor_closed(1, 1) {
@@ -482,6 +500,8 @@ impl Vccs {
     }
 }
 
+// BUG(C2): `alpha1` and `alpha2` below are free functions that return the sequence operators
+// `1∠120°` and `1∠240°`. They belong to a type as associated constants.
 /// Pascal `ALPHA1 := cmplx(-0.5, 0.5 * sqrt(3.0))` — `1 ∠ 120°`.
 fn alpha1() -> Complex64 {
     Complex64::new(-0.5, 0.5 * 3.0_f64.sqrt())

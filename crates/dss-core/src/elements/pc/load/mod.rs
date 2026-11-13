@@ -157,6 +157,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 42; // incl. Like
 }
 
+// BUG(C2): a free function that builds the property table of `Load`. It belongs to `Load`
+// as an associated function.
 /// `TLoad.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
@@ -236,6 +238,11 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("Load", defs, true)
 }
 
+// BUG(C2): every field is public and code outside `Load` writes them (`een_factor` and
+// `ue_factor` in the meter sample, `cd.iterminal` in the NCIM solve), and its methods write
+// `cd` fields by hand. The fields belong private, changed through methods of their owner.
+// BUG(C5): `Load` derives `Clone` while it owns mutable state (solve buffers, harmonic base,
+// shape copies). The derive goes, with the trial copies that use it.
 /// `TLoadObj`.
 #[derive(Debug, Clone)]
 pub struct Load {
@@ -321,6 +328,9 @@ pub struct Load {
     pub cvr_shape: String,
     pub spectrum: String,
 
+    // BUG(C5): the five `*_obj` fields below keep copies of arena shapes beside their `*_ref`
+    // handles, and an edit of a shape leaves its copy stale. The shape is read through its
+    // handle from the store that owns it.
     /// Resolved shape objects (Pascal `YearlyShapeObj` etc.). Like
     /// `FetchLineCode`, the referenced object is snapshot-cloned at parse time:
     /// `set_nominal_load` then drives `GetMultAtHour` on the
@@ -343,6 +353,8 @@ pub struct Load {
     /// time-series mode; `(1, 1)` otherwise. Recomputed each `SetNominalLoad`.
     pub shape_factor: Complex64,
 
+    // BUG(C5): a copy of the arena spectrum, stale after an edit of the spectrum. The
+    // harmonic source reads the spectrum through a handle from the store that owns it.
     /// Resolved harmonic spectrum (Pascal `SpectrumObj`), snapshot-cloned at
     /// edit-completion; the harmonic current source applies it to the captured
     /// fundamental phase currents.
@@ -355,6 +367,8 @@ pub struct Load {
     pub load_fundamental: f64,
 }
 
+// BUG(C2): a free function, and one of several copies of this helper in the PC elements.
+// The conductor count belongs to the connection type as a method.
 /// Pascal `SetNcondsForConnection`.
 fn nconds_for_connection(connection: Connection, nphases: usize) -> usize {
     match connection {
@@ -477,6 +491,8 @@ impl Load {
     }
 }
 
+// BUG(C2): a `pub fn` in non-test code that only tests call. The fixture belongs in the
+// test code, or the tests call `SysCtx::parse_default` directly.
 /// Unit-test fixture: the fresh-circuit parse-time snapshot (see
 /// [`SysCtx::parse_default`]). Production paths thread the LIVE `sys_ctx` — this
 /// remains only as the default context for the class's `#[cfg(test)]` fixtures.

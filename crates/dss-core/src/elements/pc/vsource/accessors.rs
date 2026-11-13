@@ -10,6 +10,8 @@ use crate::elements::pc::source_seq::{ScanType, SequenceType};
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
+// BUG(C2): `VSource` exposes its fields to outside writers and writes `cd` fields by hand.
+// BUG(C5): `VSource` derives `Clone` while it owns mutable state.
 impl VSource {
     /// Pascal `TVsourceObj.MakeLike`.
     pub(crate) fn make_like(&mut self, other: &Self) {
@@ -70,6 +72,8 @@ impl VSource {
     }
 }
 
+// BUG(C2): `VSource` exposes its fields to outside writers and writes `cd` fields by hand.
+// BUG(C5): `VSource` derives `Clone` while it owns mutable state.
 impl DssObject for VSource {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -190,6 +194,9 @@ impl DssObject for VSource {
         self.cd.get_bus(terminal).to_string()
     }
 
+    // BUG(C5): each arm checks the class of `resolved` at run time though the property
+    // declares it, and clones the shape into the source. A typed slot per property holds
+    // the handle, and the shape is read through it from the store.
     /// Resolve a shape reference (`yearly`/`daily`/`duty` → `LoadShape`): store
     /// the name (for the dump), the `ElemId`, and a snapshot clone the
     /// time-series `GetVterminalForSource` drives — same pattern as

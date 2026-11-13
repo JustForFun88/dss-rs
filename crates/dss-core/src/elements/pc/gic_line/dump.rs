@@ -9,6 +9,8 @@ use crate::report::save::dump::{self, DumpCtx};
 
 use super::GicLine;
 
+// BUG(C2): `GicLine` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `GicLine` derives `Clone` while it owns mutable state.
 impl GicLine {
     pub(crate) fn dump_body(&self, out: &mut String, cx: &DumpCtx, complete: bool) {
         dump::prefix_pc(out, cx, self, &self.cd, complete);

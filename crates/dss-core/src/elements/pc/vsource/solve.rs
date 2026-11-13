@@ -11,6 +11,8 @@ use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::support::cmatrix::CMatrix;
 use crate::util::{CALPHA, EPSILON, quad_solver, sqrt3};
 
+// BUG(C2): `VSource` exposes its fields to outside writers and writes `cd` fields by hand.
+// BUG(C5): `VSource` derives `Clone` while it owns mutable state.
 impl VSource {
     /// Pascal `TVsourceObj.RecalcElementData`.
     pub(super) fn recalc(&mut self) {
@@ -162,6 +164,8 @@ impl VSource {
     }
 }
 
+// BUG(C2): `VSource` exposes its fields to outside writers and writes `cd` fields by hand.
+// BUG(C5): `VSource` derives `Clone` while it owns mutable state.
 impl CktElement for VSource {
     fn cd(&self) -> &CktElementData {
         &self.cd
@@ -206,6 +210,10 @@ impl CktElement for VSource {
         ])
     }
 
+    // BUG(C2): the body installs `yprim_series`, `yprim_shunt` and `yprim` into `cd` by hand.
+    // The install is an operation of `CktElementData`.
+    // BUG(C5): every Y build allocates new matrices. Their owner keeps the storage between
+    // builds and each build refills it.
     /// Pascal `TVsourceObj.CalcYPrim`: build only YPrim_Series.
     fn calc_yprim(&mut self, sys: &SysCtx) {
         let nphases = self.cd.nphases;

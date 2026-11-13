@@ -73,6 +73,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 25; // incl. Like
 }
 
+// BUG(C2): a free function that builds the property table of `IndMach012`. It belongs to
+// `IndMach012` as an associated function.
 /// `TIndMach012.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
@@ -137,6 +139,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("IndMach012", defs, true)
 }
 
+// BUG(C2): the methods of `IndMach012` write the fields of its `CktElementData` part by
+// hand (`self.cd.<field> = ..`). Those writes belong to methods of `CktElementData`.
+// BUG(C5): `IndMach012` derives `Clone` while it owns mutable state (machine state, solve
+// buffers, shape copies). The derive goes, with the trial and probe copies that use it.
 /// `TIndMach012Obj`. `MachineData` (the `TGeneratorVars` shaft record) is
 /// flattened into the `*_machine`/shaft fields; `MakeLike` copies them wholesale.
 #[derive(Debug, Clone)]
@@ -224,9 +230,13 @@ pub struct IndMach012 {
     // Harmonic spectrum (PCClass tail). `DoHarmonicMode` injects ~0 (the Pascal
     // spectrum lines are commented out), but the property is stored/dumped.
     pub spectrum: String,
+    // BUG(C5): a copy of the arena spectrum, stale after an edit of the spectrum. It is read
+    // through a handle from the store that owns it.
     pub spectrum_obj: Option<SpectrumObj>,
 
-    // Dispatch shapes (snapshot-clone, like the Generator shape refs).
+    // BUG(C5): the dispatch shapes keep copies (`*_shape_obj`) of arena shapes beside their
+    // `*_shape_ref` handles, stale after an edit of a shape. Each shape is read through its
+    // handle from the store that owns it.
     pub yearly_shape: String,
     pub daily_shape: String,
     pub duty_shape: String,
@@ -237,6 +247,8 @@ pub struct IndMach012 {
     pub daily_shape_ref: Option<Idx<LoadShapeObj>>,
     pub duty_shape_ref: Option<Idx<LoadShapeObj>>,
 
+    // BUG(C2): the executive writes the live power factor here before a render so that the
+    // `&self` getter can print it. The getter takes the solved power as an argument.
     /// The render cache behind the live read-only `pf` property — r4133
     /// `Format('%.6g', [PowerFactor(Power[1, ActiveActor])])`
     /// (`IndMach012.pas:1790`). r4133 computes it inside the getter, from
@@ -256,6 +268,8 @@ pub struct IndMach012 {
     pub(crate) live_pf: f64,
 }
 
+// BUG(C2): a free function, and one of several copies of this helper in the PC elements.
+// The conductor count belongs to the connection type as a method.
 /// Pascal `SetNcondsForConnection`. Unlike the Generator, a **wye** induction
 /// machine has **no neutral conductor** (`NConds := Fnphases`).
 fn nconds_for_connection(connection: Connection, nphases: usize) -> usize {
@@ -394,6 +408,9 @@ impl IndMach012 {
         };
     }
 
+    // BUG(C5): `recalc` clones the whole machine, derives into `self` and writes the clone back
+    // on a refusal. The derive returns the values as one value of their own type, committed
+    // to the machine only when they are finite.
     /// Recompute the derived values, refused when an input makes
     /// the power-flow admittance or the machine impedances not a finite
     /// number: the edit logs the refusal, every derived value keeps what it
@@ -612,6 +629,9 @@ impl IndMach012 {
         }
     }
 
+    // BUG(C2): this and the two `calc_*_mult` methods below each read one shape copy of the
+    // machine and call its multiplier. A shape reference (name, handle, copy) is a part with
+    // no type of its own, and the multiplier lookup belongs to that type.
     /// Pascal `CalcDailyMult`.
     fn calc_daily_mult(&mut self, hr: f64) {
         if let Some(shape) = self.daily_shape_obj.as_mut() {

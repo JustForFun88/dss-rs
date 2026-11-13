@@ -94,6 +94,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 23; // incl. Like
 }
 
+// BUG(C2): a free function that builds the property table of `VsConverter`. It belongs to
+// `VsConverter` as an associated function.
 /// `TVSConverter.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
@@ -132,6 +134,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("VSConverter", defs, true)
 }
 
+// BUG(C2): the methods of `VsConverter` write the fields of its `CktElementData` part by hand
+// (`self.cd.<field> = ..`). Those writes belong to methods of `CktElementData`.
+// BUG(C5): `VsConverter` derives `Clone` while it owns mutable state (the saved terminal
+// currents, solve buffers). The derive goes.
 /// `TVSConverterObj`.
 #[derive(Debug, Clone)]
 pub struct VsConverter {
@@ -245,6 +251,8 @@ impl VsConverter {
             vdc.re = 1000.0 * self.f_kvdc;
         }
 
+        // BUG(C5): `cbuf`, `iterm` and `inj` below are new vectors on every solver iteration.
+        // The converter keeps them between iterations and each pass refills them in place.
         // The AC voltage-source phasors → complex buffer (terminal 2 stays 0).
         let mut cbuf = vec![Complex64::ZERO; yorder];
         let mut vmag = vdc * (0.353553 * self.fm);

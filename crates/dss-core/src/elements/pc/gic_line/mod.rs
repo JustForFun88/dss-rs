@@ -50,6 +50,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 19; // incl. the auto-appended Like
 }
 
+// BUG(C2): a free function that builds the property table of `GicLine`. It belongs to
+// `GicLine` as an associated function.
 /// `TGICLine.DefineProperties`.
 pub fn class_props() -> ClassProps {
     use prop::*;
@@ -100,6 +102,10 @@ pub fn class_props() -> ClassProps {
     ClassProps::new("GICLine", defs, true)
 }
 
+// BUG(C2): the methods of `GicLine` write the fields of its `CktElementData` part by hand
+// (`self.cd.<field> = ..`). Those writes belong to methods of `CktElementData`.
+// BUG(C5): `GicLine` derives `Clone` while it owns mutable state (impedance matrices, solve
+// buffers, the spectrum copy). The derive goes.
 /// `TGICLineObj`.
 #[derive(Debug, Clone)]
 pub struct GicLine {

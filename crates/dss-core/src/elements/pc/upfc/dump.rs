@@ -13,6 +13,8 @@ use crate::report::save::dump::{self, DumpCtx};
 
 use super::Upfc;
 
+// BUG(C2): `Upfc` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `Upfc` derives `Clone` while it owns mutable state.
 impl Upfc {
     pub(crate) fn dump_body(&self, out: &mut String, cx: &DumpCtx, complete: bool) {
         dump::prefix_pc(out, cx, self, &self.cd, complete);

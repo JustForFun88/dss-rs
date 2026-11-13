@@ -20,6 +20,8 @@ use crate::report::save::dump::{self, DumpCtx};
 
 use super::Isource;
 
+// BUG(C2): `Isource` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `Isource` derives `Clone` while it owns mutable state.
 impl Isource {
     pub(crate) fn dump_body(&self, out: &mut String, cx: &DumpCtx, complete: bool) {
         dump::prefix_pc(out, cx, self, &self.cd, complete);

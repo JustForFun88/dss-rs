@@ -12,6 +12,8 @@ use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::support::cmatrix::CMatrix;
 use crate::util::EPSILON;
 
+// BUG(C2): `GicLine` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `GicLine` derives `Clone` while it owns mutable state.
 impl GicLine {
     /// Pascal `TGICLineObj.RecalcElementData` (GICLine.pas:407): the diagonal
     /// series `Z` (`Zs = R + jX`, off-diagonals zero), then the induced `Volts`
@@ -41,6 +43,8 @@ impl GicLine {
     }
 }
 
+// BUG(C2): `GicLine` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `GicLine` derives `Clone` while it owns mutable state.
 impl CktElement for GicLine {
     fn cd(&self) -> &CktElementData {
         &self.cd
@@ -70,6 +74,10 @@ impl CktElement for GicLine {
         ])
     }
 
+    // BUG(C2): the body installs `yprim_series`, `yprim_shunt` and `yprim` into `cd` by hand.
+    // The install is an operation of `CktElementData`.
+    // BUG(C5): every Y build allocates new matrices. Their owner keeps the storage between
+    // builds and each build refills it.
     /// Pascal `TGICLineObj.CalcYPrim` (GICLine.pas:445): build only YPrim_Series
     /// — series `R + jX·FreqMultiplier`, plus the blocking capacitor `Xc =
     /// −1/(2π·f·C·1e-6)` on the diagonal when `C > 0`; invert and stamp the

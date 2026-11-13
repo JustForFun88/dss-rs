@@ -18,6 +18,8 @@ use crate::support::cmatrix::CMatrix;
 
 use super::{CurveGap, Vccs, prop};
 
+// BUG(C2): `Vccs` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `Vccs` derives `Clone` while it owns mutable state.
 impl CktElement for Vccs {
     fn cd(&self) -> &CktElementData {
         &self.cd
@@ -48,6 +50,10 @@ impl CktElement for Vccs {
         }
     }
 
+    // BUG(C2): the body installs `yprim_series`, `yprim_shunt` and `yprim` into `cd` by hand.
+    // The install is an operation of `CktElementData`.
+    // BUG(C5): every Y build allocates new matrices. Their owner keeps the storage between
+    // builds and each build refills it.
     /// Pascal `TVCCSObj.CalcYPrim` — build only zero matrices (an ideal current
     /// source has `YPrim = 0`); the open-conductor pass adds the epsilon diagonal
     /// for any opened conductor.
@@ -237,6 +243,8 @@ impl CktElement for Vccs {
     }
 }
 
+// BUG(C2): `Vccs` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `Vccs` derives `Clone` while it owns mutable state.
 impl Vccs {
     /// Pascal `TVCCSObj.MakeLike` (+ inherited `TPCElement.MakeLike`, which copies
     /// the spectrum). The curve **references** are copied (their names too, so the
@@ -271,6 +279,8 @@ impl Vccs {
     }
 }
 
+// BUG(C2): `Vccs` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `Vccs` derives `Clone` while it owns mutable state.
 impl DssObject for Vccs {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -366,6 +376,9 @@ impl DssObject for Vccs {
         self.cd.get_bus(terminal).to_string()
     }
 
+    // BUG(C5): each arm checks the class of `resolved` at run time though the property
+    // declares it, and clones the curve into the source. A typed slot per property holds the
+    // handle, and the curve is read through it from the store.
     /// Resolve the `bp1`/`bp2`/`filter` XYcurve references (snapshot-clone, like
     /// the PVSystem curve refs).
     fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {

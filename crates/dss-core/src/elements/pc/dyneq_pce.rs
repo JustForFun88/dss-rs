@@ -57,6 +57,8 @@ pub enum DynEqHost {
     Inverter,
 }
 
+// BUG(C5): `DynEqPceData` derives `Clone` while it owns mutable state (the integration
+// memory, the parked rows, the equation copy). The derive goes.
 /// `TDynEqPCE` shared data. The host PC element embeds this and exposes it via the
 /// [`DynEqPce`] trait so the edit loop and the dynamics step loop reach it
 /// polymorphically.
@@ -64,6 +66,9 @@ pub enum DynEqHost {
 pub struct DynEqPceData {
     /// `DynamicEqObj` name (kept for the `DynamicEq=` dump / resolution bookkeeping).
     pub dynamic_eq: String,
+    // BUG(C5): `dynamic_eq_obj` keeps a copy of the arena DynamicExp beside `dynamic_eq_ref`,
+    // stale after an edit of the equation. The equation is read through the handle from the
+    // store that owns it.
     /// `DynamicEqObj` — the linked `DynamicExp` (snapshot clone).
     pub dynamic_eq_obj: Option<DynamicExpObj>,
     /// The resolved `DynamicExp`'s stable arena handle (statically that class —
@@ -82,12 +87,17 @@ pub struct DynEqPceData {
     /// equation or written past the memory, until a link to an equation that
     /// holds the variable moves the row into its memory.
     pub parked_rows: Vec<(String, [f64; DYN_SLOT_LENGTH])>,
+    // BUG(C2): `dyn_out` holds bare indices into the variables of the linked equation,
+    // unchecked against it. A handle type that the equation issues holds them.
     /// `DynOut` — the outputs the last accepted `DynOut=` list named, in slot
     /// order: a machine integrates the first as its speed and the second as
     /// its angle, an inverter the first as its current. Empty until a list
     /// resolves, and emptied by a re-link to an equation without those
     /// outputs ([`Self::link`]).
     pub dyn_out: Vec<usize>,
+    // BUG(C2): `dynamic_eq_pair` keeps (row, operand code) pairs as a flat list of bare
+    // integers into the equation and its memory. A pair type with a typed row and operand
+    // holds each entry.
     /// `DynamicEqPair` — flat (variable row, operand code) pairs of the
     /// calculated values the host loads, built from `user_dyn_init` against
     /// the linked equation.
@@ -175,6 +185,8 @@ impl DynEqPceData {
         self.rebuild_pairs();
     }
 
+    // BUG(C5): builds owned copies of every name and row for `link`, which only reads them.
+    // It yields borrows of the memory and the parked rows, and `link` copies what it keeps.
     /// Every row the host holds, by variable name: the memory row each name
     /// resolves to (the first of a name `VarNames` repeats), then the parked
     /// rows.

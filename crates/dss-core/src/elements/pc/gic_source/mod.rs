@@ -44,6 +44,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 14; // incl. the auto-appended Like
 }
 
+// BUG(C2): a free function that builds the property table of `GicSource`. It belongs to
+// `GicSource` as an associated function.
 /// `TGICsource.DefineProperties`.
 pub fn class_props() -> ClassProps {
     use prop::*;
@@ -82,6 +84,10 @@ pub fn class_props() -> ClassProps {
     ClassProps::new("GICsource", defs, true)
 }
 
+// BUG(C2): the methods of `GicSource` write the fields of its `CktElementData` part by hand
+// (`self.cd.<field> = ..`). Those writes belong to methods of `CktElementData`.
+// BUG(C5): `GicSource` derives `Clone` while it owns mutable state (solve buffers, pending
+// actions). The derive goes.
 /// `TGICSourceObj`.
 #[derive(Debug, Clone)]
 pub struct GicSource {
@@ -111,10 +117,14 @@ pub struct GicSource {
     /// current `Bus2` (read at resolve time so `RecalcElementData` can decide
     /// whether to splice).
     line_ref: Option<Idx<Line>>,
+    // BUG(C2): the executive writes the Line's `Bus2` here through `set_resolved_line` so that
+    // the recalc that follows reads it. The recalc takes the Line's bus as an argument.
     line_bus2: String,
     /// The Line reference could not be resolved (name mismatch) — Pascal error
     /// 333 in `RecalcElementData`.
     line_missing: bool,
+    // BUG(C2): the recalc parks the Line rewrite here and the executive drains it through
+    // `take_ref_actions` after `end_edit`. The recalc returns the action to its caller.
     /// Deferred cross-element writes (the Line `Bus2` rewrite), drained by the
     /// executive after `end_edit`.
     pending_actions: Vec<RefAction>,

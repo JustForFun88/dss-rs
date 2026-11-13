@@ -50,6 +50,10 @@ pub enum Connection {
     Delta = 1,
 }
 
+// BUG(C2): every field is public, and the control dispatch writes `reset_ibr` from outside.
+// The fields belong private, changed through methods of `InvDynamicVars`.
+// BUG(C5): `InvDynamicVars` derives `Clone` while it owns the per-phase dynamics state. The
+// derive goes.
 /// Pascal `TInvDynamicVars` (`Shared/InvDynamics.pas`) — the per-inverter
 /// dynamics/GFM state record. Scalars back catalog properties; per-phase arrays
 /// and methods are the GFL dynamics machinery.
@@ -427,6 +431,11 @@ impl VarMode {
     }
 }
 
+// BUG(C2): every field is public, and the control dispatch writes the mode flags
+// (`vw_mode`, `vv_mode`, `wv_mode`, `wp_mode`, `drc_mode`, `avr_mode`, `var_mode`) from
+// outside. The fields belong private, changed through methods of `InvBasedPceData`.
+// BUG(C5): `InvBasedPceData` derives `Clone` while it owns mutable state (dynamics state, PI
+// controllers, shape and curve copies). The derive goes.
 /// `TInvBasedPCE` shared base data (+ the `DynEqPCE` `DynamicEq`/`DynOut`
 /// fields). The concrete inverter PC elements (PVSystem, Storage) embed this and
 /// set its fields in their own `Create`/`RecalcElementData`.
@@ -482,7 +491,9 @@ pub struct InvBasedPceData {
     /// `Connection` — wye/delta.
     pub connection: Connection,
 
-    // Shape references (snapshot-clone + typed Idx).
+    // BUG(C5): the shape references keep copies (`*_shape_obj`) of arena shapes beside their
+    // `*_shape_ref` handles, stale after an edit of a shape. Each shape is read through its
+    // handle from the store that owns it.
     /// `YearlyShapeObj` name.
     pub yearly_shape: String,
     /// `DailyShapeObj` name.
@@ -496,6 +507,9 @@ pub struct InvBasedPceData {
     pub daily_shape_ref: Option<Idx<LoadShapeObj>>,
     pub duty_shape_ref: Option<Idx<LoadShapeObj>>,
 
+    // BUG(C5): `inverter_curve_obj` keeps a copy of the arena XYcurve beside
+    // `inverter_curve_ref`, stale after an edit of the curve. The curve is read through the
+    // handle from the store that owns it.
     /// `InverterCurveObj` — inverter efficiency curve (XYcurve) name.
     pub inverter_curve: String,
     pub inverter_curve_obj: Option<XyCurveObj>,
@@ -736,6 +750,8 @@ pub trait InvBasedPce {
     }
 }
 
+// BUG(C2): a free function over the rating inputs and the Thevenin impedance of an inverter.
+// It belongs to `InvBasedPceData` as a method.
 /// The input a harmonics solve names when the Thevenin admittance
 /// `1/(Rthev + j Xthev)` of a PVSystem or Storage is not a finite number,
 /// from the values `?` reads for `[kV, kVA, %R, %X]` and the impedance

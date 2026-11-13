@@ -10,6 +10,8 @@ use crate::elements::pc::source_seq::{ScanType, SequenceType};
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
+// BUG(C2): `Isource` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `Isource` derives `Clone` while it owns mutable state.
 impl Isource {
     /// Pascal `TIsourceObj.MakeLike`. Note: like the Pascal source, this does
     /// **not** recompute `phase_shift` from the (possibly just-copied)
@@ -47,6 +49,8 @@ impl Isource {
     }
 }
 
+// BUG(C2): `Isource` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `Isource` derives `Clone` while it owns mutable state.
 impl DssObject for Isource {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -140,6 +144,9 @@ impl DssObject for Isource {
         self.cd.get_bus(terminal).to_string()
     }
 
+    // BUG(C5): each arm checks the class of `resolved` at run time though the property
+    // declares it, and clones the shape into the source. A typed slot per property holds
+    // the handle, and the shape is read through it from the store.
     /// Resolve a shape reference (`yearly`/`daily`/`duty` → `LoadShape`): store
     /// the name (for the dump), the `ElemId`, and a snapshot clone the
     /// time-series `GetBaseCurr` drives — same pattern as

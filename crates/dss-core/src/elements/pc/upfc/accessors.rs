@@ -17,6 +17,8 @@ use crate::util::EPSILON;
 
 use super::{Upfc, prop};
 
+// BUG(C2): `Upfc` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `Upfc` derives `Clone` while it owns mutable state.
 impl CktElement for Upfc {
     fn cd(&self) -> &CktElementData {
         &self.cd
@@ -37,6 +39,10 @@ impl CktElement for Upfc {
         PosSeqPlan::no_base()
     }
 
+    // BUG(C2): the body installs `yprim_series`, `yprim_shunt` and `yprim` into `cd` by hand.
+    // The install is an operation of `CktElementData`.
+    // BUG(C5): every Y build allocates new matrices. Their owner keeps the storage between
+    // builds and each build refills it.
     /// Pascal `TUPFCObj.CalcYPrim` — build only the series block: the per-phase
     /// admittance `inv(j·Xs·freqmult)` stamped as a 2-terminal series matrix (the
     /// `Z = j·Xs` series Z is diagonal, so its inverse is the per-element inverse).
@@ -144,6 +150,8 @@ impl CktElement for Upfc {
     }
 }
 
+// BUG(C2): `Upfc` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `Upfc` derives `Clone` while it owns mutable state.
 impl Upfc {
     /// Pascal `TUPFCObj.MakeLike` (+ inherited `TPCElement.MakeLike`, which copies
     /// the spectrum). Faithful reproduction includes the upstream
@@ -180,6 +188,8 @@ impl Upfc {
     }
 }
 
+// BUG(C2): `Upfc` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `Upfc` derives `Clone` while it owns mutable state.
 impl DssObject for Upfc {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -280,6 +290,9 @@ impl DssObject for Upfc {
         self.cd.get_bus(terminal).to_string()
     }
 
+    // BUG(C5): the `LossCurve` arm checks the class of `resolved` at run time though the
+    // property declares it, and clones the curve into the UPFC. A typed slot holds the
+    // handle, and the curve is read through it from the store.
     /// Resolve the `LossCurve` (XYcurve snapshot clone) and `Element` (monitored
     /// circuit element, by full name) references.
     fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {

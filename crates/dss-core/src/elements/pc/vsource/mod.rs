@@ -114,6 +114,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 35; // incl. the auto-appended Like
 }
 
+// BUG(C2): a free function that builds the property table of `VSource`. It belongs to
+// `VSource` as an associated function.
 /// Build the `Vsource` property table (`TVSource.DefineProperties`).
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
@@ -181,6 +183,11 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("Vsource", defs, true)
 }
 
+// BUG(C2): every field is public and the NCIM solve writes `cd.iterminal` and
+// `ncim_swing_stamped_at` from outside, and the methods write `cd` fields by hand. The fields
+// belong private, changed through methods of their owner.
+// BUG(C5): `VSource` derives `Clone` while it owns mutable state (impedance matrices, solve
+// buffers, shape copies). The derive goes.
 /// `TVsourceObj`.
 #[derive(Debug, Clone)]
 pub struct VSource {
@@ -229,6 +236,9 @@ pub struct VSource {
     pub daily_shape: String,
     pub duty_shape: String,
     pub spectrum: String,
+    // BUG(C5): `spectrum_obj` and the three `*_shape_obj` fields below keep copies of arena
+    // objects beside their names and handles, stale after an edit of the source object. Each
+    // is read through a handle from the store that owns it.
     /// Resolved harmonic spectrum (Pascal `SpectrumObj`), snapshot-cloned at
     /// edit-completion from the default/explicit `spectrum=` name; consumed by
     /// the harmonic injection path (`GetVterminalForSource`).
@@ -340,6 +350,8 @@ impl VSource {
     }
 }
 
+// BUG(C2): a free function over three values of a `VSource` (`kv_base`, a per-unit value,
+// the phase count). It belongs to `VSource` as a method.
 /// Pascal `Vmag` computation (`RecalcElementData`/`GetVterminalForSource`):
 /// 1-phase uses kV directly; polyphase divides by `2·sin(π/n)` (= √3 for 3
 /// phases).

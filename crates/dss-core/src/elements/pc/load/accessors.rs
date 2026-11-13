@@ -20,6 +20,8 @@ use crate::util::sqrt3;
 
 use super::{Connection, Load, LoadModel, LoadSpec, LoadStatus, nconds_for_connection, prop};
 
+// BUG(C2): `Load` exposes its fields to outside writers and writes `cd` fields by hand.
+// BUG(C5): `Load` derives `Clone` while it owns mutable state.
 impl CktElement for Load {
     fn cd(&self) -> &CktElementData {
         &self.cd
@@ -85,6 +87,10 @@ impl CktElement for Load {
         PosSeqPlan::with_actions(actions)
     }
 
+    // BUG(C2): the body installs `yprim_shunt`, `yprim_series`, `yprim` and `inj_current` into
+    // `cd` by hand. The install is an operation of `CktElementData`.
+    // BUG(C5): every Y build allocates new matrices. Their owner keeps the storage between
+    // builds and each build refills it.
     /// Pascal `TLoadObj.CalcYPrim`.
     fn calc_yprim(&mut self, sys: &SysCtx) {
         if self.cd.refuse_yprim_on_recalc() {
@@ -198,6 +204,8 @@ impl CktElement for Load {
             let mut errors = crate::diag::ErrorLog::new();
             self.calc_load_model_contribution(sys, node_v, &mut errors);
         }
+        // BUG(C2): this tail works on `cd` alone (the terminal currents as `Yprim·V` less
+        // `inj_current`). It belongs to `CktElementData` as a method.
         // TPCElement.GetTerminalCurrents
         if self.cd.iterminal_updated {
             curr.copy_from_slice(&self.cd.iterminal[..curr.len()]);
@@ -215,6 +223,8 @@ impl CktElement for Load {
     }
 }
 
+// BUG(C2): `Load` exposes its fields to outside writers and writes `cd` fields by hand.
+// BUG(C5): `Load` derives `Clone` while it owns mutable state.
 impl Load {
     /// Pascal `TLoadObj.MakeLike`.
     pub(crate) fn make_like(&mut self, other: &Self) {
@@ -284,6 +294,8 @@ impl Load {
     }
 }
 
+// BUG(C2): `Load` exposes its fields to outside writers and writes `cd` fields by hand.
+// BUG(C5): `Load` derives `Clone` while it owns mutable state.
 impl DssObject for Load {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -450,6 +462,9 @@ impl DssObject for Load {
         self.cd.get_bus(terminal).to_string()
     }
 
+    // BUG(C5): each arm checks the class of `resolved` at run time though the property
+    // declares it, and clones the shape into the load. A typed slot per property holds the
+    // handle, and the shape is read through it from the store.
     /// Resolve a shape reference: store the resolved object's name (for the
     /// dump), its typed `Idx`, and a snapshot clone of the object that
     /// `SetNominalLoad` drives through `GetMultAtHour` (Pascal stores the live

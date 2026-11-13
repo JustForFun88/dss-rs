@@ -14,6 +14,8 @@ use crate::util::EPSILON;
 
 use super::{Connection, IndMach012};
 
+// BUG(C2): `IndMach012` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `IndMach012` derives `Clone` while it owns mutable state.
 impl IndMach012 {
     /// Pascal `TIndMach012Obj.CalcYPrimMatrix`. Dynamics/harmonics use the
     /// constant equivalent `Yeq`; power flow uses the vars-only `Yeq` (`-j/ZBase`).
@@ -80,6 +82,10 @@ impl IndMach012 {
         }
     }
 
+    // BUG(C2): the body installs `yprim_shunt`, `yprim_series`, `yprim` and `inj_current` into
+    // `cd` by hand. The install is an operation of `CktElementData`.
+    // BUG(C5): every Y build allocates new matrices. Their owner keeps the storage between
+    // builds and each build refills it.
     /// Pascal `TIndMach012Obj.CalcYPrim`.
     pub(super) fn calc_yprim_impl(&mut self, sys: &SysCtx) {
         let yorder = self.cd.yorder;
@@ -101,6 +107,8 @@ impl IndMach012 {
         self.cd.apply_yprim_open_conductor_calcs();
     }
 
+    // BUG(C2): the body works on `cd` alone (terminal voltages, `inj_current = Yprim·V`).
+    // The operation belongs to `CktElementData` as a method.
     /// Pascal `CalcYPrimContribution`: `InjCurrent = Yprim · V(node)`.
     pub(super) fn calc_yprim_contribution(&mut self, node_v: &[Complex64]) {
         self.cd.compute_vterminal(node_v);
@@ -253,6 +261,8 @@ impl IndMach012 {
 
         let nphases = self.cd.nphases;
         let nconds = self.cd.nconds;
+        // BUG(C5): a new buffer is allocated on every harmonic pass. `cd.complex_buffer` keeps
+        // that storage between passes and each pass refills it.
         let mut buffer = vec![Complex64::ZERO; nconds];
         for (i, slot) in buffer.iter_mut().enumerate().take(nphases) {
             *slot = e;

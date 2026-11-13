@@ -28,6 +28,8 @@ const TWO_PI: f64 = std::f64::consts::TAU;
 
 const NUM_VARIABLES: usize = 6;
 
+// BUG(C2): `Vccs` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `Vccs` derives `Clone` while it owns mutable state.
 impl Vccs {
     /// Seed the waveform (or, in `RmsMode`, the phasor) state from the present
     /// terminal voltage and current. The state a direct solve reads, the
@@ -62,6 +64,9 @@ impl Vccs {
         self.s_idx_u = 0;
         self.s_idx_y = 0;
 
+        // BUG(C5): `fbp1` and `fbp2` are moved out of `self` and put back at the end so that
+        // the history fields can be written while the curves are read. Direct access borrows
+        // the curves beside `whist`, `wlast`, `z`, `zlast` and `y2` after `clear_history`.
         // The waveform history is defined only through `bp1` and `bp2`.
         let Some((mut fbp1, mut fbp2)) = self.take_breakpoint_curves() else {
             return;
@@ -108,6 +113,8 @@ impl Vccs {
         self.y2.fill(0.0);
     }
 
+    // BUG(C5): moves `fbp1` and `fbp2` out of the element and puts them back when one is
+    // unset. The callers borrow both curves in place beside the fields they write.
     /// Takes `bp1` and `bp2` out of the element when both are set, else leaves
     /// both in place.
     fn take_breakpoint_curves(&mut self) -> Option<(XyCurveObj, XyCurveObj)> {
@@ -180,6 +187,9 @@ impl Vccs {
             self.integrate_phasor_states(sys, node_v);
             return;
         }
+        // BUG(C5): `fbp1`, `fbp2` and `ffilter` are moved out of `self` for the step and put
+        // back on every exit. Direct access borrows the curves beside the history fields once
+        // `compute_iterminal` has run.
         // Without its three curves the waveform model has nothing to integrate.
         let Some((mut fbp1, mut fbp2)) = self.take_breakpoint_curves() else {
             return;
@@ -273,6 +283,9 @@ impl Vccs {
 
     /// Pascal `TVCCSObj.IntegratePhasorStates` — the RMS/phasor (PLL) path.
     fn integrate_phasor_states(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
+        // BUG(C5): `ffilter` is moved out of `self` and put back on both exits. Direct access
+        // borrows it beside `z` and `whist` once `compute_iterminal` and
+        // `update_sequence_voltage` have run.
         // Without its filter the RMS model has nothing to integrate.
         let Some(filter) = self.ffilter.take() else {
             return;

@@ -13,6 +13,8 @@ use crate::util::EPSILON;
 
 use super::{Connection, Load, LoadModel};
 
+// BUG(C2): `Load` exposes its fields to outside writers and writes `cd` fields by hand.
+// BUG(C5): `Load` derives `Clone` while it owns mutable state.
 impl Load {
     /// The admittance of one phase of the load at the present frequency: the
     /// harmonic model splits it into a series and a parallel R-L branch.
@@ -92,6 +94,8 @@ impl Load {
         }
     }
 
+    // BUG(C5): `stick_curr` takes all of `self` and a flag that picks the `cd` array it
+    // writes. Direct access passes the target array (`&mut [Complex64]`) and the connection.
     /// Pascal `StickCurrInTerminalArray` — `kind` selects the target array
     /// since Rust can't alias `&mut` fields. `i` is the 0-based phase.
     fn stick_curr(&mut self, into_iterminal: bool, curr: Complex64, i: usize) {
@@ -219,6 +223,8 @@ impl Load {
         }
     }
 
+    // BUG(C2): the body works on `cd` alone (terminal voltages, `inj_current = Yprim·V`).
+    // The operation belongs to `CktElementData` as a method.
     /// Pascal `CalcYPrimContribution`: `InjCurrent = Yprim · V(node)`.
     fn calc_yprim_contribution(&mut self, node_v: &[Complex64]) {
         self.cd.compute_vterminal(node_v);
@@ -501,6 +507,8 @@ impl Load {
         // Open terminals: use the admittance model for injection
         // ("THIS MAY NOT WORK !!! WATCH FOR BAD RESULTS" — ported as-is).
         if self.open_load_solution_count != sys.solution_count {
+            // BUG(C5): a new matrix is built for each new solution and replaces the last one.
+            // `yprim_open_cond` keeps its storage between solutions and each one refills it.
             let mut y = CMatrix::new(self.cd.yorder);
             self.calc_yprim_matrix(&mut y, sys);
             let mut k = 0usize;

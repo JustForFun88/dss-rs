@@ -73,6 +73,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 21; // incl. Like
 }
 
+// BUG(C2): a free function that builds the property table of `Upfc`. It belongs to `Upfc`
+// as an associated function.
 /// `TUPFC.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     // Pascal `UPFC.pas:242-257`: PF is `PowerFactorLimits`, Frequency is
@@ -118,6 +120,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("UPFC", defs, true)
 }
 
+// BUG(C2): the methods of `Upfc` write the fields of its `CktElementData` part by hand
+// (`self.cd.<field> = ..`). Those writes belong to methods of `CktElementData`.
+// BUG(C5): `Upfc` derives `Clone` while it owns mutable state (controller registers,
+// injection currents, the loss-curve copy). The derive goes.
 /// `TUPFCObj`.
 #[derive(Debug, Clone)]
 pub struct Upfc {
@@ -176,6 +182,8 @@ pub struct Upfc {
     pub upfc_power: Complex64,
     pub qideal: f64,
 
+    // BUG(C5): `loss_curve_obj` keeps a copy of an arena XYcurve beside its name, stale after
+    // an edit of the curve. The curve is read through a handle from the store that owns it.
     /// `UPFCLossCurveObj` — losses-vs-Vpu XYcurve reference (snapshot clone).
     pub loss_curve_name: String,
     pub loss_curve_obj: Option<XyCurveObj>,

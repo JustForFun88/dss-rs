@@ -16,6 +16,8 @@ use crate::support::mathutil::power_factor;
 
 use super::{IndMach012, nconds_for_connection, prop};
 
+// BUG(C2): `IndMach012` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `IndMach012` derives `Clone` while it owns mutable state.
 impl CktElement for IndMach012 {
     fn cd(&self) -> &CktElementData {
         &self.cd
@@ -201,6 +203,8 @@ impl CktElement for IndMach012 {
     }
 }
 
+// BUG(C2): `IndMach012` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `IndMach012` derives `Clone` while it owns mutable state.
 impl IndMach012 {
     /// Recompute the live `pf` render cache from the present solution — the
     /// executive's half of r4133's
@@ -253,6 +257,9 @@ impl IndMach012 {
             self.live_pf = power_factor(Complex64::ZERO);
             return;
         }
+        // BUG(C5): the whole machine is cloned so that the stateful terminal-current recompute
+        // leaves `self` unchanged. The recompute takes `&self` and returns the currents, so
+        // the power factor needs no copy.
         let mut probe = self.clone();
         probe.refresh_iterminal(sys, node_v);
         self.live_pf = power_factor(probe.terminal_power(sys, node_v, 1));
@@ -300,6 +307,8 @@ impl IndMach012 {
     }
 }
 
+// BUG(C2): `IndMach012` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `IndMach012` derives `Clone` while it owns mutable state.
 impl DssObject for IndMach012 {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -430,6 +439,9 @@ impl DssObject for IndMach012 {
         self.cd.get_bus(terminal).to_string()
     }
 
+    // BUG(C5): each arm checks the class of `resolved` at run time though the property
+    // declares it, and clones the shape into the machine. A typed slot per property holds
+    // the handle, and the shape is read through it from the store.
     /// Resolve a shape reference (snapshot-clone like the Generator shape refs).
     fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use prop::*;

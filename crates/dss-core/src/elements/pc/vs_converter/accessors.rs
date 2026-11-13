@@ -12,6 +12,8 @@ use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
 
+// BUG(C2): `VsConverter` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `VsConverter` derives `Clone` while it owns mutable state.
 impl CktElement for VsConverter {
     fn cd(&self) -> &CktElementData {
         &self.cd
@@ -54,6 +56,10 @@ impl CktElement for VsConverter {
         }
     }
 
+    // BUG(C2): the body installs `yprim_series`, `yprim_shunt` and `yprim` into `cd` by hand.
+    // The install is an operation of `CktElementData`.
+    // BUG(C5): every Y build allocates new matrices. Their owner keeps the storage between
+    // builds and each build refills it.
     /// Pascal `TVSConverterObj.CalcYPrim` — build `YPrim_series` only: the AC
     /// admittance `cinv(Rac + j·Xac·freqmult)` as a 2-terminal series block on the
     /// first `phases − Ndc` (AC) conductors; the DC conductors stay zero.
@@ -144,6 +150,8 @@ impl CktElement for VsConverter {
     }
 }
 
+// BUG(C2): `VsConverter` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `VsConverter` derives `Clone` while it owns mutable state.
 impl VsConverter {
     /// Pascal `TVSConverterObj.MakeLike` (+ inherited `TPCElement.MakeLike`,
     /// which copies the spectrum).
@@ -180,6 +188,8 @@ impl VsConverter {
     }
 }
 
+// BUG(C2): `VsConverter` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `VsConverter` derives `Clone` while it owns mutable state.
 impl DssObject for VsConverter {
     fn data(&self) -> &DssObjData {
         &self.cd.obj

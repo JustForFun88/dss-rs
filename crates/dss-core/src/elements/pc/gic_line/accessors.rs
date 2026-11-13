@@ -6,6 +6,8 @@ use num_complex::Complex64;
 use super::GicLine;
 use crate::obj::base::{DssObjData, DssObject};
 
+// BUG(C2): `GicLine` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `GicLine` derives `Clone` while it owns mutable state.
 impl GicLine {
     /// Pascal `TGICLineObj.MakeLike` (GICLine.pas:312). Copies ONLY Z/R/X/C/
     /// Volts/Angle/SrcFrequency/Scan/Sequence (plus the inherited spectrum);
@@ -39,6 +41,8 @@ impl GicLine {
     }
 }
 
+// BUG(C2): `GicLine` writes the fields of its `CktElementData` part by hand.
+// BUG(C5): `GicLine` derives `Clone` while it owns mutable state.
 impl DssObject for GicLine {
     fn data(&self) -> &DssObjData {
         &self.cd.obj

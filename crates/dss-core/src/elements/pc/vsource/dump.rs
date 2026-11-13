@@ -10,6 +10,8 @@ use crate::report::save::dump::{self, DumpCtx};
 
 use super::VSource;
 
+// BUG(C2): `VSource` exposes its fields to outside writers and writes `cd` fields by hand.
+// BUG(C5): `VSource` derives `Clone` while it owns mutable state.
 impl VSource {
     pub(crate) fn dump_body(&self, out: &mut String, cx: &DumpCtx, complete: bool) {
         dump::prefix_pc(out, cx, self, &self.cd, complete);
