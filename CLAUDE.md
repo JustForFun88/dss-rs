@@ -63,9 +63,14 @@ Where things are: `tests/golden/` (byte goldens), `tests/corpus/` (our deck fami
 
 ## Code
 - **C1.** `#![forbid(unsafe_code)]` in every workspace crate. `dss-epri` is the one exception (`publish = false`, `#[cfg(windows)]`, `#![deny(unsafe_op_in_unsafe_fn)]`, `// SAFETY` docs) and never ships. Prefer pure-Rust crates: a dependency is safe to use from safe code.
-- **C2.** Idiomatic Rust in the functional style: behaviour as methods on its types, work as chains of methods, iterators and combinators, no free-standing function beyond `main`, tests and exported symbols. Mutation is explicit (`&mut self`), never hidden or global.
+- **C2. Idiomatic Rust in the functional style.** Give each independently managed part of the program a type named for its role. Keep its representation private and define its operations as methods: an operation is a method of the type whose data it changes. Make data flow explicit through arguments and return values. Compose operations through method calls, iterators, and combinators. Free-standing functions are limited to `main`, tests, and exported symbols.
 - **C3.** No code is frozen: passing tests are the only contract. A module that grows large or mixes concerns becomes a directory module (`foo/mod.rs` plus submodules) with no behaviour change.
 - **C4.** Unit tests stay inline as `#[cfg(test)]` modules, in a sibling `tests.rs` only when the file is large, the `#[cfg(test)] mod tests;` line right after the module doc. A comparison with an OpenDSS engine goes through `dss-test-harness`. No test reads a document (`.md`).
+- **C5. State ownership.** Each piece of mutable state has one owner, and none is global. Give each operation access only to the data it reads, changes, or consumes, including through `self` and context objects. An operation that changes several parts belongs to their smallest common owner, which only coordinates: it calls the methods of its parts and passes values between them. Make mutation explicit through `&mut self` or `&mut` arguments.
+
+  Keep state with its owner and update it in place. Types that own mutable state across operations do not implement `Clone`. No operation holds a temporary copy of state: what it gathers to work on borrows from the owner. A copy that must exist is state of its own, with an owner, a type and a role.
+
+  Resolve borrow conflicts by narrowing access or restructuring ownership. A workaround is code that exists only so that the borrow checker accepts the program: with direct access in its place the result would be the same. Workarounds are prohibited in every form: a copy written back, a value moved out and put back, a copied worklist, shared ownership, interior mutability. If the fix exceeds the task's scope, describe the conflict and stop (H6).
 
 ## Never crash
 An engineer's study must not die on a bad script.
