@@ -6,6 +6,8 @@
 //!
 //! `floattostr` == FPC `FloatToStr` → [`crate::util::float_to_str`].
 
+// BUG(C5): each export below takes the whole circuit to read one matrix of `ckt.ad`; it is an
+// operation of the A-Diakoptics state `AdTearing`, which a report should borrow alone.
 use crate::circuit::Circuit;
 use crate::support::sparse_math::SparseComplex;
 use crate::util::float_to_str;

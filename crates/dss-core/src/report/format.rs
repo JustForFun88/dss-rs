@@ -263,6 +263,8 @@ pub fn enclose_quotes(s: &str) -> String {
     format!("\"{s}\"")
 }
 
+// BUG(C2): a free function, one of several copies of the bus-name stripping in the engine; the
+// bus spec should be a type that yields its bare name, written once.
 /// Pascal `StripExtension(S)` (`Common/Utilities.pas`): everything up to the first
 /// `.` (a bus name with its `.node.node…` suffix removed); no `.` → `S` unchanged.
 pub fn strip_extension(s: &str) -> String {

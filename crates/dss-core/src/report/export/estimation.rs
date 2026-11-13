@@ -32,6 +32,8 @@ use crate::elements::meter::sensor::Sensor;
 use crate::exec::registry::DssClass;
 use crate::report::format;
 
+// BUG(C2): the staging buffer is a bare array alias and its operations are the free functions
+// below; a `TempX` type should own the buffer and those operations as methods.
 /// Pascal's `TempX: array[1..3] of Double` staging buffer.
 type TempX = [f64; 3];
 
@@ -99,6 +101,9 @@ pub(crate) fn export_estimation(classes: &mut [DssClass], ckt: &Circuit) -> Stri
          \"I1 %Err\", \"I2 %Err\", \"I3 %Err\"\n",
     );
     for &r in &ckt.energy_meters {
+        // BUG(C2): the meter and sensor handles come from typed lists, yet each use below
+        // checks the class again with `get::<T>` and a skip or an `expect`; typed handles that
+        // the registry resolves to `&EnergyMeter` and `&Sensor` need no check.
         let name = classes[r.class_ord()].arena[r.index()]
             .data()
             .name()

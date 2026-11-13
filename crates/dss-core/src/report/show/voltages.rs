@@ -54,6 +54,8 @@ pub(crate) fn show_voltages(ckt: &Circuit, ll: bool) -> String {
     rep.finish()
 }
 
+// BUG(C2): the bus is a bare `usize` index into the circuit's bus list; a typed bus handle
+// owned by `Circuit` would let the compiler refuse a node or terminal index here.
 /// One bus's symmetrical-component voltage line (Pascal `WriteSeqVoltages(F, i,
 /// LL)`): V1(kV)/pu/V2/%V2·V1⁻¹/V0/%V0·V1⁻¹. Shared by [`show_voltages`] (looped
 /// over all buses) and `Show busflow` (a single bus). `mbnl` is
@@ -152,6 +154,8 @@ pub(crate) fn show_voltages_nodes(ckt: &Circuit, ll: bool) -> String {
     rep.finish()
 }
 
+// BUG(C2): the bus is a bare `usize` index into the circuit's bus list; a typed bus handle
+// owned by `Circuit` would let the compiler refuse a node or terminal index here.
 /// One bus's line-ground (+ line-line) node-voltage block (Pascal `WriteBusVoltages(F,
 /// i, LL)`). Shared by [`show_voltages_nodes`] (looped) and `Show busflow` (single
 /// bus). `mbnl` is [`super::max_bus_name_length`].

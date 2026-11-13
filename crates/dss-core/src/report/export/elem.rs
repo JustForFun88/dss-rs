@@ -73,6 +73,8 @@ pub(crate) fn export_elem_currents(
     )
 }
 
+// BUG(C5): the export takes `_sys` and never reads it, and takes `node_v` beside the circuit
+// that holds the solved node voltages; the signature should drop both.
 /// `Export ElemVoltages` (Pascal `WriteElemVoltages`): `ComputeVterminal`, then
 /// `|V|`/angle per conductor.
 pub(crate) fn export_elem_voltages(

@@ -11,6 +11,8 @@
 //! access-violate on the NIL, an OpenDSS bug this engine does not reproduce;
 //! every meaningful call runs a `CalcIncMatrix*` first.
 
+// BUG(C5): each export below takes the whole circuit to read `ckt.solution.inc_matrix`; it is
+// an operation of `IncMatrixState`, which a report should borrow alone.
 use crate::circuit::Circuit;
 
 /// Pascal `ExportIncMatrix`: `Row,Col,Value` per incidence-matrix non-zero.

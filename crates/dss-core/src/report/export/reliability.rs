@@ -23,6 +23,8 @@ pub(crate) fn export_bus_reliability(ckt: &Circuit) -> String {
         "Bus, Lambda, Num-Interruptions, Num-Customers, Cust-Interruptions, Duration, Total-Miles\n",
     );
     for bus in &ckt.buses {
+        // BUG(C5): the name is read from `Bus::name`, a copy of the name the circuit's
+        // `bus_list` holds; the circuit should keep one bus name, read through one accessor.
         // Pascal `CheckForBlanks(AnsiUpperCase(BusList.NameOfIndex(i)))`.
         s.push_str(&format!(
             "{}, {}, {}, {}, {}, {}, {}\n",

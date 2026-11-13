@@ -14,6 +14,9 @@ use crate::elements::meter::EnergyMeter;
 use crate::elements::traits::ElemId;
 use crate::exec::registry::DssClass;
 
+// BUG(C2): a handle of the energy-meter list has its class checked again with an `expect`, in
+// a helper written again in another report; a typed meter handle that the registry resolves
+// to `&EnergyMeter` replaces it.
 /// Downcast a `ckt.energy_meters` ref to its concrete [`EnergyMeter`].
 fn as_meter(classes: &[DssClass], r: ElemId) -> &EnergyMeter {
     classes[r.class_ord()]
@@ -22,6 +25,8 @@ fn as_meter(classes: &[DssClass], r: ElemId) -> &EnergyMeter {
         .expect("energy_meters holds EnergyMeter")
 }
 
+// BUG(C2): a free function, one of several copies of the element full name in the reports; the
+// registry type should name a handle in one method.
 /// Pascal `TDSSCktElement.FullName` = `ParentClass.Name + '.' + Name`.
 fn full_name(classes: &[DssClass], r: ElemId) -> String {
     format!(

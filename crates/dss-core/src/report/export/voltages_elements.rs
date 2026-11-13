@@ -12,6 +12,8 @@ use crate::report::format;
 use crate::support::complexutil::cdang;
 use crate::util::sqrt3;
 
+// BUG(C5): the export takes the whole registry as `&mut [DssClass]` while its body only
+// reads; it should borrow the registry shared.
 /// Build the `Export VoltagesElements` body (Pascal `ExportVoltagesElements`).
 /// Walks Sources → PD → Faults → PC: Pascal iterates `Sources`/`PDElements`/
 /// `PCElements`, and since `TFaultObj` is a PD element, our split `faults` list is
@@ -78,6 +80,8 @@ fn write_element_voltages(
     for j in 0..nterm {
         s.push_str(&format!(",{},", j + 1)); // Terminal
         s.push_str(&format!("{ncond},{nphases},")); // NumConductors,NPhases
+        // BUG(C5): the name is read from `Bus::name`, a copy of the name the circuit's
+        // `bus_list` holds; the circuit should keep one bus name, read through one accessor.
         // Bus = the terminal's bus name, uppercased (Pascal `StripExtension` of
         // `FirstBus`/`NextBus` + `AnsiUpperCase`).
         let bus_name = cd.terminals[j]

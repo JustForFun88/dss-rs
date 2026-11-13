@@ -71,6 +71,8 @@ pub(crate) use yprim::show_yprim;
 use crate::circuit::Circuit;
 use crate::exec::registry::DssClass;
 
+// BUG(C2): a free function that walks the bus names of one `Circuit`; it is a method of
+// `Circuit`.
 /// Pascal `SetMaxBusNameLength` (`ShowResults.pas:101`): the longest bus name,
 /// floored at 4. Walks `BusList.NameOfIndex` (the lowercased stored names). Uses
 /// **byte** length (`str::len`), matching Pascal's `Length(AnsiString)` (byte-1:1;
@@ -115,6 +117,8 @@ pub(crate) fn max_bus_name_length(ckt: &Circuit) -> usize {
     m
 }
 
+// BUG(C2): a free function that names each element of the circuit through the class registry;
+// naming a handle is an operation of the registry type.
 /// Pascal `SetMaxDeviceNameLength` (`ShowResults.pas:111-123`): the longest
 /// `Length(element.Name) + Length(element.ParentClass.Name) + 1` over the
 /// `CktElements` master list — i.e. the longest `Class.Name` full name, 0 for an

@@ -32,6 +32,9 @@ fn check_bus_reference(elem: &dyn CktElement, bus_idx: usize) -> Option<usize> {
     (0..cd.nterms).find_map(|i| (cd.terminals[i].bus_ref == Some(bus_idx)).then_some(i + 1))
 }
 
+// BUG(C2): this report and its helpers in this file pass the registry, circuit, solver context
+// and node voltages as loose arguments and the bus as a bare `usize`; that borrow set needs a
+// type named for its role, and the bus a typed handle owned by `Circuit`.
 /// Build the `Show busflow` text. `bus_idx` is the 0-based bus index (already
 /// resolved; the dispatcher raises #219 for an unknown bus), `bus_name` the raw
 /// name, `opt` = 0 kVA / 1 MVA, `code` = 0 seq / 1 element. Each element is read

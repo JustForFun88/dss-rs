@@ -37,6 +37,8 @@ fn is_deferral_type(t: PropType) -> bool {
     )
 }
 
+// BUG(C2): a free function over one object and its class's `ClassProps`; building the JSON of
+// an object is an operation of `ClassProps`.
 /// Pascal `Obj_ToJSONData`: build the ordered JSON object for `obj`.
 pub fn obj_to_json_data(
     cls: &ClassProps,
@@ -157,6 +159,8 @@ pub fn obj_to_json_data(
     Json::Obj(members)
 }
 
+// BUG(C2): a free function over a class's `ClassProps` and `ClassArena`, the parts of a
+// `DssClass`; it is a method of `DssClass`.
 /// Pascal `Batch_ToJSON`: a JSON array of `obj_to_json_data` over a class's
 /// objects. `ExcludeDisabled` drops disabled circuit elements. The Pascal
 /// `IncludeDefaultObjs`/`Flg.DefaultAndUnedited` gating is a no-op here: the Rust

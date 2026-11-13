@@ -101,6 +101,8 @@ pub(crate) use yprims::export_yprims;
 use crate::elements::traits::{CktElement, ElemId};
 use crate::exec::registry::DssClass;
 
+// BUG(C2): an enabled walk of a handle list through the class registry, written as a free
+// function; it is a method of the registry type.
 /// Walk a circuit element list (`Sources`/`PDElements`/`Faults`/`PCElements`) in
 /// order, invoking `f(full_name, &mut elem)` for each **enabled** element — the
 /// shared iteration the element exports build on (Pascal `<list>.First`/`.Next`
@@ -119,6 +121,9 @@ pub(crate) fn for_each_enabled_elem<F: FnMut(&str, &mut dyn CktElement)>(
 ) {
     for &r in refs {
         let class_name = classes[r.class_ord()].props.class_name();
+        // BUG(C5): the object is borrowed mutably only to read its name, and the walk lends
+        // `&mut dyn CktElement` also to visitors that only read; a shared borrow serves the
+        // name and those visitors.
         let obj = &mut classes[r.class_ord()].arena[r.index()];
         let name = format!("{}.{}", class_name, obj.data().name());
         if let Some(elem) = classes[r.class_ord()].arena.try_ckt_elem_mut(r.index())

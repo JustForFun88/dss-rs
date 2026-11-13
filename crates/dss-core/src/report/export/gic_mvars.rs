@@ -11,6 +11,8 @@ use crate::elements::traits::SysCtx;
 use crate::exec::registry::DssClass;
 use crate::report::format;
 
+// BUG(C5): the export takes the circuit as `_ckt` and never reads it; the signature should
+// drop it.
 /// Build the `Export GICMvars` body (Pascal `ExportGICMvar`). Walks the
 /// **GICTransformer class** ElementList in creation order (Pascal
 /// `GICClass.ElementList.First`/`.Next`, no `Enabled` filter), invoking each
@@ -22,6 +24,9 @@ pub(crate) fn export_gic_mvars(
     node_v: &[Complex64],
 ) -> String {
     let mut s = String::from("Bus, Mvar, GIC Amps per phase\n");
+    // BUG(C2): the class is found by comparing its name with a string and walked by bare
+    // index with a class test on each object; the registry should hand out a typed view of
+    // its `GicTransformer` objects.
     let Some(ci) = classes
         .iter()
         .position(|c| c.props.class_name().eq_ignore_ascii_case("GICTransformer"))

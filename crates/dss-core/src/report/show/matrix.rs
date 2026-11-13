@@ -16,6 +16,8 @@ use crate::circuit::Circuit;
 use crate::report::format;
 use crate::report::table::{Cell, Report, Row};
 
+// BUG(C5): the report takes `_n` and `_ckt` and reads neither; the signature should drop
+// both.
 /// Build the `Show Y` body. `n`/`coords` are the assembled system Y from
 /// `Dss::system_y_csc` (0-based COO). `_ckt` is unused (the report is node-index
 /// only, no bus labels) but kept for a uniform formatter signature.

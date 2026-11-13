@@ -98,6 +98,7 @@ pub struct SaveCtx<'a> {
     pub enums: &'a EnumRegistry,
 }
 
+// BUG(C2): a free function over a `SaveCtx` and one object; it is a method of `SaveCtx`.
 /// One ` <Name>=<value>` token of the `Save` line for property `iprop`, the
 /// value quoted when it holds a blank, skipping an empty value and the `----`
 /// conditional-value sentinel. A number that is not a number is written `Nan`
@@ -148,6 +149,7 @@ pub(crate) fn save_write_token(out: &mut String, cx: &SaveCtx, obj: &dyn DssObje
     }
 }
 
+// BUG(C2): a free function over `ClassProps` and one object; it is a method of `ClassProps`.
 /// The sizer and own order of the symmetric matrix `iprop` when a later edit
 /// of its sizer (a `phases=` edit after the matrix) left it of another order.
 fn held_order(cls: &ClassProps, obj: &dyn DssObject, iprop: usize) -> Option<(usize, usize)> {
@@ -175,6 +177,7 @@ fn write_sizer_once(out: &mut String, name: &str, value: &str) {
     }
 }
 
+// BUG(C2): a free function over a `SaveCtx` and one object; it is a method of `SaveCtx`.
 /// Pascal `TDSSObject.SaveWrite` (r4133
 /// `Version8/Source/General/DSSObject.pas:130-173`): append
 /// ` <Name>=<CheckForBlanks(value)>` for **only the explicitly-set properties,
@@ -255,6 +258,7 @@ pub fn save_write(out: &mut String, cx: &SaveCtx, obj: &dyn DssObject) {
     }
 }
 
+// BUG(C2): a free function over `ClassProps`; it is a method of `ClassProps`.
 /// The property whose **live** value sizes the text parse of property `p` of
 /// the same object, if any — Pascal `PropertySizingPropertyIndex`
 /// (`getSizePropertyIndex`) restricted to what the port's parse reads
@@ -308,6 +312,8 @@ fn own_sizer(cls: &ClassProps, pd: &PropDef) -> usize {
     }
 }
 
+// BUG(C2): a free function over `ClassProps`, written again in the JSON schema export; it is
+// one method of `ClassProps`.
 /// The struct-array count property (Transformer / AutoTrans / XfmrCode
 /// `Windings`) — Pascal `PropertyStructArrayCountOffset`, which the port carries
 /// as the `size_prop` of every plural on-struct array. `0` for a class without
@@ -338,6 +344,8 @@ struct Hoist {
     lead: Vec<usize>,
 }
 
+// BUG(C2): a free function over `ClassProps` and one object that builds a `Hoist`; it is a
+// constructor of `Hoist`.
 /// The **sizing-property hoist**: how [`write_dss_object`] writes
 /// an object's set properties ([`Hoist`]).
 ///
@@ -427,6 +435,8 @@ fn dyn_out_behind_dynamic_eq(cls: &ClassProps, order: &mut Vec<usize>) {
     }
 }
 
+// BUG(C2): a free function over `ClassProps` and one object that builds a `Hoist`; it is a
+// constructor of `Hoist`.
 /// The sizing-property hoist of [`save_order`] over the set-order `chain`.
 fn sizing_hoist(cls: &ClassProps, obj: &dyn DssObject, chain: &[usize]) -> Hoist {
     // Fast path: most lines hold no sized property at all.
@@ -507,6 +517,7 @@ fn sizing_hoist(cls: &ClassProps, obj: &dyn DssObject, chain: &[usize]) -> Hoist
     }
 }
 
+// BUG(C2): a free function over a `SaveCtx` and one object; it is a method of `SaveCtx`.
 /// Close the line of an object whose `?` reads per-conductor or per-winding
 /// properties through a cursor — a LineGeometry's `Cond`, a transformer's
 /// `Wdg`, which a later `Edit` also follows — with ` <cursor>=<k>` when the
@@ -554,6 +565,8 @@ fn restore_cursor(
     }
 }
 
+// BUG(C5): the write of one object takes its whole arena mutably and a bare index to change
+// that object's chain and saved flag; it should take the object alone, `&mut dyn DssObject`.
 /// Pascal `WriteDSSObject` (`Utilities.pas:1221-1235`): one script line —
 /// `<New|Edit> "Class.name"` (the full name always double-quoted) +
 /// [`save_write`] + ` ENABLED=NO` when the object is a **disabled** circuit
@@ -588,12 +601,15 @@ pub fn write_dss_object(
     out.push('.');
     out.push_str(arena.obj(idx).data().name());
     out.push('"');
-    // The sizing-property hoist: the sizers it leads with, then the chain
-    // re-stamped in save order; restored right after the dispatch below.
+    // BUG(C2): the save order reaches the class bodies through the object's property chain,
+    // re-stamped below and restored after the dispatch, not as an argument; `save_write` and
+    // each `save_write_body` should take the order and leave the chain as the deck built it.
     let Hoist { order, lead } = save_order(cx.cls, arena.obj(idx));
     for s in lead {
         save_write_token(out, cx, arena.obj(idx), s);
     }
+    // BUG(C5): the whole object data is cloned so that the re-stamped chain can be written
+    // back after the dispatch; the chain must be restored before the object is read again.
     let chain_snapshot = order.map(|order| {
         let data = arena.obj_mut(idx).data_mut();
         let snapshot = data.clone();
@@ -612,6 +628,8 @@ pub fn write_dss_object(
     // LineSpacing body writes `NConds=` first, since the reload refuses every
     // property ahead of it.
     let written = out.len();
+    // BUG(C2): the save body is chosen by trying each class with a body of its own in turn on
+    // a bare index; it should be a method of `DssObject` with the generic line as its default.
     if let Some(xf) = arena.get::<crate::elements::pd::transformer::Transformer>(idx) {
         xf.save_write_body(out, cx);
         restore_cursor(out, written, cx, xf, "Wdg", None);
@@ -675,6 +693,9 @@ pub fn write_dss_object(
     arena.obj_mut(idx).data_mut().set_has_been_saved(true);
 }
 
+// BUG(C5): the class loop takes the class apart through its public fields, walks the arena by
+// index and lends the whole arena to the write of each object; it is a method of `DssClass`
+// that lends each object alone.
 /// The `WriteClassFile` object loop (`Utilities.pas:1170-1189`) with
 /// `saveFlags = []` (the only reachable set on both the `Save <class>` and the
 /// command-path `Save circuit` routes): build the

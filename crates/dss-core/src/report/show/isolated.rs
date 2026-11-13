@@ -18,6 +18,8 @@ use crate::exec::registry::{ClassStore, DssClass};
 use crate::report::format::enclose_quotes;
 use crate::solution::topology::get_isolated_sub_area;
 
+// BUG(C2): whether an element is a PD element is found by trying each PD type in turn on the
+// store, a predicate written again elsewhere; the class kind the handle carries should answer.
 /// Pascal `(DSSObjType and BASECLASSMASK) = PD_ELEMENT`.
 fn is_pd_element(store: &dyn ElemStore, r: ElemId) -> bool {
     store.typed::<Line>(r).is_some()
@@ -27,6 +29,8 @@ fn is_pd_element(store: &dyn ElemStore, r: ElemId) -> bool {
         || store.typed::<Reactor>(r).is_some()
 }
 
+// BUG(C2): a free function, one of several copies of the element full name in the reports; the
+// registry type should name a handle in one method.
 /// Pascal `TDSSCktElement.FullName`.
 fn full_name(classes: &[DssClass], r: ElemId) -> String {
     format!(
@@ -36,6 +40,8 @@ fn full_name(classes: &[DssClass], r: ElemId) -> String {
     )
 }
 
+// BUG(C2): a free function that walks one `CktTree`; it is a method of `CktTree` that takes
+// the registry to name each element.
 /// Write a `CktTree`'s branch/shunt walk into `s` (Pascal's
 /// `(Level) FullName` + `[SHUNT], FullName`).
 fn write_tree(s: &mut String, classes: &[DssClass], tree: &mut CktTree) {
@@ -46,6 +52,8 @@ fn write_tree(s: &mut String, classes: &[DssClass], tree: &mut CktTree) {
             tree.level(),
             full_name(classes, br_ref)
         ));
+        // BUG(C5): the shunt list of the present node is cloned before the loop, though the
+        // loop touches neither the tree nor the node; direct access iterates the list in place.
         let shunts = tree.present_node().shunts.clone();
         for sh in shunts {
             s.push_str(&format!("[SHUNT], {}\n", full_name(classes, sh)));
@@ -54,6 +62,9 @@ fn write_tree(s: &mut String, classes: &[DssClass], tree: &mut CktTree) {
     }
 }
 
+// BUG(C5): the report takes the whole registry and circuit mutably because the topology walk
+// it runs keeps its marks in the elements and buses; the marks should be state of the walk,
+// so that a report borrows the model shared.
 /// Build the `Show Isolated` text (Pascal `ShowIsolated`).
 pub(crate) fn show_isolated(classes: &mut [DssClass], ckt: &mut Circuit) -> String {
     // ---- Phase 1: build the trees (mutating CHECKED/bus_checked). ----
@@ -63,6 +74,9 @@ pub(crate) fn show_isolated(classes: &mut [DssClass], ckt: &mut Circuit) -> Stri
     let bus_checked_final: Vec<bool>;
     let mut isolated_elems: Vec<ElemId> = Vec::new();
     {
+        // BUG(C2): the report builds a `ClassStore` from its field and, here and below, resets
+        // and sets the walk marks of elements and buses field by field, as the topology walk
+        // does again; the owner of the walk should own the reset and the marking.
         let mut store = ClassStore { classes };
         // Reset every element's CHECKED/terminals_checked and every bus's bus_checked
         // (Pascal does NOT set IS_ISOLATED here — that is `ShowTopology`/`GetTopology`).
@@ -85,6 +99,9 @@ pub(crate) fn show_isolated(classes: &mut [DssClass], ckt: &mut Circuit) -> Stri
         };
         bus_checked_after_source = ckt.buses.iter().map(|b| b.bus_checked).collect();
 
+        // BUG(C5): the element list is walked by index and re-read on each pass because the
+        // sub-area walk takes the whole circuit mutably while only bus marks change; direct
+        // access iterates `&ckt.ckt_elements` with the walk borrowing the buses alone.
         // One sub-area per **enabled**, still-unchecked PD element, in CktElements
         // order (Pascal `if TestElement.Enabled then if not Checked then if
         // PD_ELEMENT`, `ShowResults.pas:2915-2918` — a disabled PD element is in

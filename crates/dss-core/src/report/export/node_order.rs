@@ -9,6 +9,8 @@ use crate::elements::traits::CktElement;
 use crate::exec::registry::DssClass;
 use crate::report::export::for_each_enabled_elem;
 
+// BUG(C5): the export takes the whole registry as `&mut [DssClass]` while its body only
+// reads; it should borrow the registry shared.
 /// Build the `Export NodeOrder` body (Pascal `ExportNodeOrder`). Read-only over
 /// the element node refs (routed through the mutable walk since
 /// [`for_each_enabled_elem`] hands out `&mut dyn CktElement`).

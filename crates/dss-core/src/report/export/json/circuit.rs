@@ -40,6 +40,8 @@ use super::{Json, JsonOpts, write_pretty};
 /// `ALTDSS_SCHEMA_ID` (`CAPI_Obj.pas`): the AltDSS JSON schema URL.
 const ALTDSS_SCHEMA_ID: &str = "https://dss-extensions.org/altdss-schema/2023-12-13.schema.json";
 
+// BUG(C2): a free function, one more copy of the yes/no formatter; the yes/no token should be
+// one type that formats itself.
 /// Pascal `StrYOrN` (`Utilities.pas:173`): `Yes`/`No`.
 fn str_y_or_n(b: bool) -> &'static str {
     if b { "Yes" } else { "No" }
@@ -70,6 +72,8 @@ fn get_dss_array(dbls: &[f64]) -> String {
     s
 }
 
+// BUG(C2): a free function, one more copy of the integer-array formatter the executive also
+// writes; the DSS array text should have one owner that formats it.
 /// Pascal `IntArrayToString` (`Utilities.pas:358`): `[NULL]` when empty, else
 /// `[a, b, c]`.
 fn int_array_to_string(arr: &[i32]) -> String {
@@ -87,6 +91,8 @@ fn int_array_to_string(arr: &[i32]) -> String {
     s
 }
 
+// BUG(C2): a free local copy that only forwards to `crate::util::check_for_blanks`; the quoting
+// should have one owner, called directly.
 /// Pascal `CheckForBlanks` (`Utilities.pas:1212`): quote a name that contains a
 /// space (unless it already opens with a bracket/quote).
 fn check_for_blanks(s: &str) -> String {
@@ -207,6 +213,8 @@ fn pre_commands(
     cmds
 }
 
+// BUG(C2): a free function that reads the options of `Circuit`, `Solution` and `AutoAdd`
+// field by field; each owner should render its own `Set` lines.
 /// Build the `PostCommands` array (`CAPI_Obj.pas:2568-2607`): the ~33 solution /
 /// options `Set …` strings with their exact FPC formats, then the
 /// `saveOpenTerminalsJSON` `Open …` lines.
@@ -328,6 +336,9 @@ fn post_commands(ckt: &Circuit, classes: &[DssClass], enums: &EnumRegistry) -> V
     cmds
 }
 
+// BUG(C2): a free function over the whole circuit and registry whose inputs travel as loose
+// arguments behind `too_many_arguments`; that set has no type named for its role, and the
+// dump is an operation of the owner of the circuit and the registry.
 /// Pascal `Obj_Circuit_ToJSON_`: build and serialize the whole-circuit JSON dump.
 /// Always pretty (`FormatJSON()`), regardless of `opts.PRETTY`.
 #[allow(clippy::too_many_arguments)]

@@ -171,6 +171,8 @@ impl EnumMeta {
     }
 }
 
+// BUG(C5): the names, ordinals, bounds and flags of the `DssEnum` are copied into `EnumMeta`
+// only to be read; `EnumMeta` should borrow the `DssEnum` beside its JSON-only fields.
 /// Build the [`EnumMeta`] for a mapped-enum property's [`DssEnum`], applying the
 /// `AltNames`/`AltNamesValid`/`JSONUseNumbers` overrides for the enums that need
 /// them (default: `AltNames == Names`, valid, string). Sourced from the Pascal
@@ -311,6 +313,8 @@ impl ClassProps {
     }
 }
 
+// BUG(C2): a free function over the class's `ClassProps` and a sample object; building the
+// class schema is an operation of `ClassProps`.
 /// Port of `prepareClassJsonSchema(cls, enumIds)` — build the `$defs/<Class>`
 /// schema object from the class's property table and a live all-default sample
 /// object. `class_name` is the Pascal `cls.Name` (== `cls.Class_Name`).
@@ -845,6 +849,8 @@ fn jtype_orig_is_matrix(pd: &PropDef) -> bool {
     )
 }
 
+// BUG(C2): a free function over `ClassProps`, like `struct_index_prop` and
+// `iterator_property_index` below; each is a method of `ClassProps`.
 /// Pascal `PropertySizingPropertyIndex[propIndex]` (`getSizePropertyIndex`) — the
 /// 1-based index of the integer property holding this array's length, or 0 if
 /// the length is computed by function (`SizeIsFunction`, e.g. `DoubleVArray`).
@@ -878,6 +884,8 @@ fn sizing_property_index(props: &ClassProps, pd: &PropDef) -> usize {
     }
 }
 
+// BUG(C2): a free function over `ClassProps`, written again in the Save writer; it is one
+// method of `ClassProps`.
 /// The struct-array element-count property index — Pascal
 /// `PropertyStructArrayCountOffset` resolved to its integer prop (Transformer
 /// `Windings`). The port carries that ordinal on every plural on-struct property's
@@ -1011,6 +1019,9 @@ fn array_default(pd: &PropDef, obj: &dyn DssObject, idx: usize, is_matrix: bool)
             }
             PropType::DoubleSymMatrix => {
                 let order = obj.get_i32(pd.size_prop).max(0) as usize;
+                // BUG(C5): the property array is copied into an owned `Vec` only to be read,
+                // here and in the plain-array default below; a borrowed slice serves (a `Cow`
+                // beside the transposed arm), and `finite_array` should take a slice.
                 let v = obj.get_f64_array(idx)?.to_vec(); // row-major order²
                 (v, order)
             }
@@ -1068,6 +1079,8 @@ fn int_array_default(pd: &PropDef, obj: &dyn DssObject, idx: usize) -> Option<Js
     let vals: Vec<i32> = if pd.flags.contains(PropFlags::ON_ARRAY) {
         obj.get_struct_i32_array(idx)
     } else {
+        // BUG(C5): the integer array is copied out of the object only to be read; a borrowed
+        // slice is the direct access (a `Cow` beside the struct getter's owned values).
         obj.get_i32_array(idx)?.to_vec()
     };
     if vals.is_empty() {

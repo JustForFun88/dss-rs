@@ -16,6 +16,8 @@ use crate::report::format;
 use crate::report::table::{Cell, Report, Row};
 use crate::support::mathutil::{SymComp, power_factor};
 
+// BUG(C2): a free function over the whole registry and circuit; each element's rows are an
+// operation of the element, and the walk one of the owner of the registry and the circuit.
 /// Build the `Show Powers` (code 0) text (Pascal `ShowPowers` case 0). Walks
 /// Sources → PDElements → PCElements reading each element through the
 /// cache-aware `compute_iterminal`, where r4133 calls an unconditional
@@ -262,6 +264,9 @@ pub(crate) fn show_powers_elements(
     rep.finish()
 }
 
+// BUG(C2): this row builder and `write_powers_element` below take the solver context, node
+// voltages and layout widths as loose arguments behind `too_many_arguments`; that set has no
+// type named for its role.
 /// One symmetrical-component power row for terminal `j` (Pascal
 /// `WriteTerminalPowerSeq`, `ShowResults.pas:1357`): `P1 Q1 P2 Q2 P0 Q0` (kW/kvar,
 /// or MW/Mvar for `opt = 1`; each `× 0.003`). Used by `Show busflow`'s seq-powers

@@ -11,9 +11,13 @@
 //! first 6 swing rows are exactly 0 and the length is `2·NumNodes + NumPVphases`),
 //! so the gate on them is structural, not value-pinned.
 
+// BUG(C5): each export below takes the whole circuit to read one part of the NCIM state of its
+// solution; it is an operation of that state, which a report should borrow alone.
 use crate::circuit::Circuit;
 use crate::report::format;
 
+// BUG(C5): the export takes the whole circuit mutably to assemble the triplets of one
+// Jacobian; it should borrow `ncim_jacobian` alone.
 /// Pascal `ExportJacobian` (`ExportResults.pas` l.3903): factor the last NCIM
 /// Jacobian and dump its triplets as `Row,Col,Value` (0-based, column-major, the
 /// real part via `%.10g`). Returns `Err` with the upstream "Jacobian matrix not

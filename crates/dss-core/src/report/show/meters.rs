@@ -14,6 +14,9 @@ use crate::report::export::GEN_REGISTER_NAMES;
 use crate::report::format;
 use crate::report::table::{Cell, Report, Row};
 
+// BUG(C2): a handle of the energy-meter list has its class checked again with an `expect`, in
+// a helper written again in another report; a typed meter handle that the registry resolves
+// to `&EnergyMeter` replaces it.
 /// Downcast an `ckt.energy_meters` ref to its concrete [`EnergyMeter`].
 fn as_meter(classes: &[DssClass], r: ElemId) -> &EnergyMeter {
     classes[r.class_ord()]
@@ -116,6 +119,9 @@ pub(crate) fn show_gen_meters(classes: &[DssClass], ckt: &Circuit) -> String {
     rep.row(Row::blank(GEN_REGISTER_NAMES.len() + 1));
 
     for &r in &ckt.generators {
+        // BUG(C2): a handle of the generator list has its class checked again with an
+        // `expect`; a typed generator handle that the registry resolves to `&Generator` needs
+        // none.
         let g = classes[r.class_ord()]
             .arena
             .get::<Generator>(r.index())

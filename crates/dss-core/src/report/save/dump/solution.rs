@@ -20,6 +20,8 @@ use crate::obj::dss_enum::EnumRegistry;
 use crate::report::format;
 use crate::util::float_to_str;
 
+// BUG(C2): a free function, one more copy of the yes/no formatter; the yes/no token should be
+// one type that formats itself.
 /// Pascal `StrYorN` (`Utilities.pas:173`).
 fn y_or_n(b: bool) -> &'static str {
     if b { "Yes" } else { "No" }

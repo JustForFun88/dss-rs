@@ -28,8 +28,10 @@ pub(crate) fn export_unserved(
     let emerg_min = ckt.emerg_min_volts;
     let mut s = String::from("Load, Bus, kW, EEN_Factor,  UE_Factor\n");
     for &r in &ckt.loads {
+        // BUG(C5): the name is copied out through a `&mut` index of the arena before the
+        // `&mut Load` borrow, though the Load holds it; direct access reads it from `load`
+        // after the criteria calls, through the one `get_mut::<Load>`.
         let obj = &mut classes[r.class_ord()].arena[r.index()];
-        // Take the name before the exclusive `&mut Load` borrow.
         let name = obj.data().name().to_string();
         let Some(load) = classes[r.class_ord()].arena.get_mut::<Load>(r.index()) else {
             continue;

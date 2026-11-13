@@ -28,6 +28,8 @@ pub(crate) mod plot_phases {
     pub const LL_PRIMARY: i32 = -6;
 }
 
+// BUG(C2): the profile row travels as loose arguments behind `too_many_arguments`; a row type
+// named for its role should own the fields and format itself.
 /// Pascal `WriteNewLine`: `%s, %.6g, %.6g, %.6g, %.6g,` + `%d, %d, %d, ` +
 /// `%d, ` + `%d, %d, %d` + newline (note: **no** space between the `puV2`
 /// comma and the color code — the four `FSWrite` calls concatenate verbatim).
@@ -98,6 +100,8 @@ pub(crate) fn export_profile(classes: &[DssClass], ckt: &Circuit, phases_to_plot
     };
 
     for &m in &ckt.energy_meters {
+        // BUG(C2): a handle of the energy-meter list has its class checked again with an
+        // `expect`; a typed meter handle that the registry resolves to `&EnergyMeter` needs none.
         let em = classes[m.class_ord()]
             .arena
             .get::<EnergyMeter>(m.index())

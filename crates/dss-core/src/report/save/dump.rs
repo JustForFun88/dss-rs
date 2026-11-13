@@ -79,6 +79,8 @@ pub(crate) fn allocation_factors(classes: &[DssClass], ckt: &crate::circuit::Cir
     s
 }
 
+// BUG(C5): the context hands every class's dump the PC variables and the EnergyMeter branch
+// list text, which one kind of object each reads; each dump should get only what it reads.
 /// Context handed to every object dump: the object's class prop table, the enum
 /// registry (`ClassProps::get_value` needs it), the precomputed `(name, value)`
 /// per PC dynamic-state variable (empty unless `complete` and the element is a
@@ -93,6 +95,8 @@ pub struct DumpCtx<'a> {
     pub branch_list: &'a str,
 }
 
+// BUG(C2): a free function over one `EnergyMeter` and the registry; listing the meter's
+// branches is an operation of `EnergyMeter` that takes the registry to name each element.
 /// Pascal `EnergyMeter.pas:2102-2116`, the `Branch List:` walk for the
 /// `Dump energymeter.…` Complete tail: one `Circuit Element = <bare Name>` line
 /// per branch (`BranchList.First`/`GoForward`), then one `   Shunt Element =
@@ -123,6 +127,8 @@ pub(crate) fn energy_meter_branch_list(classes: &[DssClass], em: &EnergyMeter) -
     s
 }
 
+// BUG(C2): a free function, a copy of `format::enclose_quotes`; the quoting should have
+// one owner.
 /// Pascal `EncloseQuotes(s) = '"' + s + '"'` (`Utilities.pas:395`).
 pub(crate) fn enq(s: &str) -> String {
     format!("\"{s}\"")
@@ -163,6 +169,7 @@ pub(crate) fn header(out: &mut String, full_name: &str) {
     out.push('\n');
 }
 
+// BUG(C2): a free function over a `DumpCtx` and one object; it is a method of `DumpCtx`.
 /// The `~ <PropertyName>=<GetPropertyValue(i)>` loop for `i := 1 to
 /// NumProperties` (Pascal `TDSSObject.DumpProperties` Leaf branch, and every
 /// override that dumps the full property set verbatim).
@@ -170,6 +177,7 @@ pub(crate) fn generic_props(out: &mut String, cx: &DumpCtx, obj: &dyn DssObject)
     generic_props_from(out, cx, obj, 1);
 }
 
+// BUG(C2): a free function over a `DumpCtx` and one object; it is a method of `DumpCtx`.
 /// The `~ <PropertyName>=<GetPropertyValue(i)>` loop for `i := start to
 /// NumProperties`. The per-class overrides that hand-write the head of the
 /// property list (Transformer/XfmrCode) dump their tail through this.
@@ -184,6 +192,7 @@ pub(crate) fn generic_props_from(
     }
 }
 
+// BUG(C2): a free function over a `DumpCtx` and one object; it is a method of `DumpCtx`.
 /// One `~ <PropertyName[i]>=<GetPropertyValue(i)>` line (Pascal
 /// `'~ ' + ParentClass.PropertyName[i] + '=' + PropertyValue[i]`).
 pub(crate) fn prop_line(out: &mut String, cx: &DumpCtx, obj: &dyn DssObject, i: usize) {
@@ -209,6 +218,8 @@ pub(crate) fn enabled_line(out: &mut String, enabled: bool) {
     });
 }
 
+// BUG(C2): a free function that formats one `CktElementData`; it is a method of
+// `CktElementData`.
 /// Pascal `TDSSCktElement.DumpProperties` `Complete` block: the phase/conductor/
 /// terminal counts, the NodeRef list, terminal open/closed status, terminal bus
 /// refs, then the primitive-Y G and B full matrices (`Format(' %13.10g |', …)`).
@@ -359,6 +370,8 @@ pub(crate) fn dump_generic(
     }
 }
 
+// BUG(C5): the dump of any object takes its whole arena mutably because the LineGeometry dump
+// moves its conductor cursor and puts it back; a dump should read its object shared.
 /// Dump one object (Pascal top-level `obj.DumpProperties(F, Complete, TRUE)`):
 /// the class's leaf override if it has a Pascal one, else the generic base.
 /// `is_pc` selects the PCElement ordering for the generic path.
@@ -381,11 +394,13 @@ pub(crate) fn dump_object(
     dump_generic(out, cx, arena, idx, complete, is_pc);
 }
 
+// BUG(C2): a free function over a `DumpCtx` and one object; it is a method of `DumpCtx`.
 /// The full-name (`Class.Name`) an override writes in its `New "…"` header.
 pub(crate) fn full_name(cx: &DumpCtx, obj: &dyn DssObject) -> String {
     format!("{}.{}", cx.cls.class_name(), obj.data().name())
 }
 
+// BUG(C2): a free function over a `DumpCtx` and one object; it is a method of `DumpCtx`.
 /// The shared prefix an override inherits from a **`TDSSCktElement`** base
 /// (`Leaf=FALSE`): header + `! ENABLED` + (Complete) the Y/terminal block. Used
 /// by the non-PC CktElement overrides (Line, Transformer, Reactor, Capacitor,
@@ -404,6 +419,7 @@ pub(crate) fn prefix_ckt(
     }
 }
 
+// BUG(C2): a free function over a `DumpCtx` and one object; it is a method of `DumpCtx`.
 /// The shared prefix an override inherits from a **`TPCElement`** base
 /// (`Leaf=FALSE`): header + `! ENABLED` + (Complete) the Y/terminal block +
 /// `! VARIABLES`. Used by the PC overrides (VSource, UPFC) — `TPCElement.

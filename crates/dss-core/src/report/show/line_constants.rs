@@ -15,6 +15,8 @@ use crate::support::line_units::LineUnits;
 /// distinct from the Carson engine's internal truncated `TWOPI`).
 const TWO_PI: f64 = std::f64::consts::TAU;
 
+// BUG(C2): a free function, a copy of a `%.6g` formatter the engine also has elsewhere; the
+// number text should have one owner that formats it.
 /// Pascal `Format('%.6g', [v])`.
 fn g6(v: f64) -> String {
     crate::report::format::g(v, 6)
@@ -61,6 +63,9 @@ pub(crate) fn show_line_constants(
     ));
     f2.push_str(&format!("!--- Earth Model = {earth_name}\n"));
 
+    // BUG(C2): the class is found by comparing its name with a string and walked by bare
+    // index with a class test on each object; the registry should hand out a typed view of
+    // its `LineGeometryObj` objects.
     let Some(ci) = classes
         .iter()
         .position(|c| c.props.class_name().eq_ignore_ascii_case("LineGeometry"))
@@ -73,6 +78,9 @@ pub(crate) fn show_line_constants(
         let Some(geom) = classes[ci].arena.get::<LineGeometryObj>(oi) else {
             continue;
         };
+        // BUG(C5): the whole geometry is cloned and its resistivity set on the copy, because
+        // `z_matrix` and `yc_matrix` read rho from the object; they should take rho as an
+        // argument and run on the geometry borrowed shared, which the report must not change.
         let mut geom = geom.clone();
         geom.set_rho_earth(rho);
         let (z, yc) = match (
@@ -100,6 +108,8 @@ pub(crate) fn show_line_constants(
     (f, f2, errors)
 }
 
+// BUG(C2): the output files, the matrices and the units travel as loose arguments behind
+// `too_many_arguments`; that set has no type named for its role.
 /// One geometry's block in both files.
 #[allow(clippy::too_many_arguments)]
 fn write_geometry(

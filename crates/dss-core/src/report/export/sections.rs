@@ -47,6 +47,8 @@ pub(crate) fn export_sections(
          TotalDownlineCust, SectFaultRate, SumFltRatesXRepairHrs, SumBranchFltRates, HeadBranch \n",
     );
 
+    // BUG(C5): the meter list is cloned into `targets` only to be iterated while the circuit
+    // is borrowed shared; direct access iterates `&ckt.energy_meters` or the one handle.
     let targets: Vec<ElemId> = match meter {
         Some(r) => vec![r],
         None => ckt.energy_meters.clone(),
@@ -54,6 +56,8 @@ pub(crate) fn export_sections(
     for r in targets {
         let obj = &classes[r.class_ord()].arena[r.index()];
         let meter_name = obj.data().name().to_string();
+        // BUG(C2): a handle of the energy-meter list has its class checked again with an
+        // `expect`; a typed meter handle that the registry resolves to `&EnergyMeter` needs none.
         let em = classes[r.class_ord()]
             .arena
             .get::<EnergyMeter>(r.index())

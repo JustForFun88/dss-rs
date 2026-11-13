@@ -122,6 +122,8 @@ pub(crate) fn show_elements(
     (main.finish(), disabled.finish())
 }
 
+// BUG(C2): the registry, circuit, list, widths and both reports travel as loose arguments
+// behind `too_many_arguments`; that set has no type named for its role.
 /// Walk a circuit list, writing each element's `WriteElementRecord` row to `main`
 /// (enabled) or `disabled`.
 #[allow(clippy::too_many_arguments)]

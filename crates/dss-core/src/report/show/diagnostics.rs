@@ -255,6 +255,9 @@ pub(crate) fn show_kvbase_mismatch(classes: &[DssClass], ckt: &Circuit) -> Strin
         s.push('\n');
     }
     for &r in &ckt.loads {
+        // BUG(C2): a handle of the load list has its class checked again with `get::<Load>`
+        // and a silent skip, as the generator loop below does; typed handles that the registry
+        // resolves to the concrete type need no check.
         let obj = &classes[r.class_ord()].arena[r.index()];
         let Some(l) = classes[r.class_ord()].arena.get::<Load>(r.index()) else {
             continue;
@@ -406,6 +409,8 @@ fn queue_row_line(handle: i32, hour: i32, sec: f64, code: i32, proxy: i32, name:
     )
 }
 
+// BUG(C2): a free function, one more copy of naming a handle through the registry in the
+// reports; the registry type should name a handle in one method.
 /// The bare object name of a control element (Pascal `ControlElement.Name`).
 fn device_name(classes: &[DssClass], r: ElemId) -> String {
     classes[r.class_ord()].arena[r.index()]

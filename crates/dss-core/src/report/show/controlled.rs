@@ -6,6 +6,8 @@ use crate::circuit::controls::derive_control_lists;
 use crate::elements::traits::ElemId;
 use crate::exec::registry::DssClass;
 
+// BUG(C2): a free function, one of several copies of the element full name in the reports; the
+// registry type should name a handle in one method.
 /// Pascal `TDSSCktElement.FullName` = `ParentClass.Name + '.' + Name`.
 fn full_name(classes: &[DssClass], r: ElemId) -> String {
     format!(

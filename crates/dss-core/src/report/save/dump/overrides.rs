@@ -41,6 +41,8 @@ use crate::obj::arena::ClassArena;
 
 use super::DumpCtx;
 
+// BUG(C2): the dump body is chosen by trying each overriding class in turn on a bare index;
+// the dump should be a method of `DssObject` with the generic body as its default.
 /// Returns `true` (and writes the override dump) if object `idx` of `arena` has
 /// a ported Pascal `DumpProperties` override; `false` to fall through to the
 /// generic base.
@@ -128,8 +130,9 @@ pub(super) fn dump_override(
         s.dump_body(out, cx, complete);
         return true;
     }
-    // The LineGeometry walk selects each conductor in turn → needs `&mut` (the
-    // shared borrows above end at their last use, NLL).
+    // BUG(C5): the LineGeometry dump selects each conductor in turn and puts the selection
+    // back, so the whole dispatch takes the arena mutably; the dump should read the geometry
+    // shared and walk its conductors without moving the cursor.
     if let Some(g) = arena.get_mut::<LineGeometryObj>(idx) {
         g.dump_body(out, cx, complete);
         return true;

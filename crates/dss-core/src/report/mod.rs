@@ -17,6 +17,15 @@
 //! Reports are read-only over the solved circuit — no formatter mutates shared
 //! electrical state.
 
+// BUG(C2): the reports are free functions over the whole circuit and class registry. Each is
+// an operation of the type that holds what it reads: an element's rows of the element, a
+// registry walk or a full name of the registry type, a bus walk of `Circuit`.
+// BUG(C5): the element reports take the whole registry as `&mut [DssClass]`, also those that
+// only read, because the element walk lends `&mut dyn CktElement`; a report should borrow the
+// registry shared and get `&mut` only to the element whose terminal values it computes.
+// BUG(C2): handles taken from a typed list (`ckt.loads`, `ckt.energy_meters`) are checked
+// again with `get::<T>` and a skip or an `expect`; the lists should hold typed handles that
+// the registry resolves to the concrete type.
 pub mod export;
 pub mod format;
 pub mod help_catalog;

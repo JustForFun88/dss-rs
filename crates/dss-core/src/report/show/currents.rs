@@ -146,6 +146,9 @@ fn name_cell(quoted: &str, width: usize, j: usize) -> Cell {
     }
 }
 
+// BUG(C2): this row builder, `seq_currents_row` and `write_terminal_currents` below take their
+// row values or the borrow set as loose arguments behind `too_many_arguments`; each set has
+// no type named for its role.
 /// The shared body of the two symmetrical-component current writers: the nine
 /// columns of `'%s %3d  %10.5g   %10.5g %8.2f  %10.5g %8.2f  %8.2f %8.2f'`
 /// (`ShowResults.pas:542/…`), with the already-padded name label as its first

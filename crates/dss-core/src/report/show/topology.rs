@@ -15,6 +15,8 @@ use crate::elements::traits::ElemId;
 use crate::exec::registry::{ClassStore, DssClass};
 use crate::solution::topology::get_topology;
 
+// BUG(C2): a free function, one of several copies of the element full name in the reports; the
+// registry type should name a handle in one method.
 /// Pascal `TDSSCktElement.FullName` = `ParentClass.Name + '.' + Name`.
 fn full_name(classes: &[DssClass], r: ElemId) -> String {
     format!(
@@ -96,6 +98,9 @@ fn annotations(classes: &[DssClass], ckt: &Circuit, r: ElemId, n_switches: &mut 
     s
 }
 
+// BUG(C5): the report takes the whole registry and circuit mutably because the topology walk
+// it runs keeps its marks in the elements and buses; the marks should be state of the walk,
+// so that a report borrows the model shared.
 /// Build the two `Show Topology` files (Pascal `ShowTopology`): returns
 /// `(summary, tree)`.
 pub(crate) fn show_topology(classes: &mut [DssClass], ckt: &mut Circuit) -> (String, String) {
@@ -151,6 +156,8 @@ pub(crate) fn show_topology(classes: &mut [DssClass], ckt: &mut Circuit) -> (Str
         ftree.push_str(&annotations(classes, ckt, pd_ref, &mut n_switches));
         ftree.push('\n');
 
+        // BUG(C5): the shunt list of the present node is cloned before the loop, though the
+        // loop touches neither the tree nor the node; direct access iterates the list in place.
         // Shunt (Load) objects on this branch.
         let shunts = tree.present_node().shunts.clone();
         for load_ref in shunts {
