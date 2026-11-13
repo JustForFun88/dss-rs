@@ -204,10 +204,9 @@ impl Line {
 
         self.fz_frequency = -1.0; // Init to signify not computed
 
-        // Own a private copy so the per-Line `rho`/cached matrices don't mutate
-        // the shared catalog object (Pascal mutates the shared object — the
-        // upstream "weird" TODO at Line.pas:776; cloning is the faithful Rust
-        // equivalent under the snapshot-clone borrow model).
+        // BUG(C5): the Line keeps a whole copy of the LineGeometry, which an edit of the
+        // geometry leaves stale. The Line's `rho` and matrix caches must not change the
+        // catalog object: they should be state of the Line beside a handle to the geometry.
         let mut geom = geom.clone();
 
         // If `rho=` was set on this Line *before* `geometry=`, push it into the
@@ -493,6 +492,8 @@ impl Line {
                 self.line_wire_data[i - 1] = None;
                 continue;
             };
+            // BUG(C5): each slot keeps a copy of the conductor catalog object, which an edit of
+            // the conductor leaves stale; the slots should hold typed handles instead.
             // A reference that is not a conductor catalog object cannot occur —
             // `wires=` resolves only against WireData/CNData/TSData — but treat
             // it as the NIL the slot would otherwise keep.
@@ -545,6 +546,8 @@ impl Line {
         self.kill_geometry_specified();
         for (i, r) in refs.iter().enumerate() {
             if i < self.line_wire_data.len() {
+                // BUG(C5): each slot keeps a copy of the conductor catalog object, which an
+                // edit of the conductor leaves stale; the slots should hold typed handles.
                 self.line_wire_data[i] = r
                     .as_ref()
                     .and_then(|(_, o)| ConductorObj::from_resolved(*o));
@@ -596,6 +599,8 @@ impl Line {
         debug_assert!(self.cables_refusal(prop).is_none());
         for (k, r) in refs.iter().enumerate() {
             if k < self.line_wire_data.len() {
+                // BUG(C5): each slot keeps a copy of the conductor catalog object, which an
+                // edit of the conductor leaves stale; the slots should hold typed handles.
                 // A `none` slot (AllowNoneItem) stays NIL.
                 self.line_wire_data[k] = r
                     .as_ref()
@@ -605,6 +610,8 @@ impl Line {
     }
 }
 
+// BUG(C2): a free function over one conductor object, written again elsewhere; `ConductorObj`
+// should own it.
 /// Pascal `condObj is TCNDataObj / TTSDataObj` (`Line.pas:772-780`): the
 /// conductor model a single catalog object implies.
 fn conductor_choice_of(o: &ConductorObj) -> ConductorChoice {

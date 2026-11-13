@@ -16,6 +16,7 @@ use crate::util::sqrt3;
 
 use super::{ControlledTransformer, CoreType, Transformer, prop, xsc_size};
 
+// BUG(C2): `Transformer` does its windings' work itself; a winding-set type should own it.
 impl CktElement for Transformer {
     fn cd(&self) -> &CktElementData {
         &self.cd
@@ -28,6 +29,8 @@ impl CktElement for Transformer {
         Some(Transformer::present_tap(self, terminal))
     }
 
+    // BUG(C2): the PD-element common part has no type, so this operation is written again in
+    // each PD element; it belongs to that part's type.
     /// Pascal `TPDElement.CalcFltRate` (base): `Faultrate · pctperm · 0.01`.
     fn reliability_data(&self) -> ReliabilityData {
         ReliabilityData {
@@ -68,6 +71,8 @@ impl CktElement for Transformer {
         self.cd.compute_vterminal(node_v);
         let mut no_load = Complex64::ZERO;
         if let Some(yshunt) = &self.cd.yprim_shunt {
+            // BUG(C5): every losses query allocates a buffer for the shunt currents; the
+            // transformer should keep it and reuse it on each query.
             let mut temp = vec![Complex64::ZERO; yorder];
             yshunt.mv_mult(&mut temp, &self.cd.vterminal);
             for (v, t) in self.cd.vterminal.iter().zip(temp.iter()).take(yorder) {
@@ -86,20 +91,24 @@ impl CktElement for Transformer {
         let nw = self.num_windings.max(0) as usize;
         let np = self.cd.nphases;
 
+        // BUG(C5): every Y build allocates its series, shunt and result matrices anew; the
+        // transformer should keep this storage and reuse it on each build.
         let mut yp_series = CMatrix::new(yorder);
         let mut yp_shunt = CMatrix::new(yorder);
         let mut yprim = CMatrix::new(yorder);
 
         self.cd.yprim_freq = sys.frequency;
+        // BUG(C5): the stored refusal is cloned only to hand it to `refuse_yprim` of the same
+        // `cd`; `CktElementData` should refuse from its own stored refusal, with no copy.
         // The input the last recalc refused refuses the solve (pinned by
         // `an_input_that_makes_a_stamp_non_finite_is_refused_at_the_recalc`).
         if let Some(msg) = self.cd.recalc_refusal.clone() {
             self.cd.refuse_yprim(msg);
             return;
         }
-        // Pascal `CalcY_Terminal` reads the global `Solution.Frequency` for the
-        // GIC gate; refresh the executive-synced copy so the (possible) rebuild
-        // below and any later `RecalcElementData` see the live frequency.
+        // BUG(C2): the solve frequency is stored in `live_frequency` so that a later recalc
+        // reads it for the GIC gate of `calc_y_terminal`; the recalc should take the frequency
+        // as an argument.
         self.live_frequency = sys.frequency;
         let freq_mult = sys.frequency / self.cd.base_frequency;
         if freq_mult != self.y_terminal_freqmult {
@@ -226,6 +235,7 @@ impl CktElement for Transformer {
     }
 }
 
+// BUG(C2): `Transformer` does its windings' work itself; a winding-set type should own it.
 impl ControlledTransformer for Transformer {
     fn name(&self) -> &str {
         self.cd.obj.name()
@@ -277,6 +287,7 @@ impl ControlledTransformer for Transformer {
     }
 }
 
+// BUG(C2): `Transformer` does its windings' work itself; a winding-set type should own it.
 impl Transformer {
     /// Pascal `TTransfObj.MakeLike`.
     pub(crate) fn make_like(&mut self, other: &Self) {
@@ -342,6 +353,7 @@ impl Transformer {
     }
 }
 
+// BUG(C2): `Transformer` does its windings' work itself; a winding-set type should own it.
 impl DssObject for Transformer {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -649,6 +661,8 @@ impl DssObject for Transformer {
         match idx {
             prop::XFMRCODE => {
                 self.xfmr_code_name = name;
+                // BUG(C5): `idx::<T>` here and `get::<T>` below check at run time the class
+                // `xfmrcode=` already fixes; the resolved reference should arrive typed.
                 self.xfmr_code_ref = resolved.and_then(|o| o.idx::<XfmrCodeObj>());
                 if let Some(o) = resolved
                     && let Some(code) = o.get::<XfmrCodeObj>()
@@ -792,6 +806,7 @@ impl DssObject for Transformer {
     }
 }
 
+// BUG(C2): `Transformer` does its windings' work itself; a winding-set type should own it.
 impl Transformer {
     /// Derive the kVA ratings from winding 1's `kva`
     /// ([`hkva_from`](crate::elements::pd::winding::hkva_from)). When either

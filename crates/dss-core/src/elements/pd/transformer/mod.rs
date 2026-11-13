@@ -106,6 +106,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 60; // incl. Like
 }
 
+// BUG(C2): a free `pub fn` builds the class's property table; an associated constructor of
+// the class or of `ClassProps` should own it.
 /// `TTransf.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
@@ -296,9 +298,16 @@ impl CoreType {
     }
 }
 
+// BUG(C5): `Transformer` derives `Clone` while it owns mutable state across operations (the
+// element data, the taps, the Y working set); a state owner should not be cloneable.
+// BUG(C2): `Transformer` does its windings' work itself (per-winding getters, setters and
+// derived data) and holds the Y-terminal working set flat. A winding-set type should own
+// `windings`, `xsc`, `term_ref` and their operations, the working set a type of its own.
 /// `TTransfObj`.
 #[derive(Debug, Clone)]
 pub struct Transformer {
+    // BUG(C2): `cd` is public and the transformer writes `CktElementData` fields directly (the
+    // Y commit, `nconds`, `yorder`); those writes belong in `CktElementData` methods.
     pub cd: CktElementData,
     /// Pascal `ActiveWinding` (1-based).
     active_winding: i32,
@@ -324,6 +333,8 @@ pub struct Transformer {
     y_term: CMatrix,
     y_term_nl: CMatrix,
     y_terminal_freqmult: f64,
+    // BUG(C2): the executive and `calc_yprim` push the solution frequency into this field so
+    // that a later recalc reads it; the frequency should be passed in as an argument.
     /// The Rust stand-in for Pascal's global `ActiveCircuit.Solution.Frequency`,
     /// which `TTransfObj.CalcY_Terminal` reads for the `< 0.51 Hz` GIC/dc gate
     /// (`Transformer.pas:1879`). Refreshed by `CalcYPrim` at every solve and by
@@ -365,6 +376,8 @@ pub struct Transformer {
     pct_imag: f64,
     vabase: f64,
     zbase: f64,
+    // BUG(C2): the PD-element common fields below are repeated in every PD element with no
+    // type of their own; a part type should own them and `reliability_data`.
     // PD-element common:
     norm_amps: crate::obj::Rating,
     emerg_amps: crate::obj::Rating,
@@ -381,6 +394,8 @@ pub struct Transformer {
     bh_flux: Vec<f64>,
 }
 
+// BUG(C2): a free helper over the winding count, written again in another element; the
+// winding-set type should own it.
 /// Pascal `XscSize`: `(NumWindings-1)·NumWindings/2`.
 fn xsc_size(num_windings: i32) -> usize {
     let n = num_windings.max(0) as usize;

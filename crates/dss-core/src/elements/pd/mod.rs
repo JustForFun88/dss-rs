@@ -28,6 +28,8 @@ pub(crate) use super::ckt::{array_input_text, input_text};
 /// The sentence that ends the solve's refusal of an element.
 pub(crate) const ABORTING_SOLUTION: &str = " Aborting solution.";
 
+// BUG(C2): a free helper over a stored symmetric matrix; the matrix type or the report writer
+// should own it.
 /// `name=(a |b c )`, as `?` reads a symmetric matrix of `nphases` phases
 /// stored in units of `scale` (the Capacitor's microfarads), for the message
 /// of a refused recalc.
@@ -53,6 +55,8 @@ pub(crate) fn sym_matrix_input_text(
     s
 }
 
+// BUG(C2): a free helper over a matrix property's length and the phase count; the matrix type
+// should own it.
 /// The solve's refusal of the element `full` when its matrix property `prop`
 /// holds `len` entries where its `nphases` phases need `nphases²`, as a
 /// `phases=` edit after the matrix leaves it. `None` when the order fits.

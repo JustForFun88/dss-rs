@@ -17,6 +17,7 @@ use crate::support::cmatrix::CMatrix;
 use super::{AutoTrans, prop};
 use crate::elements::pd::winding::Connection;
 
+// BUG(C2): `AutoTrans` does its windings' work itself; a winding-set type should own it.
 impl AutoTrans {
     pub(crate) fn dump_body(&self, out: &mut String, cx: &DumpCtx, complete: bool) {
         // inherited TDSSCktElement.DumpProperties (Leaf=FALSE).
@@ -110,6 +111,8 @@ impl AutoTrans {
     }
 }
 
+// BUG(C2): a free matrix writer, written again for another element; the matrix type or the
+// report writer should own it.
 /// Pascal complex lower-triangle dump: `for i, for j := 1 to i: FSWrite('<v> ')`
 /// then a newline, the real parts of all rows first, then the imaginary parts.
 fn write_lower_tri(out: &mut String, m: &CMatrix, order: usize, fmt: impl Fn(f64) -> String) {

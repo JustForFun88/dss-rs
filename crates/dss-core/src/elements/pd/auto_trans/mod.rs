@@ -107,6 +107,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 53; // incl. Like
 }
 
+// BUG(C2): a free `pub fn` builds the class's property table; an associated constructor of
+// the class or of `ClassProps` should own it.
 /// `TAutoTrans.DefineProperties` (`AutoTrans.pas:364`).
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
@@ -266,9 +268,16 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("AutoTrans", defs, true)
 }
 
+// BUG(C5): `AutoTrans` derives `Clone` while it owns mutable state across operations (the
+// element data, the taps, the Y working set); a state owner should not be cloneable.
+// BUG(C2): `AutoTrans` does its windings' work itself (per-winding getters, setters, derived
+// data, the field-by-field copy from a code) and holds the Y-terminal working set flat. A
+// winding-set type should own `windings`, `xsc`, `term_ref` and their operations.
 /// `TAutoTransObj`.
 #[derive(Debug, Clone)]
 pub struct AutoTrans {
+    // BUG(C2): `cd` is public and the auto writes `CktElementData` fields directly (the Y
+    // commit, `nconds`, `node_ref`, `yorder`); those writes belong in `CktElementData` methods.
     pub cd: CktElementData,
     /// Pascal `ActiveWinding` (1-based).
     active_winding: i32,
@@ -294,6 +303,8 @@ pub struct AutoTrans {
     y_term: CMatrix,
     y_term_nl: CMatrix,
     y_terminal_freqmult: f64,
+    // BUG(C2): the executive and `calc_yprim` push the solution frequency into this field so
+    // that a later recalc reads it; the frequency should be passed in as an argument.
     /// The Rust stand-in for Pascal's global `ActiveCircuit.Solution.Frequency`,
     /// which `TAutoTransObj.CalcY_Terminal` reads for the `< 0.51 Hz` GIC/dc gate
     /// (`AutoTrans.pas`). Refreshed by `CalcYPrim` at every solve and by the
@@ -341,6 +352,8 @@ pub struct AutoTrans {
     pct_imag: f64,
     vabase: f64,
     zbase: f64,
+    // BUG(C2): the PD-element common fields below are repeated in every PD element with no
+    // type of their own; a part type should own them and `reliability_data`.
     // PD-element common:
     norm_amps: crate::obj::Rating,
     emerg_amps: crate::obj::Rating,
@@ -354,12 +367,15 @@ pub struct AutoTrans {
     bh_flux: Vec<f64>,
 }
 
+// BUG(C2): a free helper over the winding count, written again in another element; the
+// winding-set type should own it.
 /// Pascal `XscSize`: `(NumWindings-1)·NumWindings/2`.
 fn xsc_size(num_windings: i32) -> usize {
     let n = num_windings.max(0) as usize;
     if n >= 1 { (n - 1) * n / 2 } else { 0 }
 }
 
+// BUG(C2): a free function builds a `Winding`; it should be a constructor of `Winding`.
 /// Pascal `TAutoWinding.Init(iWinding)`: winding 1 is the **Series** winding
 /// (115 kV), all others the **Common/Wye** default (12.47 kV). Reuses the shared
 /// [`Winding`] record (its `rneut`/`xneut` fields are unused by the auto — there

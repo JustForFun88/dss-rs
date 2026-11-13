@@ -120,6 +120,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 27; // incl. Like
 }
 
+// BUG(C2): a free `pub fn` builds the class's property table; an associated constructor of
+// the class or of `ClassProps` should own it.
 /// `TReactor.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
@@ -186,9 +188,13 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("Reactor", defs, true)
 }
 
+// BUG(C5): `Reactor` derives `Clone` while it owns mutable state across operations (the
+// element data, the curve copies); a state owner should not be cloneable.
 /// `TReactorObj`.
 #[derive(Debug, Clone)]
 pub struct Reactor {
+    // BUG(C2): `cd` is public and the reactor writes `CktElementData` fields directly (the Y
+    // commit, the refusal, `yorder`); those writes belong in `CktElementData` methods.
     pub cd: CktElementData,
     /// Parallel resistance and its conductance (`Rp`, `Gp`).
     rp: f64,
@@ -229,6 +235,8 @@ pub struct Reactor {
     z2_specified: bool,
     z0_specified: bool,
     is_shunt: bool,
+    // BUG(C2): the PD-element common fields below are repeated in every PD element with no
+    // type of their own; a part type should own them and `reliability_data`.
     // PD-element common:
     norm_amps: crate::obj::Rating,
     emerg_amps: crate::obj::Rating,

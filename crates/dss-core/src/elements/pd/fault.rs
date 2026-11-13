@@ -72,6 +72,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 17; // incl. Like
 }
 
+// BUG(C2): a free `pub fn` builds the class's property table; an associated constructor of
+// the class or of `ClassProps` should own it.
 /// `TFault.DefineProperties`.
 pub fn class_props(_enums: &EnumRegistry) -> ClassProps {
     use prop::*;
@@ -129,9 +131,13 @@ impl FaultStatusCtx<'_> {
     }
 }
 
+// BUG(C5): `Fault` derives `Clone` while it owns mutable state across operations (the
+// element data, the on and cleared states); a state owner should not be cloneable.
 /// `TFaultObj`.
 #[derive(Debug, Clone)]
 pub struct Fault {
+    // BUG(C2): `cd` is public and the fault writes `CktElementData` fields directly (the Y
+    // commit, the refusal, `yorder`); those writes belong in `CktElementData` methods.
     pub cd: CktElementData,
     /// Single conductance per phase (`G = 1/r`) used when `Gmatrix` is unset.
     g: f64,
@@ -154,6 +160,8 @@ pub struct Fault {
     /// MonteFault resistance jitter (`randomize`); `1.0` outside MonteFault.
     random_mult: f64,
     is_shunt: bool,
+    // BUG(C2): the PD-element common fields below are repeated in every PD element with no
+    // type of their own; a part type should own them and `reliability_data`.
     // PD-element common (Fault's own defaults — all reliability fields zeroed,
     // pctperm 100). Fault computes no default Norm/Emerg amps (Pascal leaves them
     // 0), so there is no `*_specified` tracking.
@@ -332,6 +340,8 @@ impl CktElement for Fault {
         }
     }
 
+    // BUG(C2): the PD-element common part has no type, so this operation is written again in
+    // each PD element; it belongs to that part's type.
     /// Pascal `TPDElement.CalcFltRate` (base): `Faultrate · pctperm · 0.01`.
     /// Fault's own `FaultRate` defaults to 0, so this is 0 — a fault never
     /// contributes a branch fault rate.
@@ -374,6 +384,9 @@ impl CktElement for Fault {
             random_mult = 0.000001;
         }
 
+        // BUG(C2): this branch writes the refusal commit into `cd` field by field, the work of
+        // `CktElementData::refuse_yprim` plus `yprim_freq`; `CktElementData` should own the
+        // whole commit.
         if let Some(msg) = self.refusal() {
             // An enabled fault refuses the solve (pinned by
             // `a_gmatrix_short_of_the_phases_refuses_the_solve`). A disabled
@@ -390,6 +403,8 @@ impl CktElement for Fault {
             return;
         }
 
+        // BUG(C5): every Y build allocates its work, series, shunt and result matrices anew;
+        // the fault should keep this storage and reuse it on each build.
         let mut work = CMatrix::new(yorder);
         match self.spec_type {
             2 => {
@@ -685,6 +700,8 @@ impl DssObject for Fault {
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {}
 }
 
+// BUG(C2): a free helper over a bus name, written again in other PD elements; a bus-name type
+// should own it.
 /// Pascal `StripExtension`: the bus name with its `.node.node…` suffix removed.
 fn strip_extension(s: &str) -> String {
     match s.find('.') {

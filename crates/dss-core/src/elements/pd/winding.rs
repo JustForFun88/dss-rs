@@ -37,6 +37,8 @@ impl Connection {
     }
 }
 
+// BUG(C2): the pair vector is public and the transformer elements build it from outside;
+// `TermRef` should keep it private and build the map itself.
 /// Pascal `TransfObj.TermRef`/`AutoTransObj.TermRef`: the `(phase, winding) →
 /// conductor pair` map. Replaces the Pascal flat 1-based `array of Integer`
 /// (dead slot 0) with one 0-based `[plus, minus]` conductor-index pair per
@@ -75,6 +77,10 @@ impl WdgTerms {
     }
 }
 
+// BUG(C2): every field is public and the transformer elements read and write a winding field
+// by field; `Winding` should keep its representation private and own those operations.
+// BUG(C5): `Winding` is `Copy` and `Clone` while it owns state every tap operation changes
+// (`putap`); such a part should not be copyable.
 /// Pascal `TWinding`. Fields keep the Pascal names (snake-cased); 0-based here
 /// only in that the owning array is 0-based — the winding's own data is flat.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -155,6 +161,8 @@ impl Winding {
     }
 }
 
+// BUG(C2): a free function over the windings of a transformer; the winding-set type should
+// own it.
 /// The input a refused Transformer or AutoTrans recalc names: for a kVA
 /// rating the winding 1 `kVA` it derives from, else the first winding `kV`,
 /// `kVA`, `Tap`, `%R` or typed `RDCOhms` that is not a finite number, else the
@@ -263,6 +271,8 @@ pub(crate) fn winding_refused_input(
     named(0, "kV", windings[0].kvll)
 }
 
+// BUG(C2): a free function over the windings of a transformer; the winding-set type should
+// own it.
 /// The input of winding `i` that leaves it no dc resistance, a short at dc:
 /// its typed `RDCOhms`, else the `%R` its dc resistance derives from, with
 /// its `wdg=` after the first winding.
@@ -281,6 +291,7 @@ pub(crate) fn dc_short_input(windings: &[Winding], i: usize) -> String {
     }
 }
 
+// BUG(C2): a free function over winding 1's kVA; the winding-set type should own it.
 /// The kVA ratings a transformer derives from winding 1's `kva` (110 % and
 /// 150 %), each `None` where it is not a finite number: such a rating is not
 /// committed and the recalc refuses the transformer.
@@ -288,6 +299,8 @@ pub(crate) fn hkva_from(kva: f64) -> [Option<f64>; 2] {
     [1.1 * kva, 1.5 * kva].map(|v| v.is_finite().then_some(v))
 }
 
+// BUG(C2): a free function over a transformer's windings, `xsc` and Y matrices, with the
+// ratings passed in; the winding-set type should own it.
 /// Which derived quantity of a transformer is not a finite number, in the
 /// order a refusal names it: the kVA ratings (`hkva_overflow`), the current
 /// ratings, then the admittance: the short-circuit reactances `xsc`, the

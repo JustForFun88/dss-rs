@@ -105,6 +105,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 42; // incl. Like
 }
 
+// BUG(C2): a free `pub fn` builds the class's property table; an associated constructor of
+// the class or of `ClassProps` should own it.
 /// `TLine.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
@@ -274,9 +276,16 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("Line", defs, true)
 }
 
+// BUG(C5): `Line` derives `Clone` while it owns mutable state across operations (the
+// element data, the matrices, the conductor copies); a state owner should not be cloneable.
+// BUG(C2): every field is public and the executive writes `norm_amps`, `is_switch`, `z`,
+// `yc` and `len` directly; `Line` should keep its fields private and offer those edits as
+// methods.
 /// `TLineObj`.
 #[derive(Clone)]
 pub struct Line {
+    // BUG(C2): `cd` is public and the line writes `CktElementData` fields directly (the Y
+    // commit, `nphases`, `yprim_freq`); those writes belong in `CktElementData` methods.
     pub cd: CktElementData,
 
     /// Sequence parameters, ohms / farads per unit length.
@@ -331,6 +340,8 @@ pub struct Line {
     pub is_switch: bool,
     pub sym_components_model: bool,
     pub sym_components_changed: bool,
+    // BUG(C2): the executive pushes the circuit's positive-sequence flag into this field so
+    // that the edit-time recalcs read it; the flag should be passed in as an argument.
     /// The Rust stand-in for Pascal's global `ActiveCircuit.PositiveSequence`
     /// (`Line.pas:1085`), which `TLineObj.RecalcElementData` reads whenever it
     /// runs. The executive syncs it from the live circuit at every New/Edit
@@ -417,6 +428,8 @@ pub struct Line {
     pub z: Option<CMatrix>,
     /// Per-unit-length shunt susceptance at base frequency.
     pub yc: Option<CMatrix>,
+    // BUG(C2): the PD-element common fields below are repeated in every PD element with no
+    // type of their own; a part type should own them.
     // PD-element common:
     pub norm_amps: Rating,
     pub emerg_amps: Rating,

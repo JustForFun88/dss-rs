@@ -703,6 +703,8 @@ impl CktElement for Reactor {
         self.refusal()
     }
 
+    // BUG(C2): the PD-element common part has no type, so this operation is written again in
+    // each PD element; it belongs to that part's type.
     /// Pascal `TPDElement.CalcFltRate` (base): `Faultrate · pctperm · 0.01`.
     fn reliability_data(&self) -> ReliabilityData {
         ReliabilityData {
@@ -799,8 +801,13 @@ impl CktElement for Reactor {
         }
         self.cd.yprim_freq = yprim_freq;
 
+        // BUG(C5): every Y build allocates its work, impedance, series, shunt and result
+        // matrices anew; the reactor should keep this storage and reuse it on each build.
         let mut work = CMatrix::new(yorder);
 
+        // BUG(C2): this branch writes the refusal commit into `cd` field by field (error,
+        // `yprim_refused`, zero matrices, `yprim_invalid`), the work of
+        // `CktElementData::refuse_yprim`; `CktElementData` should own the whole commit.
         if let Some(msg) = self.refusal() {
             // An enabled reactor refuses the solve (pinned by
             // `a_delta_matrix_reactor_refuses_the_solve`,

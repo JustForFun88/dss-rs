@@ -12,6 +12,7 @@ use crate::util::check_for_blanks;
 
 use super::{AutoTrans, prop};
 
+// BUG(C2): `AutoTrans` does its windings' work itself; a winding-set type should own it.
 impl AutoTrans {
     /// Pascal `TAutoTransObj.SaveWrite` body (the caller already emitted
     /// `New "AutoTrans.name"`). Appends ` name=value` tokens to `out`.

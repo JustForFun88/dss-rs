@@ -9,6 +9,7 @@ use crate::support::cmatrix::CMatrix;
 
 use super::{AutoTrans, auto_winding_init, xsc_size};
 
+// BUG(C2): `AutoTrans` does its windings' work itself; a winding-set type should own it.
 impl AutoTrans {
     /// Active winding as a 0-based index, clamped into range.
     pub(super) fn aw(&self) -> usize {
@@ -246,6 +247,8 @@ impl AutoTrans {
         }
 
         let nw = self.num_windings.max(0) as usize;
+        // BUG(C2): the element copies the code's winding into its own field by field; `Winding`
+        // should copy itself from the code's winding.
         for (i, w) in self.windings.iter_mut().enumerate().take(nw) {
             let src = &code.windings()[i];
             // `:2356-2361` — "No Choice for 1st two".

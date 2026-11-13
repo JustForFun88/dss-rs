@@ -151,6 +151,9 @@ impl DssObject for GicTransformer {
         match idx {
             super::prop::VARCURVE => {
                 self.var_curve_name = name;
+                // BUG(C5): a copy of the XYcurve is kept here (an edit of the curve leaves it
+                // stale) and its class is checked at run time; a typed handle to the curve,
+                // read where it is needed, should replace both.
                 self.var_curve = resolved.and_then(|o| o.cloned::<XyCurveObj>());
             }
             _ => unreachable!("GICTransformer has no resolved object-ref property {idx}"),
@@ -246,6 +249,8 @@ impl DssObject for GicTransformer {
     }
 }
 
+// BUG(C2): a free helper over a bus name, written again in other PD elements; a bus-name type
+// should own it.
 /// Pascal `Copy(S, 1, Pos('.', S) - 1)`: the bus name with any `.node…` suffix
 /// removed.
 fn strip_extension(s: &str) -> String {

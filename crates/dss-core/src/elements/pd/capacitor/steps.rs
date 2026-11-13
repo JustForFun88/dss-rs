@@ -4,6 +4,7 @@
 
 use super::{Capacitor, CapacitorSpecType};
 
+// BUG(C2): the bank's steps have no type; the step operations here belong to a step-list type.
 impl Capacitor {
     /// Per-step switch states (`States[1..NumSteps]`, 0=open/1=closed). Read by
     /// mode-6 monitors (`Meters/Monitor.pas` TakeSample).
@@ -208,6 +209,9 @@ impl Capacitor {
         self.fnumsteps - self.flast_step_in_service
     }
 
+    // BUG(C2): these read and write terminal 1's conductors and `yprim_invalid` by hand instead
+    // of calling `CktElementData::terminal_all_phases_closed` and `set_terminal_closed` (the
+    // setter also sets `active_terminal`, so its readers need a check).
     /// Pascal `Closed[0]` getter on terminal 1 (`TDSSCktElement.Get_ConductorClosed(0)`):
     /// true iff every phase conductor of terminal 1 is closed.
     fn terminal1_closed(&self) -> bool {
@@ -254,6 +258,7 @@ pub trait ControlledCapacitor {
     fn subtract_step(&mut self) -> bool;
 }
 
+// BUG(C2): `Capacitor` keeps its steps in parallel vectors that have no type of their own.
 impl ControlledCapacitor for Capacitor {
     fn full_name(&self) -> String {
         format!("Capacitor.{}", self.cd.obj.name())

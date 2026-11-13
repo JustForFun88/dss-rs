@@ -15,11 +15,14 @@ use crate::util::{EPSILON, inv_sqrt3_x1000, sqrt3};
 
 use super::{AutoTrans, xsc_size};
 
+// BUG(C2): a free helper over a tap value, written again in another element; `Winding`
+// should own it.
 /// Pascal `ZeroTapFix`: a 0 pu tap (which RegControl can force) becomes 0.0001.
 fn zero_tap_fix(tap: f64) -> f64 {
     if tap == 0.0 { 0.0001 } else { tap }
 }
 
+// BUG(C2): `AutoTrans` does its windings' work itself; a winding-set type should own it.
 impl AutoTrans {
     /// Derive the per-winding data, the current ratings and the terminal
     /// admittance ([`Self::derive`]). When an input makes one of them, or a kVA
@@ -36,6 +39,9 @@ impl AutoTrans {
     /// end logs the refusal of the state the edit leaves, once (pinned by
     /// `exec::tests::rating_refusals::a_refusal_through_an_xfmrcode_is_logged_once_per_edit`).
     pub(super) fn recalc_logging(&mut self, log: bool) {
+        // BUG(C5): the whole element is cloned, derived into and written back over `self` on
+        // success. The derived data should be a value of its own computed from `&self` and
+        // committed alone, so that a refused recalc leaves the element as it was.
         let mut trial = self.clone();
         trial.derive();
         let finite = transformer_not_finite(
@@ -150,6 +156,8 @@ impl AutoTrans {
 
         self.set_term_ref();
 
+        // BUG(C2): this and the loops below compute each winding's derived data on the
+        // element; `Winding` should derive its own tap step, voltage base and dc resistance.
         for w in &mut self.windings {
             w.tap_increment = if w.num_taps > 0 {
                 (w.max_tap - w.min_tap) / w.num_taps as f64
@@ -272,6 +280,8 @@ impl AutoTrans {
         let nw = self.num_windings.max(0) as usize;
         let rmult = if self.xrconst { freq_mult } else { 1.0 };
 
+        // BUG(C5): every build allocates `zb` and each working matrix below anew; the auto
+        // should keep this storage and reuse it on each build.
         // ZBMatrix (order NumWindings-1), pu → ohms on a one-volt base.
         let mut zb = CMatrix::new(nw - 1);
         let zbase = 1.0 / (self.vabase / self.cd.nphases as f64);

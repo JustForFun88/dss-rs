@@ -22,6 +22,7 @@ struct Trial<'a> {
     phase_kv: f64,
 }
 
+// BUG(C2): the bank's steps have no type; the step operations here belong to a step-list type.
 impl Capacitor {
     /// Derive the capacitance of each step, the total kvar, the filter
     /// impedance of each tuned step and (unless typed) the normal and
@@ -34,6 +35,9 @@ impl Capacitor {
         let w = two_pi * self.cd.base_frequency;
         let nphases = self.cd.nphases as f64;
         let n = self.n_steps();
+        // BUG(C5): this works on clones of `fc`, `fxl` and `fr` and writes them back when every
+        // result is finite. The derived step data should be a value of its own that the bank
+        // commits, with the inputs left in place.
         let mut fc = self.fc.clone();
         let mut ftotalkvar = 0.0;
         let mut phase_kv = 1.0;
@@ -149,6 +153,8 @@ impl Capacitor {
     fn refused_input(&self, quantity: &str, trial: &Trial) -> String {
         use crate::elements::pd::{array_input_text, input_text, sym_matrix_input_text};
         let n = self.n_steps();
+        // BUG(C5): `steps` copies each per-step array into a `Vec` that is only read; the
+        // slice itself would do.
         let steps = |v: &[f64]| v[..n.min(v.len())].to_vec();
         let not_finite = |v: &[f64]| v.iter().take(n).any(|x| !x.is_finite());
         let uses_kv = self.spec_type != CapacitorSpecType::CMatrix;
@@ -253,6 +259,8 @@ impl Capacitor {
     fn filter_input_text(&self) -> String {
         use crate::elements::pd::array_input_text;
         let n = self.n_steps();
+        // BUG(C5): `steps` copies each per-step array into a `Vec` that is only read; the
+        // slice itself would do.
         let steps = |v: &[f64]| v[..n.min(v.len())].to_vec();
         format!(
             "{} {}",
@@ -348,6 +356,7 @@ impl Capacitor {
     }
 }
 
+// BUG(C2): `Capacitor` keeps its steps in parallel vectors that have no type of their own.
 impl CktElement for Capacitor {
     fn cd(&self) -> &CktElementData {
         &self.cd
@@ -394,6 +403,8 @@ impl CktElement for Capacitor {
         self.is_shunt
     }
 
+    // BUG(C2): the PD-element common part has no type, so this operation is written again in
+    // each PD element; it belongs to that part's type.
     /// Pascal `TPDElement.CalcFltRate` (base): `Faultrate · pctperm · 0.01`.
     fn reliability_data(&self) -> ReliabilityData {
         ReliabilityData {
@@ -412,10 +423,15 @@ impl CktElement for Capacitor {
         let yorder = self.cd.yorder;
         self.cd.yprim_freq = sys.frequency;
 
+        // BUG(C5): every Y build allocates its series, shunt, work and result matrices anew; the
+        // bank should keep this storage and reuse it on each build.
         let mut yp_series = CMatrix::new(yorder);
         let mut yp_shunt = CMatrix::new(yorder);
         let mut ywork = CMatrix::new(yorder);
 
+        // BUG(C2): this branch writes the refusal commit into `cd` field by field (error,
+        // `yprim_refused`, zero matrices, `yprim_invalid`), the work of
+        // `CktElementData::refuse_yprim`; `CktElementData` should own the whole commit.
         if let Some(msg) = self.refusal() {
             // An enabled bank refuses the solve (pinned by
             // `a_delta_cmatrix_bank_refuses_the_solve` and

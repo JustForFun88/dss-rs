@@ -109,6 +109,7 @@ impl Line {
     }
 }
 
+// BUG(C2): a free function over one conductor object; `ConductorObj` should own it.
 /// The `Save`-array kind for a conductor by its catalog class (Pascal
 /// `LineWireData[i].ParentClass`): `TSData` → `TSCables`, `CNData` → `CNCables`,
 /// else (`WireData`) → `Wires`.

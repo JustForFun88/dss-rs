@@ -226,6 +226,8 @@ impl DssObject for Line {
         if idx != super::prop::SPACING {
             return None;
         }
+        // BUG(C5): `get::<LineSpacingObj>` checks at run time the class `spacing=` already
+        // fixes; the resolved reference should arrive typed.
         let spc = resolved.get::<LineSpacingObj>()?;
         let code = spc.spacing_units();
         (LineUnits::from_code(code) == LineUnits::None).then(|| {
@@ -265,6 +267,9 @@ impl DssObject for Line {
     /// the code at once, since the resolved view exists only while the value
     /// is parsed.
     fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
+        // BUG(C5): each arm checks at run time, through `idx`, `get` or `cloned` with a type
+        // argument, the class its property already fixes; the resolved reference should arrive
+        // typed.
         match idx {
             super::prop::LINECODE => {
                 // r4133 writes `CondCode`, `FLineCodeUnits` and
@@ -299,8 +304,9 @@ impl DssObject for Line {
                 }
             }
             super::prop::SPACING => {
-                // A snapshot clone, since the resolved view lives only while the
-                // edit parses. `side_effects` fetches it.
+                // BUG(C5): the Line keeps a copy of the LineSpacing, which an edit of the spacing
+                // leaves stale; `side_effects` fetches the spacing from it. A typed handle,
+                // read where the spacing is needed, should replace the copy.
                 self.line_spacing_obj = resolved.and_then(|o| o.cloned::<LineSpacingObj>());
             }
             _ => unreachable!("Line has no resolved object-ref property {idx}"),

@@ -63,6 +63,8 @@ impl Reactor {
     }
 }
 
+// BUG(C2): a free matrix writer, written again for other elements; the matrix type or the
+// report writer should own it.
 /// Pascal `<PropName>= (` + row-major `%-.5g ` cells, `|` between rows, ` )`.
 /// The matrix is the full (symmetric) array the reactor holds, of its own
 /// order: a `phases=` edit after it leaves the order apart from the phases.

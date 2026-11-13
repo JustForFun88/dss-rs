@@ -18,6 +18,7 @@ use crate::util::sqrt3;
 
 use super::{AutoTrans, prop, xsc_size};
 
+// BUG(C2): `AutoTrans` does its windings' work itself; a winding-set type should own it.
 impl CktElement for AutoTrans {
     fn cd(&self) -> &CktElementData {
         &self.cd
@@ -30,6 +31,8 @@ impl CktElement for AutoTrans {
         Some(AutoTrans::present_tap(self, terminal))
     }
 
+    // BUG(C2): the PD-element common part has no type, so this operation is written again in
+    // each PD element; it belongs to that part's type.
     /// Pascal `TPDElement.CalcFltRate` (base): `Faultrate · pctperm · 0.01`.
     fn reliability_data(&self) -> ReliabilityData {
         ReliabilityData {
@@ -98,6 +101,8 @@ impl CktElement for AutoTrans {
         self.cd.compute_vterminal(node_v);
         let mut no_load = Complex64::ZERO;
         if let Some(yshunt) = &self.cd.yprim_shunt {
+            // BUG(C5): every losses query allocates a buffer for the shunt currents; the
+            // auto should keep it and reuse it on each query.
             let mut temp = vec![Complex64::ZERO; yorder];
             yshunt.mv_mult(&mut temp, &self.cd.vterminal);
             for (v, t) in self.cd.vterminal.iter().zip(temp.iter()).take(yorder) {
@@ -108,6 +113,8 @@ impl CktElement for AutoTrans {
         (total, load, no_load)
     }
 
+    // BUG(C2): the auto writes `cd.node_ref` and the terminal's `term_node_ref` by hand and
+    // keeps them in step itself; `CktElementData` should own the aliasing as a method.
     /// Pascal `TDSSCktElement.SetNodeRef` override (`AutoTrans.pas:875`) — the
     /// "Magic happens here": after the base copy, for terminal 2 with a Series
     /// winding 1, alias the series winding's second node onto the common
@@ -165,20 +172,24 @@ impl CktElement for AutoTrans {
         let nw = self.num_windings.max(0) as usize;
         let np = self.cd.nphases;
 
+        // BUG(C5): every Y build allocates its series, shunt and result matrices anew; the
+        // auto should keep this storage and reuse it on each build.
         let mut yp_series = CMatrix::new(yorder);
         let mut yp_shunt = CMatrix::new(yorder);
         let mut yprim = CMatrix::new(yorder);
 
         self.cd.yprim_freq = sys.frequency;
+        // BUG(C5): the stored refusal is cloned only to hand it to `refuse_yprim` of the same
+        // `cd`; `CktElementData` should refuse from its own stored refusal, with no copy.
         // The input the last recalc refused refuses the solve (pinned by
         // `an_input_that_makes_a_stamp_non_finite_is_refused_at_the_recalc`).
         if let Some(msg) = self.cd.recalc_refusal.clone() {
             self.cd.refuse_yprim(msg);
             return;
         }
-        // Pascal `CalcY_Terminal` reads the global `Solution.Frequency` for the
-        // GIC gate; refresh the executive-synced copy so the (possible) rebuild
-        // below and any later `RecalcElementData` see the live frequency.
+        // BUG(C2): the solve frequency is stored in `live_frequency` so that a later recalc
+        // reads it for the GIC gate of `calc_y_terminal`; the recalc should take the frequency
+        // as an argument.
         self.live_frequency = sys.frequency;
         let freq_mult = sys.frequency / self.cd.base_frequency;
         if freq_mult != self.y_terminal_freqmult {
@@ -297,6 +308,7 @@ impl CktElement for AutoTrans {
     }
 }
 
+// BUG(C2): `AutoTrans` does its windings' work itself; a winding-set type should own it.
 impl ControlledTransformer for AutoTrans {
     fn name(&self) -> &str {
         self.cd.obj.name()
@@ -348,6 +360,7 @@ impl ControlledTransformer for AutoTrans {
     }
 }
 
+// BUG(C2): `AutoTrans` does its windings' work itself; a winding-set type should own it.
 impl AutoTrans {
     /// Pascal `TAutoTransObj.MakeLike` (`AutoTrans.pas:773`).
     pub(crate) fn make_like(&mut self, other: &Self) {
@@ -410,6 +423,7 @@ impl AutoTrans {
     }
 }
 
+// BUG(C2): `AutoTrans` does its windings' work itself; a winding-set type should own it.
 impl DssObject for AutoTrans {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -719,6 +733,8 @@ impl DssObject for AutoTrans {
     fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         match idx {
             prop::XFMRCODE => {
+                // BUG(C5): `get::<XfmrCodeObj>` checks at run time the class `xfmrcode=` already
+                // fixes; the resolved reference should arrive typed.
                 if let Some(code) = resolved.and_then(|o| o.get::<XfmrCodeObj>()) {
                     // Pascal `XfmrCode := LowerCase(Code)` (`:2349`); registry
                     // names are already lowercased by the object constructors.
@@ -868,6 +884,7 @@ impl DssObject for AutoTrans {
     }
 }
 
+// BUG(C2): `AutoTrans` does its windings' work itself; a winding-set type should own it.
 impl AutoTrans {
     /// Derive the kVA ratings from winding 1's `kva`
     /// ([`hkva_from`](crate::elements::pd::winding::hkva_from)). When either

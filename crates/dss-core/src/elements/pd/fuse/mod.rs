@@ -76,6 +76,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 15; // incl. Like
 }
 
+// BUG(C2): a free `pub fn` builds the class's property table; an associated constructor of
+// the class or of `ClassProps` should own it.
 /// `TFuse.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
@@ -124,9 +126,14 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("Fuse", defs, true)
 }
 
+// BUG(C5): `Fuse` derives `Clone` while it owns mutable state across control iterations (the
+// element data, the per-phase states, the pending actions); a state owner should not be
+// cloneable.
 /// `TFuseObj`.
 #[derive(Debug, Clone)]
 pub struct Fuse {
+    // BUG(C2): `ccd` is public and the fuse writes the `CktElementData` fields inside it
+    // directly (`nphases`, `nconds`, `enabled`); those writes belong in methods of that type.
     pub ccd: ControlElemData,
     /// Dump name of the monitored element (Pascal `FullName`).
     monitored_full_name: String,
@@ -166,6 +173,8 @@ pub struct Fuse {
     /// disarming).
     h_action: [i32; FUSEMAXDIM],
 
+    // BUG(C2): element forces are parked in this field for the executive to drain through
+    // `take_ref_actions`; the operations that make them should return them to their caller.
     /// Deferred parse-time element forces (the `State=`/`Action=` side effects).
     pending_ref_actions: Vec<RefAction>,
 }
@@ -291,6 +300,8 @@ impl Fuse {
     /// `Closed[i]` to `FPresentState` — both deferred as [`RefAction`]s since
     /// `recalc` holds no mutable view of the controlled element.
     fn recalc(&mut self) {
+        // BUG(C5): the snapshot and then a bus name are cloned only to be read while `ccd` is
+        // written; `mon_snap` and `ccd` are disjoint fields, so borrows would do.
         if let Some(mon) = self.mon_snap.clone() {
             self.ccd.cd.nphases = mon.nphases;
             if self.ccd.cd.nphases > FUSEMAXDIM {
@@ -359,6 +370,8 @@ impl Fuse {
         }
     }
 
+    // BUG(C5): `sample` takes the whole `&mut CtrlCtx` and reads only the solve context, the
+    // voltages, the queue, the time and its own handle; it should receive only those.
     /// Pascal `TFuseObj.Sample`: for each monitored phase, refresh the live link
     /// state from the controlled conductor, evaluate the TCC trip time from the
     /// monitored current, and arm/disarm the per-phase control-queue action.
@@ -371,10 +384,14 @@ impl Fuse {
         ctx: &mut CtrlCtx,
     ) {
         let element_terminal = self.ccd.element_terminal.max(1) as usize;
+        // BUG(C2): the fuse writes `active_terminal` of the controlled element directly; a
+        // `CktElementData` method should set it.
         // ControlledElement.ActiveTerminalIdx := ElementTerminal.
         if element_terminal <= ctrl.cd().nterms {
             ctrl.cd_mut().active_terminal = element_terminal - 1;
         }
+        // BUG(C5): each sample allocates its current buffer anew; the fuse should keep it and
+        // reuse it on every sample.
         let mut cbuffer = vec![num_complex::Complex64::ZERO; mon.cd().yorder.max(1)];
         mon.get_currents(ctx.sys, ctx.node_v, &mut cbuffer);
 
@@ -422,6 +439,8 @@ impl Fuse {
         }
     }
 
+    // BUG(C5): `do_pending_action` takes the whole `&mut CtrlCtx` and uses only the event log,
+    // the time, the control iteration and the Y-changed flag; it should receive only those.
     /// Pascal `TFuseObj.DoPendingAction(Phs, _)`: open the single armed-and-still
     /// -closed phase conductor of the controlled terminal and log `Phase N
     /// Blown`. `phs` is the 1-based phase carried in the queue `code`.
@@ -436,6 +455,8 @@ impl Fuse {
         }
         let p = phs as usize;
         let element_terminal = self.ccd.element_terminal.max(1) as usize;
+        // BUG(C2): the fuse writes `active_terminal` of the controlled element directly; a
+        // `CktElementData` method should set it.
         // ControlledElement.ActiveTerminalIdx := ElementTerminal.
         if element_terminal <= ctrl.cd().nterms {
             ctrl.cd_mut().active_terminal = element_terminal - 1;
@@ -467,6 +488,8 @@ impl Fuse {
     /// guard). Reset is rare, so a redundant rebuild is negligible.
     pub(crate) fn reset_with(&mut self, ctrl: &mut dyn CktElement) -> bool {
         let element_terminal = self.ccd.element_terminal.max(1) as usize;
+        // BUG(C2): the fuse writes `active_terminal` of the controlled element directly; a
+        // `CktElementData` method should set it.
         if element_terminal <= ctrl.cd().nterms {
             ctrl.cd_mut().active_terminal = element_terminal - 1;
         }

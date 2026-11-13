@@ -4,6 +4,7 @@
 use super::{Capacitor, CapacitorSpecType};
 use crate::obj::base::{DssObjData, DssObject};
 
+// BUG(C2): `Capacitor` keeps its steps in parallel vectors that have no type of their own.
 impl Capacitor {
     /// Make this Capacitor a copy of `other`, keeping its own name and buses.
     pub(crate) fn make_like(&mut self, other: &Self) {
@@ -59,6 +60,8 @@ impl Capacitor {
             self.cd.set_nterms(1);
         } else if self.cd.nterms != 2 {
             self.cd.set_nterms(2);
+            // BUG(C5): the stored bus name is cloned only to be read; a borrow of the disjoint
+            // field `user_bus2` would do.
             match self.user_bus2.clone() {
                 Some(bus) => self.cd.set_bus(2, &bus),
                 None => self.ground_bus2(),
@@ -99,6 +102,7 @@ impl Capacitor {
     }
 }
 
+// BUG(C2): `Capacitor` keeps its steps in parallel vectors that have no type of their own.
 impl DssObject for Capacitor {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -345,6 +349,8 @@ impl DssObject for Capacitor {
     }
 }
 
+// BUG(C2): a free helper over a bus name, written again in other PD elements; a bus-name type
+// should own it.
 /// Pascal `StripExtension`: the bus name with its `.node.node…` suffix removed.
 fn strip_extension(s: &str) -> String {
     match s.find('.') {
@@ -353,6 +359,8 @@ fn strip_extension(s: &str) -> String {
     }
 }
 
+// BUG(C2): a free helper over a bus name, written again in another PD element; a bus-name
+// type should own it.
 /// Whether `bus` puts each of the first `nphases` conductors on the ground node.
 /// A conductor without a node in `bus` takes its own phase node.
 fn grounds_every_phase(bus: &str, nphases: usize) -> bool {

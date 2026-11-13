@@ -11,6 +11,7 @@ use crate::support::cmatrix::CMatrix;
 
 use super::{Transformer, prop, xsc_size};
 
+// BUG(C2): `Transformer` does its windings' work itself; a winding-set type should own it.
 impl Transformer {
     /// Active winding as a 0-based index, clamped into range.
     pub(super) fn aw(&self) -> usize {

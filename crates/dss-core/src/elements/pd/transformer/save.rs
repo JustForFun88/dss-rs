@@ -19,6 +19,7 @@ use crate::util::check_for_blanks;
 
 use super::{Transformer, prop};
 
+// BUG(C2): `Transformer` does its windings' work itself; a winding-set type should own it.
 impl Transformer {
     /// Pascal `TTransfObj.SaveWrite` (the `SaveWrite` body only — the caller
     /// already emitted `New "Transformer.name"`). Appends ` name=value` tokens

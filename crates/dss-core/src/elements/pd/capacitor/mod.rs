@@ -113,6 +113,8 @@ pub mod prop {
 /// apart.
 pub(super) const CUF_SCALE: f64 = 1.0e-6;
 
+// BUG(C2): a free `pub fn` builds the class's property table; an associated constructor of
+// the class or of `ClassProps` should own it.
 /// `TCapacitor.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
@@ -161,9 +163,15 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("Capacitor", defs, true)
 }
 
+// BUG(C5): `Capacitor` derives `Clone` while it owns mutable state across operations (the
+// element data, the step states); a state owner should not be cloneable.
+// BUG(C2): the steps have no type: parallel per-step vectors are resized and indexed
+// together by hand. A step-list type should own them and the step operations.
 /// `TCapacitorObj`.
 #[derive(Debug, Clone)]
 pub struct Capacitor {
+    // BUG(C2): `cd` is public and the bank writes `CktElementData` fields directly (the Y
+    // commit, the refusal, `yorder`); those writes belong in `CktElementData` methods.
     pub cd: CktElementData,
     /// Per-step capacitance (farads), filter reactance, kvar rating, filter
     /// resistance, tuning harmonic and on/off state (Pascal `FC`, `FXL`,
@@ -190,6 +198,8 @@ pub struct Capacitor {
     num_term: i32,
     is_shunt: bool,
     connection: i32,
+    // BUG(C2): the PD-element common fields below are repeated in every PD element with no
+    // type of their own; a part type should own them and `reliability_data`.
     // PD-element common:
     norm_amps: crate::obj::Rating,
     emerg_amps: crate::obj::Rating,

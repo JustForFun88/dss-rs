@@ -91,6 +91,8 @@ impl Line {
     }
 }
 
+// BUG(C2): a free matrix writer, written again for other elements; the matrix type or the
+// report writer should own it.
 /// Pascal full-matrix dump: row-major `<v> ` cells, each row trailed by `|`.
 fn write_matrix(out: &mut String, n: usize, cell: impl Fn(usize, usize) -> String) {
     for i in 0..n {

@@ -63,6 +63,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 23; // incl. the auto-appended Like
 }
 
+// BUG(C2): a free `pub fn` builds the class's property table; an associated constructor of
+// the class or of `ClassProps` should own it.
 /// `TGICTransformer.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
@@ -108,9 +110,14 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("GICTransformer", defs, true)
 }
 
+// BUG(C5): `GicTransformer` derives `Clone` while it owns mutable state across operations
+// (the element data, the curve copy and its search cache); a state owner should not be
+// cloneable.
 /// `TGICTransformerObj`.
 #[derive(Debug, Clone)]
 pub struct GicTransformer {
+    // BUG(C2): `cd` is public and the element writes `CktElementData` fields directly (the Y
+    // commit, `nterms`, `yorder`); those writes belong in `CktElementData` methods.
     pub cd: CktElementData,
     /// Per-phase winding conductances (Pascal `G1`/`G2`); `R1`/`R2` alias
     /// `1/G1`/`1/G2` through the `INVERSE_VALUE` flag.
@@ -143,6 +150,8 @@ pub struct GicTransformer {
     kv2: f64,
     /// Pascal `IsShunt` (always true for this element).
     is_shunt: bool,
+    // BUG(C2): the PD-element common fields below are repeated in every PD element with no
+    // type of their own; a part type should own them and `reliability_data`.
     // PD-element common fields (TPDElement).
     norm_amps: crate::obj::Rating,
     emerg_amps: crate::obj::Rating,

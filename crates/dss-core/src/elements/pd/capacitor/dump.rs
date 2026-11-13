@@ -14,6 +14,7 @@ use crate::report::save::dump::{self, DumpCtx};
 
 use super::Capacitor;
 
+// BUG(C2): `Capacitor` keeps its steps in parallel vectors that have no type of their own.
 impl Capacitor {
     pub(crate) fn dump_body(&self, out: &mut String, cx: &DumpCtx, complete: bool) {
         dump::prefix_ckt(out, cx, self, &self.cd, complete);

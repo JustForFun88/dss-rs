@@ -162,6 +162,8 @@ impl CktElement for GicTransformer {
         }
     }
 
+    // BUG(C2): the PD-element common part has no type, so this operation is written again in
+    // each PD element; it belongs to that part's type.
     /// Pascal `TPDElement.CalcFltRate` (base): `Faultrate · pctperm · 0.01`.
     fn reliability_data(&self) -> ReliabilityData {
         ReliabilityData {
@@ -191,6 +193,8 @@ impl CktElement for GicTransformer {
         let yorder = self.cd.yorder;
         let nphases = self.cd.nphases;
 
+        // BUG(C5): every Y build allocates its shunt, result and series matrices anew; the
+        // element should keep this storage and reuse it on each build.
         // Elements go into YPrim_Shunt (IsShunt is always true).
         let mut yp_temp = CMatrix::new(yorder);
 

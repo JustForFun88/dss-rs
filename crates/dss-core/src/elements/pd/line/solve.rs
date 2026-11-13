@@ -25,6 +25,7 @@ const CAP_EPSILON: Complex64 = Complex64::new(0.0, 4.2e-8);
 /// Pascal `EPSILON` (DSSGlobals.pas:86): default tiny floating point.
 const EPSILON: f64 = 1.0e-12;
 
+// BUG(C2): a free helper over a complex number; an extension trait on `Complex64` should own it.
 /// FPC `ucomplex` `cinv` — `1/z` as the **naive** `conj(z)/|z|²`
 /// (`re/(re²+im²)`, `-im/(re²+im²)`), NOT Smith's form (that is `compat::cdiv`).
 /// Used by `TLineObj.DoLongLine` for `Cinv(ExpP)` / `Cinv(Zc)`.
@@ -221,14 +222,9 @@ impl Line {
         let earth_model = self.earth_model;
         let (eps, h_off, h_unit) = (self.eps_r_medium, self.height_offset, self.height_units);
 
-        // Pascal builds a temporary `TLineGeometryObj` named after the Line and
-        // loads the spacing + conductors into it (`LoadSpacingAndWires` runs the
-        // Carson calc under this Line's `FEarthModel`). dss_capi 0.15.x
-        // (Line.pas:2111-2113) pushes EpsRMedium/HeightOffset/HeightUnit into the
-        // temporary geometry's engine *before* the Carson calc — threaded through
-        // `load_spacing_and_wires` so they are applied before its internal
-        // `update_line_geometry_data` (which folds `heightOffset` into the
-        // equivalent-spacing average heights).
+        // BUG(C5): every Z build at a new frequency loads a fresh `LineGeometryObj`; the Line
+        // should keep one and reload it. The medium and height values go in through
+        // `load_spacing_and_wires`, so they apply before it folds the height offset in.
         let mut pgeo = LineGeometryObj::new(self.cd.obj.name().to_string());
         {
             let Some(spc) = self.line_spacing_obj.as_ref() else {
@@ -333,8 +329,12 @@ impl CktElement for Line {
             fundamental: base,
             ..SysCtx::parse_default()
         };
+        // BUG(C5): the whole Line is cloned only to run the mutating `calc_yprim` on the copy;
+        // a `&self` impedance check should return the refusal without building into an element.
         let mut probe = self.clone();
         probe.fz_frequency = -1.0;
+        // BUG(C2): the verdict of `calc_yprim` comes back only through the error queue, drained
+        // here and after the build; `calc_yprim` should return its refusal.
         let _ = probe.cd.obj.take_errors();
         probe.calc_yprim(&sys);
         let first = probe.cd.obj.take_errors().into_iter().next()?;
@@ -452,6 +452,9 @@ impl CktElement for Line {
         let mut length_multiplier = 1.0;
         let mut freq_multiplier = 1.0;
 
+        // BUG(C5): every Y build allocates `zinv` (a copy of `z` or a fresh matrix), the
+        // long-line matrices and the Y matrices anew; the Line should keep this storage
+        // and reuse it on each build.
         let mut zinv = if total_z_path {
             // Pascal `FMakeZFromGeometry`/`FMakeZFromSpacing(Solution.Frequency)`.
             let res = if geometry_path {

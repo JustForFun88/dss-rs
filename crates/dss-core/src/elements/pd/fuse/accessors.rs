@@ -22,6 +22,8 @@ impl Fuse {
         &self.fuse_curve_name
     }
 
+    // BUG(C5): the executive installs a copy of the TCC_Curve here, which an edit of the curve
+    // leaves stale; a typed handle to the curve, read where it is needed, should replace it.
     /// Executive hook: install the resolved `FuseCurve` clone (or `None` when the
     /// name does not resolve — a NIL fuse never trips).
     pub fn set_fuse_curve_obj(&mut self, curve: Option<TccCurveObj>) {
@@ -226,6 +228,9 @@ impl DssObject for Fuse {
                     let elem = o
                         .ckt()
                         .expect("monitoredobj resolves against circuit classes");
+                    // BUG(C5): each `capture` here keeps a snapshot of the element's phases,
+                    // terminals and buses, which an edit of that element leaves stale; the
+                    // fuse should read the element through its handle when it needs them.
                     self.mon_snap = Some(super::RefSnapshot::capture(name, elem));
                 }
                 None => {
@@ -270,6 +275,8 @@ impl DssObject for Fuse {
             MONITORED_OBJ => {
                 self.ccd.controlled_element = self.ccd.monitored_element;
                 self.switched_full_name = self.monitored_full_name.clone();
+                // BUG(C5): the switched snapshot becomes a copy of the monitored one, a second
+                // stale copy of the element's shape; the fuse should read the element instead.
                 self.ctrl_snap = self.mon_snap.clone();
             }
             MONITORED_TERM => self.ccd.element_terminal = self.monitored_element_terminal,
@@ -301,6 +308,8 @@ impl crate::elements::control::control_elem::ControlElem for Fuse {
     }
 }
 
+// BUG(C2): a free function over the fuse's per-phase state list; that list's type should own
+// it.
 /// Write a per-phase `MappedStringEnumArrayProperty` slice: the parsed
 /// ordinals become [`ControlAction`]s in place (Pascal writes straight into the
 /// `EControlAction` array at `PropertyOffset`).

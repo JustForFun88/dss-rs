@@ -87,6 +87,8 @@ impl Reactor {
             self.cd.set_nterms(1);
         } else if self.cd.nterms != 2 {
             self.cd.set_nterms(2);
+            // BUG(C5): the stored bus name is cloned only to be read; a borrow of the disjoint
+            // field `user_bus2` would do.
             match self.user_bus2.clone() {
                 Some(bus) => self.cd.set_bus(2, &bus),
                 None => self.ground_bus2(),
@@ -284,6 +286,9 @@ impl DssObject for Reactor {
     /// the PVSystem/VCCS curve refs).
     fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use super::prop::*;
+        // BUG(C5): each arm keeps a copy of the resolved XYcurve, which an edit of the curve
+        // leaves stale, and `cloned::<XyCurveObj>` checks at run time a class the property
+        // fixes. A typed handle to the curve, read where it is needed, should replace both.
         let xy_curve = || resolved.and_then(|o| o.cloned::<XyCurveObj>());
         match idx {
             RCURVE => {
@@ -398,6 +403,8 @@ impl DssObject for Reactor {
     }
 }
 
+// BUG(C2): a free helper over a bus name, written again in other PD elements; a bus-name type
+// should own it.
 /// Pascal `StripExtension`: the bus name with its `.node.node…` suffix removed.
 fn strip_extension(s: &str) -> String {
     match s.find('.') {
@@ -406,6 +413,8 @@ fn strip_extension(s: &str) -> String {
     }
 }
 
+// BUG(C2): a free helper over a bus name, written again in another PD element; a bus-name
+// type should own it.
 /// Whether `bus` puts each of the first `nphases` conductors on the ground node.
 /// A conductor without a node in `bus` takes its own phase node.
 fn grounds_every_phase(bus: &str, nphases: usize) -> bool {
