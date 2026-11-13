@@ -78,6 +78,10 @@ impl std::ops::BitOr for ElemFlags {
     }
 }
 
+// BUG(C2): the primitive-Y matrices, the terminal buffers, the executive signals, the meter-zone
+// records and the reliability accumulators are loose public fields written from outside; each
+// group should be a part type with private fields and its own methods.
+// BUG(C5): derives `Clone` though it owns mutable state; the type should not be `Clone`.
 /// Shared circuit-element data (`TDSSCktElement` fields).
 #[derive(Debug, Clone)]
 pub struct CktElementData {
@@ -105,6 +109,8 @@ pub struct CktElementData {
     pub yprim: Option<CMatrix>,
     pub yprim_series: Option<CMatrix>,
     pub yprim_shunt: Option<CMatrix>,
+    // BUG(C5): holds the same nodes as each terminal's `term_node_ref`, and its writers update
+    // both by hand; one owner should hold the node map.
     /// Per-conductor global node references; `node_ref[t*nconds + c]`.
     /// Empty until `SetNodeRef` runs (Pascal `NodeRef = NIL`).
     pub node_ref: Vec<usize>,
@@ -128,6 +134,8 @@ pub struct CktElementData {
     /// `CktElements` handle: `Some(1-based position)` once added to the circuit,
     /// `None` (Pascal's `0`) while not in any circuit.
     pub handle: Option<u32>,
+    // BUG(C2): this flag and the two below park a setter's or `calc_yprim`'s outcome for the
+    // executive or the Y build to read and clear; the operation should return it.
     /// Signal to the executive: a bus name / conductor count / enabled state
     /// changed, so the circuit must set `BusNameRedefined` (which in Pascal
     /// happens immediately through the `ActiveCircuit` global).
@@ -209,6 +217,8 @@ pub struct CktElementData {
     pub accumulated_miles_downstream: f64,
     /// `BranchSectionID`: feeder section this branch belongs to.
     pub branch_section_id: i32,
+    // BUG(C5): a latch that can disagree with the live OCP scan the reliability sweep uses; the
+    // scan should be the only source.
     /// Registration record: the [`OcpDeviceType`] of the **first enabled**
     /// over-current-protection control that resolved its controlled element to
     /// this one (`exec/command.rs`, `RefAction::SetOcpDevice`, first write
@@ -306,6 +316,8 @@ impl Phases<'_> {
     }
 }
 
+// BUG(C2): this and the two functions below are free functions; they belong to a type for
+// the refusal message, beside `CktElementData::refusal_message`.
 /// `name=value`, the value as `?` reads a number, for the message of a
 /// refused recalc.
 pub(crate) fn input_text(name: &str, v: f64) -> String {
@@ -884,6 +896,9 @@ impl CktElementData {
         if self.all_conductors_closed() {
             return; // fast path; the Kron pass is a no-op anyway
         }
+        // BUG(C5): each matrix is moved out and put back so that `do_yprim_calcs` can take
+        // `&self`; with it reading only the terminals and the counts, each matrix is borrowed
+        // beside them.
         let mut series = self.yprim_series.take();
         if let Some(m) = series.as_mut() {
             self.do_yprim_calcs(m);
@@ -931,6 +946,7 @@ impl CktElementData {
     }
 }
 
+// BUG(C2): a free function over a bus name; it belongs to a bus-name type.
 /// Pascal local `IsGroundBus` inside `TDSSCktElement.MakePosSequence`
 /// (`CktElement.pas:1101-1118`): a bus name is a "ground bus" iff it contains a
 /// `.` but NONE of the substrings `.1`, `.2`, `.3` (searched anywhere with

@@ -12,6 +12,7 @@ use crate::support::line_constants::ConductorType;
 
 use super::{ConductorChoice, LineGeometryObj};
 
+// BUG(C5): `LineGeometryObj` derives `Clone` though it owns mutable state.
 impl LineGeometryObj {
     /// Pascal `TLineGeometryObj.LoadSpacingAndWires` (LineGeometry.pas): build a
     /// throwaway geometry from a `LineSpacing` plus the resolved conductor list —
@@ -141,10 +142,10 @@ impl LineGeometryObj {
     pub fn update_line_geometry_data(&mut self, f: f64, earth_model: i32) -> Result<(), String> {
         let n = self.fnconds.max(0) as usize;
 
-        // Check every conductor first (immutable borrows) so the engine fill
-        // below can borrow `FLineData`. Every conductor needs a conductor
-        // object, and its `x` and `h` unless the geometry is built on an
-        // equivalent spacing, which reads no position. The fill reads only the
+        // BUG(C5): the conductor data is gathered into `complete` so that the fill below can
+        // borrow `fline_data`; borrows of `fwiredata` beside `fline_data` read it in place.
+        // Every conductor needs a conductor object, and its `x` and `h` unless the geometry
+        // is built on an equivalent spacing, which reads no position. The fill reads only the
         // positions checked here.
         let mut complete: Vec<(ConductorGeom, Option<(f64, f64)>)> = Vec::with_capacity(n);
         let mut incomplete: Vec<(usize, Lacks)> = Vec::new();
@@ -396,6 +397,8 @@ impl Lacks {
     }
 }
 
+// BUG(C2): this and `incomplete_conductors_message` below are free functions; they belong to
+// the type of the incomplete-conductor error, beside `Lacks`.
 /// `a`, `a and b`, `a, b and c`.
 fn join_and(items: &[String]) -> String {
     match items.split_last() {
@@ -461,6 +464,8 @@ impl PhaseRating {
     }
 }
 
+// BUG(C2): a free function over the conductor slots; it belongs to `PhaseRating` or to a type
+// for the phase conductors of a line.
 /// The `[normal, emergency]` readings of the phase conductors among `slots`:
 /// the first `nphases` slots, an empty slot skipped. A neutral never takes
 /// part, as every loading reader compares the rating with the phase currents.

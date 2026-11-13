@@ -3,6 +3,9 @@
 //! test of a real conductance matrix. The arithmetic is plain `num_complex`
 //! and `f64`, the same in both lanes.
 
+// BUG(C2): the module is free functions over matrices: `singular_below`, `factor`, `lu_solve`
+// and `inverse` belong to `CMatrix` and `Factors`, `smallest_symmetric_eigenvalue` and
+// `is_passive` to a type for the real conductance matrix.
 use crate::support::cmatrix::CMatrix;
 use num_complex::Complex64;
 
@@ -26,6 +29,7 @@ struct Factors {
     steps: usize,
 }
 
+// BUG(C2): a free constructor of `Factors`; it belongs to `Factors` as an associated function.
 /// Doolittle factorization of `a` with partial pivoting on `norm()`. It stops
 /// at the first pivot at or below [`singular_below`], or that is not a
 /// number, which an elimination that overflows leaves (`∞ - ∞`).

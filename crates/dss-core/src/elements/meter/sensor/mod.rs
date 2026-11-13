@@ -57,6 +57,7 @@ pub mod prop {
     pub const NUM_PROPS: usize = 16; // incl. Like
 }
 
+// BUG(C2): a free function; the property table belongs to `Sensor` as an associated function.
 /// `TSensor.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
@@ -104,9 +105,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("Sensor", defs, true)
 }
 
+// BUG(C5): derives `Clone` though it owns mutable state; the type should not be `Clone`.
 /// `TSensorObj`.
 #[derive(Debug, Clone)]
 pub struct Sensor {
+    // BUG(C2): the meter base is a public field that code outside the sensor writes; it should
+    // be private behind methods of `Sensor`.
     pub med: MeterElementData,
 
     valid_sensor: bool,
@@ -129,6 +133,8 @@ pub struct Sensor {
     /// `FConn` (0 = wye, 1 = delta).
     f_conn: i32,
 
+    // BUG(C5): a copy of the metered element's name beside `med.metered_element` and the
+    // snapshot's `full_name`, each written at another point; the handle alone should name it.
     /// FullName of the metered element (`Class.name`) for the dump.
     element_full_name: String,
     /// The r4133 `PropertyValue[13]` string store behind the `Action` upstream

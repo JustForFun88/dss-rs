@@ -8,6 +8,7 @@ use crate::obj::base::{DssObjData, DssObject};
 
 use super::{XfmrCodeObj, prop, xsc_size};
 
+// BUG(C5): `XfmrCodeObj` derives `Clone` though it owns mutable state.
 impl XfmrCodeObj {
     /// Pascal `TXfmrCodeObj.MakeLike`.
     pub(crate) fn make_like(&mut self, other: &Self) {
@@ -37,6 +38,7 @@ impl XfmrCodeObj {
     }
 }
 
+// BUG(C5): `XfmrCodeObj` derives `Clone` though it owns mutable state.
 impl DssObject for XfmrCodeObj {
     fn data(&self) -> &DssObjData {
         &self.data

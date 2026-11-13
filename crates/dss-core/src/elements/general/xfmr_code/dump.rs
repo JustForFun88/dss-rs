@@ -12,6 +12,7 @@ use crate::report::save::dump::{self, DumpCtx};
 use super::{XfmrCodeObj, prop};
 use crate::elements::pd::winding::Connection;
 
+// BUG(C5): `XfmrCodeObj` derives `Clone` though it owns mutable state.
 impl XfmrCodeObj {
     pub(crate) fn dump_body(&self, out: &mut String, cx: &DumpCtx, _complete: bool) {
         dump::header(out, &dump::full_name(cx, self));

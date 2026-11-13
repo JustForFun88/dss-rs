@@ -51,6 +51,8 @@ pub const DYN_SLOT_LENGTH: usize = 2;
 /// (`every_host_integrates_an_omitted_nvariables_like_the_written_count`).
 pub const DEFAULT_N_VARIABLES: usize = 20;
 
+// BUG(C5): derives `Clone` though it owns mutable state, and holders keep clones that miss a
+// later edit of it; the type should not be `Clone`, and a holder should keep a handle to it.
 /// `TDynamicExpObj`.
 #[derive(Debug, Clone)]
 pub struct DynamicExpObj {
@@ -551,6 +553,8 @@ impl DssObject for DynamicExpObj {
     }
 }
 
+// BUG(C2): this and `interpret_string_list` below are free functions over expression text;
+// they belong to the type that compiles the expression.
 /// Delphi/FPC `TStringHelper.Substring(startIndex, length)`: 0-based start,
 /// `length` chars, clamped to the string end (`""` when start is past the end).
 /// The DynamicExp expressions are ASCII, so byte slicing is char slicing.

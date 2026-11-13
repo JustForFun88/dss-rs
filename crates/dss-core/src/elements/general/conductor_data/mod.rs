@@ -507,6 +507,7 @@ pub use cn_data::CnDataObj;
 pub use ts_data::TsDataObj;
 pub use wire_data::WireDataObj;
 
+// BUG(C5): `WireDataObj` derives `Clone` though it owns mutable state.
 impl ConductorData for WireDataObj {
     fn geom(&self) -> ConductorGeom {
         WireDataObj::geom(self)
@@ -519,6 +520,7 @@ impl ConductorData for WireDataObj {
     }
 }
 
+// BUG(C5): `CnDataObj` derives `Clone` though it owns mutable state.
 impl ConductorData for CnDataObj {
     fn geom(&self) -> ConductorGeom {
         CnDataObj::geom(self)
@@ -531,6 +533,7 @@ impl ConductorData for CnDataObj {
     }
 }
 
+// BUG(C5): `TsDataObj` derives `Clone` though it owns mutable state.
 impl ConductorData for TsDataObj {
     fn geom(&self) -> ConductorGeom {
         TsDataObj::geom(self)
@@ -543,6 +546,8 @@ impl ConductorData for TsDataObj {
     }
 }
 
+// BUG(C5): a clone of a conductor object that its holders keep and that misses a later edit of
+// the conductor; a holder should keep a typed handle to it, and the type should not be `Clone`.
 /// A **snapshot-cloned** conductor catalog object, as a `LineGeometry`
 /// (`FWireData[i]`) and a `Line` (`LineWireData[i]`) own it.
 ///
@@ -560,6 +565,8 @@ pub enum ConductorObj {
 }
 
 impl ConductorObj {
+    // BUG(C5): the class is found by trying `cloned` for each conductor class in turn, and the
+    // clone is kept; a handle typed by the classes the property admits replaces both.
     /// The resolve-time snapshot clone of a resolved conductor reference — the
     /// typed twin of the `clone_box()` these arrays used to store. `None` if the
     /// reference names some other class, which the property-side class
@@ -594,6 +601,8 @@ impl ConductorObj {
         }
     }
 
+    // BUG(C5): copies the rating list so that a caller can write fields beside the array that
+    // holds `self`; that caller borrows `amps` in place beside the fields it writes.
     /// `(NormAmps, EmergAmps, NumAmpRatings, AmpRatings)` with the ratings
     /// copied out — the owned form the `LineGeometry`/`Line` rating defaults
     /// need while `self` is borrowed from the array they write into.

@@ -331,6 +331,8 @@ pub trait TypedStore: ElemStore {
             return (a, MeteredElem::Other(b));
         }
         let (ca, ct) = self.arena_pair_mut(Monitor::CLASS_ORD, t.class_ord());
+        // BUG(C5): the class is probed with `get` and the element looked up again with
+        // `get_mut`; matching the variant of `t` gives the class with one lookup.
         let metered = if ct.get::<Capacitor>(ti).is_some() {
             MeteredElem::Capacitor(ct.get_mut::<Capacitor>(ti).expect("checked above"))
         } else if ct.get::<Storage>(ti).is_some() {
@@ -415,6 +417,8 @@ impl MeteredElem<'_> {
 
 impl<S: ElemStore + ?Sized> TypedStore for S {}
 
+// BUG(C2): this and the five functions below are free functions over `ElemId` and
+// `ClassArena`; the splits and the typed get belong to `ClassArena`, the index checks to `ElemId`.
 /// Shared aliasing + class check of the typed pair getters (the `pair_mut`
 /// assert and the `expect("kind matched above")` the downcast carried, in one
 /// place). Returns the two object indices.
@@ -475,6 +479,8 @@ fn split3<C: ArenaClass>(arena: &mut ClassArena, i: usize, j: usize, k: usize) -
         .expect("triple_mut: object index out of range")
 }
 
+// BUG(C5): every `CktElement` method and every `DssObject::end_edit` receives the whole
+// snapshot, though most read one field or none; each should take only the values it reads.
 /// Scalar state the elements read from the circuit/solution during
 /// `CalcYPrim`/`InjCurrents` — the Pascal `ActiveCircuit.Solution.X`
 /// accesses, snapshotted into one struct of plain values.
@@ -835,6 +841,8 @@ pub trait CktElement: Send {
         None
     }
 
+    // BUG(C5): the element keeps a clone of `SpectrumObj`, which misses a later edit of the
+    // spectrum; it should hold a handle to the spectrum.
     /// Store the resolved harmonic spectrum snapshot (Pascal `SpectrumObj`).
     fn set_harmonic_spectrum(&mut self, spectrum: Option<SpectrumObj>) {
         let _ = spectrum;
@@ -870,6 +878,9 @@ pub trait CktElement: Send {
     /// the pre-update guess (`power_flow::drop_stale_newton_iterminal_stamps`; r4133 keeps them).
     fn compute_iterminal(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         if !self.cd().iterminal_solved_for(sys.solution_count) {
+            // BUG(C5): a vector is allocated on every call, filled by `get_currents` and copied
+            // into `iterminal`, because `get_currents(&mut self)` cannot write into a field of
+            // `self`; with narrowed access it fills `iterminal` directly.
             let mut curr = vec![Complex64::ZERO; self.cd().yorder];
             self.get_currents(sys, node_v, &mut curr);
             let cd = self.cd_mut();
@@ -888,6 +899,8 @@ pub trait CktElement: Send {
     /// differ only in how often `GetCurrents` runs, i.e. in its side effects (a `DebugTrace`
     /// record).
     fn refresh_iterminal(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
+        // BUG(C5): the same per-call vector and copy as in `compute_iterminal`; with narrowed
+        // access `get_currents` fills `iterminal` directly.
         let mut curr = vec![Complex64::ZERO; self.cd().yorder];
         self.get_currents(sys, node_v, &mut curr);
         let cd = self.cd_mut();

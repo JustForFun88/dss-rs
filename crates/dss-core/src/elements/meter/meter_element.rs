@@ -52,6 +52,10 @@ pub struct MeteredSnapshot {
     pub variable_names: Vec<String>,
 }
 
+// BUG(C2): every field is public and the meters write them from outside, and the six
+// sensor-allocation fields are one part with no type; the fields should be private and the
+// allocation set a type that owns `allocate_sensor_arrays` and `calc_allocation_factors`.
+// BUG(C5): derives `Clone` though it owns mutable state; the type should not be `Clone`.
 /// `TMeterElement` shared state (the base-class fields every meter carries).
 /// Embeds [`CktElementData`] exactly as `TMeterElement` extends
 /// `TDSSCktElement`.
@@ -64,6 +68,8 @@ pub struct MeterElementData {
     pub metered_terminal: i32,
     /// `MeteredElementChanged`.
     pub metered_element_changed: bool,
+    // BUG(C5): a copy of the metered element's shape taken when `element=` resolves, which
+    // misses a later edit of the element; the meter should read the element through its handle.
     /// Parse-time snapshot of the monitored element.
     pub metered_snap: Option<MeteredSnapshot>,
 

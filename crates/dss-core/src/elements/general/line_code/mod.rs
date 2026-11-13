@@ -108,6 +108,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 28; // incl. Like
 }
 
+// BUG(C2): a free function; the property table belongs to `LineCodeObj` as an associated
+// function.
 /// `TLineCode.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
@@ -192,6 +194,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("LineCode", defs, true)
 }
 
+// BUG(C5): derives `Clone` though it owns mutable state; the type should not be `Clone`.
 /// `TLineCodeObj`.
 #[derive(Debug, Clone)]
 pub struct LineCodeObj {

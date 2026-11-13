@@ -8,6 +8,9 @@
 //! [`CktElement::pos_seq_legs`]: crate::elements::traits::CktElement::pos_seq_legs
 //! [`CktElement::pos_seq_pattern`]: crate::elements::traits::CktElement::pos_seq_pattern
 
+// BUG(C2): the module is free constructors and helpers of `PosSeqLeg` (`leg`, `wye`, `delta`,
+// `connected`, `to_earth`, `branch`, `through`, `v_leg_of`, `s_leg_of`, `reaches_a_live_node`,
+// `abc`, `rotation`); they belong to `PosSeqLeg` or to a leg-set type as associated functions.
 use std::f64::consts::PI;
 
 use num_complex::Complex64;
@@ -15,6 +18,7 @@ use num_complex::Complex64;
 use super::{PosSeqLeg, PosSeqLegKind};
 use crate::util::sqrt3;
 
+// BUG(C2): a free constructor of `PosSeqLeg`; it belongs to `PosSeqLeg` as `PosSeqLeg::new`.
 /// Leg `phase` from conductor `plus` to `minus` (`None` is earth).
 fn leg(
     kind: PosSeqLegKind,

@@ -7,6 +7,7 @@ use crate::elements::traits::{MeteredElem, SysCtx};
 use crate::support::complexutil::cdang;
 use crate::support::mathutil::SymComp;
 
+// BUG(C5): `Monitor` derives `Clone` though it owns mutable state.
 impl Monitor {
     /// Pascal `TMonitorObj.AddDblToBuffer` (`Meters/Monitor.pas:1591`): narrow
     /// the value to single precision and append it, tracking the live scratch
@@ -44,21 +45,9 @@ impl Monitor {
         sys: &SysCtx,
         sol: &MonitorSampleCtx,
     ) {
-        // Lend the persistent scratch buffers (Pascal's `VoltageBuffer` /
-        // `CurrentBuffer` object fields) to the sample body: `add_dbl` needs
-        // `&mut self`, so they cannot stay borrowed out of `self` while the
-        // record is written. They are handed back on every *returning* path,
-        // allocation included — the body re-zeroes them, so the values are
-        // identical to the freshly allocated buffers this replaces.
-        //
-        // Not unwind-safe by design: a panic inside the body skips the
-        // hand-back and leaves
-        // both fields `Vec::new()`. That costs the reused *allocation* and
-        // nothing else — the body's first act on either buffer is
-        // `clear()` + `resize(scratch_len, ZERO)` (below), the sole early
-        // `return` precedes any buffer use, and no other code in the crate
-        // reads these two fields — so a re-entered `take_sample` re-derives the
-        // exact same values. A guard type would buy no observable behavior.
+        // BUG(C5): the two scratch buffers are moved out of `self` and put back, because
+        // `add_dbl` takes `&mut self`; with `add_dbl` on a sample-buffer part they are borrowed
+        // beside it. The body clears and resizes both before any use.
         let mut voltage_buffer = std::mem::take(&mut self.voltage_buffer);
         let mut current_buffer = std::mem::take(&mut self.current_buffer);
         self.take_sample_into(
@@ -97,6 +86,8 @@ impl Monitor {
             (e.cd().nconds, e.cd().yorder)
         };
         let offset = (self.med.metered_terminal as usize - 1) * m_nconds;
+        // BUG(C5): this vector and the state, flicker and winding vectors below are allocated
+        // on every sample; the monitor should keep them as working storage between samples.
         // The node of each monitored conductor: the monitor's own map, or the
         // metered terminal's where the monitor has none yet. A metered element
         // without a node map reads as connected to no node.
@@ -519,6 +510,8 @@ impl Monitor {
     }
 }
 
+// BUG(C2): this and the three functions below are free functions over phasor buffers; they
+// belong to a sample-buffer type that the monitor owns.
 /// Pascal `ConvertComplexArrayToPolar`: each element → `(mag, angle_deg)`.
 fn convert_to_polar(buf: &mut [Complex64], n: usize) {
     for c in buf.iter_mut().take(n) {

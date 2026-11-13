@@ -14,6 +14,7 @@ use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
+// BUG(C5): `Monitor` derives `Clone` though it owns mutable state.
 impl CktElement for Monitor {
     fn cd(&self) -> &CktElementData {
         &self.med.cd
@@ -75,6 +76,7 @@ impl CktElement for Monitor {
     }
 }
 
+// BUG(C5): `Monitor` derives `Clone` though it owns mutable state.
 impl Monitor {
     pub(crate) fn make_like(&mut self, other: &Self) {
         let o = other;
@@ -92,6 +94,7 @@ impl Monitor {
     }
 }
 
+// BUG(C5): `Monitor` derives `Clone` though it owns mutable state.
 impl DssObject for Monitor {
     fn data(&self) -> &DssObjData {
         &self.med.cd.obj
@@ -235,11 +238,14 @@ impl DssObject for Monitor {
     }
 }
 
+// BUG(C2): a free snapshot constructor; it belongs to `MeteredSnapshot`.
 /// Capture the parse-relevant shape + header dimensions of the metered element.
 fn capture_metered(full_name: String, o: ResolvedObj<'_>) -> MeteredSnapshot {
     let elem = o.ckt().expect("element= resolves to a ckt elem");
     let cd = elem.cd();
     let num_variables = elem.num_variables();
+    // BUG(C5): the class is probed with `get` for each class in turn to reach its winding or
+    // step count; each class should answer through a method of its own.
     let (kind, num_windings, num_steps) = if let Some(t) = o.get::<Transformer>() {
         (
             MeteredKind::Transformer,

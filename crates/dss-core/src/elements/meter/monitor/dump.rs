@@ -42,6 +42,7 @@ use crate::report::save::dump::{self, DumpCtx};
 
 use super::Monitor;
 
+// BUG(C5): `Monitor` derives `Clone` though it owns mutable state.
 impl Monitor {
     pub(crate) fn dump_body(&self, out: &mut String, cx: &DumpCtx, complete: bool) {
         dump::prefix_ckt(out, cx, self, &self.med.cd, complete);
@@ -71,6 +72,8 @@ impl Monitor {
     }
 }
 
+// BUG(C2): a free formatter over the sample buffer; it belongs to a sample-buffer type that the
+// monitor owns.
 /// The `// Buffer=` loop (Pascal `Monitor.pas:1836-1846`): `%0:1` (1-decimal
 /// fixed) per value, `", "`-separated, a newline every `wrap` values
 /// (`2 + Fnconds*4`, fixed regardless of the monitor's actual per-mode record

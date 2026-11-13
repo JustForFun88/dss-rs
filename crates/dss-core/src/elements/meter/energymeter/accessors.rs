@@ -10,6 +10,8 @@ use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
+// BUG(C2): a free snapshot constructor that also restates the list of PD classes; it belongs
+// to `EmSnapshot`, and whether an element is PD to the element's kind.
 /// Capture the parse-relevant shape of the metered element (the RefSnapshot).
 pub(crate) fn capture_metered(full_name: String, o: ResolvedObj<'_>) -> EmSnapshot {
     let elem = o.ckt().expect("element= resolves to a ckt elem");
@@ -35,6 +37,8 @@ pub(crate) fn capture_metered(full_name: String, o: ResolvedObj<'_>) -> EmSnapsh
     }
 }
 
+// BUG(C2): `EnergyMeter` holds the fields of parts that have no type of their own.
+// BUG(C5): `EnergyMeter` derives `Clone` though it owns mutable state.
 impl CktElement for EnergyMeter {
     fn cd(&self) -> &CktElementData {
         &self.med.cd
@@ -86,6 +90,8 @@ impl CktElement for EnergyMeter {
     }
 }
 
+// BUG(C2): `EnergyMeter` holds the fields of parts that have no type of their own.
+// BUG(C5): `EnergyMeter` derives `Clone` though it owns mutable state.
 impl EnergyMeter {
     pub(crate) fn make_like(&mut self, other: &Self) {
         let o = other;
@@ -114,6 +120,8 @@ impl EnergyMeter {
     }
 }
 
+// BUG(C2): `EnergyMeter` holds the fields of parts that have no type of their own.
+// BUG(C5): `EnergyMeter` derives `Clone` though it owns mutable state.
 impl DssObject for EnergyMeter {
     fn data(&self) -> &DssObjData {
         &self.med.cd.obj

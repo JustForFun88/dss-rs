@@ -9,7 +9,11 @@ use crate::report::save::dump::{self, DumpCtx};
 
 use super::{LineGeometryObj, prop};
 
+// BUG(C5): `LineGeometryObj` derives `Clone` though it owns mutable state.
 impl LineGeometryObj {
+    // BUG(C2): the conductor index reaches the property getters through `selected`, which is
+    // overwritten per conductor and restored, so a read takes `&mut self`; the getters should
+    // take the conductor as an argument.
     pub(crate) fn dump_body(&mut self, out: &mut String, cx: &DumpCtx, _complete: bool) {
         out.push_str(
             "! WARNING: when mixing wire/cable types, \"wires\", \"cncables\" and \

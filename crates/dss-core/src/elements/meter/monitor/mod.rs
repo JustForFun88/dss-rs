@@ -62,6 +62,7 @@ pub mod prop {
     pub const NUM_PROPS: usize = 10; // incl. Like
 }
 
+// BUG(C2): a free function; the property table belongs to `Monitor` as an associated function.
 /// `TDSSMonitor.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
@@ -87,9 +88,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("Monitor", defs, true)
 }
 
+// BUG(C5): derives `Clone` though it owns mutable state; the type should not be `Clone`.
 /// `TMonitorObj`.
 #[derive(Debug, Clone)]
 pub struct Monitor {
+    // BUG(C2): the meter base is a public field that code outside the monitor writes; it should
+    // be private behind methods of `Monitor`.
     pub med: MeterElementData,
     /// Typed decode of the raw `mode=` bitfield (`mode` submodule). The raw
     /// `i32` survives only at the property boundary
@@ -100,6 +104,8 @@ pub struct Monitor {
     vi_polar: bool,
     pp_polar: bool,
 
+    // BUG(C5): a copy of the metered element's name beside `med.metered_element` and the
+    // snapshot's `full_name`, each written at another point; the handle alone should name it.
     /// FullName of the metered element (`Class.name`) for the dump.
     element_full_name: String,
 

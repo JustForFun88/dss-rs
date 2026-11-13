@@ -16,6 +16,7 @@
 use num_complex::Complex64;
 use std::ops::{Add, Div, Mul, Sub};
 
+// BUG(C2): a free function over a matrix slice; it belongs to the matrix type it reads.
 /// The positive-sequence self term `S(M)` of the `n`-conductor matrix `m`
 /// (row-major `n²`), read on its symmetric part `(M + Mᵀ)/2`: every
 /// off-diagonal pair enters as `(M_ij + M_ji)/2`.
@@ -62,6 +63,9 @@ where
     }
 }
 
+// BUG(C5): the applier copies the other element's bus names and counts in, for the
+// `monitored` and `controlled` fields of `PosSeqCtx`, to get past a borrow; the converting
+// element should get a `&dyn CktElement` of the element it reads.
 /// A snapshot of a monitored or controlled element, resolved by the exec
 /// applier and handed to a control/meter's [`make_pos_sequence`]. Pascal reads
 /// the live `MonitoredElement`/`ControlledElement` fields (`NPhases`, `Yorder`,

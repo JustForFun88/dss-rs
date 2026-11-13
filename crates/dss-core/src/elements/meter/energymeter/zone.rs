@@ -5,6 +5,8 @@ use super::{EnergyMeter, MAX_VBASE_COUNT, NUM_EM_REGISTERS, VBASE_START};
 use crate::circuit::ckt_tree::CktTree;
 use crate::elements::traits::ElemId;
 
+// BUG(C2): `EnergyMeter` holds the fields of parts that have no type of their own.
+// BUG(C5): `EnergyMeter` derives `Clone` though it owns mutable state.
 impl EnergyMeter {
     /// Pascal `RecalcElementData`: validate the metered element (must be a PD
     /// element), check the terminal, and — when the element changed — adopt its
@@ -13,6 +15,8 @@ impl EnergyMeter {
     pub fn recalc(&mut self, errors: &mut crate::diag::ErrorLog) {
         // Pascal `RecalcElementData` clears NeedsRecalc before validating.
         self.needs_recalc = false;
+        // BUG(C5): the snapshot is cloned though it is only read while other fields are
+        // written; `&self.metered_snap` borrows it beside them.
         let Some(snap) = self.metered_snap.clone() else {
             errors.push(format!(
                 "EnergyMeter: \"{}\" Circuit Element not set. Element must be defined previously.",
@@ -118,6 +122,7 @@ impl EnergyMeter {
     }
 }
 
+// BUG(C2): a free formatter; it belongs to a type for `%g` number text.
 /// Pascal `'%.3g'` formatting (used by `AssignVoltBaseRegisterNames`).
 fn fmt_3g(v: f64) -> String {
     crate::util::fmt_g(v, 3)

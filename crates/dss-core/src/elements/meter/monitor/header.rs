@@ -4,6 +4,7 @@
 use super::{Monitor, MonitorBaseMode, NUM_SOLUTION_VARS};
 use crate::elements::meter::meter_element::MeteredKind;
 
+// BUG(C5): `Monitor` derives `Clone` though it owns mutable state.
 impl Monitor {
     /// Pascal `ResetIt`: clear the buffer and rebuild the header. `is_harmonic`
     /// is the present `ActiveCircuit.Solution.IsHarmonicModel` (it only selects
@@ -19,6 +20,8 @@ impl Monitor {
     /// the header (`ClearMonitorStream`).
     pub fn recalc(&mut self, errors: &mut crate::diag::ErrorLog, is_harmonic: bool) {
         self.valid_monitor = false;
+        // BUG(C5): the snapshot is cloned though it is only read while other fields are
+        // written; `&self.med.metered_snap` borrows it beside them.
         let Some(snap) = self.med.metered_snap.clone() else {
             errors.push(format!(
                 "Monitor: \"{}\": Circuit Element is not set. Element must be defined previously.",
@@ -106,6 +109,8 @@ impl Monitor {
 
         let nphases = self.med.cd.nphases;
         let nconds = self.med.cd.nconds;
+        // BUG(C5): the snapshot is cloned though it is only read while other fields are
+        // written; `&self.med.metered_snap` borrows it beside them.
         let snap = self.med.metered_snap.clone().unwrap_or_default();
 
         match self.mode.base {

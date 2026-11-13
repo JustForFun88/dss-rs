@@ -29,6 +29,8 @@ define_properties! {
         .flags(PropFlags::NON_ZERO | PropFlags::DYNAMIC_DEFAULT);
 }
 
+// BUG(C5): derives `Clone` though it owns mutable state, and holders keep clones that miss a
+// later edit of it; the type should not be `Clone`, and a holder should keep a handle to it.
 /// `TWireDataObj`.
 #[derive(Debug, Clone)]
 pub struct WireDataObj {

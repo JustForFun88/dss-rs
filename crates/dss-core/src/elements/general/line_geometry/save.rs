@@ -26,6 +26,7 @@ use crate::util::check_for_blanks;
 
 use super::{LineGeometryObj, prop};
 
+// BUG(C5): `LineGeometryObj` derives `Clone` though it owns mutable state.
 impl LineGeometryObj {
     /// Pascal `TLineGeometryObj.SaveWrite` body (the caller already emitted
     /// `New "LineGeometry.name"`). Appends ` name=value` tokens to `out`.

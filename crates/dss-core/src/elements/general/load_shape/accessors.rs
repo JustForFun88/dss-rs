@@ -12,6 +12,7 @@ use super::prop::{
 };
 use super::{LoadShapeInterp, LoadShapeObj, store_array};
 
+// BUG(C5): `LoadShapeObj` derives `Clone` though it owns mutable state.
 impl LoadShapeObj {
     /// Pascal `TLoadShapeObj.MakeLike`.
     pub(crate) fn make_like(&mut self, other: &Self) {
@@ -46,6 +47,7 @@ impl LoadShapeObj {
     }
 }
 
+// BUG(C5): `LoadShapeObj` derives `Clone` though it owns mutable state.
 impl DssObject for LoadShapeObj {
     fn data(&self) -> &DssObjData {
         &self.data

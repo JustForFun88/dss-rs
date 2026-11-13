@@ -25,6 +25,7 @@ use crate::util::check_for_blanks;
 
 use super::{XfmrCodeObj, prop};
 
+// BUG(C5): `XfmrCodeObj` derives `Clone` though it owns mutable state.
 impl XfmrCodeObj {
     /// The tokens of the code's `Save` line after `New "XfmrCode.name"`,
     /// which the caller writes, appended to `out` as ` name=value`.

@@ -12,6 +12,7 @@ use crate::support::complexutil::cdang;
 
 use super::SpectrumObj;
 
+// BUG(C5): `SpectrumObj` derives `Clone` though it owns mutable state.
 impl SpectrumObj {
     pub(crate) fn dump_body(&self, out: &mut String, cx: &DumpCtx, complete: bool) {
         dump::header(out, &dump::full_name(cx, self));

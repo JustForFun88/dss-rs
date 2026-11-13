@@ -6,6 +6,7 @@
 use super::{Monitor, MonitorBaseMode};
 use crate::support::flicker::flicker_meter;
 
+// BUG(C5): `Monitor` derives `Clone` though it owns mutable state.
 impl Monitor {
     /// Pascal `TMonitorObj.PostProcess` (`Monitor.pas:1136`): run
     /// `DoFlickerCalculations` once, latched by `is_processed`, when this is a

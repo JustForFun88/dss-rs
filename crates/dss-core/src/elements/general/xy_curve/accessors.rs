@@ -9,6 +9,7 @@ use super::prop::{
 };
 use super::{XyCurveObj, prop};
 
+// BUG(C5): `XyCurveObj` derives `Clone` though it owns mutable state.
 impl XyCurveObj {
     /// Pascal `TXYcurveObj.MakeLike`.
     pub(crate) fn make_like(&mut self, other: &Self) {
@@ -24,6 +25,7 @@ impl XyCurveObj {
     }
 }
 
+// BUG(C5): `XyCurveObj` derives `Clone` though it owns mutable state.
 impl DssObject for XyCurveObj {
     fn data(&self) -> &DssObjData {
         &self.data

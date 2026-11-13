@@ -134,6 +134,8 @@ enum ConductorChoice {
     TapeShield,
 }
 
+// BUG(C5): derives `Clone` though it owns mutable state, and holders keep clones that miss a
+// later edit of it; the type should not be `Clone`, and a holder should keep a handle to it.
 /// `TLineGeometryObj`. The per-conductor data are 0-based `Vec`s of length
 /// `NConds` (slot `i` is conductor `i+1`).
 #[derive(Clone)]
@@ -143,6 +145,8 @@ pub struct LineGeometryObj {
     fnphases: i32,
     /// The selected conductor (0-based), `None` when no conductor is selected.
     selected: Option<usize>,
+    // BUG(C2): parks the outcome of the plural fill for the side effect that follows; the fill
+    // should return the slot it wrote to its caller.
     /// The last slot the plural `wires=`/`cncables=`/`tscables=` fill wrote in
     /// this edit, taken by its side effect (`None` when the fill failed).
     last_filled: Option<usize>,
@@ -150,6 +154,8 @@ pub struct LineGeometryObj {
     /// Line and the spacing a Line's own spacing and wires were built into.
     subject: Option<String>,
     fphase_choice: Vec<ConductorChoice>,
+    // BUG(C5): clones of the referenced conductor objects, which miss a later edit of a
+    // conductor; each slot should hold a handle to its conductor.
     /// Snapshot-cloned conductor objects (`WireData`/`CNData`/`TSData`), one per
     /// conductor (`None` = not set).
     fwiredata: Vec<Option<ConductorObj>>,
@@ -162,6 +168,8 @@ pub struct LineGeometryObj {
     /// The default unit: feet for a new geometry and after every `nconds=`,
     /// written by `units=` and `spacing=`, copied by `like=`.
     flast_unit: i32,
+    // BUG(C2): parks whether `nconds=` stored its value for the side effect that follows; the
+    // setter should return it to its caller.
     /// Set when `nconds=` stored its value, taken by its side effect: a
     /// refused value re-allocates nothing.
     nconds_stored: bool,
@@ -180,6 +188,8 @@ pub struct LineGeometryObj {
     num_amp_ratings: i32,
     amp_ratings: Vec<Rating>,
     fline_type: LineType,
+    // BUG(C5): a clone of the referenced `LineSpacing`, with the equivalent-spacing fields
+    // below copied from it, which miss a later edit of the spacing; hold a handle to it.
     /// Snapshot-cloned `LineSpacing` (`spacing=`), or `None`.
     line_spacing_obj: Option<LineSpacingObj>,
     // The equivalent-spacing state, copied from the referenced `LineSpacing`

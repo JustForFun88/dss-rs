@@ -123,6 +123,8 @@ impl LoadShapeInterp {
     }
 }
 
+// BUG(C5): derives `Clone` though it owns mutable state, and holders keep clones that miss a
+// later edit of it; the type should not be `Clone`, and a holder should keep a handle to it.
 /// A `LoadShape` instance (`TLoadShapeObj`).
 #[derive(Debug, Clone)]
 pub struct LoadShapeObj {
@@ -182,11 +184,15 @@ pub struct LoadShapeObj {
     sngfile: String,
     dblfile: String,
     pqcsvfile: String,
+    // BUG(C2): this queue and the one below park the file reads and binary saves for the
+    // executive to drain after the edit; the setter or action should return the request.
     /// Deferred file reads queued by `CSVFile` (drained by the executive).
     pending_file_loads: Vec<FileLoad>,
     /// Deferred binary saves queued by `Action=SngSave/DblSave` (drained by the
     /// executive, which owns `OutputDirectory`/`GlobalResult`).
     pending_shape_saves: Vec<crate::obj::base::ShapeSave>,
+    // BUG(C2): parks a normalize requested before a pending file load ran, for
+    // `run_deferred_actions` to pick up; the action should travel with that file load.
     /// `action=normalize`/`ln` requested while a file directive is still
     /// pending (`mult=(file=…) ln`). Pascal reads the file inline, so `Normalize`
     /// sees the data; our deferred read makes it run in `run_deferred_actions`
@@ -280,6 +286,8 @@ impl LoadShapeObj {
     }
 }
 
+// BUG(C2): a free function over a curve array, written again for the scalar shapes; it
+// belongs to a curve-array type the shape classes share.
 /// Pascal `ReAllocmem` semantics for the data setters: an empty parse result is
 /// a freed (NIL) pointer, so it reads back as an empty dump; non-empty becomes
 /// an allocated array.

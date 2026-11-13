@@ -9,6 +9,7 @@ use crate::support::cmatrix::CMatrix;
 
 use super::{LineCodeObj, LineType, TWO_PI, prop};
 
+// BUG(C5): `LineCodeObj` derives `Clone` though it owns mutable state.
 impl LineCodeObj {
     /// Pascal `TLineCodeObj.MakeLike`.
     pub(crate) fn make_like(&mut self, other: &Self) {
@@ -39,6 +40,7 @@ impl LineCodeObj {
     }
 }
 
+// BUG(C5): `LineCodeObj` derives `Clone` though it owns mutable state.
 impl DssObject for LineCodeObj {
     fn data(&self) -> &DssObjData {
         &self.data

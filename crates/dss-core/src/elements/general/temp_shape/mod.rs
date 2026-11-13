@@ -49,6 +49,8 @@ use prop::{
     CSVFILE, DBLFILE, HOUR, INTERVAL, MEAN, MINTERVAL, NPTS, SINTERVAL, SNGFILE, STDDEV, TEMP,
 };
 
+// BUG(C5): derives `Clone` though it owns mutable state, and holders keep clones that miss a
+// later edit of it; the type should not be `Clone`, and a holder should keep a handle to it.
 /// A `TShape` instance (`TTShapeObj`).
 #[derive(Debug, Clone)]
 pub struct TShapeObj {

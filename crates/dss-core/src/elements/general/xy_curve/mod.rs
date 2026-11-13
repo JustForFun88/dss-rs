@@ -49,6 +49,8 @@ define_properties! {
     13 YSCALE  => PropDef::double("YScale");
 }
 
+// BUG(C5): derives `Clone` though it owns mutable state, and holders keep clones that miss a
+// later edit of it; the type should not be `Clone`, and a holder should keep a handle to it.
 /// A `XYcurve` instance (`TXYcurveObj`).
 #[derive(Debug, Clone)]
 pub struct XyCurveObj {
@@ -72,6 +74,8 @@ pub struct XyCurveObj {
     csvfile: String,
     sngfile: String,
     dblfile: String,
+    // BUG(C2): parks the file reads for the executive to drain after the edit; the setter
+    // should return the request.
     /// Deferred file reads (`CSVFile`/`SngFile`/`DblFile`) queued for the
     /// executive — the property hook can't reach the filesystem (mirrors
     /// `spectrum`/`load_shape`).

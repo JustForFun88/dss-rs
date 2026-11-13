@@ -37,6 +37,8 @@ define_properties! {
 
 use prop::{ANGLE, CSV_FILE, HARMONIC, NUM_HARM, PCT_MAG};
 
+// BUG(C5): derives `Clone` though it owns mutable state, and holders keep clones that miss a
+// later edit of it; the type should not be `Clone`, and a holder should keep a handle to it.
 /// A `Spectrum` instance (`TSpectrumObj`).
 #[derive(Debug, Clone)]
 pub struct SpectrumObj {
@@ -52,6 +54,8 @@ pub struct SpectrumObj {
     /// harmonic solution mode (`get_mult`) and the Complete `Dump` tail's
     /// `Multiplier Array:` block (`dump.rs`).
     mult_array: Option<Vec<Complex64>>,
+    // BUG(C2): parks the file reads for the executive to drain after the edit; the setter
+    // should return the request.
     /// Deferred `CSVFile` reads queued for the executive (the `FileLoad`
     /// pattern — the property hook can't reach the filesystem).
     pending_file_loads: Vec<FileLoad>,
@@ -312,6 +316,8 @@ impl DssObject for SpectrumObj {
     }
 }
 
+// BUG(C2): a free function over a curve array, written again in other curve classes; it
+// belongs to a curve-array type those classes share.
 /// Pascal `ReAllocmem`: grow/shrink keeping surviving values; 0 frees (NIL).
 fn realloc(arr: &mut Option<Vec<f64>>, n: usize) {
     if n == 0 {

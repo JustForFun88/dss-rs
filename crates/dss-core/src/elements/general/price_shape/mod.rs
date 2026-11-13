@@ -52,6 +52,7 @@ use prop::{
     CSVFILE, DBLFILE, HOUR, INTERVAL, MEAN, MINTERVAL, NPTS, PRICE, SINTERVAL, SNGFILE, STDDEV,
 };
 
+// BUG(C5): derives `Clone` though it owns mutable state; the type should not be `Clone`.
 /// A `PriceShape` instance (`TPriceShapeObj`).
 #[derive(Debug, Clone)]
 pub struct PriceShapeObj {

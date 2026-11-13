@@ -71,6 +71,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 40; // incl. Like
 }
 
+// BUG(C2): a free function; the property table belongs to `XfmrCodeObj` as an associated
+// function.
 /// `TXfmrCode.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
@@ -174,6 +176,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("XfmrCode", defs, true)
 }
 
+// BUG(C5): derives `Clone` though it owns mutable state; the type should not be `Clone`.
 /// `TXfmrCodeObj`.
 #[derive(Debug, Clone)]
 pub struct XfmrCodeObj {
@@ -208,6 +211,8 @@ pub struct XfmrCodeObj {
     needs_recalc: bool,
 }
 
+// BUG(C2): a free function over a winding count; it belongs to `XfmrCodeObj` or to a type for
+// its short-circuit reactances.
 /// Pascal `XscSize`: `(NumWindings-1)·NumWindings/2`.
 fn xsc_size(num_windings: i32) -> usize {
     let n = num_windings.max(0) as usize;

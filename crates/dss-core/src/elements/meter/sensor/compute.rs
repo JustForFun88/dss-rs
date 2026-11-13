@@ -9,6 +9,7 @@ use crate::util::sqrt3;
 
 use super::Sensor;
 
+// BUG(C5): `Sensor` derives `Clone` though it owns mutable state.
 impl Sensor {
     /// Pascal `DoClearSensor`: reset the spec flags.
     pub(super) fn clear_sensor(&mut self) {
@@ -105,6 +106,8 @@ impl Sensor {
     pub fn recalc(&mut self, errors: &mut crate::diag::ErrorLog) {
         self.needs_recalc = false;
         self.valid_sensor = false;
+        // BUG(C5): the snapshot is cloned though it is only read; with `clear_sensor` narrowed
+        // to the flags it resets, `&self.med.metered_snap` borrows it beside the fields written.
         let Some(snap) = self.med.metered_snap.clone() else {
             errors.push(format!(
                 "Sensor: \"{}\": Circuit Element is not set. Element must be defined previously.",

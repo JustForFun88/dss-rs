@@ -41,6 +41,8 @@ define_properties! {
     10 AVGNEUTRALHEIGHT => PropDef::double("AvgNeutralHeight");
 }
 
+// BUG(C5): derives `Clone` though it owns mutable state, and holders keep clones that miss a
+// later edit of it; the type should not be `Clone`, and a holder should keep a handle to it.
 /// A LineSpacing. `fx`/`fy` hold the coordinates given, in order, at most
 /// `fnconds` of each.
 #[derive(Debug, Clone)]

@@ -8,6 +8,7 @@ use crate::support::cmatrix::CMatrix;
 
 use super::{LineCodeObj, TWO_PI, prop};
 
+// BUG(C5): `LineCodeObj` derives `Clone` though it owns mutable state.
 impl LineCodeObj {
     fn full_name(&self) -> String {
         format!("LineCode.{}", self.data.name())

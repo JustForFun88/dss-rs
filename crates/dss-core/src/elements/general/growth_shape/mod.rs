@@ -35,6 +35,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 7; // incl. Like
 }
 
+// BUG(C2): a free function; the property table belongs to `GrowthShapeObj` as an associated
+// function.
 /// `TGrowthShape.DefineProperties`.
 pub fn class_props() -> ClassProps {
     use prop::*;
@@ -55,6 +57,8 @@ pub fn class_props() -> ClassProps {
     ClassProps::new("GrowthShape", defs, true)
 }
 
+// BUG(C5): derives `Clone` though it owns mutable state, and holders keep clones that miss a
+// later edit of it; the type should not be `Clone`, and a holder should keep a handle to it.
 /// `TGrowthShapeObj`.
 #[derive(Debug, Clone)]
 pub struct GrowthShapeObj {
@@ -72,6 +76,8 @@ pub struct GrowthShapeObj {
     csvfile: String,
     sngfile: String,
     dblfile: String,
+    // BUG(C2): parks the file reads for the executive to drain after the edit; the setter
+    // should return the request.
     /// Deferred file reads queued by `CSVFile`/`SngFile`/`DblFile` (drained by
     /// the executive).
     pending_file_loads: Vec<FileLoad>,
@@ -397,6 +403,8 @@ impl DssObject for GrowthShapeObj {
     }
 }
 
+// BUG(C2): a free function over a curve array, written again in other curve classes; it
+// belongs to a curve-array type those classes share.
 /// Pascal `ReAllocmem`: grow/shrink keeping surviving values; 0 frees (NIL).
 fn realloc(arr: &mut Option<Vec<f64>>, n: usize) {
     if n == 0 {

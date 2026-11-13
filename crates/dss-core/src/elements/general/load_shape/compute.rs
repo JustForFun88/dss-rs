@@ -12,6 +12,7 @@ use crate::obj::base::{InterpLoad, InterpTarget, MmfKind};
 
 use super::{LoadShapeInterp, LoadShapeObj, store_array};
 
+// BUG(C5): `LoadShapeObj` derives `Clone` though it owns mutable state.
 impl LoadShapeObj {
     fn n(&self) -> usize {
         self.num_points.max(0) as usize
@@ -114,6 +115,8 @@ impl LoadShapeObj {
 
         // --- Variable interval (hour array) ---
         let mut hr = hr;
+        // BUG(C5): the hour array is cloned on every lookup, though it is only read while
+        // `last_value_accessed` is written; a borrow of `self.hour` beside that field reads it.
         let h = match self.hour.as_ref() {
             Some(h) if h.len() >= npts => h.clone(),
             // No hour array despite Interval==0: degenerate; treat as empty.
@@ -243,6 +246,8 @@ impl LoadShapeObj {
 
         // --- Variable interval (single-precision hour array) ---
         let mut hr = hr;
+        // BUG(C5): the hour and multiplier arrays are cloned on every lookup, though they are
+        // only read while `last_value_accessed` is written; borrows of the fields read them.
         let h = match self.s_h.as_ref() {
             Some(h) if h.len() >= npts => h.clone(),
             _ => return Complex64::new(1.0, 1.0), // degenerate; see f64 twin

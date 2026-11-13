@@ -28,6 +28,9 @@ use crate::obj::base::{DssObjData, FileLoad, ShapeSave};
 use crate::support::mathutil::{curve_mean_and_std_dev, mean_and_std_dev};
 use dss_parser::{Parser, ParserVars};
 
+// BUG(C2): every field is public and the two shape classes write them from outside; the
+// fields should be private behind methods of this type.
+// BUG(C5): derives `Clone` though it owns mutable state; the type should not be `Clone`.
 /// The state shared by `TShapeObj` and `PriceShapeObj` — the `TTShapeObj` /
 /// `TPriceShapeObj` private/public fields that carry behavior.
 #[derive(Debug, Clone)]
@@ -54,6 +57,8 @@ pub struct ScalarShapeCore {
     pub csvfile: String,
     pub sngfile: String,
     pub dblfile: String,
+    // BUG(C2): this queue and the one below park the file reads and binary saves for the
+    // executive to drain after the edit; the setter or action should return the request.
     /// Deferred file reads queued by `CSVFile` (drained by the executive).
     pub pending_file_loads: Vec<FileLoad>,
     /// Deferred binary saves queued by `Action=SngSave/DblSave`.
@@ -158,6 +163,8 @@ impl ScalarShapeCore {
         }
 
         // --- Variable interval (hour array) ---
+        // BUG(C5): the hour array is cloned on every lookup, though it is only read while
+        // `last_value_accessed` is written; a borrow of `self.hours` beside that field reads it.
         let h = match self.hours.as_ref() {
             Some(h) if h.len() >= npts => h.clone(),
             // No hour array despite Interval==0: degenerate; treat as empty.
@@ -381,6 +388,8 @@ impl ScalarShapeCore {
     }
 }
 
+// BUG(C2): a free function over a curve array, written again for `LoadShapeObj`; it belongs
+// to a curve-array type the shape classes share.
 /// Pascal `ReAllocmem` semantics: an empty parse result is a freed (NIL)
 /// pointer, so it reads back as an empty dump; non-empty becomes an allocated
 /// array.

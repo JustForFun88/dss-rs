@@ -18,6 +18,7 @@ const COND_OUT_OF_RANGE: u32 = 10102;
 /// The `like=` row the class table appends after the class's own properties.
 const LIKE: usize = prop::NUM_PROPS;
 
+// BUG(C5): `LineGeometryObj` derives `Clone` though it owns mutable state.
 impl LineGeometryObj {
     /// Refuse conductor data written with no conductor selected (`prop_name` as
     /// the class table spells it). Returns the selected conductor otherwise.
@@ -105,6 +106,7 @@ impl LineGeometryObj {
     }
 }
 
+// BUG(C5): `LineGeometryObj` derives `Clone` though it owns mutable state.
 impl DssObject for LineGeometryObj {
     fn data(&self) -> &DssObjData {
         &self.data
@@ -251,6 +253,8 @@ impl DssObject for LineGeometryObj {
                 }
             }
             prop::SPACING => {
+                // BUG(C2): the property names one class, yet its reference arrives untyped and
+                // is narrowed to `LineSpacingObj` here; a typed reference would carry the class.
                 self.line_spacing_obj = resolved.and_then(|o| o.cloned::<LineSpacingObj>())
             }
             _ => unreachable!("LineGeometry has no object reference at {idx}"),

@@ -118,6 +118,8 @@ pub mod reg {
     pub const VBASE_START: usize = 32;
 }
 
+// BUG(C2): a free function; the property table belongs to `EnergyMeter` as an associated
+// function.
 /// `TEnergyMeter.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
@@ -204,9 +206,15 @@ pub struct EmSnapshot {
     pub buses: Vec<String>,
 }
 
+// BUG(C2): the zone topology, the register bank, the demand-interval streams, the phase-voltage
+// accumulators and the reliability results are loose fields behind per-field getters and
+// setters, their operations outside; each part should be a type that owns its operations.
+// BUG(C5): derives `Clone` though it owns mutable state; the type should not be `Clone`.
 /// `TEnergyMeterObj`.
 #[derive(Debug, Clone)]
 pub struct EnergyMeter {
+    // BUG(C2): the meter base is a public field that code outside the meter writes; it should
+    // be private behind methods of `EnergyMeter`.
     pub med: MeterElementData,
 
     // Option flags (Pascal `SetOptions`/`GetOptions`).
@@ -260,8 +268,12 @@ pub struct EnergyMeter {
     /// device, never reported). Empty until a `RelCalc` completes.
     feeder_sections: Vec<FeederSection>,
 
+    // BUG(C5): a copy of the metered element's name beside `med.metered_element` and the
+    // snapshot's `full_name`, each written at another point; the handle alone should name it.
     /// FullName of the metered element (`Class.name`) for the dump.
     element_full_name: String,
+    // BUG(C5): a copy of the metered element's shape taken when `element=` resolves, a second
+    // snapshot type beside `med.metered_snap`; the meter should read the element by its handle.
     /// Parse-time snapshot of the metered element.
     metered_snap: Option<EmSnapshot>,
 
@@ -280,6 +292,8 @@ pub struct EnergyMeter {
     vbase_count: usize,
 
     // --- Demand-interval machinery -----------------------------------------
+    // BUG(C5): this flag and the one below repeat whether `di_stream` and `phv_stream` are
+    // `Some`, set apart from them; each stream alone should say whether its file is open.
     /// Pascal `This_Meter_DIFileIsOpen`.
     di_file_is_open: bool,
     /// Pascal `VPhaseReportFileIsOpen`.
@@ -494,6 +508,8 @@ impl EnergyMeter {
         self.caidi = caidi;
         self.cust_interrupts = cust_interrupts;
     }
+    // BUG(C5): collects the zone ends into a fresh `Vec` for a reader that only iterates it;
+    // an iterator over `zone_ends` reads them in place.
     /// `ZoneEndsList` resolved to the branch elements (Pascal `AllEndElements`).
     pub fn zone_end_elements(&self) -> Vec<ElemId> {
         self.zone_ends.iter().map(|&(r, _)| r).collect()
@@ -501,6 +517,9 @@ impl EnergyMeter {
     pub fn has_branch_list(&self) -> bool {
         self.branch_list.is_some()
     }
+    // BUG(C5): the zone tree is moved out and put back with `put_branch_list` so that a zone
+    // walk can borrow the element store that also holds this meter; the walk should borrow
+    // the tree from the meter beside the other elements.
     /// Move the branch tree out for a zone walk that needs the element store
     /// borrowed alongside it (the `solution::meters` free-function pattern —
     /// e.g. `InterpolateCoordinates`); pair with [`Self::put_branch_list`].
@@ -544,6 +563,8 @@ impl EnergyMeter {
     pub(crate) fn phase_voltage_report(&self) -> bool {
         self.f_phase_voltage_report
     }
+    // BUG(C5): returns a clone of `vbase_list` that its callers only read; it should return
+    // `&[f64]`.
     /// The voltage-base list + its in-use count (for the PHV header/rows).
     pub(crate) fn vbase_view(&self) -> (Vec<f64>, usize) {
         (self.vbase_list.clone(), self.vbase_count)
@@ -600,6 +621,8 @@ impl EnergyMeter {
     }
 }
 
+// BUG(C2): a free function; the register names belong to a register-bank type or to
+// `EnergyMeter`.
 /// The fixed (non-voltage-base) register names, padded to `NumEMRegisters`.
 fn default_register_names() -> Vec<String> {
     let fixed = [

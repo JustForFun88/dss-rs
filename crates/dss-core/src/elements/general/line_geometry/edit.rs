@@ -47,6 +47,7 @@ impl ConductorTable {
     }
 }
 
+// BUG(C2): a free function; it belongs to `ConductorTable`, the type that allocates with it.
 /// `n` copies of `value`, `None` when they cannot be allocated.
 fn filled<T: Clone>(n: usize, value: T) -> Option<Vec<T>> {
     let mut v = Vec::new();
@@ -55,6 +56,7 @@ fn filled<T: Clone>(n: usize, value: T) -> Option<Vec<T>> {
     Some(v)
 }
 
+// BUG(C5): `LineGeometryObj` derives `Clone` though it owns mutable state.
 impl LineGeometryObj {
     /// The `nconds` side effect: reset every per-conductor array to its
     /// default (no conductor object, no position, no unit of its own,
@@ -180,6 +182,8 @@ impl LineGeometryObj {
                 self.avg_neutral_height = spc.avg_neutral_height();
                 self.eq_unit = units;
             } else {
+                // BUG(C5): both coordinate arrays are copied only to be read while other fields
+                // are written; a borrow of `line_spacing_obj` beside those fields reads them.
                 // A coordinate the spacing was never given stays not given.
                 let xs = spc.xcoord().to_vec();
                 let hs = spc.ycoord().to_vec();
@@ -353,6 +357,7 @@ impl LineGeometryObj {
     }
 }
 
+// BUG(C2): a free function over a conductor object; it belongs to `ConductorObj`.
 /// Pascal `conductors[i] is TCNDataObj / TTSDataObj` (LineGeometry.pas:522-533):
 /// the conductor model a single catalog object implies.
 fn conductor_choice_of(o: &ConductorObj) -> ConductorChoice {

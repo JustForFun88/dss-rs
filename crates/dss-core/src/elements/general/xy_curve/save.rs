@@ -20,6 +20,7 @@ use crate::report::save::save::{SaveCtx, save_write_token};
 
 use super::{XyCurveObj, prop::NPTS};
 
+// BUG(C5): `XyCurveObj` derives `Clone` though it owns mutable state.
 impl XyCurveObj {
     /// Pascal `TXYcurveObj.SaveWrite` body (the caller already emitted
     /// `New "XYcurve.name"`). Appends ` name=value` tokens to `out`.

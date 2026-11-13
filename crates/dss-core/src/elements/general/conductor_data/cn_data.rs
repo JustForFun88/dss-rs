@@ -51,6 +51,8 @@ define_properties! {
 const CABLE_OFFSET: usize = 5; // EpsR..DiaCable at global 6..9
 const COND_OFFSET: usize = 9; // Rdc..Capradius at global 10..22
 
+// BUG(C5): derives `Clone` though it owns mutable state, and holders keep clones that miss a
+// later edit of it; the type should not be `Clone`, and a holder should keep a handle to it.
 /// `TCNDataObj`.
 #[derive(Debug, Clone)]
 pub struct CnDataObj {

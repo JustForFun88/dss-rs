@@ -13,6 +13,7 @@ use crate::obj::base::{DssObjData, DssObject};
 
 use super::{Sensor, prop};
 
+// BUG(C2): a free snapshot constructor; it belongs to `MeteredSnapshot`.
 /// Capture the parse-relevant shape of the metered element (any class).
 fn capture(full_name: String, o: ResolvedObj<'_>) -> MeteredSnapshot {
     let elem = o.ckt().expect("element= resolves to a ckt elem");
@@ -28,6 +29,7 @@ fn capture(full_name: String, o: ResolvedObj<'_>) -> MeteredSnapshot {
     }
 }
 
+// BUG(C5): `Sensor` derives `Clone` though it owns mutable state.
 impl CktElement for Sensor {
     fn cd(&self) -> &CktElementData {
         &self.med.cd
@@ -81,6 +83,7 @@ impl CktElement for Sensor {
     }
 }
 
+// BUG(C5): `Sensor` derives `Clone` though it owns mutable state.
 impl Sensor {
     pub(crate) fn make_like(&mut self, other: &Self) {
         let o = other;
@@ -103,6 +106,7 @@ impl Sensor {
     }
 }
 
+// BUG(C5): `Sensor` derives `Clone` though it owns mutable state.
 impl DssObject for Sensor {
     fn data(&self) -> &DssObjData {
         &self.med.cd.obj

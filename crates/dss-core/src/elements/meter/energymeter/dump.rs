@@ -11,6 +11,8 @@ use crate::report::save::dump::{self, DumpCtx};
 
 use super::EnergyMeter;
 
+// BUG(C2): `EnergyMeter` holds the fields of parts that have no type of their own.
+// BUG(C5): `EnergyMeter` derives `Clone` though it owns mutable state.
 impl EnergyMeter {
     pub(crate) fn dump_body(&self, out: &mut String, cx: &DumpCtx, complete: bool) {
         dump::prefix_ckt(out, cx, self, &self.med.cd, complete);

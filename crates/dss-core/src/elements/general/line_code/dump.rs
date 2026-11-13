@@ -12,6 +12,7 @@ use crate::report::save::dump::{self, DumpCtx};
 
 use super::{LineCodeObj, prop};
 
+// BUG(C5): `LineCodeObj` derives `Clone` though it owns mutable state.
 impl LineCodeObj {
     pub(crate) fn dump_body(&self, out: &mut String, cx: &DumpCtx, _complete: bool) {
         // inherited TDSSObject.DumpProperties (Leaf=FALSE): blank + `New "…"`.
@@ -93,6 +94,8 @@ impl LineCodeObj {
     }
 }
 
+// BUG(C2): a free formatter, written again for other matrix dumps; it belongs to a type for
+// the matrix text.
 /// Pascal full-matrix dump: row-major `<v> ` cells, each row trailed by `|`.
 fn write_matrix(out: &mut String, n: usize, cell: impl Fn(usize, usize) -> String) {
     for i in 0..n {

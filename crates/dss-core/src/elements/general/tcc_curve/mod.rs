@@ -24,6 +24,8 @@ define_properties! {
 
 use prop::{C_ARRAY, NPTS, T_ARRAY};
 
+// BUG(C5): derives `Clone` though it owns mutable state, and holders keep clones that miss a
+// later edit of it; the type should not be `Clone`, and a holder should keep a handle to it.
 /// A `TCC_Curve` instance (`TTCC_CurveObj`).
 #[derive(Debug, Clone)]
 pub struct TccCurveObj {
@@ -186,6 +188,8 @@ impl TccCurveObj {
     }
 }
 
+// BUG(C2): this and `calc_log_points` below are free functions over a curve array, the first
+// written again in other curve classes; they belong to a curve-array type.
 /// Pascal `ReAllocmem(arr, Sizeof(Double) * Npts)`: grow/shrink keeping the
 /// surviving values; `Npts = 0` frees the array (NIL). New slots are zeroed
 /// here — the original leaves them uninitialized, but that memory is always

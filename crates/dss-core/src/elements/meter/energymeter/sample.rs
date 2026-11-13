@@ -6,7 +6,11 @@ use super::EnergyMeter;
 use crate::circuit::ckt_tree::CktTree;
 use crate::elements::traits::ElemId;
 
+// BUG(C2): `EnergyMeter` holds the fields of parts that have no type of their own.
+// BUG(C5): `EnergyMeter` derives `Clone` though it owns mutable state.
 impl EnergyMeter {
+    // BUG(C2): this method and `SampleState::integrate` work on the register bank (registers,
+    // derivatives, first-sample flag), which has no type; a register-bank type should own them.
     /// Pascal `TEnergyMeterObj.ResetRegisters`: zero the registers/derivatives
     /// and prime the drag-hand maxima to a large negative number.
     pub fn reset_registers(&mut self) {
@@ -30,7 +34,12 @@ impl EnergyMeter {
         &mut self,
         trapezoidal: bool,
     ) -> Option<(CktTree, SampleState)> {
+        // BUG(C5): the zone tree here and the register bank below are moved out of the meter
+        // and `end_take_sample` puts them back, because the walk borrows the store that holds
+        // the meter; the walk should borrow the tree and the bank as parts of the meter.
         let tree = self.branch_list.take()?;
+        // BUG(C5): the configuration fields and a clone of `vbase_list` are copied on every
+        // sample; the walk should read them from the meter by reference.
         let state = SampleState {
             local_only: self.local_only,
             zone_is_radial: self.zone_is_radial,
@@ -73,6 +82,8 @@ impl EnergyMeter {
     }
 }
 
+// BUG(C5): exists to carry the register bank and a copy of the configuration out of the meter
+// for the zone walk; the walk should borrow both from the meter in place.
 /// Mutable sweep state for `TakeSample`: the config snapshot plus the register
 /// accumulators moved out of the meter for the duration of the zone walk
 /// (the meter object itself is borrowed by the element store during the walk).
