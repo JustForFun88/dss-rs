@@ -22,6 +22,7 @@ use super::WindGen;
 
 const TWO_PI: f64 = 2.0 * std::f64::consts::PI;
 
+// BUG(C2): `WindGen` gathers the operations of its parts, which should own them.
 impl WindGen {
     /// Pascal `TWindGenObj.InitStateVars` — seed the WTG3 model from the present
     /// (power-flow) operating point.
@@ -189,6 +190,8 @@ impl WindGen {
         // the initial Norton current back into ITerminal for the first
         // CalcDynamic to read).
         self.cd.compute_vterminal(node_v);
+        // BUG(C5): `vterminal` is cloned though `cd.vterminal`, `cd.iterminal` and
+        // `wind_model_dyn` are disjoint fields; direct access lends `&self.cd.vterminal`.
         let vterm = self.cd.vterminal.clone();
         self.wind_model_dyn.init(&vterm, &mut self.cd.iterminal);
     }
@@ -323,6 +326,8 @@ impl WindGen {
             return;
         }
 
+        // BUG(C5): `vterminal` is cloned on every dynamics iteration though `cd.vterminal`,
+        // `cd.iterminal` and `wind_model_dyn` are disjoint fields; lend `&self.cd.vterminal`.
         let vterm = self.cd.vterminal.clone();
         self.wind_model_dyn.calc_dynamic(
             &vterm,

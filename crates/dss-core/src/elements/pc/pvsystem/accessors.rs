@@ -98,6 +98,8 @@ impl CktElement for PVSystem {
             return;
         }
         let yorder = self.cd.yorder;
+        // BUG(C5): `yp_shunt`, `yp_series`, `yprim` and `inj_current` are allocated anew on every
+        // Y build; the element should keep them between builds and refill them in place.
         let mut yp_shunt = CMatrix::new(yorder);
 
         self.set_nominal_der_output(sys);
@@ -369,6 +371,7 @@ impl InvBasedPce for PVSystem {
     }
 }
 
+// BUG(C2): `PVSystem` gathers the operations of its parts, which should own them.
 impl PVSystem {
     /// How many variables sit ahead of the `UserModel` tail: the linked
     /// `DynamicExp`'s memory dump when it has variables, else the 22 classic
@@ -682,10 +685,16 @@ impl DssObject for PVSystem {
         self.cd.get_bus(terminal).to_string()
     }
 
+    // BUG(C5): each reference is stored three times, the name, an `Idx` and an owned clone of the
+    // arena object (the shapes, the curves and the `DynamicExpObj`), and the solve reads the
+    // clone, so a later edit of the source never reaches the element. The `Idx` should name it.
     /// Resolve a shape / curve / dynamic-expression reference (snapshot-clone,
     /// like `FetchLineCode`).
     fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use prop::*;
+        // BUG(C5): the referenced object arrives untyped, its class is checked here at run time
+        // (a wrong class is a silent `None`) and `idx` selects the field it goes to. Each
+        // reference property should receive a typed handle into a slot of its own.
         let load_shape_ref = || resolved.and_then(|o| o.idx::<LoadShapeObj>());
         let t_shape_ref = || resolved.and_then(|o| o.idx::<TShapeObj>());
         let xy_curve_ref = || resolved.and_then(|o| o.idx::<XyCurveObj>());

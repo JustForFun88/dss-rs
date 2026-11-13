@@ -12,6 +12,7 @@ use crate::util::{EPSILON, sqrt3};
 
 use super::{Connection, WindGen};
 
+// BUG(C2): `WindGen` gathers the operations of its parts, which should own them.
 impl WindGen {
     /// Pascal `CalcYPrimMatrix` (power-flow + harmonic/dynamic paths).
     pub(super) fn calc_yprim_matrix(&mut self, ymatrix: &mut CMatrix, sys: &SysCtx) {
@@ -139,6 +140,8 @@ impl WindGen {
         }
     }
 
+    // BUG(C5): `put_curr` takes the whole `SysCtx` to read `solution_count` alone; it should
+    // take the solution count.
     /// The shared tail of every `DoXxxGen`: terminal/injection bookkeeping.
     fn put_curr(&mut self, sys: &SysCtx, curr: Complex64, i: usize) {
         self.stick_curr(true, -curr, i); // into ITerminal

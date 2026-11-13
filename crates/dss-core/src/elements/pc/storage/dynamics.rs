@@ -30,6 +30,7 @@ use super::{Storage, StorageState};
 pub(super) const NUM_BASE_STORAGE_VARS: usize = 25;
 pub(super) const NUM_STORAGE_VARS: usize = NUM_BASE_STORAGE_VARS + NUM_INV_DYN_VARS; // = 34
 
+// BUG(C2): `Storage` gathers the operations of its parts, which should own them.
 impl Storage {
     /// Pascal `TStorageObj.InitStateVars` (l.2742) — seed the GFL inverter
     /// state from the present power-flow operating point (+ the `DynamicEqObj <> NIL`
@@ -147,6 +148,9 @@ impl Storage {
         (base_kv, i_max_p_phase, ls)
     }
 
+    // BUG(C2): this step and `integrate_dyn_eq_phase` read and write `base.dyn_vars` and
+    // `base.dyneq` field by field, the work of `InvDynamicVars` and `DynEqPceData` done by their
+    // owner, and `PVSystem` repeats both. The step should be one operation of those parts.
     /// Pascal `TStorageObj.IntegrateStates` (l.2840) — advance the inverter state
     /// by one trapezoidal half-step (GFL current tracking or GFM black-start
     /// droop, per `gfm_mode`), dispatching to `integrate_dyn_eq_phase` per phase
@@ -229,6 +233,9 @@ impl Storage {
                     // unless `AmpLimit` is set (base default -1). Uses the GFM
                     // `GetCurrents` override (`Curr = YPrim·NodeV − InjCurrent`).
                     if i_limit > 0.0 {
+                        // BUG(C5): `curr` is allocated anew per phase on every dynamics
+                        // iteration to call `get_currents`; the element should keep the buffer
+                        // between passes.
                         // Pascal `SetLength(curr, NPhases+1)`; reads curr[0..NPhases-1].
                         let mut curr = vec![Complex64::ZERO; self.cd.yorder];
                         self.get_currents(sys, node_v, &mut curr);
@@ -270,6 +277,9 @@ impl Storage {
                     // `SolveDynamicStep` (Pascal Storage.pas l.2919).
                     self.integrate_dyn_eq_phase(sys, node_v, i, iteration_flag);
                 } else {
+                    // BUG(C5): the PI controller is moved out of `base.pi_ctrl` and put back
+                    // around the step, though `pi_ctrl` and `dyn_vars` are disjoint fields of
+                    // `base`. Direct access borrows `&mut self.base.pi_ctrl[i]` beside them.
                     let mut pi = std::mem::take(&mut self.base.pi_ctrl[i]);
                     self.base
                         .dyn_vars
@@ -337,6 +347,8 @@ impl Storage {
                 4 => {} // nothing for this object — the current is the DynOut[0] state
                 10 => self.base.dyneq.dynamic_eq_vals[var_idx][0] = self.base.dyn_vars.rated_vdc,
                 11 => {
+                    // BUG(C5): the PI controller is moved out and put back around the call,
+                    // though `pi_ctrl` and `dyn_vars` are disjoint fields of `base`; borrow both.
                     let mut pi = std::mem::take(&mut self.base.pi_ctrl[i]);
                     self.base
                         .dyn_vars

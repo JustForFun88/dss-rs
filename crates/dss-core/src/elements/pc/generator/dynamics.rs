@@ -30,6 +30,7 @@ use super::{Connection, Generator};
 pub(super) const TWO_PI: f64 = 2.0 * std::f64::consts::PI;
 pub(super) const RADIANS_TO_DEGREES: f64 = 180.0 / std::f64::consts::PI;
 
+// BUG(C2): `Generator` gathers the operations of its parts, which have no type of their own.
 impl Generator {
     /// Pascal `TGeneratorObj.InitStateVars` — seed the shaft/Thevenin state from
     /// the present (power-flow) operating point (both the built-in shaft model and

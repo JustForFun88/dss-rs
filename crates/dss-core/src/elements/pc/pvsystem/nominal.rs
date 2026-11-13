@@ -14,6 +14,8 @@ use crate::util::{CDOUBLEONE, inv_sqrt3_x1000};
 use super::PVSystem;
 use crate::elements::pc::inv_based_pce::VarMode;
 
+// BUG(C2): a free helper, written again in the Storage module; it should exist once, as an
+// associated function of the type whose inverter clamp reads it.
 /// Pascal `Math.Sign(Double): Integer` — returns 0 at exactly zero (unlike
 /// `f64::signum`, which returns ±1). The inverter clamp depends on this.
 fn sign(x: f64) -> f64 {
@@ -26,7 +28,13 @@ fn sign(x: f64) -> f64 {
     }
 }
 
+// BUG(C2): `PVSystem` gathers the operations of its parts, which should own them.
 impl PVSystem {
+    // BUG(C2): the shape multiplier below reads `base`'s shape copies and writes
+    // `base.shape_factor`, the work of `InvBasedPceData` done by its owner, and it is written
+    // again in each DER element. A shape-reference type should own the handle and the multiplier.
+    // BUG(C5): the shape is read through `as_mut` because a lookup moves the position kept in
+    // the element's own copy; a read of the shape should borrow it shared.
     /// Pascal `CalcDailyMult` (irradiance shape).
     pub(super) fn calc_daily_mult(&mut self, hr: f64) {
         if let Some(s) = self.base.daily_shape_obj.as_mut() {
@@ -414,6 +422,9 @@ impl PVSystem {
     /// later step can read any point (pinned by
     /// `exec::tests::rating_refusals::a_curve_point_that_is_not_a_number_refuses_its_element`).
     pub fn recalc(&mut self, sys: &SysCtx) {
+        // BUG(C5): the whole element is cloned as an untyped rollback; on a refusal the model is
+        // moved into the copy and `*self = held` writes it back. `derive` should return the
+        // derived values as a value, committed only when finite, so no copy is held.
         let mut held = self.clone();
         self.derive(sys);
         let (kw_out, kvar_out, yeq, factors) = self.power_flow_output(sys);
@@ -468,6 +479,8 @@ impl PVSystem {
         if self.base.var_mode != VarMode::Pf || self.base.pf_nominal != 0.0 {
             return false;
         }
+        // BUG(C5): the whole element is cloned to run `derive` on the copy and read two numbers
+        // back. The output should come from an operation that returns it without mutating.
         let mut trial = self.clone();
         trial.base.pf_nominal = 1.0;
         trial.derive(sys);
@@ -498,6 +511,8 @@ impl PVSystem {
         if !(sys.is_dynamic_model || sys.is_harmonic_model) {
             return out(self);
         }
+        // BUG(C5): the whole element is cloned to run `set_nominal_der_output` on the copy and
+        // read the output back. It should come from an operation that returns it without mutating.
         let mut flow = self.clone();
         flow.set_nominal_der_output(&SysCtx {
             is_dynamic_model: false,
@@ -629,6 +644,7 @@ impl PVSystem {
     }
 }
 
+// BUG(C2): a free function over one `XyCurveObj`; it should be a method of `XyCurveObj`.
 /// Whether a held curve has a point that is not a finite number.
 fn curve_broken(curve: Option<&XyCurveObj>) -> bool {
     curve.is_some_and(XyCurveObj::has_point_not_finite)

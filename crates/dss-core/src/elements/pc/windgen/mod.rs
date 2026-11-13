@@ -127,6 +127,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 48; // incl. Like
 }
 
+// BUG(C2): `class_props` is a free function that builds the class table; it should be an
+// associated constructor of the `WindGen` class definition.
 /// `TWindGen.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
@@ -205,6 +207,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("WindGen", defs, true)
 }
 
+// BUG(C5): `WindGen` owns mutable state across operations and derives `Clone`, which serves
+// the recalc rollback, the what-if copies and owned snapshots of the element. It should not
+// be `Clone`.
+// BUG(C2): `WindGen` does the work of its parts: its setters and `derive` set the fields of
+// `wind_model_dyn` in place, and the shape references, the GenVars record and the model slot
+// have no type. Each part should own its fields and operations.
 /// `TWindGenObj`. `GenVars` (the public machine/aerodynamic record) is flattened
 /// into these fields; the WTG3 dynamics live in [`Self::wind_model_dyn`].
 #[derive(Debug, Clone)]
@@ -309,8 +317,13 @@ pub struct WindGen {
     /// `DynEqPCE` base: the linked `DynamicExp` + its dynamics memory.
     pub dyneq: DynEqPceData,
     pub spectrum: String,
+    // BUG(C5): `spectrum_obj` is a clone of the arena's `SpectrumObj` kept beside its name, so an
+    // edit of the spectrum does not reach it. The element should hold a handle to the spectrum.
     pub spectrum_obj: Option<SpectrumObj>,
 
+    // BUG(C5): each shape and curve reference below is held three times, the name, an `Idx` into
+    // the arena and an owned clone that the solve reads, so a later edit of the source never
+    // reaches the element. The `Idx` alone should name the object the arena owns.
     pub yearly_shape: String,
     pub daily_shape: String,
     pub duty_shape: String,
@@ -338,11 +351,15 @@ pub struct WindGen {
     /// The bound `UserModel=` WASM model (Pascal `UserModel: TWindGenUserModel`,
     /// `:100`), `None` until a `.wasm` loads.
     pub user_model: Option<Box<WindGenUserModelSlot>>,
+    // BUG(C2): the property hooks park their user-model load requests in this field and the
+    // executive takes them later; the hook should return the request to its caller.
     /// Deferred `UserModel=`/`UserData=` requests the executive resolves before
     /// `end_edit` (the property hook cannot reach the filesystem).
     pub pending_user_model_loads: Vec<crate::obj::base::UserModelLoad>,
 }
 
+// BUG(C2): a free function over `Connection`, written again in each element module; it should
+// be one method of `Connection`.
 /// Pascal `SetNcondsForConnection`.
 fn nconds_for_connection(connection: Connection, nphases: usize) -> usize {
     match connection {
@@ -496,6 +513,7 @@ impl WindGen {
     }
 }
 
+// BUG(C2): a `pub fn` test fixture in non-test code; it belongs in the `#[cfg(test)]` module.
 /// Unit-test fixture: the fresh-circuit parse-time snapshot (see
 /// [`SysCtx::parse_default`]). Production paths thread the LIVE `sys_ctx` — this
 /// remains only as the default context for the class's `#[cfg(test)]` fixtures.

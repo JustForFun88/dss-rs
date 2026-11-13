@@ -27,6 +27,8 @@ use crate::support::dynamics::IterationFlag;
 
 use super::PVSystem;
 
+// BUG(C2): the user-model slot is written again, field for field and method for method, for
+// each element that hosts a model; one slot type should serve them all.
 /// One bound PVSystem user model (Pascal `TPVsystemUserModel`, 15-fn). Held on
 /// the [`PVSystem`] as `Option<Box<PvUserModelSlot>>`. [`Clone`] clones the load
 /// spec and drops the live instance (Pascal `MakeLike` re-`New`s,
@@ -41,6 +43,9 @@ pub struct PvUserModelSlot {
     var_names: Vec<String>,
 }
 
+// BUG(C5): the slot owns a live model instance, its variable cache and the last edit string,
+// and this `Clone` drops the instance, so a cloned element runs no model until `ensure_live`
+// rebuilds it. The slot should not be `Clone`; a second model is a load of its own.
 impl Clone for PvUserModelSlot {
     fn clone(&self) -> Self {
         Self {
@@ -67,6 +72,9 @@ impl std::fmt::Debug for PvUserModelSlot {
 
 type LiveResult = Result<(), UserModelError>;
 
+// BUG(C5): every slot method below takes the whole `PVSystem` (`p`) though it reads only fields
+// of `cd`, so the callers move the slot out of the element to lend it. The slot should take
+// `&CktElementData`.
 impl PvUserModelSlot {
     /// Load + instantiate from resolved `.wasm` bytes (Pascal `Set_Name` →
     /// `FNew`, `PVSystemUserModel.pas`).
@@ -132,6 +140,8 @@ impl PvUserModelSlot {
         let instance = UserModelInstance::new(&host, self.yorder, sh)?;
         self.live = Some(Box::new(instance));
         if !self.data.is_empty() {
+            // BUG(C5): the slot's own edit string is cloned only because `edit_impl` takes
+            // `&mut self`; a method that borrows `self.live` alone can read `&self.data`.
             self.edit_impl(&self.data.clone(), p, sys, node_v)?;
         }
         self.refresh_var_cache()?;
@@ -314,6 +324,7 @@ impl PvUserModelSlot {
     }
 }
 
+// BUG(C2): `PVSystem` gathers the operations of its parts, which should own them.
 impl PVSystem {
     /// Queue a deferred `UserModel=` (re)load (Pascal `UserModel.Name := …`).
     pub(super) fn queue_user_model_load(&mut self, name: String) {
@@ -363,6 +374,7 @@ impl PVSystem {
                 }
             }
             UserModelAction::Edit(data) => {
+                // BUG(C5): the slot is moved out of the element and put back around the call.
                 let Some(mut s) = self.user_model.take() else {
                     return; // Pascal: `if UserModel.Exists then Edit`.
                 };
@@ -394,6 +406,8 @@ impl PVSystem {
         node_v: &[Complex64],
         errors: &mut ErrorLog,
     ) -> bool {
+        // BUG(C5): the model is moved out of `user_model` and put back after the call, because
+        // `calc` takes the whole `PVSystem`. Direct access lends the slot beside `cd`.
         let Some(mut um) = self.user_model.take() else {
             return false;
         };
@@ -401,6 +415,9 @@ impl PVSystem {
             self.user_model = Some(um);
             return false;
         }
+        // BUG(C5): the name is copied and `vterminal`/`iterminal` are cloned, the guest writes
+        // the copy and `copy_from_slice` writes it back, because `self` is lent whole to the
+        // slot. Direct access lends `&self.cd.vterminal` and `&mut self.cd.iterminal`.
         let name = self.cd.obj.name().to_string();
         let v = self.cd.vterminal.clone();
         let mut it = self.cd.iterminal.clone();
@@ -426,6 +443,8 @@ impl PVSystem {
     /// Pascal `RecalcElementData` tail (`PVsystem.pas:1146-1147`):
     /// `UserModel.FUpdateModel`. Called at the end of [`PVSystem::recalc`].
     pub(super) fn update_user_models(&mut self, sys: &SysCtx) {
+        // BUG(C5): the slot is moved out of the element and put back around the call, and the
+        // name is copied, because `update_model` takes the whole `PVSystem`.
         let Some(mut s) = self.user_model.take() else {
             return;
         };
@@ -447,6 +466,8 @@ impl PVSystem {
         if !self.user_model_exists() {
             return false;
         }
+        // BUG(C5): the slot is moved out of the element and put back around the call, and the
+        // name is copied, because `integrate` takes the whole `PVSystem`.
         let Some(mut um) = self.user_model.take() else {
             return false;
         };
@@ -500,6 +521,8 @@ impl PVSystem {
         sys: &SysCtx,
         node_v: &[Complex64],
     ) {
+        // BUG(C5): the slot is moved out of the element and put back around the call, and the
+        // name is copied, because `get_all_vars` takes the whole `PVSystem`.
         let Some(mut s) = self.user_model.take() else {
             return;
         };
@@ -537,6 +560,8 @@ impl PVSystem {
             return None;
         }
         let k = i - base;
+        // BUG(C5): the slot is moved out of the element and put back around the call, and the
+        // name is copied, because `get_variable` takes the whole `PVSystem`.
         let mut s = self.user_model.take()?;
         if !(s.exists() && k <= s.num_vars()) {
             self.user_model = Some(s);
@@ -570,6 +595,8 @@ impl PVSystem {
             return false;
         }
         let k = i - base;
+        // BUG(C5): the slot is moved out of the element and put back around the call, and the
+        // name is copied, because `set_variable` takes the whole `PVSystem`.
         let Some(mut s) = self.user_model.take() else {
             return false;
         };
@@ -594,6 +621,8 @@ impl PVSystem {
     }
 }
 
+// BUG(C2): a free function, written again in each user-model host module; the load-failure
+// diagnostic belongs to one shared user-model slot type.
 /// Map a load-time [`UserModelError`] onto the Pascal load-failure diagnostic.
 fn push_load_failure(name: &str, model_name: &str, e: &UserModelError, errors: &mut ErrorLog) {
     match e {
@@ -607,6 +636,8 @@ fn push_load_failure(name: &str, model_name: &str, e: &UserModelError, errors: &
     }
 }
 
+// BUG(C2): a free function, written again in the Storage host module; the not-loaded text
+// belongs to one shared user-model slot type.
 /// The Pascal warn-and-fallback text (`PVSystemUserModel.pas:153`), model
 /// absent, built-in model solves.
 fn not_loaded_text(name: &str, model_name: &str) -> String {
@@ -616,6 +647,8 @@ fn not_loaded_text(name: &str, model_name: &str) -> String {
     )
 }
 
+// BUG(C2): a free function over `SysCtx`, written again in each user-model host module; it
+// should be one constructor of `DynamicsRec` from the context.
 /// Build the packed `TDynamicsRec` image from the solution context (ABI §2.1).
 fn dyn_rec_from(sys: &SysCtx) -> DynamicsRec {
     DynamicsRec {
@@ -633,6 +666,8 @@ fn dyn_rec_from(sys: &SysCtx) -> DynamicsRec {
     }
 }
 
+// BUG(C2): this callback snapshot type is written again for each element that hosts a model;
+// one callback type should serve them all.
 /// An owned per-call context snapshot serving the tier-A `dss_env` reads for the
 /// owning PVSystem (ABI doc §4).
 struct PvCallbacks {
@@ -648,6 +683,9 @@ struct PvCallbacks {
 }
 
 impl PvCallbacks {
+    // BUG(C5): every guest call builds a fresh context owning copies of the terminal voltages
+    // and currents, the whole network voltage vector and the name, because the `Shuttle`
+    // context must be owned. The guest should read the host state by borrow.
     fn snapshot(p: &PVSystem, sys: &SysCtx, node_v: &[Complex64]) -> Self {
         let yorder = p.cd.yorder;
         let voltages: Vec<Complex64> = (0..yorder)

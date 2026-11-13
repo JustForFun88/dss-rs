@@ -27,10 +27,13 @@ use crate::util::sqrt3;
 
 use super::{Storage, StorageDispatchMode, StorageState, nconds_for_connection, prop};
 
+// BUG(C2): `Storage` gathers the operations of its parts, which should own them.
 impl Storage {
     /// Write variable `k` (1-based) of the loaded `DynaDLL=` model; a guest
     /// failure queues `#1569` on the element.
     fn set_dyna_model_variable(&mut self, k: usize, value: f64, sys: &SysCtx) {
+        // BUG(C5): the slot is moved out of the element and put back around the call, and the
+        // name is copied, because `set_variable` takes the whole `Storage`.
         let Some(mut dm) = self.dyna_model.take() else {
             return;
         };
@@ -149,6 +152,8 @@ impl CktElement for Storage {
             return;
         }
         let yorder = self.cd.yorder;
+        // BUG(C5): `yp_shunt`, `yp_series`, `yprim` and `inj_current` are allocated anew on every
+        // Y build; the element should keep them between builds and refill them in place.
         let mut yp_shunt = CMatrix::new(yorder);
 
         self.set_nominal_der_output(sys);
@@ -468,6 +473,7 @@ impl InvBasedPce for Storage {
     }
 }
 
+// BUG(C2): `Storage` gathers the operations of its parts, which should own them.
 impl Storage {
     /// Pascal `TStorageObj.MakeLike`.
     pub(crate) fn make_like(&mut self, other: &Self) {
@@ -812,10 +818,16 @@ impl DssObject for Storage {
         self.cd.get_bus(terminal).to_string()
     }
 
+    // BUG(C5): each reference is stored three times, the name, an `Idx` and an owned clone of the
+    // arena object (the shapes, the `EffCurve` and the `DynamicExpObj`), and the solve reads the
+    // clone, so a later edit of the source never reaches the element. The `Idx` should name it.
     /// Resolve a shape / curve / dynamic-expression reference (snapshot-clone,
     /// like `FetchLineCode`).
     fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use prop::*;
+        // BUG(C5): the referenced object arrives untyped, its class is checked here at run time
+        // (a wrong class is a silent `None`) and `idx` selects the field it goes to. Each
+        // reference property should receive a typed handle into a slot of its own.
         let load_shape_ref = || resolved.and_then(|o| o.idx::<LoadShapeObj>());
         let load_shape = || resolved.and_then(|o| o.cloned::<LoadShapeObj>());
         let xy_curve = || resolved.and_then(|o| o.cloned::<XyCurveObj>());

@@ -46,6 +46,8 @@ use crate::support::dynamics::IterationFlag;
 
 use super::WindGen;
 
+// BUG(C2): the user-model slot is written again, field for field and method for method, for
+// each element that hosts a model; one slot type should serve them all.
 /// One bound WindGen user model — the dss-core wrapper around a
 /// [`UserModelHost`] + [`UserModelInstance`] (Pascal `TWindGenUserModel`).
 ///
@@ -82,6 +84,9 @@ pub struct WindGenUserModelSlot {
     var_names: Vec<String>,
 }
 
+// BUG(C5): the slot owns a live model instance, its variable cache and the last edit string,
+// and this `Clone` drops the instance, so `take_live_user_model` must rebuild it before a
+// cloned element runs its model. The slot should not be `Clone`; a second model is a load.
 impl Clone for WindGenUserModelSlot {
     fn clone(&self) -> Self {
         Self {
@@ -107,6 +112,9 @@ impl std::fmt::Debug for WindGenUserModelSlot {
     }
 }
 
+// BUG(C5): every slot method below takes the whole `WindGen`, copies its GenVars fields into a
+// fresh record (`wind_gen_vars_from`) and, where the guest may write, copies them all back
+// (`apply_wind_gen_vars`). The slot should be lent the record part and the terminal buffers.
 impl WindGenUserModelSlot {
     /// Load + instantiate from resolved `.wasm` bytes (Pascal
     /// `TWindGenUserModel.Set_Name` → `FNew`, `WindGenUserModel.pas:158-220`).
@@ -214,6 +222,8 @@ impl WindGenUserModelSlot {
         self.live = Some(Box::new(instance));
         apply_wind_gen_vars(g, &wv);
         if !self.data.is_empty() {
+            // BUG(C5): the slot's own edit string is cloned only because `edit_impl` takes
+            // `&mut self`; a method that borrows `self.live` alone can read `&self.data`.
             self.edit_impl(&self.data.clone(), g, sys, node_v)?;
         }
         self.refresh_var_cache();
@@ -479,6 +489,7 @@ impl WindGenUserModelSlot {
 /// Result alias for the slot's `&mut` call paths.
 type LiveResult = Result<(), UserModelError>;
 
+// BUG(C2): `WindGen` gathers the operations of its parts, which should own them.
 impl WindGen {
     /// Queue a deferred `UserModel=` (re)load (Pascal `UserModel.Name := …` →
     /// `Set_Name`). A blank / `none` name unloads the slot in place and is not
@@ -540,6 +551,7 @@ impl WindGen {
                 }
             }
             UserModelAction::Edit(data) => {
+                // BUG(C5): the slot is moved out of the element and put back around the call.
                 let Some(mut s) = self.user_model.take() else {
                     return; // Pascal `Set_Edit`: `If FID <> 0 Then FEdit(...)`.
                 };
@@ -563,6 +575,9 @@ impl WindGen {
         }
     }
 
+    // BUG(C5): `take_live_user_model` moves the slot out of the element for the caller to put
+    // back, because every slot method takes the whole `WindGen`, and rebuilds the instance a
+    // `Clone` dropped. Direct access lends the slot beside the parts it reads.
     /// Take the bound slot **live**, re-creating the wasmi instance first when
     /// this element came from a [`WindGen::clone`] — the owned snapshot the
     /// control dispatch takes of a monitored element
@@ -633,9 +648,14 @@ impl WindGen {
         node_v: &[Complex64],
         errors: &mut ErrorLog,
     ) -> bool {
+        // BUG(C5): the model is moved out of `user_model` and put back after the call, because
+        // `calc` takes the whole `WindGen`. Direct access lends the slot beside the parts.
         let Some(mut um) = self.take_live_user_model(sys, node_v, errors) else {
             return false;
         };
+        // BUG(C5): the name is copied and `vterminal`/`iterminal` are cloned, the guest writes
+        // the copy and `copy_from_slice` writes it back, because `self` is lent whole to the
+        // slot. Direct access lends `&self.cd.vterminal` and `&mut self.cd.iterminal`.
         let name = self.cd.obj.name().to_string();
         let v = self.cd.vterminal.clone();
         let mut it = self.cd.iterminal.clone();
@@ -660,6 +680,8 @@ impl WindGen {
     /// `If Usermodel.Exists Then UserModel.FUpdateModel`. Called at the end of
     /// [`WindGen::recalc`], before `WindModelDyn.ReCalcElementData` (`:1422`).
     pub(super) fn update_user_models(&mut self, sys: &SysCtx) {
+        // BUG(C5): the slot is moved out of the element and put back around the call, and the
+        // name is copied, because `update_model` takes the whole `WindGen`.
         let Some(mut s) = self.user_model.take() else {
             return;
         };
@@ -686,10 +708,15 @@ impl WindGen {
     /// which has the same shape.
     pub(super) fn user_model_finit(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         let mut errs = ErrorLog::new();
+        // BUG(C5): the slot is moved out of the element and put back after the call, because
+        // `init` takes the whole `WindGen`. Direct access lends the slot beside the parts.
         let Some(mut s) = self.take_live_user_model(sys, node_v, &mut errs) else {
             self.drain_element_errors(errs);
             return;
         };
+        // BUG(C5): the name is copied and `vterminal`/`iterminal` are cloned, the guest writes
+        // the copy and `copy_from_slice` writes it back, because `self` is lent whole to the
+        // slot. Direct access lends `&self.cd.vterminal` and `&mut self.cd.iterminal`.
         let name = self.cd.obj.name().to_string();
         let v = self.cd.vterminal.clone();
         let mut it = self.cd.iterminal.clone();
@@ -709,6 +736,8 @@ impl WindGen {
     /// `UserModel.Integrate()` (= `select(id)` + `integrate()`).
     pub(super) fn user_model_fintegrate(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         let mut errs = ErrorLog::new();
+        // BUG(C5): the slot is moved out of the element and put back around the call, and the
+        // name is copied, because `integrate` takes the whole `WindGen`.
         let Some(mut s) = self.take_live_user_model(sys, node_v, &mut errs) else {
             self.drain_element_errors(errs);
             return;
@@ -735,6 +764,8 @@ impl WindGen {
         node_v: &[Complex64],
     ) {
         let mut errs = ErrorLog::new();
+        // BUG(C5): the slot is moved out of the element and put back around the call, and the
+        // name is copied, because `get_all_vars` takes the whole `WindGen`.
         let Some(mut s) = self.take_live_user_model(sys, node_v, &mut errs) else {
             self.drain_element_errors(errs);
             return;
@@ -775,6 +806,8 @@ impl WindGen {
             return;
         }
         let k = i - base;
+        // BUG(C5): the slot is moved out of the element and put back around the call, and the
+        // name is copied, because `set_variable` takes the whole `WindGen`.
         let Some(mut s) = self.user_model.take() else {
             return;
         };
@@ -792,6 +825,8 @@ impl WindGen {
     }
 }
 
+// BUG(C2): a free function, written again in each user-model host module; the load-failure
+// diagnostic belongs to one shared user-model slot type.
 /// Map a load-time [`UserModelError`] onto the Pascal load-failure diagnostic: a
 /// missing export → 569 ("Does Not Have Required Function",
 /// `WindGenUserModel.pas:102`), anything else → 570 ("… Not Loaded",
@@ -811,6 +846,10 @@ fn push_load_failure(name: &str, model_name: &str, e: &UserModelError, errors: &
     }
 }
 
+// BUG(C2): a free function over the whole `WindGen` that gathers its loose GenVars fields into
+// a record; those fields should be a `WindGenVars` part the element owns.
+// BUG(C5): each slot call copies the record in here and `apply_wind_gen_vars` writes it back;
+// with the part owned by the element, the shuttle borrows it in place.
 /// Build the packed `TWindGenVars` image from the WindGen's flattened record
 /// fields (ABI doc §2.6 — the 348-byte wasm image; the managed `PLoss: string`
 /// never crosses, and its native hole is closed).
@@ -863,6 +902,8 @@ pub(super) fn wind_gen_vars_from(g: &WindGen) -> WindGenVars {
     }
 }
 
+// BUG(C2): a free function that writes the record back field by field into the `WindGen`; it
+// has no place once the element owns a `WindGenVars` part.
 /// Apply the mutated `TWindGenVars` back onto the WindGen after a guest call.
 /// ABI doc §2 freezes the read-back as **unconditional** — a native DLL shares
 /// the record live (`TWindGenUserModel.Create(@WindGenVars)`, `WindGen.pas:995`),
@@ -918,6 +959,8 @@ pub(super) fn apply_wind_gen_vars(g: &mut WindGen, wv: &WindGenVars) {
     g.s = wv.s;
 }
 
+// BUG(C2): a free function over `SysCtx`, written again in each user-model host module; it
+// should be one constructor of `DynamicsRec` from the context.
 /// Build the packed `TDynamicsRec` image from the solution context (ABI doc
 /// §2.1). `solution_mode` selects the model's power-flow-vs-dynamics `Calc`
 /// dispatch (DYNAMICMODE = 14); `iteration_flag` is the predictor/corrector
@@ -938,6 +981,8 @@ fn dyn_rec_from(sys: &SysCtx) -> DynamicsRec {
     }
 }
 
+// BUG(C2): this callback snapshot type is written again for each element that hosts a model;
+// one callback type should serve them all.
 /// An owned per-call context snapshot serving the tier-A `dss_env` reads for the
 /// owning WindGen (ABI doc §4). Owned (not borrowed) because it is moved into
 /// the wasmi `Store` and must be `'static`/`Send`.
@@ -955,6 +1000,9 @@ struct WindGenCallbacks {
 }
 
 impl WindGenCallbacks {
+    // BUG(C5): every guest call builds a fresh context owning copies of the terminal voltages
+    // and currents, the whole network voltage vector, the record bytes and the name, because
+    // the `Shuttle` context must be owned. The guest should read the host state by borrow.
     /// Snapshot the owning WindGen's tier-A state.
     fn snapshot(g: &WindGen, sys: &SysCtx, node_v: &[Complex64], wv: &WindGenVars) -> Self {
         let yorder = g.cd.yorder;

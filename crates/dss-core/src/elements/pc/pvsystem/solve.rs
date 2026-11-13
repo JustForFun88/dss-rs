@@ -17,6 +17,7 @@ use crate::util::sqrt3;
 
 use super::PVSystem;
 
+// BUG(C2): `PVSystem` gathers the operations of its parts, which should own them.
 impl PVSystem {
     /// Pascal `CalcYPrimMatrix` (power-flow + harmonic paths). A grid-forming
     /// PVSystem stamps the `CalcGFMYprim` short-circuit admittance instead.
@@ -144,6 +145,8 @@ impl PVSystem {
         }
     }
 
+    // BUG(C5): `put_curr` takes the whole `SysCtx` to read `solution_count` alone; it should
+    // take the solution count.
     /// The shared tail of each `DoXxx`: terminal/injection bookkeeping.
     fn put_curr(&mut self, sys: &SysCtx, curr: Complex64, i: usize) {
         self.stick_curr(true, -curr, i); // into ITerminal
@@ -438,6 +441,8 @@ impl PVSystem {
 
         let nphases = self.cd.nphases;
         let nconds = self.cd.nconds;
+        // BUG(C5): the Thevenin-voltage buffer is allocated anew on every harmonic injection
+        // pass; the element should keep it between passes and refill it.
         let mut buffer = vec![Complex64::ZERO; nconds];
         for (i, slot) in buffer.iter_mut().enumerate().take(nphases) {
             *slot = e;

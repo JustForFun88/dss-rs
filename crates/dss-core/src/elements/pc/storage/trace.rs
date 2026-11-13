@@ -83,6 +83,9 @@ use super::Storage;
 /// run-file contents comparison declines these `%-.g` columns in its column map.
 const TRACE_G_SIG: usize = 0;
 
+// BUG(C5): `DebugTraceFile` owns state that changes across operations (the queued header and
+// the path the records go to) and derives `Clone`, which serves the clones of `Storage`. It
+// should not be `Clone`.
 /// The `DebugTrace` file of one Storage element.
 #[derive(Debug, Clone, Default)]
 pub(super) struct DebugTraceFile {
@@ -94,6 +97,7 @@ pub(super) struct DebugTraceFile {
     path: Option<PathBuf>,
 }
 
+// BUG(C2): `Storage` gathers the operations of its parts, which should own them.
 impl Storage {
     /// r4133 `Storage.pas:1073-1085` (`propDEBUGTRACE`, `IF DebugTrace THEN`):
     /// build the trace file's name and header with the phase count and state
@@ -139,6 +143,8 @@ impl Storage {
         self.trace.pending = Some((file_name, header));
     }
 
+    // BUG(C2): `open_queued_debug_trace` and `append_trace_line` touch only `self.trace`; they
+    // should be methods of `DebugTraceFile`.
     /// Executive drain (see the module doc): create/truncate the queued trace
     /// file in `output_directory`, write its header, close it, and remember the
     /// path for the per-record appends. A failed create is a loud diagnostic and
@@ -168,6 +174,8 @@ impl Storage {
     /// element stops tracing instead of retrying a dead path every record.
     fn append_trace_line(&mut self, line: &str) {
         use std::io::Write;
+        // BUG(C5): the path is cloned on every traced record, though its borrow ends before the
+        // error arm resets it; direct access opens the file through `self.trace.path.as_ref()`.
         let Some(path) = self.trace.path.clone() else {
             return;
         };
@@ -197,6 +205,8 @@ impl Storage {
         if !self.base.debug_trace || sys.in_show_results || self.trace.path.is_none() {
             return;
         }
+        // BUG(C5): the state-variable buffer is allocated anew on every traced record; the
+        // trace should keep it between records and refill it.
         // Pascal `Variable[i]` (`Get_Variable`) per column; read before the line
         // is assembled because the getter needs `&mut self`.
         let mut states = vec![0.0_f64; self.num_variables()];
@@ -257,6 +267,7 @@ impl Storage {
     }
 }
 
+// BUG(C2): a free function over one `SolveMode`; it should be a method of `SolveMode`.
 /// r4133 `GetSolutionModeIDName` (`Common/Utilities.pas:1147-1173`, reached from
 /// `GetSolutionModeID` `:1175-1181`) — the authority's own spelling, which is
 /// *not* the capi enum's (`DSS.SolveModeEnum.OrdinalToString`, whose names are
@@ -285,6 +296,8 @@ fn solution_mode_id(mode: SolveMode) -> &'static str {
     }
 }
 
+// BUG(C2): a free function over one `LoadSolutionModel`; it should be a method of
+// `LoadSolutionModel`.
 /// r4133 `GetLoadModel` (`Common/Utilities.pas:1218-1228`) — `Admittance` for
 /// `ADMITTANCE`, `PowerFlow` for everything else (capi's
 /// `DefaultLoadModelEnum` spells both the same way).

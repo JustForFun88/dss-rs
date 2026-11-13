@@ -24,12 +24,16 @@ use crate::support::mathutil::SymComp;
 
 const PI: f64 = std::f64::consts::PI;
 
+// BUG(C2): a free helper; it should be an associated function of `Wtg3Model`, whose controller
+// blocks clamp with it.
 /// Pascal `MagLimiter`: clamp a phasor's magnitude to `[magmin, magmax]`,
 /// keeping its angle (`pclx(max(magmin,min(magmax,|x|)), cang(x))`).
 fn mag_limiter(x: Complex64, magmin: f64, magmax: f64) -> Complex64 {
     pclx(magmin.max(magmax.min(x.norm())), cang(x))
 }
 
+// BUG(C2): a free function over a pair of tables that `Wtg3Model` keeps as loose fields; the
+// pair should be a table type of its own with this lookup as its method.
 /// Pascal `LinearInterp(xTable, yTable, x)`: piecewise-linear lookup, flat
 /// outside the table.
 fn linear_interp(x_table: &[f64], y_table: &[f64], x: f64) -> f64 {
@@ -51,6 +55,11 @@ fn linear_interp(x_table: &[f64], y_table: &[f64], x: f64) -> f64 {
     y_table[i_left]
 }
 
+// BUG(C5): `Wtg3Model` owns the WTG3 integrator state, which changes across operations, and
+// derives `Clone`, which serves the clones of `WindGen`. It should not be `Clone`.
+// BUG(C2): every field is `pub`, and `WindGen` sets them in place (its setters, the volt-var
+// points, `rated_kva`, `vwind`) instead of calling `Wtg3Model` operations. The fields should
+// be private and change through methods.
 /// `TGE_WTG3_Model` — every Pascal field, snake-cased. Grouped as in the Pascal
 /// record.
 #[derive(Debug, Clone)]

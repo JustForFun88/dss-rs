@@ -31,6 +31,8 @@ use crate::support::dynamics::IterationFlag;
 
 use super::Generator;
 
+// BUG(C2): the user-model slot is written again, field for field and method for method, for
+// each element that hosts a model; one slot type should serve them all.
 /// One bound Generator user model — the dss-core wrapper around a
 /// [`UserModelHost`] + [`UserModelInstance`] (Pascal `TGenUserModel`).
 ///
@@ -69,6 +71,9 @@ pub struct GenUserModelSlot {
     var_names: Vec<String>,
 }
 
+// BUG(C5): the slot owns a live model instance, its variable cache and the last edit string,
+// and this `Clone` drops the instance, so a cloned element runs no model until `ensure_live`
+// rebuilds it. The slot should not be `Clone`; a second model is a load of its own.
 impl Clone for GenUserModelSlot {
     fn clone(&self) -> Self {
         Self {
@@ -96,6 +101,9 @@ impl std::fmt::Debug for GenUserModelSlot {
     }
 }
 
+// BUG(C5): every slot method below takes the whole `Generator`, copies its GenVars fields into
+// a fresh record (`gen_vars_from`) and, where the guest may write, copies them all back
+// (`apply_gen_vars`). The slot should be lent the GenVars part and the terminal buffers only.
 impl GenUserModelSlot {
     /// Load + instantiate from resolved `.wasm` bytes (Pascal
     /// `TGenUserModel.Set_Name` → `FNew`, `GenUserModel.pas:159-201`).
@@ -194,6 +202,8 @@ impl GenUserModelSlot {
         // GenVars mutation (e.g. `Speed`) back onto the element (see `load`).
         apply_gen_vars(g, &gv);
         if !self.data.is_empty() {
+            // BUG(C5): the slot's own edit string is cloned only because `edit_impl` takes
+            // `&mut self`; a method that borrows `self.live` alone can read `&self.data`.
             self.edit_impl(&self.data.clone(), g, sys, node_v)?;
         }
         self.refresh_var_cache();
@@ -491,6 +501,7 @@ impl GenUserModelSlot {
 /// Result alias for the slot's `&mut` call paths.
 type LiveResult = Result<(), UserModelError>;
 
+// BUG(C2): `Generator` gathers the operations of its parts, which have no type of their own.
 impl Generator {
     /// Queue a deferred `UserModel=`/`ShaftModel=` (re)load (Pascal
     /// `UserModel.Name := …` → `Set_Name`). A blank / `none` name unloads the
@@ -517,6 +528,9 @@ impl Generator {
         });
     }
 
+    // BUG(C5): `take_slot` and `put_slot` move a model slot out of the element and back, so that
+    // a slot method can take the whole `Generator`. Direct access lends the slot beside the
+    // element parts the slot method reads.
     fn take_slot(&mut self, slot: UserModelSlot) -> Option<Box<GenUserModelSlot>> {
         match slot {
             UserModelSlot::User => self.user_model.take(),
@@ -576,6 +590,7 @@ impl Generator {
                 }
             }
             UserModelAction::Edit(data) => {
+                // BUG(C5): the slot is moved out of the element and put back around the call.
                 let Some(mut s) = self.take_slot(load.slot) else {
                     return; // Pascal: `if UserModel.Exists then Edit`.
                 };
@@ -617,6 +632,8 @@ impl Generator {
         node_v: &[Complex64],
         errors: &mut ErrorLog,
     ) -> bool {
+        // BUG(C5): the model is moved out of `user_model` and put back after the call, because
+        // `calc` takes the whole `Generator`. Direct access lends the slot beside the parts.
         let Some(mut um) = self.user_model.take() else {
             return false;
         };
@@ -624,6 +641,9 @@ impl Generator {
             self.user_model = Some(um);
             return false;
         }
+        // BUG(C5): the name is copied and `vterminal`/`iterminal` are cloned, the guest writes
+        // the copy and `copy_from_slice` writes it back, because `self` is lent whole to the
+        // slot. Direct access lends `&self.cd.vterminal` and `&mut self.cd.iterminal`.
         let name = self.cd.obj.name().to_string();
         let v = self.cd.vterminal.clone();
         let mut it = self.cd.iterminal.clone();
@@ -660,6 +680,8 @@ impl Generator {
         node_v: &[Complex64],
         errors: &mut ErrorLog,
     ) {
+        // BUG(C5): the model is moved out of `shaft_model` and put back after the call, because
+        // `calc` takes the whole `Generator`. Direct access lends the slot beside the parts.
         let Some(mut sm) = self.shaft_model.take() else {
             return;
         };
@@ -667,6 +689,9 @@ impl Generator {
             self.shaft_model = Some(sm);
             return;
         }
+        // BUG(C5): the name is copied and `vterminal`/`iterminal` are cloned, the guest writes
+        // the copy and `copy_from_slice` writes it back, because `self` is lent whole to the
+        // slot. Direct access lends `&self.cd.vterminal` and `&mut self.cd.iterminal`.
         let name = self.cd.obj.name().to_string();
         let v = self.cd.vterminal.clone();
         let mut it = self.cd.iterminal.clone();
@@ -689,6 +714,7 @@ impl Generator {
     pub(super) fn update_user_models(&mut self, sys: &SysCtx) {
         let name = self.cd.obj.name().to_string();
         for slot in [UserModelSlot::User, UserModelSlot::Shaft] {
+            // BUG(C5): each slot is moved out of the element and put back around the call.
             let Some(mut s) = self.take_slot(slot) else {
                 continue;
             };
@@ -762,6 +788,7 @@ impl Generator {
         node_v: &[Complex64],
         errors: &mut ErrorLog,
     ) {
+        // BUG(C5): the slot is moved out of the element and put back around the call.
         let Some(mut s) = self.take_slot(slot) else {
             return;
         };
@@ -769,6 +796,9 @@ impl Generator {
             self.put_slot(slot, s);
             return;
         }
+        // BUG(C5): the name is copied and `vterminal`/`iterminal` are cloned, the guest writes
+        // the copy and `copy_from_slice` writes it back, because `self` is lent whole to the
+        // slot. Direct access lends `&self.cd.vterminal` and `&mut self.cd.iterminal`.
         let name = self.cd.obj.name().to_string();
         let v = self.cd.vterminal.clone();
         let mut it = self.cd.iterminal.clone();
@@ -806,6 +836,8 @@ impl Generator {
         node_v: &[Complex64],
         errors: &mut ErrorLog,
     ) {
+        // BUG(C5): the slot is moved out of the element and put back around the call, and the
+        // name is copied, because `integrate` takes the whole `Generator`.
         let Some(mut s) = self.take_slot(slot) else {
             return;
         };
@@ -834,6 +866,8 @@ impl Generator {
         sys: &SysCtx,
         node_v: &[Complex64],
     ) {
+        // BUG(C5): the slot is moved out of the element and put back around the call, and the
+        // name is copied, because `get_all_vars` takes the whole `Generator`.
         let Some(mut s) = self.take_slot(slot) else {
             return;
         };
@@ -874,6 +908,8 @@ impl Generator {
         } else {
             return;
         };
+        // BUG(C5): the slot is moved out of the element and put back around the call, and the
+        // name is copied, because `set_variable` takes the whole `Generator`.
         let Some(mut s) = self.take_slot(slot) else {
             return;
         };
@@ -893,6 +929,8 @@ impl Generator {
     }
 }
 
+// BUG(C2): a free function, written again in each user-model host module; the load-failure
+// diagnostic belongs to one shared user-model slot type.
 /// Map a load-time [`UserModelError`] onto the Pascal load-failure diagnostic:
 /// a missing export → 569 ("Does Not Have Required Function"), anything else →
 /// 570 ("… Not Loaded", warn-and-fallback). The model stays absent either way
@@ -912,6 +950,10 @@ fn push_load_failure(name: &str, model_name: &str, e: &UserModelError, errors: &
     }
 }
 
+// BUG(C2): a free function over the whole `Generator` that gathers its loose GenVars fields
+// into a record; those fields should be a `GeneratorVars` part the element owns.
+// BUG(C5): each slot call copies the record in here and `apply_gen_vars` writes all of it
+// back; with the part owned by the element, the shuttle borrows it in place.
 /// Build the packed `TGeneratorVars` image from the Generator's flattened
 /// GenVars fields (ABI doc §2.2b — the 244-byte wasm marshaled image; the
 /// engine-only `deltaQNom` never crosses).
@@ -951,6 +993,8 @@ pub(super) fn gen_vars_from(g: &Generator) -> GeneratorVars {
     }
 }
 
+// BUG(C2): a free function that writes the record back field by field into the `Generator`;
+// it has no place once the element owns a `GeneratorVars` part.
 /// Apply the mutated `TGeneratorVars` back onto the Generator after a guest
 /// call. ABI doc §2 freezes the read-back as **unconditional** — a native DLL
 /// shares the record live (retained pointer), so *any* field the model writes
@@ -998,6 +1042,8 @@ pub(super) fn apply_gen_vars(g: &mut Generator, gv: &GeneratorVars) {
     g.xrdp = gv.xrdp;
 }
 
+// BUG(C2): a free function over `SysCtx`, written again in each user-model host module; it
+// should be one constructor of `DynamicsRec` from the context.
 /// Build the packed `TDynamicsRec` image from the solution context (ABI doc
 /// §2.1). `solution_mode` selects the model's power-flow-vs-dynamics `Calc`
 /// dispatch (`DynaData^.SolutionMode`, DYNAMICMODE = 14 = [`SysCtx::mode`]
@@ -1018,6 +1064,8 @@ pub(super) fn dyn_rec_from(sys: &SysCtx) -> DynamicsRec {
     }
 }
 
+// BUG(C2): this callback snapshot type is written again for each element that hosts a model;
+// one callback type should serve them all.
 /// An owned per-call context snapshot serving the tier-A `dss_env` reads for the
 /// owning Generator (ABI doc §4). Owned (not borrowed) because it is moved into
 /// the wasmi `Store` and must be `'static`/`Send`. The Pascal callbacks bind to
@@ -1037,6 +1085,9 @@ struct GenCallbacks {
 }
 
 impl GenCallbacks {
+    // BUG(C5): every guest call builds a fresh context owning copies of the terminal voltages
+    // and currents, the whole network voltage vector, the record bytes and the name, because
+    // the `Shuttle` context must be owned. The guest should read the host state by borrow.
     /// Snapshot the owning Generator's tier-A state.
     fn snapshot(g: &Generator, sys: &SysCtx, node_v: &[Complex64], gv: &GeneratorVars) -> Self {
         let yorder = g.cd.yorder;

@@ -34,6 +34,8 @@ use crate::support::dynamics::IterationFlag;
 
 use super::Storage;
 
+// BUG(C2): the user-model slot is written again, field for field and method for method, for
+// each element that hosts a model; one slot type should serve them all.
 /// One bound Storage user model — the dss-core wrapper around a
 /// [`UserModelHost`] + [`UserModelInstance`] (Pascal `TStoreUserModel` /
 /// `TStoreDynaModel`). Held on the [`Storage`] as
@@ -63,6 +65,9 @@ pub struct StorageUserModelSlot {
     var_names: Vec<String>,
 }
 
+// BUG(C5): the slot owns a live model instance, its variable cache and the last edit string,
+// and this `Clone` drops the instance, so a cloned element runs no model until `ensure_live`
+// rebuilds it. The slot should not be `Clone`; a second model is a load of its own.
 impl Clone for StorageUserModelSlot {
     fn clone(&self) -> Self {
         Self {
@@ -92,6 +97,9 @@ impl std::fmt::Debug for StorageUserModelSlot {
 /// Result alias for the slot's `&mut` call paths.
 type LiveResult = Result<(), UserModelError>;
 
+// BUG(C5): every slot method below takes the whole `Storage` (`s`) though it reads only fields
+// of `cd`, so the callers move the slot out of the element to lend it. The slot should take
+// `&CktElementData`.
 impl StorageUserModelSlot {
     /// Load + instantiate from resolved `.wasm` bytes (Pascal `Set_Name` →
     /// `FNew`, `StoreUserModel.pas:181-240` / `:303-360`).
@@ -155,6 +163,8 @@ impl StorageUserModelSlot {
         let instance = UserModelInstance::new(&host, self.yorder, sh)?;
         self.live = Some(Box::new(instance));
         if !self.data.is_empty() {
+            // BUG(C5): the slot's own edit string is cloned only because `edit_impl` takes
+            // `&mut self`; a method that borrows `self.live` alone can read `&self.data`.
             self.edit_impl(&self.data.clone(), s, sys, node_v)?;
         }
         self.refresh_var_cache()?;
@@ -369,6 +379,7 @@ impl StorageUserModelSlot {
     }
 }
 
+// BUG(C2): `Storage` gathers the operations of its parts, which should own them.
 impl Storage {
     /// Queue a deferred `UserModel=`/`DynaDLL=` (re)load (Pascal
     /// `UserModel.Name := …` / `DynaModel.Name := …` → `Set_Name`). A blank /
@@ -395,6 +406,9 @@ impl Storage {
         });
     }
 
+    // BUG(C5): `take_slot` and `put_slot` move a slot out of the element and back around each
+    // slot call, because every slot method takes the whole `Storage`. Direct access lends the
+    // slot beside the parts it reads.
     fn take_slot(&mut self, slot: UserModelSlot) -> Option<Box<StorageUserModelSlot>> {
         match slot {
             UserModelSlot::User => self.user_model.take(),
@@ -463,6 +477,7 @@ impl Storage {
                 }
             }
             UserModelAction::Edit(data) => {
+                // BUG(C5): the slot is moved out of the element and put back around the call.
                 let Some(mut s) = self.take_slot(load.slot) else {
                     return; // Pascal: `if UserModel.Exists then Edit`.
                 };
@@ -504,6 +519,8 @@ impl Storage {
         node_v: &[Complex64],
         errors: &mut ErrorLog,
     ) -> bool {
+        // BUG(C5): the model is moved out of `user_model` and put back after the call, because
+        // `calc` takes the whole `Storage`. Direct access lends the slot beside `cd`.
         let Some(mut um) = self.user_model.take() else {
             return false;
         };
@@ -511,6 +528,9 @@ impl Storage {
             self.user_model = Some(um);
             return false;
         }
+        // BUG(C5): the name is copied and `vterminal`/`iterminal` are cloned, the guest writes
+        // the copy and `copy_from_slice` writes it back, because `self` is lent whole to the
+        // slot. Direct access lends `&self.cd.vterminal` and `&mut self.cd.iterminal`.
         let name = self.cd.obj.name().to_string();
         let v = self.cd.vterminal.clone();
         let mut it = self.cd.iterminal.clone();
@@ -547,6 +567,8 @@ impl Storage {
         node_v: &[Complex64],
         errors: &mut ErrorLog,
     ) -> bool {
+        // BUG(C5): the model is moved out of `dyna_model` and put back after the call, and the
+        // name is copied, because `calc` takes the whole `Storage`.
         let Some(mut dm) = self.dyna_model.take() else {
             return false;
         };
@@ -557,6 +579,8 @@ impl Storage {
         let name = self.cd.obj.name().to_string();
         // Vterminal[i] := NodeV[NodeRef[i]] for i := 1..FNconds (`:2219-2220`).
         let yorder = self.cd.yorder;
+        // BUG(C5): `v` and `dess_curr` below are allocated anew on every dynamics iteration; the
+        // element should keep both buffers between passes and refill them.
         let mut v = vec![Complex64::ZERO; yorder];
         for (i, vi) in v.iter_mut().enumerate() {
             *vi = self
@@ -600,6 +624,8 @@ impl Storage {
     /// `UserModel.FUpdateModel` then `DynaModel.FUpdateModel` on each existing
     /// model. Called at the end of [`Storage::recalc`].
     pub(super) fn update_user_models(&mut self, sys: &SysCtx) {
+        // BUG(C5): the loop moves each slot out of the element and puts it back around the call,
+        // and the name is copied, because `update_model` takes the whole `Storage`.
         let name = self.cd.obj.name().to_string();
         for slot in [UserModelSlot::User, UserModelSlot::Dyna] {
             let Some(mut s) = self.take_slot(slot) else {
@@ -627,9 +653,14 @@ impl Storage {
         }
         self.compute_iterminal(sys, node_v);
         self.cd.compute_vterminal(node_v);
+        // BUG(C5): the model is moved out of `dyna_model` and put back after the call, because
+        // `init` takes the whole `Storage`. Direct access lends the slot beside `cd`.
         let Some(mut dm) = self.dyna_model.take() else {
             return false;
         };
+        // BUG(C5): the name is copied and `vterminal`/`iterminal` are cloned only because `self`
+        // is lent whole to the slot, and the guest's writes into the copy `it` are dropped.
+        // Direct access lends the terminal buffers of `cd` beside the slot.
         let name = self.cd.obj.name().to_string();
         let v = self.cd.vterminal.clone();
         let mut it = self.cd.iterminal.clone();
@@ -655,6 +686,8 @@ impl Storage {
         if !self.dyna_model_exists() {
             return false;
         }
+        // BUG(C5): the model is moved out of `dyna_model` and put back after the call, and the
+        // name is copied, because `integrate` takes the whole `Storage`.
         let Some(mut dm) = self.dyna_model.take() else {
             return false;
         };
@@ -727,6 +760,9 @@ impl Storage {
             return None;
         }
         let k = i - base;
+        // BUG(C5): the loop moves each slot out of the element and puts it back, also the slot
+        // it does not call, and the name is copied, because `get_variable` takes the whole
+        // `Storage`.
         for slot in [UserModelSlot::User, UserModelSlot::Dyna] {
             let Some(mut s) = self.take_slot(slot) else {
                 continue;
@@ -766,6 +802,8 @@ impl Storage {
         sys: &SysCtx,
         node_v: &[Complex64],
     ) {
+        // BUG(C5): the slot is moved out of the element and put back around the call, and the
+        // name is copied, because `get_all_vars` takes the whole `Storage`.
         let Some(mut s) = self.take_slot(slot) else {
             return;
         };
@@ -796,6 +834,9 @@ impl Storage {
             return false;
         }
         let k = i - base;
+        // BUG(C5): the loop moves each slot out of the element and puts it back, also the slot
+        // it does not call, and the name is copied, because `set_variable` takes the whole
+        // `Storage`.
         for slot in [UserModelSlot::User, UserModelSlot::Dyna] {
             let Some(mut s) = self.take_slot(slot) else {
                 continue;
@@ -822,6 +863,8 @@ impl Storage {
     }
 }
 
+// BUG(C2): a free function, written again in each user-model host module; the load-failure
+// diagnostic belongs to one shared user-model slot type.
 /// Map a load-time [`UserModelError`] onto the Pascal load-failure diagnostic: a
 /// missing export → 1569 ("Does Not Have Required Function"), anything else →
 /// 1570 ("… Not Loaded", warn-and-fallback). The model stays absent either way.
@@ -843,6 +886,8 @@ fn push_load_failure(
     }
 }
 
+// BUG(C2): a free function, written again in the PVSystem host module; the not-loaded text
+// belongs to one shared user-model slot type.
 /// The Pascal warn-and-fallback text (`Storage.pas:207` for `UserModel=`,
 /// `:329` for `DynaDLL=`), model absent, built-in model solves.
 fn not_loaded_text(name: &str, model_name: &str, is_dyna: bool) -> String {
@@ -859,6 +904,8 @@ fn not_loaded_text(name: &str, model_name: &str, is_dyna: bool) -> String {
     }
 }
 
+// BUG(C2): a free function over `SysCtx`, written again in each user-model host module; it
+// should be one constructor of `DynamicsRec` from the context.
 /// Build the packed `TDynamicsRec` image from the solution context (ABI doc
 /// §2.1). `solution_mode` selects the model's power-flow-vs-dynamics `calc`
 /// dispatch; `iteration_flag` is the predictor/corrector selector.
@@ -878,6 +925,8 @@ fn dyn_rec_from(sys: &SysCtx) -> DynamicsRec {
     }
 }
 
+// BUG(C2): this callback snapshot type is written again for each element that hosts a model;
+// one callback type should serve them all.
 /// An owned per-call context snapshot serving the tier-A `dss_env` reads for the
 /// owning Storage (ABI doc §4). Owned because it is moved into the wasmi
 /// `Store` and must be `'static`/`Send`.
@@ -894,6 +943,9 @@ struct StorageCallbacks {
 }
 
 impl StorageCallbacks {
+    // BUG(C5): every guest call builds a fresh context owning copies of the terminal voltages
+    // and currents, the whole network voltage vector and the name, because the `Shuttle`
+    // context must be owned. The guest should read the host state by borrow.
     fn snapshot(s: &Storage, sys: &SysCtx, node_v: &[Complex64]) -> Self {
         let yorder = s.cd.yorder;
         let voltages: Vec<Complex64> = (0..yorder)

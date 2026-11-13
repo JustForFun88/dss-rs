@@ -33,6 +33,7 @@ use super::PVSystem;
 pub(super) const NUM_BASE_PV_VARS: usize = 13;
 pub(super) const NUM_PV_VARS: usize = NUM_BASE_PV_VARS + NUM_INV_DYN_VARS; // = 22
 
+// BUG(C2): `PVSystem` gathers the operations of its parts, which should own them.
 impl PVSystem {
     /// Pascal `case ActiveCircuit.ActiveLoadShapeClass of ...` shared by the
     /// dynamics `InitStateVars` (PVsystem.pas l.2192) and `IntegrateStates`
@@ -193,6 +194,9 @@ impl PVSystem {
         }
     }
 
+    // BUG(C2): this step and `integrate_dyn_eq_phase` read and write `base.dyn_vars` and
+    // `base.dyneq` field by field, the work of `InvDynamicVars` and `DynEqPceData` done by their
+    // owner, and `Storage` repeats both. The step should be one operation of those parts.
     /// Pascal `TPVsystemObj.IntegrateStates` (l.2264) — advance the GFL
     /// inverter state by one trapezoidal half-step (dispatching to
     /// `integrate_dyn_eq_phase` per phase when a `DynamicExp` is linked). A loaded
@@ -257,6 +261,8 @@ impl PVSystem {
                 let mut gfm_update = true;
                 // ILimit>0 current-limit path (dormant unless `AmpLimit` set).
                 if i_limit > 0.0 {
+                    // BUG(C5): `curr` is allocated anew per phase on every dynamics iteration to
+                    // call `get_currents`; the element should keep the buffer between passes.
                     let mut curr = vec![Complex64::ZERO; self.cd.yorder];
                     self.get_currents(sys, node_v, &mut curr);
                     for c in curr.iter().take(nphases) {
@@ -293,8 +299,9 @@ impl PVSystem {
                 // values, solve, then read the derivative back into `dit[i]`.
                 self.integrate_dyn_eq_phase(sys, node_v, i, iteration_flag);
             } else {
-                // Borrow-checker note: `pi_ctrl` and `dyn_vars` are both on `base`;
-                // use mem::take to borrow them disjointly.
+                // BUG(C5): the PI controller is moved out of `base.pi_ctrl` and put back around
+                // the step, though `pi_ctrl` and `dyn_vars` are disjoint fields of `base`. Direct
+                // access borrows `&mut self.base.pi_ctrl[i]` beside `self.base.dyn_vars`.
                 let mut pi = std::mem::take(&mut self.base.pi_ctrl[i]);
                 self.base
                     .dyn_vars
@@ -337,6 +344,8 @@ impl PVSystem {
                 4 => {} // nothing for this object — the current is the DynOut[0] state
                 10 => self.base.dyneq.dynamic_eq_vals[var_idx][0] = self.base.dyn_vars.rated_vdc,
                 11 => {
+                    // BUG(C5): the PI controller is moved out and put back around the call,
+                    // though `pi_ctrl` and `dyn_vars` are disjoint fields of `base`; borrow both.
                     let mut pi = std::mem::take(&mut self.base.pi_ctrl[i]);
                     self.base
                         .dyn_vars
@@ -581,6 +590,9 @@ impl PVSystem {
     /// changes neither its stored panel values nor the lookup positions of its
     /// curves and shapes.
     pub(super) fn write_setting_variables(&self, sys: &SysCtx, states: &mut [f64]) {
+        // BUG(C5): a reader clones the whole element so that evaluating the panel and the curve
+        // on the copy leaves the lookup positions of the element's own shape copies unchanged.
+        // The values should come from operations that read the shapes without mutating them.
         let mut unit = self.clone();
         // The temperature of a unit without a load-shape class is its
         // `Temperature` property, as the power flow before an entry sets it.

@@ -13,7 +13,11 @@ use super::{
     Storage, StorageState,
 };
 
+// BUG(C2): `Storage` gathers the operations of its parts, which should own them.
 impl Storage {
+    // BUG(C2): the register bank has no type: `registers` and `derivatives` live here and
+    // `first_sample_after_reset` in `base`, and the bank is written again in each element that
+    // meters energy. A register-bank type should own all three and these operations.
     /// Pascal `ResetRegisters`.
     pub fn reset_registers(&mut self) {
         self.registers = [0.0; NUM_STORAGE_REGISTERS];
@@ -200,6 +204,8 @@ impl Storage {
         }
     }
 
+    // BUG(C5): `take_sample` takes the whole `SysCtx` and the network voltages, discards
+    // `node_v` and reads only `positive_sequence` and `price_signal`; it should take those two.
     /// Pascal `TakeSample`: accumulate the Storage energy registers. Only
     /// discharge hours are tabulated.
     pub fn take_sample(
@@ -242,6 +248,7 @@ impl Storage {
     }
 }
 
+// BUG(C2): a free function over one `XyCurveObj`; it should be a method of `XyCurveObj`.
 /// The DC power an inverter rated `kva` exchanges for the AC power `p >= 0`
 /// on the efficiency curve, `None` where no segment of the curve holds its
 /// own solution. Each segment gives the efficiency `η = a x + b` at the per

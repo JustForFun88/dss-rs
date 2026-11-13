@@ -7,7 +7,11 @@ use super::{
     Generator, NUM_GEN_REGISTERS, REG_HOURS, REG_KVARH, REG_KWH, REG_MAXKVA, REG_MAXKW, REG_PRICE,
 };
 
+// BUG(C2): `Generator` gathers the operations of its parts, which have no type of their own.
 impl Generator {
+    // BUG(C2): the register bank (`registers`, `derivatives`, `first_sample_after_reset`) has no
+    // type and is written again in each element that meters energy; a register-bank type should
+    // own these fields and `reset_registers`, `integrate` and `set_drag_hand_register`.
     /// Pascal `ResetRegisters`.
     pub fn reset_registers(&mut self) {
         self.registers = [0.0; NUM_GEN_REGISTERS];

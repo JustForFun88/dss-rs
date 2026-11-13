@@ -150,6 +150,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 50; // incl. Like
 }
 
+// BUG(C2): `class_props` is a free function that builds the class table; it should be an
+// associated constructor of the `Generator` class definition.
 /// `TGenerator.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
@@ -275,6 +277,15 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("Generator", defs, true)
 }
 
+// BUG(C5): `Generator` owns mutable state across operations and derives `Clone`, which serves
+// the recalc rollback, the what-if copies and owned snapshots of the element. It should not
+// be `Clone`.
+// BUG(C2): every field but one is `pub`, and the NCIM solver writes `gen_model`, `ncim_expv`,
+// `ncim_idx`, `q_nominal_per_phase` and `delta_q_nom` in place. The fields should be private
+// and changed through `Generator` operations.
+// BUG(C2): `Generator` is a flat record that does the work of its parts: the register bank,
+// the fuel account, the DQDV state, the shape references, the GenVars record and the two model
+// slots have no type. Each part should be a type that owns its fields and operations.
 /// `TGeneratorObj`. `GenVars` (the public machine/state record) is flattened
 /// into these fields; `MakeLike` copies them wholesale as Pascal does.
 #[derive(Debug, Clone)]
@@ -419,6 +430,8 @@ pub struct Generator {
     pub user_model: Option<Box<GenUserModelSlot>>,
     /// The bound `ShaftModel=` WASM model (Pascal `ShaftModel: TGenUserModel`).
     pub shaft_model: Option<Box<GenUserModelSlot>>,
+    // BUG(C2): the property hooks park their user-model load requests in this field and the
+    // executive takes them later; the hook should return the request to its caller.
     /// Deferred user-model load/edit requests queued during the last edit, for
     /// the executive to resolve (paths need `current_dir` — Pascal defers the
     /// `LoadLibrary`/`Edit` to the property hook, which has the DSS context).
@@ -426,10 +439,15 @@ pub struct Generator {
     /// `DynEqPCE` base: the linked `DynamicExp` + its dynamics memory.
     pub dyneq: DynEqPceData,
     pub spectrum: String,
+    // BUG(C5): `spectrum_obj` is a clone of the arena's `SpectrumObj` kept beside its name, so an
+    // edit of the spectrum does not reach it. The element should hold a handle to the spectrum.
     /// Resolved harmonic spectrum (Pascal `SpectrumObj := SpectrumClass.DefaultGen`
     /// or an explicit `spectrum=`), snapshot-cloned in at edit-completion.
     pub spectrum_obj: Option<SpectrumObj>,
 
+    // BUG(C5): each shape reference is held three times, the name, an `Idx` into the arena and
+    // an owned clone of the `LoadShapeObj` that the solve reads, so a later edit of the shape
+    // never reaches the element. The `Idx` alone should name the shape the arena owns.
     pub yearly_shape: String,
     pub daily_shape: String,
     pub duty_shape: String,
@@ -441,6 +459,8 @@ pub struct Generator {
     pub duty_shape_ref: Option<Idx<LoadShapeObj>>,
 }
 
+// BUG(C2): a free function over `Connection`, written again in each element module; it should
+// be one method of `Connection`.
 /// Pascal `SetNcondsForConnection`.
 fn nconds_for_connection(connection: Connection, nphases: usize) -> usize {
     match connection {
@@ -603,6 +623,7 @@ impl Generator {
     }
 }
 
+// BUG(C2): a `pub fn` test fixture in non-test code; it belongs in the `#[cfg(test)]` module.
 /// Unit-test fixture: the fresh-circuit parse-time snapshot (see
 /// [`SysCtx::parse_default`]). Production paths thread the LIVE `sys_ctx` — this
 /// remains only as the default context for the class's `#[cfg(test)]` fixtures.

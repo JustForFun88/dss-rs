@@ -225,6 +225,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 65; // incl. Like
 }
 
+// BUG(C2): `class_props` is a free function that builds the class table; it should be an
+// associated constructor of the `Storage` class definition.
 /// `TStorage.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
@@ -349,6 +351,15 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("Storage", defs, true)
 }
 
+// BUG(C5): `Storage` owns mutable state across operations and derives `Clone`, which serves
+// the recalc rollback, the what-if copies and owned snapshots of the element. It should not
+// be `Clone`.
+// BUG(C2): every field but `trace` is `pub`, `base` included, and the control dispatch writes
+// `f_state`, `state_changed`, the kW and kvar requests, the dispatch settings, the
+// `*_operation` results and the modes of `base` in place. They should change through methods.
+// BUG(C2): `Storage` does the work of its parts: the shape multipliers of `base`'s shape
+// copies, the register bank split with `base`, the step of `base.dyn_vars` field by field,
+// the trace file and the two model slots. Each part should own its fields and operations.
 /// `TStorageObj`. `TStorageVars` (the public machine/state record) is flattened
 /// into these fields plus the embedded [`InvBasedPceData`]; `MakeLike` copies them
 /// the way Pascal does.
@@ -478,6 +489,8 @@ pub struct Storage {
 
     /// `SpectrumObj` name — Create sets it NIL (empty) for the inverter PCEs.
     pub spectrum: String,
+    // BUG(C5): `spectrum_obj` is a clone of the arena's `SpectrumObj` kept beside its name, so an
+    // edit of the spectrum does not reach it. The element should hold a handle to the spectrum.
     /// Resolved harmonic spectrum, snapshot-cloned in at edit-completion (only
     /// when an explicit `spectrum=` is given — Create forces `SpectrumObj := NIL`).
     pub spectrum_obj: Option<SpectrumObj>,
@@ -495,12 +508,16 @@ pub struct Storage {
     /// `Storage.pas:1073-1085`/`:2401-2429`. Private: the property hook queues
     /// the header, the executive creates the file, the record writers append.
     trace: trace::DebugTraceFile,
+    // BUG(C2): the property hooks park their user-model load requests in this field and the
+    // executive takes them later; the hook should return the request to its caller.
     /// Deferred `UserModel=`/`UserData=`/`DynaDLL=`/`DynaData=` load/edit
     /// requests, drained + resolved by the executive (activation rule,
     /// `docs/wasm/USERMODEL_ABI.md` §5).
     pub pending_user_model_loads: Vec<crate::obj::base::UserModelLoad>,
 }
 
+// BUG(C2): a free function over `Connection`, written again in each element module; it should
+// be one method of `Connection`.
 /// Pascal `SetNcondsForConnection`.
 fn nconds_for_connection(connection: Connection, nphases: usize) -> usize {
     match connection {

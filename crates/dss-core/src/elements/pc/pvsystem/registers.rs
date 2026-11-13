@@ -9,7 +9,11 @@ use super::{
     REG_PRICE,
 };
 
+// BUG(C2): `PVSystem` gathers the operations of its parts, which should own them.
 impl PVSystem {
+    // BUG(C2): the register bank has no type: `registers` and `derivatives` live here and
+    // `first_sample_after_reset` in `base`, and the bank is written again in each element that
+    // meters energy. A register-bank type should own all three and these operations.
     /// Pascal `ResetRegisters`.
     pub fn reset_registers(&mut self) {
         self.registers = [0.0; NUM_PVSYSTEM_REGISTERS];

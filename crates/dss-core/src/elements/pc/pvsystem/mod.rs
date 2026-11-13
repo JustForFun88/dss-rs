@@ -124,6 +124,8 @@ pub mod prop {
     pub const NUM_PROPS: usize = 54; // incl. Like
 }
 
+// BUG(C2): `class_props` is a free function that builds the class table; it should be an
+// associated constructor of the `PVSystem` class definition.
 /// `TPVSystem.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
@@ -213,6 +215,15 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("PVSystem", defs, true)
 }
 
+// BUG(C5): `PVSystem` owns mutable state across operations and derives `Clone`, which serves
+// the recalc rollback, the what-if copies and owned snapshots of the element. It should not
+// be `Clone`.
+// BUG(C2): every field is `pub`, `base` included, and the inverter-control dispatch writes
+// `pf_priority`, `kvar_requested`, `kw_requested`, `f_pu_pmpp`, `vreg`, the `*_operation`
+// results and the modes of `base` in place. They should change through `PVSystem` operations.
+// BUG(C2): `PVSystem` does the work of its parts: the shape multipliers and temperatures of
+// `base`'s shape copies, the register bank split with `base`, the step of `base.dyn_vars`
+// field by field and the model slot. Each part should own its fields and operations.
 /// `TPVsystemObj`. `TPVSystemVars` (the public machine/state record) is flattened
 /// into these fields plus the embedded [`InvBasedPceData`]; `MakeLike` copies them
 /// the way Pascal does.
@@ -299,10 +310,15 @@ pub struct PVSystem {
 
     /// `SpectrumObj` name — Create sets it NIL (empty) for the inverter PCEs.
     pub spectrum: String,
+    // BUG(C5): `spectrum_obj` is a clone of the arena's `SpectrumObj` kept beside its name, so an
+    // edit of the spectrum does not reach it. The element should hold a handle to the spectrum.
     /// Resolved harmonic spectrum, snapshot-cloned in at edit-completion (only
     /// when an explicit `spectrum=` is given — Create forces `SpectrumObj := NIL`).
     pub spectrum_obj: Option<SpectrumObj>,
 
+    // BUG(C5): each T-shape and the `P-TCurve` are held three times, the name, an `Idx` the
+    // solve does not read and an owned clone that it reads and moves, so a later edit of the
+    // source never reaches the element. The `Idx` alone should name what the arena owns.
     // Temperature-shape references (snapshot-clone + typed Idx).
     pub yearly_t_shape: String,
     pub daily_t_shape: String,
@@ -322,11 +338,15 @@ pub struct PVSystem {
     /// Pascal `UserModel: TPVsystemUserModel` (`PVsystem.pas:228`) — the 15-fn
     /// `UserModel=` slot. `None` until a `.wasm` loads.
     pub user_model: Option<Box<PvUserModelSlot>>,
+    // BUG(C2): the property hooks park their user-model load requests in this field and the
+    // executive takes them later; the hook should return the request to its caller.
     /// Deferred `UserModel=`/`UserData=` load/edit requests, drained + resolved
     /// by the executive (activation rule, `docs/wasm/USERMODEL_ABI.md` §5).
     pub pending_user_model_loads: Vec<crate::obj::base::UserModelLoad>,
 }
 
+// BUG(C2): a free function over `Connection`, written again in each element module; it should
+// be one method of `Connection`.
 /// Pascal `SetNcondsForConnection`.
 fn nconds_for_connection(connection: Connection, nphases: usize) -> usize {
     match connection {

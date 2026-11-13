@@ -71,7 +71,13 @@ impl HeldPowers {
     }
 }
 
+// BUG(C2): `WindGen` gathers the operations of its parts, which should own them.
 impl WindGen {
+    // BUG(C2): the shape multiplier below (`calc_daily_mult`, `calc_duty_mult`,
+    // `calc_yearly_mult`) is written again in each DER element over its own shape copies and
+    // `shape_factor`; a shape-reference type should own the handle and give the multiplier.
+    // BUG(C5): the shape is read through `as_mut` because a lookup moves the position kept in
+    // the element's own copy; a read of the shape should borrow it shared.
     /// Pascal `CalcDailyMult`: the shape value is the **wind speed** (m/s), not a
     /// per-unit multiplier; with no shape it defaults to the model's `VWind`.
     fn calc_daily_mult(&mut self, hr: f64) {
@@ -406,6 +412,9 @@ impl WindGen {
     /// recalc finds them finite (pinned by
     /// `exec::tests::rating_refusals::an_input_that_makes_a_stamp_non_finite_is_refused_at_the_recalc`).
     pub fn recalc(&mut self, sys: &SysCtx) {
+        // BUG(C5): the whole element is cloned as an untyped rollback; on a refusal the model is
+        // moved into the copy and `*self = held` writes it back. `derive` should return the
+        // derived values as a value, committed only when finite, so no copy is held.
         let mut held = self.clone();
         self.derive(sys);
         let (yeq, p, q) = self.power_flow_admittance(sys);
@@ -450,6 +459,9 @@ impl WindGen {
         if !(sys.is_dynamic_model || sys.is_harmonic_model) {
             return (self.yeq, self.p_nominal_per_phase, self.q_nominal_per_phase);
         }
+        // BUG(C5): the whole element is cloned to run `set_nominal_generation` on the copy and
+        // read three numbers back. They should come from an operation that returns them without
+        // mutating.
         let mut flow = self.clone();
         let power_flow = SysCtx {
             is_dynamic_model: false,
@@ -569,6 +581,9 @@ impl WindGen {
             self.kvar_base = (self.kva_rating.powi(2) - self.kw_base.powi(2)).sqrt();
         } else {
             self.kva_rating = self.kw_base / self.pf_nominal.abs();
+            // BUG(C5): the kVA rating is held twice, in `kva_rating` and in
+            // `wind_model_dyn.rated_kva`, and copied across by hand here and in `side_effects`.
+            // One owner should hold it and the model should read it from there.
             self.wind_model_dyn.rated_kva = self.kva_rating;
         }
 

@@ -13,6 +13,7 @@ use crate::util::{EPSILON, sqrt3};
 
 use super::{Connection, Generator};
 
+// BUG(C2): `Generator` gathers the operations of its parts, which have no type of their own.
 impl Generator {
     /// Pascal `CalcYPrimMatrix` (power-flow + harmonic/dynamic paths).
     pub(super) fn calc_yprim_matrix(&mut self, ymatrix: &mut CMatrix, sys: &SysCtx) {
@@ -387,6 +388,8 @@ impl Generator {
         }
     }
 
+    // BUG(C5): `put_curr` takes the whole `SysCtx` to read `solution_count` alone; it should
+    // take the solution count.
     /// The shared tail of every `DoXxxGen`: terminal/injection bookkeeping.
     fn put_curr(&mut self, sys: &SysCtx, curr: Complex64, i: usize) {
         self.stick_curr(true, -curr, i); // into ITerminal
@@ -532,6 +535,8 @@ impl Generator {
 
         let nphases = self.cd.nphases;
         let nconds = self.cd.nconds;
+        // BUG(C5): the Thevenin-voltage buffer is allocated anew on every harmonic injection
+        // pass; the element should keep it between passes and refill it.
         let mut buffer = vec![Complex64::ZERO; nconds];
         for (i, slot) in buffer.iter_mut().enumerate().take(nphases) {
             *slot = e;

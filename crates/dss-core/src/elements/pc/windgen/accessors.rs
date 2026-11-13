@@ -89,6 +89,8 @@ impl CktElement for WindGen {
             return;
         }
         let yorder = self.cd.yorder;
+        // BUG(C5): `yp_shunt`, `yp_series`, `yprim` and `inj_current` are allocated anew on every
+        // Y build; the element should keep them between builds and refill them in place.
         let mut yp_shunt = CMatrix::new(yorder);
 
         // No live solution at Yprim build (the volt-var branch reads no voltages).
@@ -371,6 +373,7 @@ impl CktElement for WindGen {
     }
 }
 
+// BUG(C2): `WindGen` gathers the operations of its parts, which should own them.
 impl WindGen {
     /// Pascal `TWindGenObj.MakeLike` (`WindGen.pas:763-840`). Copies the
     /// machine/shape record; the aerodynamic parameters and the WTG3 dynamics
@@ -652,9 +655,15 @@ impl DssObject for WindGen {
         self.cd.get_bus(terminal).to_string()
     }
 
+    // BUG(C5): each reference is stored three times, the name, an `Idx` and an owned clone of the
+    // arena object (the shapes, the two curves and the `DynamicExpObj`), and the solve reads the
+    // clone, so a later edit of the source never reaches the element. The `Idx` should name it.
     /// Resolve a shape / curve / dynamic-equation reference (snapshot-clone).
     fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use prop::*;
+        // BUG(C5): the referenced object arrives untyped, its class is checked here at run time
+        // (a wrong class is a silent `None`) and `idx` selects the field it goes to. Each
+        // reference property should receive a typed handle into a slot of its own.
         let load_shape_ref = || resolved.and_then(|o| o.idx::<LoadShapeObj>());
         let xy_curve_ref = || resolved.and_then(|o| o.idx::<XyCurveObj>());
         let load_shape = || resolved.and_then(|o| o.cloned::<LoadShapeObj>());
@@ -717,6 +726,9 @@ impl DssObject for WindGen {
                 }
             }
             KVA | MVA => {
+                // BUG(C5): the kVA rating is held twice, in `kva_rating` and in
+                // `wind_model_dyn.rated_kva`, and copied across by hand here and in `derive`.
+                // One owner should hold it and the model should read it from there.
                 self.wind_model_dyn.rated_kva = self.kva_rating;
                 self.kva_not_set = false;
             }
