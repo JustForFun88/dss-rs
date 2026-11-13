@@ -33,6 +33,9 @@ pub use prop_def::{PropDef, RefMissMessage, StubMessage, prop_index};
 pub use prop_flags::PropFlags;
 pub use prop_type::PropType;
 
+// BUG(C2): emits each ordinal as a bare `pub const NAME: usize` and the table as a free
+// `pub fn class_props` per class. A property handle typed by its class and an associated
+// constructor of the class are the right shape.
 /// Declarative per-class property table:
 /// generates the 1-based ordinal consts (`pub mod prop`, with `NUM_PROPS`
 /// including the auto-appended `Like`) and the `class_props()` builder from a

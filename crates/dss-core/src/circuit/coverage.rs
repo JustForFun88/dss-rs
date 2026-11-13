@@ -13,6 +13,8 @@
 
 use crate::circuit::Circuit;
 
+// BUG(C2): a stateless free helper over the level array. It is a method of the type that owns
+// the incidence-matrix levels.
 /// Pascal `get_element_idx(graph_in, element)` (Circuit.pas:753): the first index
 /// at which `levels[i] == element`, else `None` (Pascal leaves `Result`
 /// unassigned on a miss — the callers here always pass a present value).
@@ -20,6 +22,10 @@ fn get_element_idx(levels: &[i32], element: i32) -> Option<usize> {
     levels.iter().position(|&v| v == element)
 }
 
+// BUG(C2): coverage tracing is `AdTearing` and incidence-matrix work done on `Circuit`.
+// `AdTearing` owns it and takes the levels as an argument.
+// BUG(C5): each method below takes `&mut Circuit` and touches only `self.ad` and the
+// incidence-matrix levels. Methods of those parts borrow only what they change.
 impl Circuit {
     /// Pascal `TDSSCircuit.get_longest_path` (Circuit.pas:778): trace the longest
     /// path within the linearized graph, treating the zero-level buses as the
@@ -168,6 +174,9 @@ impl Circuit {
                     // Extract a new path from the longest branch to the backbone
                     // (Circuit.pas:889–898).
                     self.get_longest_path();
+                    // BUG(C5): the graph is cloned only to be read, because
+                    // `append_to_paths_array` takes `&mut self`. The two `self.ad` fields
+                    // borrow side by side.
                     let new_graph = self.ad.new_graph.clone();
                     let start = self.append_to_paths_array(&new_graph);
                     self.ad.path_idx.push(start);
@@ -182,6 +191,8 @@ impl Circuit {
                     // Zero the just-traced path into the backbone
                     // (Circuit.pas:896–897).
                     let start_u = start.max(0) as usize;
+                    // BUG(C5): a copied worklist. The loop writes only the incidence-matrix
+                    // levels, a field disjoint from `self.ad.longest_paths`, which it can borrow.
                     let lp = self.ad.longest_paths.clone();
                     for &bus in lp.iter().skip(start_u) {
                         if let Some(slot) = self.solution.inc_matrix.levels.get_mut(bus as usize) {

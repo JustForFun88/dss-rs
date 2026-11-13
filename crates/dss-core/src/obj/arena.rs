@@ -217,6 +217,9 @@ macro_rules! ckt_self_mut {
     }};
 }
 
+// BUG(C5): the arena clones whole objects (`make_like_within`, `clone_ckt`,
+// `ResolvedObj::cloned`), so every element type, each owning mutable state, must be `Clone`.
+// Direct borrows of the objects it reaches let the element types drop `Clone`.
 /// The one consumer macro: expands the class list into `enum ElemId`,
 /// `enum ClassArena`, and their per-variant match-arm impls (`obj`/`obj_mut`/
 /// `try_ckt_elem`/`try_ckt_elem_mut`/`ckt_elem`/`ckt_elem_mut`/`len`/
@@ -272,6 +275,8 @@ macro_rules! define_arena {
                 }
             }
 
+            // BUG(C2): builds a handle from a bare `(cls, idx)` pair and panics on a bad
+            // ordinal. Producers hold a typed class handle and build the variant from it.
             /// Build the typed handle from a dynamic `(class ordinal, object
             /// index)` pair — the constructor for the registry-side producers
             /// (`find_ckt_element`, `add_ckt_element`, the class-loop reports)
@@ -350,6 +355,9 @@ macro_rules! define_arena {
                 self.len() == 0
             }
 
+            // BUG(C2): `obj`, `obj_mut`, `get_obj`, `try_ckt_elem` and `ckt_elem` take a bare
+            // object index into an arena whose class is chosen at run time. A typed handle names
+            // the object and its class.
             /// Read view of object `idx` as `&dyn DssObject`. The `+ 'static`
             /// object bound holds (every concrete element type owns its data,
             /// no borrows) and lets [`ClassArena`]'s `Index` use it directly.
@@ -442,6 +450,9 @@ macro_rules! define_arena {
                 }
             }
 
+            // BUG(C5): clones the whole source object so that the target can be borrowed
+            // mutably. `get_disjoint_mut([target, source])` reaches both directly, and a
+            // `source == target` copy is a no-op.
             /// Pascal `MakeLike`: copy `source`'s state into `target`, both in
             /// this (same) class. The typed `clone` snapshots the source first so
             /// the target can be borrowed mutably afterwards (works even if
@@ -471,6 +482,8 @@ macro_rules! define_arena {
                 }
             }
 
+            // BUG(C5): returns a boxed clone of a whole element that stands in for a second
+            // live borrow of it. The caller borrows the one element and reads it in place.
             /// An owned typed clone of circuit element `idx`, boxed as
             /// `dyn CktElement` (`None` for a general/`DSS_OBJECT` class).
             /// The self-monitoring control paths (a Fuse/Recloser/Relay whose
@@ -644,6 +657,9 @@ pub trait ArenaClass: DssObject + Sized + 'static {
 with_all_classes!(define_arena);
 
 impl ClassArena {
+    // BUG(C2): `get`, `get_mut` and `all` check at run time which class the arena holds and
+    // answer `None` for another, because arenas and handles are class-erased. A typed handle
+    // reaches its typed arena with no check.
     /// Concrete read view of object `idx` as `&T` — the typed accessor that
     /// replaces the removed `Any` downcast of `arena[idx]` to `&T`.
     ///
@@ -764,6 +780,8 @@ impl<'a> ResolvedObj<'a> {
         T::idx_of(self.id)
     }
 
+    // BUG(C2): narrows the class-erased reference to `T` at run time, though the property that
+    // resolved it declares its class. A property typed by its class resolves to `Idx<T>`.
     /// The concrete `&T`, or `None` if the reference names another class —
     /// the typed replacement for the removed `Any` downcast to `&T`.
     pub fn get<T: ArenaClass>(self) -> Option<&'a T> {
@@ -771,6 +789,8 @@ impl<'a> ResolvedObj<'a> {
         self.arena.get::<T>(i.get())
     }
 
+    // BUG(C5): a clone of the referenced object that the holder keeps beside its handle, and
+    // an edit of the object leaves it stale. The holder keeps the handle and reads at use.
     /// The resolve-time snapshot clone of the concrete `&T` (the `Category D`
     /// `Any`-downcast-then-`cloned()` pattern).
     pub fn cloned<T: ArenaClass + Clone>(self) -> Option<T> {
@@ -784,10 +804,8 @@ impl fmt::Debug for ResolvedObj<'_> {
     }
 }
 
-// Index a `ClassArena` by object position, yielding `dyn DssObject` — the
-// drop-in shape for the pre-R1 `objects[idx]` place expression (so the ownership
-// flip is a near-rename of `<class>.objects[i]` → `<arena>[i]`, `IndexMut`
-// auto-selecting when a `&mut` is needed).
+// BUG(C2): indexes a `ClassArena` by a bare object position, yielding `dyn DssObject`, with
+// `IndexMut` for a `&mut`. A typed handle names the object and its class.
 impl Index<usize> for ClassArena {
     type Output = dyn DssObject;
     fn index(&self, idx: usize) -> &(dyn DssObject + 'static) {
@@ -816,6 +834,8 @@ impl Default for Elements {
     }
 }
 
+// BUG(C2): the accessors below take a bare `(cls, idx)` pair. A typed handle names the
+// object and its class.
 impl Elements {
     /// Empty arenas in registration order.
     pub fn new() -> Self {
@@ -898,6 +918,8 @@ impl Elements {
     }
 }
 
+// BUG(C2): a free function over the arena slice. It is a method of the type that owns the
+// slice.
 /// Two pairwise-distinct objects borrowed mutably at once, over a
 /// `[ClassArena]` slice (shared by [`Elements`] and the `ClassStore` view).
 pub(crate) fn pair_mut_arenas(
@@ -918,6 +940,8 @@ pub(crate) fn pair_mut_arenas(
     }
 }
 
+// BUG(C2): a free function over the arena slice. It is a method of the type that owns the
+// slice.
 /// Three pairwise-distinct objects borrowed mutably at once, over a
 /// `[ClassArena]` slice. Splits per distinct class first, then per object
 /// inside a shared class (the same case analysis as the old `ClassStore`).

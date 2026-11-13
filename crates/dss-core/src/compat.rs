@@ -161,6 +161,9 @@ use crate::support::cmatrix::{CMatrix, SingularMatrix};
 #[cfg(test)]
 mod tests;
 
+// BUG(C2): this module is free functions. The inversion kernels belong to `CMatrix` and a real
+// matrix type, the scale constants are `const` items, the formatters belong to a number-text
+// type, and `render_rows` to the report table.
 // ---------------------------------------------------------------------------
 // Lane marker
 // ---------------------------------------------------------------------------
@@ -225,6 +228,7 @@ pub use cdiv_fpc_impl as cdiv;
 // Dense inverse
 // ---------------------------------------------------------------------------
 
+// BUG(C2): a free function over `&mut CMatrix`. It is a method of `CMatrix`.
 /// In-place complex inversion, the exact algorithm of Pascal
 /// `TcMatrix.Invert`: Gauss-Jordan with pivots chosen by largest-magnitude
 /// *unused diagonal*, **no row exchanges**, cross-terms through FPC's Smith
@@ -298,6 +302,7 @@ pub fn invert_gj_no_exchange_impl(m: &mut CMatrix) -> Result<(), SingularMatrix>
     Ok(())
 }
 
+// BUG(C2): a free function over `&mut CMatrix`. It is a method of `CMatrix`.
 /// In-place complex inversion by Gauss-Jordan elimination **with partial
 /// pivoting** (row exchanges) on `[A | I]` — the textbook-stable variant.
 ///
@@ -378,6 +383,7 @@ pub fn invert_partial_pivot_impl(m: &mut CMatrix) -> Result<(), SingularMatrix> 
 /// Pascal no-row-exchange Gauss-Jordan.
 pub use invert_gj_no_exchange_impl as invert;
 
+// BUG(C2): a free function over a flat slice and its order. It is a method of a real matrix type.
 /// In-place inversion of a **real** square matrix in column-major order, the
 /// same no-row-exchange Gauss-Jordan as [`invert_gj_no_exchange_impl`] (Pascal
 /// `ETKInvert`). Pascal error code 2 (singular) maps to `Err`.
@@ -433,6 +439,7 @@ pub fn etk_invert_gj_no_exchange_impl(a: &mut [f64], norder: usize) -> Result<()
     Ok(())
 }
 
+// BUG(C2): a free function over a flat slice and its order. It is a method of a real matrix type.
 /// Real counterpart of [`invert_partial_pivot_impl`]: Gauss-Jordan on
 /// `[A | I]` with row exchanges, column-major, singular input left unchanged.
 pub fn etk_invert_partial_pivot_impl(a: &mut [f64], norder: usize) -> Result<(), SingularMatrix> {
@@ -904,6 +911,7 @@ pub const JSON_LINE_BREAK_PARITY_IMPL: &str = "\r\n";
 /// The platform-independent line break — see [`JSON_LINE_BREAK`].
 pub const JSON_LINE_BREAK_DEFAULT_IMPL: &str = "\n";
 
+// BUG(C2): a free function over report table rows. It is a method of the report table.
 /// How a run of fixed-width `Show` rows becomes text — the **table-layout**
 /// kernel of the report-rendering seam, the counterpart of the number formats above.
 ///

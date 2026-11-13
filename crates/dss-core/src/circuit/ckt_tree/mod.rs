@@ -14,6 +14,10 @@ mod tests;
 use crate::circuit::Circuit;
 use crate::elements::traits::{ElemId, ElemStore};
 
+// BUG(C2): most fields are `pub`, and `CktTree::node_mut` hands out the whole node to the zone
+// code that writes them. `TreeNode` keeps its fields private behind methods.
+// BUG(C5): derives `Clone` while it owns the node's links and cursor. The type that owns
+// mutable state is not `Clone`.
 /// One tree node (`TCktTreeNode`). Public state mirrors the Pascal fields the
 /// EnergyMeter zone machinery reads/writes.
 #[derive(Debug, Clone)]
@@ -28,6 +32,8 @@ pub struct TreeNode {
     lexical_level: i32,
     /// `FShuntObjects`: loads/generators/shunt caps attached at this node.
     pub shunts: Vec<ElemId>,
+    // BUG(C2): `from_bus` and `to_bus_list` hold bare `usize` bus indices. A bus handle type
+    // carries what they index.
     /// `FromBusReference` — 0-based bus index, `None` = unset (Pascal used `0`
     /// in its 1-based bus indexing, i.e. the same "no bus" hole).
     pub from_bus: Option<usize>,
@@ -132,6 +138,8 @@ impl TreeNode {
 /// terminal's `bus_ref` proved wired **and** in range.
 #[derive(Debug, Clone, Default)]
 pub struct ZoneEndsList {
+    // BUG(C2): each end is a bare pair of a tree-node index and a bus index. Node and bus
+    // handle types tell the two apart.
     pub ends: Vec<(usize, usize)>,
 }
 
@@ -146,6 +154,10 @@ impl ZoneEndsList {
     }
 }
 
+// BUG(C2): the traversal cursor `present` and `zone_ends` are `pub`. `CktTree` keeps them
+// private behind methods.
+// BUG(C5): derives `Clone` while it owns the traversal cursor and stack. The type that owns
+// mutable state is not `Clone`.
 /// Pascal `TCktTree`. `present` is `PresentBranch`.
 #[derive(Debug, Clone, Default)]
 pub struct CktTree {
@@ -316,6 +328,7 @@ pub struct BusAdjLists {
     pub pc: Vec<Vec<ElemId>>,
 }
 
+// BUG(C2): a free function over one element's terminals. It is a method of `CktElementData`.
 /// Pascal `AllTerminalsClosed`: at least one of the first `nphases`
 /// conductors closed on **every** terminal.
 pub fn all_terminals_closed(elem: &dyn crate::elements::traits::CktElement) -> bool {
@@ -332,6 +345,9 @@ pub fn all_terminals_closed(elem: &dyn crate::elements::traits::CktElement) -> b
     true
 }
 
+// BUG(C2): a free function that probes the class with `typed::<Capacitor>` and
+// `typed::<Reactor>` though the `ElemId` variant already names it. It is a method of `ElemId`
+// that matches the variant.
 /// Pascal `IsShuntElement` (capi `Shared/CktTree.pas:522-528`, r4133
 /// `Common/Utilities.pas:1262-1274`): the **topology** notion of "shunt", which
 /// is NOT `TPDElement.IsShunt`. Upstream switches on the class first and reads
@@ -365,6 +381,7 @@ pub fn is_shunt_element(store: &dyn ElemStore, r: ElemId) -> bool {
         && store.ckt_elem(r).is_shunt()
 }
 
+// BUG(C2): a free function that builds a `BusAdjLists`. It is a constructor of `BusAdjLists`.
 /// Pascal `BuildActiveBusAdjacencyLists` (CktTree.pas l.678): walk the
 /// circuit's PC and PD lists and bucket enabled elements by terminal bus.
 pub fn build_active_bus_adjacency_lists(ckt: &Circuit, store: &dyn ElemStore) -> BusAdjLists {

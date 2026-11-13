@@ -15,6 +15,8 @@ pub(super) struct GeneralEnums {
     pub(super) dynamic_exp_domain: EnumId,
 }
 
+// BUG(C2): a free function that builds `GeneralEnums`. It is the associated constructor of
+// `GeneralEnums`.
 pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> GeneralEnums {
     let mut units = DssEnum::new(
         "Length Unit",

@@ -1,6 +1,9 @@
 //! Small string/format helpers from Pascal `Common/Utilities.pas`, ported
 //! on demand (only what the engine paths implemented so far actually use).
 
+// BUG(C2): this module is free functions. Each belongs to a type: the number formatters to a
+// number-text type, the parser readers to the parser, the file readers to `DblArrayFileSpec`,
+// and the constants written as functions are `const` items.
 use crate::obj::base::MmfKind;
 use dss_parser::{Parser, ParserError, ParserVars};
 use num_complex::Complex64;
@@ -11,6 +14,8 @@ use num_complex::Complex64;
 pub const EPSILON: f64 = 1.0e-12;
 /// Pascal `EPSILON2` — "default for real number mismatch testing".
 pub const EPSILON2: f64 = 1.0e-3;
+// BUG(C2): `sqrt3` and `inv_sqrt3_x1000` are constants written as free functions, and
+// `sqrt3` is written again elsewhere in the crate. Each is one `const`.
 /// Pascal `SQRT3` (computed `Sqrt(3.0)` at startup, full precision).
 pub fn sqrt3() -> f64 {
     3.0_f64.sqrt()
@@ -52,6 +57,8 @@ pub fn quad_solver(a: f64, b: f64, c: f64) -> f64 {
     }
 }
 
+// BUG(C2): a free yes/no formatter, written again elsewhere in the crate. A yes/no type renders
+// itself.
 /// Pascal `StrYOrN`.
 pub fn str_y_or_n(b: bool) -> &'static str {
     if b { "Yes" } else { "No" }
@@ -163,6 +170,8 @@ pub fn color_to_html(c: i32) -> String {
     )
 }
 
+// BUG(C2): a free yes/no parser, written again elsewhere in the crate with another body. A
+// yes/no type parses itself.
 /// Pascal `InterpretYesNo`: looks only at the first character —
 /// `y`/`t` → true, anything else → false. (The original reads `S[1]`
 /// unconditionally; an empty string is undefined behavior there and simply
@@ -174,6 +183,8 @@ pub fn interpret_yes_no(s: &str) -> bool {
     )
 }
 
+// BUG(C2): a free parser of a `class.name` reference. An object-name type parses itself, and
+// the parser substitutes the variables.
 /// Pascal `ParseObjectClassandName`: split `class.objname` at the first dot
 /// (no dot → all object name, empty class) and run the object name through
 /// the parser's `@variable` substitution.
@@ -263,6 +274,8 @@ pub fn comma_text(items: &[String]) -> String {
         .join(",")
 }
 
+// BUG(C2): a free `%g` formatter, written again elsewhere in the crate. It is a method of a
+// number-text type.
 /// The **number-format seam** entry point for "general" (`%g`) number rendering.
 ///
 /// Every engine path that turns an `f64` into general-notation text calls this
@@ -424,6 +437,7 @@ struct DiyFp {
     e: i32,
 }
 
+// BUG(C2): a free function over two `DiyFp`. It is a method of `DiyFp`.
 /// `diy_fp_multiply` (`flt_core.inc:261-288`, VALREAL_64): the rounded
 /// high-64 of the 128-bit product — the 32×32 partial-sum formula is exactly
 /// `(x·y + 2^63) >> 64` — with `e := x.e + y.e + 64` and optional
@@ -1014,6 +1028,9 @@ pub struct DblArrayFileSpec {
     pub header: bool,
 }
 
+// BUG(C2): this and the file readers below (`read_dbl_array_text`, `read_line_advance`,
+// `read_le_f32_array`, `read_le_f64_array`) are free functions of the file directive. Each is
+// a constructor or method of `DblArrayFileSpec`.
 /// Pascal `InterpretDblArray` directive recognizer (`Utilities.pas:454-566`):
 /// parse the leading `file=`/`dblfile=`/`sngfile=` token and, for `file=`, the
 /// `column=`/`header=` options in either order (`CompareTextShortest`). Returns
@@ -1173,6 +1190,8 @@ pub fn read_le_f64_array(bytes: &[u8], max: usize) -> Vec<f64> {
         .collect()
 }
 
+// BUG(C2): this, `interpret_dbl_array_dynamic` and `interpret_given_values` are free functions
+// that take the parser and its variables. Each is a method of the parser.
 /// Pascal `InterpretDblArray`, list-of-numbers path: read exactly
 /// `max_values` doubles out of `s` into `out`, filling with zeros when the
 /// string runs short (the parser returns 0 for an empty token). The outer

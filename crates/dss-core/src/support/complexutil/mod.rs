@@ -11,6 +11,8 @@
 #[cfg(test)]
 mod tests;
 
+// BUG(C2): this module is free functions. The polar conversions belong to `Polar`, and the
+// angle and rotation helpers to a complex-math extension trait on `Complex64`.
 use num_complex::Complex64;
 
 /// Pascal `polar` record: magnitude and angle (radians or degrees depending
@@ -21,6 +23,8 @@ pub struct Polar {
     pub ang: f64,
 }
 
+// BUG(C2): this and `c_to_polar`, `c_to_polar_deg` and `p_to_complex` below are free
+// conversions of `Polar`. Each is a constructor or method of `Polar`.
 /// Scalar to polar (Pascal `topolar`).
 pub fn to_polar(mag: f64, ang: f64) -> Polar {
     Polar { mag, ang }

@@ -30,7 +30,11 @@ use crate::obj::props::setters::{set_obj_double, set_obj_integer};
 
 use super::ClassProps;
 
+// BUG(C2): `ClassProps` does its rows' typed writes here, work that belongs to `PropDef`.
 impl ClassProps {
+    // BUG(C2): each setter below learns whether the write was refused from the growth of
+    // `eng.errors`, because the write returns `()` and logs into the shared log. The write
+    // returns its refusal, and the setter acts on that value.
     /// Pascal `TDSSObjectHelper.SetDouble` core: `SetObjDouble` (scale + range/
     /// sign/zero-trap/inverse checks) then, only if no error was logged,
     /// `SetAsNextSeq(idx)` + `PropertySideEffects(idx, 0)`.
@@ -99,6 +103,8 @@ impl ClassProps {
         }
     }
 
+    // BUG(C5): takes the whole `PropEngine` and uses only the length of its error log. The
+    // write's own result is all it needs.
     /// Pascal `TDSSObjectHelper.SetDoubles` onto a `DoubleArrayOnStructArray`
     /// property (per-winding `kVs`/`kVAs`): each `Some` entry is scaled by
     /// `PropertyScale` (mirroring the string `DoubleArrayOnStruct` parse arm),
@@ -123,6 +129,8 @@ impl ClassProps {
         }
     }
 
+    // BUG(C5): never reads `self`, and takes the whole `PropEngine` to use only the length of
+    // its error log. It is an operation of the object that takes the write's own result.
     /// Pascal `TDSSObjectHelper.SetIntegers` onto a
     /// `MappedStringEnumArrayOnStructArray` property (per-winding `conns`):
     /// write the ordinals, then `SetAsNextSeq` + `PropertySideEffects(idx, 0)`.
@@ -141,6 +149,8 @@ impl ClassProps {
         }
     }
 
+    // BUG(C5): takes the whole `PropEngine` and uses only the length of its error log. The
+    // write's own result is all it needs.
     /// Pascal `TDSSObjectHelper.SetStrings` onto the `BusesOnStructArray`
     /// property (`SetStrings(ord(TProp.Buses), new_buses, [])` in the
     /// Transformer/AutoTrans overrides): every name is set (`None` never

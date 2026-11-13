@@ -19,6 +19,7 @@ use crate::report::export::json::{Json, JsonOpts};
 
 use super::ClassProps;
 
+// BUG(C2): `ClassProps` does its rows' JSON rendering here, work that belongs to `PropDef`.
 impl ClassProps {
     /// Pascal `GetObjPropertyJSONValue(obj, idx, joptions, val, preferArray)`:
     /// build property `idx`'s JSON value, or `None` when the property is omitted
@@ -347,6 +348,7 @@ impl ClassProps {
     }
 }
 
+// BUG(C2): a free function that reads one row's integer. It is a method of `PropDef`.
 /// Pascal `GetObjInteger`: subtract `PropertyValueOffset` under `VALUE_OFFSET`.
 fn int_value(pd: &crate::obj::props::PropDef, obj: &dyn DssObject, idx: usize) -> i32 {
     let mut v = obj.get_i32(idx);
@@ -356,6 +358,8 @@ fn int_value(pd: &crate::obj::props::PropDef, obj: &dyn DssObject, idx: usize) -
     v
 }
 
+// BUG(C2): this and `array_f64`, `opt_array_f64` and `enum_ordinal_json` below are free
+// functions. Each is a method of what it renders: the row's scale or the `DssEnum`.
 fn scaled(v: f64, scale: f64) -> f64 {
     if scale == 1.0 { v } else { v / scale }
 }

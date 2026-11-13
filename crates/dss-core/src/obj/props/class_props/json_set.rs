@@ -33,6 +33,7 @@ use crate::report::export::json::Json;
 
 use super::ClassProps;
 
+// BUG(C2): `ClassProps` does its rows' JSON reads here, work that belongs to `PropDef`.
 impl ClassProps {
     /// Pascal `FillObjFromJSON`: apply every present property of `members` (the
     /// JSON object's key/value pairs) to `obj`, in `AltPropertyOrder`. `Name` is
@@ -185,6 +186,8 @@ impl ClassProps {
     }
 }
 
+// BUG(C2): this and the JSON readers below it, down to `given_list_refusal`, are free
+// functions over one JSON value. Each is a method of the JSON value type.
 /// Render one scalar JSON value as the DSS value token `parse_into` reads. A
 /// double uses Rust's shortest round-tripping form (parses back to the identical
 /// `f64` via `f64::from_str`, so the re-export byte-matches).
@@ -277,6 +280,7 @@ fn given_list_refusal(jval: &Json) -> Option<String> {
     }
 }
 
+// BUG(C2): a free function that does one row's JSON work. It is a method of `PropDef`.
 /// Build the DSS value string for property `pd` from its JSON value, matching
 /// the grammar `ClassProps::parse_into` reads for that [`PropType`]. Returns
 /// `None` when there is nothing to apply.

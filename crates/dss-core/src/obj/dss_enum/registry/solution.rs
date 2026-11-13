@@ -18,6 +18,8 @@ pub(super) struct SolutionEnums {
     pub(super) load_shape_class: EnumId,
 }
 
+// BUG(C2): a free function that builds `SolutionEnums`. It is the associated constructor of
+// `SolutionEnums`.
 pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> SolutionEnums {
     let scan_type = push(DssEnum::new(
         "Scan Type",

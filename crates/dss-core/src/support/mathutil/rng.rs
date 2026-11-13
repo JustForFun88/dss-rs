@@ -35,6 +35,8 @@ const MATRIX_A: u32 = 0x9908_B0DF;
 const UPPER_MASK: u32 = 0x8000_0000;
 const LOWER_MASK: u32 = 0x7FFF_FFFF;
 
+// BUG(C5): derives `Clone` while it owns the generator state that every draw advances. The
+// type that owns mutable state is not `Clone`.
 /// FPC RTL MT19937 generator state (`mt_state`/`mt_index` + `RandSeed`/
 /// `OldRandSeed`). Engine-global in FPC (a unit threadvar); here it is owned by
 /// the `Circuit` so the whole solve shares one stream, like the process RTL.

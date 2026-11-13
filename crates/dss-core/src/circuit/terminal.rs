@@ -3,14 +3,23 @@
 //! Pascal `TPowerTerminal` is a value-type `object` (not `class`). In Rust
 //! it's a plain struct. Each circuit element has one per terminal.
 
+// BUG(C2): `bus_ref`, `term_node_ref` and `conductors_closed` are `pub` beside `set_bus`, and
+// `Circuit::check_disabled_node_map` writes them directly. `Terminal` keeps them private.
+// BUG(C5): derives `Clone` while it owns its node map and switch state, and it is cloned with
+// every element clone. The type that owns mutable state is not `Clone`.
 /// A power terminal belonging to a circuit element.
 ///
 /// Pascal: `TPowerTerminal` (value object)
 #[derive(Debug, Clone)]
 pub struct Terminal {
+    // BUG(C2): `bus_ref` and `term_node_ref` are bare `usize` indices into the bus list and
+    // the node table. Bus and node handle types carry what they index.
     /// Index into the circuit's `Buses` list, or `None` if unset (Pascal's
     /// `BusRef = 0`, our former `usize::MAX` sentinel).
     pub bus_ref: Option<usize>,
+    // BUG(C5): the same nodes are kept again in `CktElementData::node_ref`, and each writer
+    // keeps the two in step by hand. `CktElementData` owns one node map and a terminal reads
+    // its slice of it.
     /// Per-conductor global node references (1-based, 0 = ground).
     pub term_node_ref: Vec<usize>,
     /// Per-conductor closed/open state.

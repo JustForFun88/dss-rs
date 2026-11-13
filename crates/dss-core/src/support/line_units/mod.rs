@@ -126,6 +126,7 @@ impl std::fmt::Display for LineUnits {
     }
 }
 
+// BUG(C2): a free function over two `LineUnits`. It is a method of `LineUnits`.
 /// Multiplier converting a quantity *per* `from` units into *per* `to` units
 /// (Pascal `ConvertLineUnits`); 1.0 when either side is `None`.
 pub fn convert_line_units(from: LineUnits, to: LineUnits) -> f64 {

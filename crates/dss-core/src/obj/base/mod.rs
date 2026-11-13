@@ -10,6 +10,9 @@ mod tests;
 
 use crate::obj::TypedRating;
 
+// BUG(C5): derives `Clone` on per-object state (the set-order counter, the edit boundary, the
+// queued messages and requests, the saved flag), and it is cloned with every element clone.
+// The type that owns mutable state is not `Clone`.
 /// Shared object state every DSS object carries (`TDSSObject` fields that
 /// matter to the port so far): its name and the property set-order tracker.
 ///
@@ -29,6 +32,8 @@ pub struct DssObjData {
     /// Kept as a scalar so it stays out of the `next_property_set`/`prp_specified`
     /// property-index sweeps; copied by `MakeLike` exactly like the array.
     edit_seq_boundary: u32,
+    // BUG(C2): a hook's messages and its abort request are parked here and drained later with
+    // `take_errors` and `take_abort`. The hook returns them to its caller.
     /// Messages queued by `side_effects`, `end_edit` and the other hooks,
     /// which run without the engine error log. A Line, LineGeometry or
     /// LineSpacing command logs a queued message at the value token that
@@ -68,6 +73,8 @@ pub struct DssObjData {
     /// JSON dump omits these unless `IncludeDefaultObjs` is set
     /// (`CAPI_Obj.pas:2644`); nothing else reads it.
     default_and_unedited: bool,
+    // BUG(C2): the property path parks its file-array requests here and the executive drains
+    // them with `take_dbl_array_files`. The property write returns them to its caller.
     /// WPG.19 — generic file-backed numeric-array directives (`%mag=(file=…)`,
     /// `Yarray=(sngfile=…)`, …) queued by the generic `DoubleArray` property
     /// path for any class (Pascal `DSSObjectHelper.pas:616-636` routes every
@@ -413,6 +420,9 @@ impl DssObjData {
     }
 }
 
+// BUG(C2): a setter that writes another object parks the write here for the executive,
+// because the property engine lends only a read view of the other classes. The edit returns
+// the write to the owner of both objects, which applies it.
 /// A deferred cross-element write queued by a property setter that needs
 /// *mutable* access to a different object. Pascal pokes the target through a
 /// live pointer mid-parse (e.g. RegControl `TapNum` → `tr.PresentTap[w] :=`);
@@ -493,6 +503,7 @@ impl RefAction {
     }
 }
 
+// BUG(C2): a request parked on the object and drained later. The setter returns it.
 /// A deferred file load queued by a property setter that names a data file
 /// (e.g. a LoadShape `CSVFile`). The setter cannot reach the filesystem or the
 /// script's current directory, so it records the request; the executive
@@ -705,6 +716,7 @@ pub enum UserModelAction {
     Edit(String),
 }
 
+// BUG(C2): a request parked on the object and drained later. The setter returns it.
 /// A deferred user-model (WASM) load/edit request queued by a `UserModel=` /
 /// `UserData=` / `ShaftModel=` / `ShaftData=` property setter. Like
 /// [`FileLoad`], the setter cannot reach the filesystem or the
@@ -731,6 +743,7 @@ pub struct UserModelLoad {
     pub action: UserModelAction,
 }
 
+// BUG(C2): a request parked on the object and drained later. The action hook returns it.
 /// A queued binary shape-save action — the `SngSave`/`DblSave` `Action` of
 /// LoadShape and its TShape/PriceShape siblings (Pascal `SaveToDblFile` /
 /// `SaveToSngFile`, `LoadShape.pas:1880/1939`, `TempShape.pas:528/548`,
@@ -765,6 +778,9 @@ pub struct ShapeSave {
 /// (`TPropertyFlag.AllowNoneItem`). See [`DssObject::set_object_ref_array`].
 pub type ObjectRefArrayItem<'a> = Option<(String, crate::obj::arena::ResolvedObj<'a>)>;
 
+// BUG(C2): every accessor and hook takes a bare 1-based property `usize`, and the defaults are
+// `unreachable!`, so an index of another class compiles. A property handle typed by its class
+// is the key.
 /// The typed field accessors the property engine calls, keyed by the 1-based
 /// property index. Each concrete class implements only the kinds it actually
 /// uses; the defaults panic so a wrong dispatch surfaces as an obvious bug
@@ -1211,6 +1227,9 @@ pub trait DssObject: Send {
     /// other class ignores it.
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {}
 
+    // BUG(C2): this and the other `take_*` drains, `open_debug_traces` and
+    // `run_deferred_actions` are outboxes that hand over what an edit parked on the object.
+    // The edit returns those results to its caller.
     /// Drain the [`RefAction`]s queued during the last edit (see `RefAction`).
     /// The executive applies them right after `end_edit`.
     fn take_ref_actions(&mut self) -> Vec<RefAction> {

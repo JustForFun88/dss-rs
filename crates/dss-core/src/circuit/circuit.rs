@@ -16,6 +16,8 @@ use crate::support::mathutil::FpcRng;
 /// Pascal `TNodeBus`: global node number → (bus, user node number).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct NodeBus {
+    // BUG(C2): the bus is a bare `usize` into `Circuit::buses`, and a stale one after a
+    // rebuild looks like a good one. A bus handle type carries what it indexes.
     /// Index into `buses` (0-based here; Pascal was 1-based).
     pub bus_ref: usize,
     pub node_num: i32,
@@ -184,6 +186,11 @@ impl Default for BusMarker {
     }
 }
 
+// BUG(C2): one flat record holds the parts of many concerns (the bus/node table, the element
+// lists, solve options, plot markers, auto-add and reduction options) with no type of their
+// own, and its methods do the bus/node table's work. Each part gets a type with its operations.
+// BUG(C2): every field is `pub` and code across the crate writes them directly. The parts keep
+// their fields private behind methods.
 /// The circuit model (`TDSSCircuit`).
 pub struct Circuit {
     /// Lowercased circuit name.
@@ -196,12 +203,18 @@ pub struct Circuit {
     /// Bus name list; index aligns with `buses` (0-based).
     pub bus_list: HashList,
     pub buses: Vec<Bus>,
+    // BUG(C5): a counter kept beside `map_node_to_bus`, which it counts, and both are open, so a
+    // writer of one can leave the other behind. The node table derives the count from its map.
     /// Global node count (node references are 1..=num_nodes; 0 = ground).
     pub num_nodes: usize,
+    // BUG(C2): indexed by a bare `usize` node number with slot 0 unused. A node handle type
+    // names a node and keeps ground out of the table.
     /// `MapNodeToBus[1..num_nodes]`; slot 0 unused.
     pub map_node_to_bus: Vec<NodeBus>,
     /// Device name list, in creation order (`DeviceList`).
     pub device_list: HashList,
+    // BUG(C5): a counter kept beside `ckt_elements` and `device_list`, which it counts, and all
+    // are open. The element list derives the count.
     pub num_devices: usize,
 
     /// `CktElements` in creation order, plus the per-kind lists.
@@ -209,6 +222,9 @@ pub struct Circuit {
     pub pd_elements: Vec<ElemId>,
     pub pc_elements: Vec<ElemId>,
     pub sources: Vec<ElemId>,
+    // BUG(C2): each list from here to `sensors`, the control lists aside, holds one known class
+    // as a class-erased `ElemId`, so every reader narrows it again at run time. A list of typed
+    // handles (`Idx<EnergyMeter>` and kin) carries the class.
     pub lines: Vec<ElemId>,
     pub loads: Vec<ElemId>,
     pub transformers: Vec<ElemId>,
@@ -387,6 +403,9 @@ pub struct Circuit {
     /// time-series modes (`Set pricecurve=`). The shape is snapshot-cloned at
     /// `Set` time exactly like the Load/VSource shape refs.
     pub price_signal: f64,
+    // BUG(C5): this field and the three shape fields below hold clones of shapes their class
+    // arena owns, taken at `Set` time, so an edit of the shape leaves them stale. A typed
+    // handle to the arena object, read at use, is direct access.
     pub price_curve_obj: Option<crate::elements::general::price_shape::PriceShapeObj>,
     /// `DefaultDailyShapeObj`/`DefaultYearlyShapeObj`: both resolve to the
     /// built-in `loadshape.default` at circuit creation; `Set defaultdaily=` /
@@ -866,6 +885,9 @@ impl Circuit {
             return;
         };
         let cd = elem.cd();
+        // BUG(C5): the node map and each terminal's bus and nodes are copied, overwritten as a
+        // trial and written back when the map differs. A node-map operation that returns the
+        // trial map leaves the element untouched until the map is kept.
         let old_map = cd.node_ref.clone();
         let old_terminals: Vec<(Option<usize>, Vec<usize>)> = cd
             .terminals
@@ -969,6 +991,9 @@ impl Circuit {
         self.map_node_to_bus = vec![NodeBus::default()];
 
         // Now redo all enabled circuit elements.
+        // BUG(C5): the element list is copied so that the loop can call a `&mut self` method.
+        // With the bus/node table as its own type the loop iterates `self.ckt_elements` and
+        // borrows only that table mutably.
         let refs: Vec<ElemId> = self.ckt_elements.clone();
         for &r in &refs {
             let elem = store.ckt_elem_mut(r);
@@ -1050,6 +1075,9 @@ impl Circuit {
         )
     }
 
+    // BUG(C5): a read that takes `&mut self`, and the element store `&mut` because
+    // `CktElement::losses` takes `&mut self`. It reads the node voltages and the PD list only,
+    // so `&self` and a shared store borrow are its access.
     /// Total circuit losses (Pascal `Get_Losses`): sum over enabled PD
     /// elements, ignoring shunt elements (shunt capacitors/reactors).
     pub fn losses(
@@ -1058,6 +1086,8 @@ impl Circuit {
         sys: &crate::elements::traits::SysCtx,
     ) -> Complex64 {
         let mut total = Complex64::ZERO;
+        // BUG(C5): the node voltages are cloned only to be read. `&self.solution.node_v`
+        // borrows beside `self.pd_elements`.
         let node_v = self.solution.node_v.clone();
         for &r in &self.pd_elements {
             let elem = store.ckt_elem_mut(r);
@@ -1068,6 +1098,8 @@ impl Circuit {
         total
     }
 
+    // BUG(C5): a read that takes the element store `&mut`, because
+    // `CktElement::terminal_power` takes `&mut self`. A shared store borrow is its access.
     /// Complex power (W, var) into the circuit's sources, summed over every
     /// conductor of every terminal of every enabled source and x3 in a
     /// positive-sequence circuit: the negative of the power the sources supply

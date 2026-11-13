@@ -15,6 +15,7 @@ use dss_parser::{ParserError, val_i32};
 
 use super::ClassProps;
 
+// BUG(C2): `ClassProps` does its rows' parse work here, work that belongs to `PropDef`.
 impl ClassProps {
     /// Parse `value` into property `idx` and write it through the typed
     /// accessors (Pascal `ParseObjPropertyValue` + `SetObj*`). Returns the
@@ -787,6 +788,7 @@ impl ClassProps {
     }
 }
 
+// BUG(C2): a free function that does one row's parse work. It is a method of `PropDef`.
 /// The `conductors=` list of a Line or a LineGeometry, filled into the
 /// conductor array from its first slot: each item is the `Class.Name` of a
 /// WireData, CNData or TSData object, the class matched in any case, or
@@ -875,6 +877,9 @@ fn parse_conductor_proxy(
     Ok(0)
 }
 
+// BUG(C2): this and the other refusal builders of this file (`not_finite_value`,
+// `not_finite_input`, `not_finite_in_stored_unit`, `read_only_rating`, `sym_matrix_order_error`)
+// are free functions. A refusal type builds each of them.
 /// The refusal of a rating that is not a finite number: a rating is a number,
 /// `none` or `-1`, and the edit leaves the property as it was
 /// (`a_rating_that_is_not_a_finite_number_is_refused`).
@@ -916,6 +921,9 @@ fn not_finite_input(
     })
 }
 
+// BUG(C2): a free function of the parser side. It is a method of the property engine's parser.
+// BUG(C5): takes the whole `PropEngine` and uses only its parser and variables. It borrows
+// those two.
 /// The text of entry `index` of the array `value`, as the array parse reads
 /// it, for the message refusing that entry.
 fn array_entry_text(eng: &mut PropEngine, value: &str, index: usize) -> String {
@@ -973,6 +981,9 @@ pub(crate) fn read_only_rating(full: &str, prop: &str) -> ParserError {
     ))
 }
 
+// BUG(C2): a free function of the parser side. It is a method of the property engine's parser.
+// BUG(C5): takes the whole `PropEngine` and uses only its parser and variables. It borrows
+// those two.
 /// The inline value of a [`PropType::RatingArray`], whose caller has queued a
 /// `file=`, `dblfile=` or `sngfile=` value already: `max` typed entries, each a
 /// number, `none`, or nothing, with `none` and an entry not supplied kept as

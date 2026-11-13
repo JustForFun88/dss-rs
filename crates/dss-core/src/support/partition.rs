@@ -127,6 +127,8 @@ impl MetisGraph {
     }
 }
 
+// BUG(C2): a free function that names the partition file of a graph. It is a method of
+// `MetisGraph`.
 /// The `<graph>.part.<N>` path (`FileName + '.part.' + inttostr(Num_pieces)`).
 pub fn part_file_path(graph_path: &Path, num_pieces: i32) -> std::path::PathBuf {
     let mut s = graph_path.as_os_str().to_os_string();

@@ -98,6 +98,7 @@ const MU0: f64 = 12.56637e-7; // hy/m
 #[allow(clippy::approx_constant)] // truncated upstream `Twopi`, not `TAU` — see above
 const TWOPI: f64 = 6.283185307;
 
+// BUG(C2): a free function that only wraps `Complex64::new`. Callers call `Complex64::new`.
 #[inline]
 fn cmplx(re: f64, im: f64) -> Complex64 {
     Complex64::new(re, im)
@@ -146,6 +147,8 @@ fn cmplx(re: f64, im: f64) -> Complex64 {
 // DERI/cable earth terms and `Line`'s `DoLongLine` all still route through
 // `csqrt_fpc`.
 
+// BUG(C2): a free function over one `Complex64`. It is a method of a complex-math extension
+// trait on `Complex64`.
 /// FPC `ucomplex` `csqrt` — the Numerical-Recipes stable square root
 /// (`root = √(½(|re|+|z|))`, the other component `= im/(2·root)`), branch-split
 /// on the signs so the robust component is the directly-rooted one.
@@ -218,6 +221,9 @@ struct Conductor {
     cable: Option<CableData>,
 }
 
+// BUG(C5): derives `Clone` while it owns the conductor data and the computed `Z` and `Yc`
+// state, and it is cloned with every line geometry clone. The type that owns mutable state is
+// not `Clone`.
 /// Pascal `TLineConstants`: the per-conductor geometry/parameters plus the
 /// computed `Z`/`Yc` matrices.
 #[derive(Clone)]
@@ -878,6 +884,9 @@ impl LineConstants {
         if self.ffrequency >= 0.0 && norder > 0 && norder < self.num_conds {
             // Reduce the computed Z matrix one row/col (always the last) at a
             // time until it is `norder`.
+            // BUG(C5): the whole Z matrix is copied only to feed the first reduction, which
+            // reads its operand and returns a new matrix. The first `kron` reads
+            // `self.fz_matrix` in place.
             let mut ztemp = self.fz_matrix.clone();
             while ztemp.order() > norder {
                 // Pascal eliminates the last row (1-based Order ⇒ 0-based last).

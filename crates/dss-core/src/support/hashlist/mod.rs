@@ -13,6 +13,8 @@ pub(crate) mod thash_dump;
 
 use std::collections::HashMap;
 
+// BUG(C5): derives `Clone` while it owns a name index that grows with every add. The type
+// that owns mutable state is not `Clone`.
 #[derive(Debug, Clone, Default)]
 pub struct HashList {
     /// All names in insertion order, lowercased.

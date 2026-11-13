@@ -67,6 +67,8 @@ impl THashSim {
     }
 }
 
+// BUG(C2): a free function that replays the device names into a `THashSim` and dumps it. It
+// is a constructor of `THashSim`, and the dump its method.
 /// Replay `TDSSCircuit.AddCktElement`'s DeviceList protocol (`Circuit.pas:
 /// 2065-2073` + `ReallocDeviceList` `:2990-3007`) over the stored device
 /// names, then render `THashList.DumpToFile` (`HashList.pas:307-344`).
@@ -91,6 +93,7 @@ pub(crate) fn device_hash_dump<'a>(names: impl Iterator<Item = &'a str>) -> Stri
     dump_to_file(&sim)
 }
 
+// BUG(C2): a free function over `&THashSim`. It is a method of `THashSim`.
 /// Pascal `THashList.DumpToFile`: header, the count-only distribution, the
 /// per-bucket member listing, then the linear listing.
 fn dump_to_file(sim: &THashSim) -> String {
@@ -130,6 +133,7 @@ fn dump_to_file(sim: &THashSim) -> String {
     s
 }
 
+// BUG(C2): a free function over the bus names. The linear listing is a method of `HashList`.
 /// Pascal `TAltHashList.DumpToFile` (`HashList.pas:396-405`), the `BusList`
 /// dump: only the linear listing (`Format('%3d = "%s"', …)`).
 pub(crate) fn alt_dump<'a>(names: impl Iterator<Item = &'a str>) -> String {

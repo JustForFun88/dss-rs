@@ -419,6 +419,8 @@ impl CMatrix {
         // two of one in halves, so a maximum in `[1/2, 2)` stays.
         let step = |m: f64| -((0.5 * m + 0.5).floor() as i32);
         for _sweep in 0..128 {
+            // BUG(C5): each sweep allocates new `row_step` and `col_step` vectors. They are
+            // allocated once before the loop and each sweep overwrites them.
             let mut row_step = vec![0_i32; n];
             for (i, s) in row_step.iter_mut().enumerate() {
                 let Some(m) = (0..n).filter_map(|j| at(&row, &col, i, j)).reduce(f64::max) else {
@@ -539,6 +541,7 @@ impl IndexMut<(usize, usize)> for CMatrix {
     }
 }
 
+// BUG(C2): a free function. The exact power-of-two scaling belongs to `CMatrix`.
 /// `z · 2^e`, exact while each part of the result is a normal number: the
 /// factor is applied in steps of at most `2^±1000`, each a normal power of
 /// two, and the steps move monotonically from `z` to the result.

@@ -30,6 +30,8 @@ pub(super) struct ControlEnums {
     pub(super) espvl_control_type: EnumId,
 }
 
+// BUG(C2): a free function that builds `ControlEnums`. It is the associated constructor of
+// `ControlEnums`.
 pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> ControlEnums {
     // RegControl.pas: PhaseEnum (hybrid — falls back to a phase number).
     let mut rcp = DssEnum::new(

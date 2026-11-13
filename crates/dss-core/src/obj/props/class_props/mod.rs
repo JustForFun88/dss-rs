@@ -26,6 +26,9 @@ use dss_parser::ParserError;
 
 use super::{PropDef, PropEngine, PropType};
 
+// BUG(C2): each property method picks one row and does that row's parse, render and JSON work
+// itself with a `match` on `PropType`. `PropDef` and `PropType` own the per-type work, and
+// `ClassProps` only finds the row.
 /// A class's property table plus its abbreviation-matching command list — the
 /// Rust stand-in for the per-`TDSSClass` `PropertyType[]`/`CommandList` state.
 ///
@@ -163,6 +166,8 @@ impl ClassProps {
         )
     }
 
+    // BUG(C5): reads only the object's typed rating and never `self`. It is a method of the
+    // object's data, which holds the typed ratings.
     /// What `Save` writes for the rating property `idx`: the number the user
     /// typed, `none` as `-1`, or for a [`PropType::RatingArray`] the typed
     /// entries in the `?` array spelling (`[ 0 -3 400]`). `None` when the
@@ -229,6 +234,7 @@ impl ClassProps {
     }
 }
 
+// BUG(C2): a free function over the property rows. It is a constructor step of `ClassProps`.
 /// Pascal `TDSSClass.DefineProperties`'s `AltPropertyOrder` build
 /// (`DSSClass.pas:1957-2010`): assign a `zorder` to every 1-based property
 /// (`Like` → -1000; `ORDERING_FIRST` → an increasing block from -999; the action

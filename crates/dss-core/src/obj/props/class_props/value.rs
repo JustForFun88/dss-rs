@@ -13,6 +13,7 @@ use crate::util::{
 
 use super::ClassProps;
 
+// BUG(C2): `ClassProps` does its rows' value rendering here, work that belongs to `PropDef`.
 impl ClassProps {
     /// The text Save writes for property `idx`: the `?` text, with each number
     /// that is not a number written `Nan` as the reader parses it, where `?`

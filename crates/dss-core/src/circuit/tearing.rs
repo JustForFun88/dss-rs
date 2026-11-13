@@ -12,6 +12,10 @@
 
 use crate::support::sparse_math::SparseComplex;
 
+// BUG(C2): every field is `pub` and the executive writes them, and its path arrays are worked
+// on by `impl Circuit` elsewhere. `AdTearing` keeps its fields private and owns that work.
+// BUG(C5): derives `Clone` while it owns the tearing arrays that the tearing commands update.
+// The type that owns mutable state is not `Clone`.
 /// The tearing/A-Diakoptics member block of `TDSSCircuit`.
 ///
 /// Grouped into one struct (rather than scattered onto [`Circuit`]) because it
@@ -76,6 +80,9 @@ pub struct AdTearing {
     /// `New_Graph` (Circuit.pas:214): the latest weighted graph — the backbone
     /// path `get_longest_path` extracts, consumed by `Get_paths_4_Coverage`.
     pub new_graph: Vec<i32>,
+    // BUG(C2): the A-Diakoptics option handler parks its init request here, and the set
+    // command reads and clears it after its option loop. The handler returns the request to
+    // its caller.
     /// Transient: `set ADiakoptics=yes` sets this so `do_set_cmd` runs
     /// `ADiakopticsInit` after its option-loop field borrow ends (the init needs
     /// `&mut Dss`, not just the circuit). Never persisted.

@@ -23,6 +23,8 @@ pub(super) struct PcEnums {
     pub(super) windgen_qmode: EnumId,
 }
 
+// BUG(C2): a free function that builds `PcEnums`. It is the associated constructor of
+// `PcEnums`.
 pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PcEnums {
     let connection = push(DssEnum::new(
         "Connection",

@@ -196,6 +196,8 @@ impl From<crate::support::cmatrix::SingularMatrix> for DssDiagnostic {
     }
 }
 
+// BUG(C5): derives `Clone` while it owns the error log that edits and solves append to. The
+// type that owns mutable state is not `Clone`.
 /// The engine's record-and-continue error log — a typed `Vec<DssDiagnostic>`
 /// with a `String`-accepting [`ErrorLog::push`], so the ~220 `errors.push(...)`
 /// sites that carry no Pascal number keep pushing plain text (→ `code: None`,

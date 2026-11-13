@@ -5,11 +5,16 @@
 //!
 //! [`ClassProps`]: super::ClassProps
 
+// BUG(C2): this module is free functions. The row checks, writes and reads belong to `PropDef`,
+// the parser reads to the property engine's parser, and the interval-unit parses to a type of
+// their own.
 use crate::obj::base::DssObject;
 use dss_parser::{ParserError, val_f64, val_i32};
 
 use super::{PropDef, PropEngine, PropFlags, PropType};
 
+// BUG(C5): takes the whole `PropEngine` and uses only its parser and variables. It borrows
+// those two.
 /// Pascal `ParseObjPropertyValue.GetDouble`: try FPC `Val` first, falling back
 /// to the parser (so RPN expressions like `"2 3 *"` work) by wrapping in `()`.
 pub(super) fn get_double(eng: &mut PropEngine, value: &str) -> Result<f64, ParserError> {
@@ -22,6 +27,8 @@ pub(super) fn get_double(eng: &mut PropEngine, value: &str) -> Result<f64, Parse
     eng.parser.make_double(eng.vars)
 }
 
+// BUG(C5): takes the whole `PropEngine` and uses only its parser and variables. It borrows
+// those two.
 /// Pascal `ParseObjPropertyValue.GetInteger`.
 pub(super) fn get_integer(eng: &mut PropEngine, value: &str) -> Result<i32, ParserError> {
     if let Some(v) = val_i32(value) {
@@ -86,6 +93,10 @@ pub(super) fn interval_units_error(full: &str, name: &str, value: &str) -> Strin
     )
 }
 
+// BUG(C2): a free function that does one row's checks and write and reports a refusal only
+// into `eng.errors`. It is a method of `PropDef` that returns the refusal.
+// BUG(C5): takes the whole `PropEngine` and uses only its error log. Returning the refusal
+// leaves it no engine to take.
 /// Pascal `SetObjDouble`: apply scale and the range/sign checks, the zero trap,
 /// and `InverseValue`, then write. A failed check records a message and leaves
 /// the field untouched (the field keeps its previous value).
@@ -180,6 +191,10 @@ pub(super) fn get_obj_double(pd: &PropDef, obj: &dyn DssObject, idx: usize, scal
     }
 }
 
+// BUG(C2): a free function that does one row's checks and write and reports a refusal only
+// into `eng.errors`. It is a method of `PropDef` that returns the refusal.
+// BUG(C5): takes the whole `PropEngine` and uses only its error log. Returning the refusal
+// leaves it no engine to take.
 /// Pascal `SetObjInteger`: the range/sign checks plus `ValueOffset`, returning
 /// the previous value (captured before the write) for side effects.
 pub(super) fn set_obj_integer(

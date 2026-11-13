@@ -7,6 +7,10 @@ use num_complex::Complex64;
 
 use crate::support::cmatrix::CMatrix;
 
+// BUG(C2): every field is `pub`, and the solves, the reports and the circuit write them
+// directly. `Bus` keeps its fields private behind methods.
+// BUG(C5): derives `Clone` while it owns the bus voltages and the reliability accumulators
+// that the solves update. The type that owns mutable state is not `Clone`.
 /// A single bus. Local node indices are 0-based; node *numbers* (the
 /// user-facing `.1.2.3` designations) and global node references keep the
 /// Pascal 1-based/ground-0 conventions.
@@ -19,6 +23,8 @@ pub struct Bus {
     pub uuid: Option<crate::cim::Uuid>,
     /// User node numbers on this bus (`Nodes`).
     pub nodes: Vec<i32>,
+    // BUG(C2): the global node references are bare `usize` values. A node handle type names
+    // a node of the circuit's table.
     /// Global node reference per local node (`RefNo`).
     pub ref_no: Vec<usize>,
     /// Node voltages saved per bus (`VBus`), allocated by `AllocateBusState`.

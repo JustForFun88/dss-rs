@@ -13,6 +13,8 @@ pub(super) struct PdEnums {
     pub(super) gic_transformer_type: EnumId,
 }
 
+// BUG(C2): a free function that builds `PdEnums`. It is the associated constructor of
+// `PdEnums`.
 pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PdEnums {
     let mut earth = DssEnum::new(
         "Earth Model",

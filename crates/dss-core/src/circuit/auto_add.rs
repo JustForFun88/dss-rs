@@ -60,6 +60,10 @@ impl AddType {
     }
 }
 
+// BUG(C2): the option fields and the Solve state are open, and the executive and the
+// power-flow loop set and read them field by field. `AutoAdd` keeps them private behind methods.
+// BUG(C5): derives `Clone` while it owns the Solve state and the name counters. The type that
+// owns mutable state is not `Clone`.
 /// Pascal `TAutoAdd` (record), one per circuit (`Circuit.AutoAddObj`).
 #[derive(Debug, Clone)]
 pub struct AutoAdd {
@@ -79,6 +83,8 @@ pub struct AutoAdd {
     pub mode_changed: bool,
 
     // ---- Private Solve-only state (Pascal `TAutoAdd` PRIVATE fields) ----
+    // BUG(C2): `bus_idx_list` and `bus_index` are bare 1-based `usize` bus indices with 0
+    // meaning skip. A bus handle type, optional where a bus may be absent, carries the bus.
     /// `BusIdxList` — candidate buses to test, as Pascal 1-based `BusList`
     /// indices (0 = skip, matching the Pascal `if BusIndex > 0` guard).
     pub(crate) bus_idx_list: Vec<usize>,
@@ -136,6 +142,7 @@ pub(crate) struct LossFigures {
     pub weighted: f64,
 }
 
+// BUG(C2): a free function over one `EnergyMeter`. It is a method of `EnergyMeter`.
 /// Pascal `SumSelectedRegisters` (`AutoAdd.pas` l.88): `Σ Registers[reg] ·
 /// TotalsMask[reg]` over the selected register ordinals. `regs` holds Pascal
 /// 1-based register ordinals (`Circuit.LossRegs`/`UEregs`); the Rust register /
@@ -153,6 +160,10 @@ fn sum_selected_registers(m: &EnergyMeter, regs: &[i32]) -> f64 {
     result
 }
 
+// BUG(C2): a free function over the circuit and the element store that does auto-add work.
+// It is an `AutoAdd` operation that takes the parts it reads.
+// BUG(C5): takes `&mut Circuit` though it only reads the meter list and the register lists,
+// because `Circuit::losses` takes `&mut self`. Shared borrows of those parts are its access.
 /// Pascal `TAutoAdd.ComputekWLosses_EEN` (`AutoAdd.pas` l.649): with no meters,
 /// go by total system losses (`Circuit.Losses.re · 0.001`, EEN = 0); otherwise
 /// sum the loss/UE registers over every meter.
@@ -165,6 +176,8 @@ pub(crate) fn compute_kw_losses_een(
         let kw_losses = ckt.losses(store, sys).re * 0.001;
         return (kw_losses, 0.0);
     }
+    // BUG(C5): the register lists and the meter list are cloned only to be read, though
+    // nothing borrows `ckt` mutably below. `&ckt.loss_regs` and kin borrow them in place.
     let (loss_regs, ue_regs) = (ckt.loss_regs.clone(), ckt.ue_regs.clone());
     let mut kw_losses = 0.0;
     let mut kw_een = 0.0;
@@ -178,6 +191,10 @@ pub(crate) fn compute_kw_losses_een(
     (kw_losses, kw_een)
 }
 
+// BUG(C2): a free function over the circuit that does auto-add work. It is an `AutoAdd`
+// operation that takes the parts it reads.
+// BUG(C5): takes `&mut Circuit` though it only reads the meters and the weights, because
+// `compute_kw_losses_een` takes the circuit `&mut`. Shared borrows of those parts are its access.
 /// Pascal `TAutoAdd.Get_WeightedLosses` (`AutoAdd.pas` l.186): weighted
 /// loss + EEN improvement over the base case. `base_losses`/`base_een` are the
 /// pre-add baseline (`SetBaseLosses`), `gen_kw` the normalizing generator size.
@@ -214,6 +231,8 @@ pub(crate) fn weighted_losses(
     }
 }
 
+// BUG(C2): a free function of the auto-add part, and it returns bare 1-based `usize` bus
+// indices with 0 for not found. It is an `AutoAdd` operation that returns bus handles.
 /// Pascal `TAutoAdd.MakeBusList` (`AutoAdd.pas` l.115): the candidate-bus list.
 /// Priority: the `AutoAddBusList` if set; else the union of every EnergyMeter's
 /// zone buses (hash-list dedup); else — no meters — every bus in the circuit.

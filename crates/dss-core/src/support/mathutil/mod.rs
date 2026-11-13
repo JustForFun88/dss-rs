@@ -9,6 +9,9 @@
 #[cfg(test)]
 mod tests;
 
+// BUG(C2): this module is mostly free functions. Each belongs to the type it works on:
+// `etk_invert` to a real matrix type, `gauss` to the random stream, `pct_nema_unbalance` to the
+// phase triple, the terminal-power helpers to the element terminal.
 mod rng;
 pub use rng::FpcRng;
 
@@ -133,6 +136,7 @@ impl Default for SymComp {
     }
 }
 
+// BUG(C2): a free function over one terminal's voltages and currents. It is a terminal method.
 /// Total complex power into a terminal: `Σ V[j] · conj(I[j])`
 /// (Pascal `TerminalPowerIn`).
 pub fn terminal_power_in(v: &[Complex64], i: &[Complex64], nphases: usize) -> Complex64 {
@@ -155,6 +159,7 @@ pub fn power_factor(s: Complex64) -> f64 {
     }
 }
 
+// BUG(C2): a free function over one terminal's voltages and currents. It is a terminal method.
 /// Per-conductor complex power in kW/kvar: `kwkvar[j] = V[j]·conj(I[j])·0.001`
 /// (Pascal `CalcKPowers`).
 pub fn calc_k_powers(kwkvar: &mut [Complex64], v: &[Complex64], i: &[Complex64], n: usize) {
@@ -189,6 +194,7 @@ pub fn parallel_z(z1: Complex64, z2: Complex64) -> Complex64 {
     }
 }
 
+// BUG(C2): a free function over a flat slice and its order. It is a method of a real matrix type.
 /// In-place inversion of a real square matrix in column-major order (Pascal
 /// `ETKInvert`) through [`compat::etk_invert`]: the same no-row-exchange
 /// algorithm as [`CMatrix::invert`], one shared kernel in both lanes. Pascal
@@ -197,6 +203,7 @@ pub fn etk_invert(a: &mut [f64], norder: usize) -> Result<(), super::cmatrix::Si
     compat::etk_invert(a, norder)
 }
 
+// BUG(C2): a free function over a uniform draw. It is a method of the random stream.
 /// Normally distributed random variable via the 12-uniform-sum method
 /// (Pascal `Gauss`). `rand` must return uniform samples in `[0, 1)`.
 pub fn gauss(mean: f64, std_dev: f64, mut rand: impl FnMut() -> f64) -> f64 {
@@ -364,6 +371,7 @@ pub fn bessel_i1(x: Complex64) -> Complex64 {
     result
 }
 
+// BUG(C2): a free function over a phase triple. It is a method of the phase-voltage type.
 /// NEMA voltage unbalance in percent: max deviation from the average
 /// magnitude over the average magnitude (Pascal `PctNemaUnbalance`).
 pub fn pct_nema_unbalance(vph: &Complex3) -> f64 {
@@ -377,6 +385,11 @@ pub fn pct_nema_unbalance(vph: &Complex3) -> f64 {
     }
 }
 
+// BUG(C2): `k_num`, `k_den` and `kp` are open and the holder sets them after `new`, and the
+// inverter control implements the same controller again as `PICtrl`. One `PiCtrl` takes its
+// gains at construction and serves both.
+// BUG(C5): derives `Clone` while each `solve_pi` changes its history. The type that owns
+// mutable state is not `Clone`.
 /// Discrete PI controller used by some inverter controls (Pascal `TPICtrl`).
 #[derive(Debug, Clone)]
 pub struct PiCtrl {

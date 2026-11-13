@@ -86,6 +86,7 @@ impl ControlCategory {
     }
 }
 
+// BUG(C2): a free function that matches one `ElemId`. It is a method of `ElemId`.
 /// The `DSSObjType and CLASSMASK` of a control, as the five scalars read it.
 ///
 /// Matched on the typed [`ElemId`] variant rather than on a class-name string:
@@ -105,6 +106,8 @@ pub(crate) fn control_category(r: ElemId) -> ControlCategory {
     }
 }
 
+// BUG(C2): a free function that coordinates the class registry and the circuit. It belongs to
+// their common owner `Dss`, which passes each part what it reads.
 /// Every element's `ControlElementList`, in Pascal's list order.
 ///
 /// Walks [`Circuit::control_attach_order`] — the chronological

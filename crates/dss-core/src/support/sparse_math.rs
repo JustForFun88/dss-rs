@@ -551,6 +551,9 @@ impl SparseComplex {
         }
     }
 
+    // BUG(C5): each call allocates the product and a transposed copy of `b`, and the
+    // diakoptics stitch calls it on every pass. The caller keeps both buffers and the multiply
+    // writes into them.
     /// Pascal `multiply`. NOTE(upstream-quirk): the product-drop test is
     /// `re<>0 AND im<>0` (same as `add`), and `b` is transposed (not conj) before
     /// the block walk. Reproduced verbatim.

@@ -22,6 +22,8 @@ pub struct PropDef {
     pub value_offset: f64,
     /// `PropertyOffset2` for mapped enums: which enum drives the mapping.
     pub enum_id: Option<EnumId>,
+    // BUG(C2): `size_prop`, `redundant_with` and `array_alternative` are bare 1-based indices
+    // of other rows. A property handle typed by its class names the row.
     /// `PropertyOffset2` for `DoubleArray`: the 1-based index of the integer
     /// property that holds the element count (e.g. `npts`).
     pub size_prop: usize,
@@ -138,6 +140,7 @@ pub struct RefMissMessage {
     pub prefix: &'static str,
 }
 
+// BUG(C2): a free function over a class's rows. It is a method of `ClassProps`.
 /// The 1-based property index of `name` within a class's `defs` vec — the index
 /// [`ClassProps`](super::ClassProps) will address it by (it prepends slot 0, so
 /// the ordinal is `position + 1`). Used to wire the JSON

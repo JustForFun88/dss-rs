@@ -151,6 +151,8 @@ pub struct EnumRegistry {
     pub dynamic_exp_domain: EnumId,
 }
 
+// BUG(C2): an alias of `usize`, so any count or index passes for an enum id. A newtype names
+// an enum of the registry.
 /// Index of an enum inside the registry — what Pascal stored as a raw
 /// `TDSSEnum` pointer in `PropertyOffset2`.
 pub type EnumId = usize;

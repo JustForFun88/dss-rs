@@ -28,6 +28,7 @@
 //! matches every `Format('%.8g')` result string byte-for-byte — a mismatched
 //! `power` interpretation would perturb `WC2`/`WD2` and fail those goldens.
 
+// BUG(C2): a free function that sizes the intervals of a run. It is a method of `PstEngine`.
 /// Pascal `_Pst`: `NumPstIntervals := Max(1, Trunc(Pst_Time_Max / Pst_Time))`
 /// with `Pst_Time_Max = N*DeltaT` and `Pst_Time = Min(600, Pst_Time_Max)` — the
 /// number of result slots allocated (an upper bound on the completed intervals).
@@ -484,6 +485,8 @@ impl PstEngine {
     }
 }
 
+// BUG(C2): a free function that builds a `PstEngine` and runs it. It is an associated
+// function of `PstEngine`.
 /// Pascal `PstRMS` (`Pstcalc.pas:452`): compute the IEC-868 Pst values for a
 /// sequence of per-unit-ish RMS `voltages`. `freq_base` (50 or 60) selects the
 /// weighting coefficients, `cycles_per_sample` is the number of base-frequency

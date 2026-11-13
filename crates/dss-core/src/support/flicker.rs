@@ -37,6 +37,8 @@
 //! behavior), and the flicker goldens are captured from the official r3723
 //! binary because the pinned dss_capi cannot produce them.
 
+// BUG(C2): this module is free functions that rebuild the filter coefficients on each call.
+// A flicker-meter type owns the filter chain, its coefficients and its scratch buffer.
 /// Pascal `Fhp` (`Pstcalc.pas:480`): first-order high-pass, `y[1]:=0` seed.
 /// `a := 0.5*Ts*whp`; recurrence `y[j] := (1/a0)·(x[j]-x[j-1]-a1·y[j-1])`.
 fn fhp(ts: f32, whp: f32, x: &[f32], y: &mut [f32]) {
@@ -147,6 +149,8 @@ fn percentile(list: &[f32], i_lo: usize, i_hi: usize, pct_exceeded: f32) -> f32 
     (xlo + xfrac * (xhi - xlo)) as f32
 }
 
+// BUG(C2): a free function that builds the coefficients and runs the stages. It is the run
+// method of the flicker-meter type.
 /// Pascal `FlickerMeter` (`Pstcalc.pas:594`). `p_rms` enters as the per-sample RMS
 /// voltage magnitudes and is **overwritten in place** with the instantaneous
 /// flicker level (Block-4 output); `p_pst` (caller-allocated, length `Npst`,
