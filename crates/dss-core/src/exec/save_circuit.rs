@@ -23,6 +23,9 @@
 //! The command takes no option that changes this, so the writers below take
 //! none either.
 
+// BUG(C5): the zone writers classify branches and shunts as `Transformer`, `Load`, `Generator`
+// or `Capacitor` by trying each class at run time on a bare handle. A typed handle or a method
+// of the element should give the kind.
 use super::*;
 use crate::report::save::save::{SaveCtx, class_file_text, write_dss_object};
 
@@ -49,6 +52,7 @@ const LIBRARY_CLASSES: [&str; 15] = [
     "dynamicexp",
 ];
 
+// BUG(C2): a free function over one class of the registry; it should be a method of `DssClass`.
 /// Write one object (`New`/`Edit "Class.name" …`) into `out` via the `Save`
 /// serializer, split-borrowing its class's prop table + object list. Sets the
 /// object's `HasBeenSaved` flag (Pascal `WriteDSSObject`).
@@ -64,6 +68,7 @@ fn write_object(
     write_dss_object(out, &cx, arena, r.index(), new_or_edit);
 }
 
+// BUG(C2): `Dss` gathers the operations of its parts; it should only coordinate them.
 impl Dss {
     /// Pascal `TDSSCircuit.Save(Dir)` on the executive `Save circuit` path
     /// (`ExecHelper.pas:808-813` → `Circuit.pas:2409`, `saveFlags = []`).
@@ -109,13 +114,16 @@ impl Dss {
             return;
         }
         // Pascal `DSS.SetCurrentDSSDir(CurrDir)`.
+        // BUG(C2): the target directory reaches `write_class_file_circuit` by overwriting
+        // `current_dir`, restored at the end. It should be an argument, as for `save_feeders`.
         self.current_dir = target.clone();
 
         // Pascal chains every sub-step through `Success` and, on any failure,
         // reports err 434 with GlobalResult = the error text instead of the
-        // "saved" string (`Circuit.pas:2590-2648`). The sub-writers here push
-        // into `self.errors` on a write failure, so "Success" = no new errors
-        // appeared during the body.
+        // "saved" string (`Circuit.pas:2590-2648`).
+        // BUG(C2): the sub-writers report a write failure only by pushing to `errors`, so success
+        // is read off the growth of `errors` and the first new message is copied into
+        // `last_result`. Each writer should return its result.
         let errors_before = self.errors.len();
 
         // `DSS.SavedFileList.Clear` — tracks every file saved, in write order.
@@ -132,6 +140,8 @@ impl Dss {
 
         // `Exclude(Flg.HasBeenSaved)` on every object (Pascal clears both the
         // `DSSObjs` and `CktElements` lists — every object here).
+        // BUG(C2): `Dss` clears `has_been_saved` on every object of every class itself; the
+        // class registry should do it by a method.
         for cls in &mut self.classes {
             for obj in cls.arena.objs_mut() {
                 obj.data_mut().set_has_been_saved(false);
@@ -279,6 +289,9 @@ impl Dss {
     /// by [`Self::save_zone`]. The zone files join `saved_files` (relative
     /// Redirects). Disabled meters are skipped; err 436 on a subdir failure.
     fn save_feeders(&mut self, base: &Path, saved_files: &mut Vec<PathBuf>) {
+        // BUG(C5): the meter list is copied so that the loop can call `save_zone`, which takes
+        // `&mut self`. Narrowed to the parts it changes, the call lets the loop read the list
+        // in place.
         let meters: Vec<ElemId> = match &self.circuit {
             Some(ckt) => ckt.energy_meters.clone(),
             None => return,
@@ -310,6 +323,8 @@ impl Dss {
         }
     }
 
+    // BUG(C2): `Dss` writes an `EnergyMeter` zone itself: the branch walk, the split into files
+    // by element kind and the `Load` allocation side effect. A method of the meter zone should.
     /// Pascal `TEnergyMeterObj.SaveZone` (`EnergyMeter.pas:2585-2807`): walk the
     /// meter's `BranchList` (the `First`/`GoForward` order our zone build
     /// persisted as `sequence_list`) and split each branch + its shunt objects
@@ -329,8 +344,9 @@ impl Dss {
     /// instead. No corpus deck places a fleet control inside a meter zone, so the
     /// divergence is unobservable (mirrors the same project-wide limitation).
     fn save_zone(&mut self, meter: ElemId, dir: &Path, saved_files: &mut Vec<PathBuf>) {
-        // Snapshot the branch walk (branch ref + its shunt refs) so the meter's
-        // immutable tree borrow is released before we mutate objects/classes.
+        // BUG(C5): the branch walk and each node's shunt list are copied so that the meter's
+        // tree borrow ends before the writers mutate the classes. A split borrow of the meter's
+        // class beside the other classes lets the walk read the tree in place.
         let branches: Vec<(ElemId, Vec<ElemId>)> = {
             let m = match self.classes[meter.class_ord()]
                 .arena
@@ -361,6 +377,8 @@ impl Dss {
             (0usize, 0, 0, 0, 0, 0);
 
         // Control snapshot (creation order) for the in-zone `HasControl` writes.
+        // BUG(C5): the control list is copied so that the writers below can take `&mut self`.
+        // Narrowed to the parts they change, the writers let the loop read the list in place.
         let controls: Vec<ElemId> = self
             .circuit
             .as_ref()
@@ -447,6 +465,9 @@ impl Dss {
         shunts_txt: &mut String,
         n_shunts: &mut usize,
     ) {
+        // BUG(C5): the shunt is classified by trying `Load`, `Generator` and `Capacitor` at run
+        // time, and the `Load` is looked up again below. A typed handle or a method of the
+        // element should give the kind.
         let arena = &self.classes[shunt.class_ord()].arena;
         let is_load = arena
             .get::<crate::elements::pc::load::Load>(shunt.index())
@@ -495,6 +516,9 @@ impl Dss {
     /// Write every control acting on `elem` (Pascal `for pControlElem in
     /// elem.ControlElementList`), derived from `controls` (creation order).
     fn write_element_controls(&mut self, elem: ElemId, controls: &[ElemId], out: &mut String) {
+        // BUG(C5): the acting controls are collected before the write loop to end the shared
+        // borrow of `classes`. One loop that tests and then writes each control borrows the
+        // classes in turn.
         let acting: Vec<ElemId> = controls
             .iter()
             .copied()

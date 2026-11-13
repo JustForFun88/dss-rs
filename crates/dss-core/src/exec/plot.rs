@@ -17,6 +17,9 @@
 #[cfg(test)]
 mod tests;
 
+// BUG(C2): the option parsers are free functions. `parse_type`, `parse_quantity` and
+// `parse_phases` change only `PlotParams` and belong to it, `dbl` and `int` read the parser,
+// and `interpret_string_list` and `color` belong to the types of the values they make.
 use serde_json::json;
 
 use super::*;
@@ -124,6 +127,7 @@ fn interpret_string_list(s: &str) -> Vec<String> {
     list
 }
 
+// BUG(C2): `Dss` gathers the operations of its parts; it should only coordinate them.
 impl Dss {
     /// Pascal `DoPlotCmd` (PlotOptions.pas:182). Parse the plot options and feed
     /// the assembled JSON to the registered callback.
@@ -437,6 +441,8 @@ impl Dss {
         let Some(ckt) = circuit.as_mut() else {
             return;
         };
+        // BUG(C2): `Dss` pushes onto `Circuit::bus_marker_list` and fills the `BusMarker`
+        // fields in place. `Circuit` should add the marker by a method, built by `BusMarker`.
         ckt.bus_marker_list.push(BusMarker::default());
         let marker_idx = ckt.bus_marker_list.len() - 1;
 
@@ -469,11 +475,13 @@ impl Dss {
     /// bus-marker list.
     pub(super) fn do_clear_bus_markers_cmd(&mut self) {
         if let Some(ckt) = self.circuit.as_mut() {
+            // BUG(C2): `Dss` clears `Circuit::bus_marker_list` itself; a `Circuit` method should.
             ckt.bus_marker_list.clear();
         }
     }
 }
 
+// BUG(C2): a free function that changes only `PlotParams`; it should be its method.
 /// Parse the `type=` option (PlotOptions.pas:256-306) by first letter.
 fn parse_type(p: &mut PlotParams, param: &str, case_name: &str) {
     let cts = |sub: &str| crate::util::compare_text_shortest_eq(sub, param);
@@ -521,6 +529,7 @@ fn parse_type(p: &mut PlotParams, param: &str, case_name: &str) {
     }
 }
 
+// BUG(C2): a free function that changes only `PlotParams`; it should be its method.
 /// Parse the `quantity=` option (PlotOptions.pas:307-332).
 fn parse_quantity(p: &mut PlotParams, param: &str, parser: &mut Parser, vars: &ParserVars) {
     let bytes = param.as_bytes();
@@ -547,6 +556,7 @@ fn parse_quantity(p: &mut PlotParams, param: &str, parser: &mut Parser, vars: &P
     }
 }
 
+// BUG(C2): a free function that changes only `PlotParams`; it should be its method.
 /// Parse the `phases=` option (PlotOptions.pas:403-426).
 fn parse_phases(
     p: &mut PlotParams,

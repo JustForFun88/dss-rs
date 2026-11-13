@@ -6,6 +6,9 @@
 //! `set_cmd.rs`): they drive the private parser/circuit/error state and
 //! delegate all formatting to the top-level [`crate::report`] module.
 
+// BUG(C5): the routers reach `Monitor`, `EnergyMeter`, `Generator`, `PVSystem` and `Storage` by
+// checking the class at run time (`arena.get::<T>`) on a bare handle; a typed handle should
+// give the element.
 use super::*;
 use crate::report::EXPORT_OPTIONS;
 
@@ -19,6 +22,8 @@ enum RegKind {
     Storage,
 }
 
+// BUG(C2): a free function over the first line of a register file; it belongs to the type
+// that writes that file.
 /// Pascal `WriteSingle*MeterFile`'s rewrite test: (re)create the file unless it
 /// already exists **and** its first line begins with `Year` (case-insensitive,
 /// the header sentinel) — a missing, unreadable, or non-`Year` file is rewritten.
@@ -38,6 +43,7 @@ fn register_need_rewrite(path: &Path) -> bool {
     }
 }
 
+// BUG(C2): a free parser of a UUID text; it should be a constructor of `Uuid`.
 /// Pascal `AssignNewUUID` (`ExportOptions.pas:109`): brace-wrap `val` if it
 /// isn't already, then parse it (`StringToUuid`). `Err` carries the exact FPC
 /// `EConvertError` text (over the brace-wrapped value, matching the Pascal
@@ -52,6 +58,7 @@ fn assign_new_uuid(val: &str) -> Result<crate::cim::Uuid, String> {
         .ok_or_else(|| format!("\"{braced}\" is not a valid GUID value"))
 }
 
+// BUG(C2): `Dss` gathers the operations of its parts; it should only coordinate them.
 impl Dss {
     /// The metered-terminal bus `kVBase` for a monitor (mode-4 flicker `Vbase`),
     /// resolved from the circuit bus list — Pascal `DoFlickerCalculations` reads
@@ -87,6 +94,7 @@ impl Dss {
     /// dispatch before the executive's #301 pre-circuit guard.
     fn set_in_show_results(&mut self, on: bool) {
         if let Some(ckt) = self.circuit.as_mut() {
+            // BUG(C2): `Dss` writes `Circuit::in_show_results` itself; a `Circuit` method should.
             ckt.in_show_results = on;
         }
     }
@@ -670,6 +678,8 @@ impl Dss {
             } = self;
             let ckt = circuit.as_ref().expect("post-circuit dispatch");
             let sys = crate::solution::solution::sys_ctx(ckt);
+            // BUG(C5): the node voltages are copied only to be read beside the shared circuit;
+            // `&ckt.solution.node_v` serves.
             let node_v = ckt.solution.node_v.clone();
             f(classes, ckt, &sys, &node_v)
         };
@@ -698,6 +708,8 @@ impl Dss {
         rgn_override: Option<crate::cim::Uuid>,
     ) {
         use crate::cim::UuidChoice;
+        // BUG(C2): `Dss` creates the circuit UUID by writing `Circuit::uuid`; a method of
+        // `Circuit` should hand it out.
         let fdr_uuid = fdr_override.unwrap_or_else(|| {
             let ckt = self.circuit.as_mut().expect("post-circuit dispatch");
             crate::cim::get_or_create_uuid(&mut ckt.uuid)
@@ -758,6 +770,8 @@ impl Dss {
         rgn_override: Option<crate::cim::Uuid>,
     ) {
         use crate::cim::UuidChoice;
+        // BUG(C2): `Dss` creates the circuit UUID by writing `Circuit::uuid`; a method of
+        // `Circuit` should hand it out.
         let fdr_uuid = fdr_override.unwrap_or_else(|| {
             let ckt = self.circuit.as_mut().expect("post-circuit dispatch");
             crate::cim::get_or_create_uuid(&mut ckt.uuid)
@@ -913,6 +927,9 @@ impl Dss {
             ));
             return;
         }
+        // BUG(C5): the monitor list is copied so that the loop can call `write_report`, which
+        // takes `&mut self`. Narrowed to the state it writes, the call lets the loop read the
+        // list in place.
         let monitors = self
             .circuit
             .as_ref()
@@ -1144,6 +1161,8 @@ impl Dss {
         }
     }
 
+    // BUG(C5): each arm casts every handle of a per-kind list to its type by a run-time class
+    // check. The lists should hold typed handles, or a register trait give the rows.
     /// Gather the enabled elements' register rows + the single-file header names
     /// for `kind`, downcasting each `ElemId` to its concrete type. Returns
     /// `(label, default_name, multi_prefix, header_names, rows)`.
@@ -1285,6 +1304,7 @@ impl Dss {
         }
     }
 
+    // BUG(C2): takes all of `Dss` for the session output state, a part that has no type.
     /// The single-file register writer (Pascal `WriteSingle*MeterFile`): append to
     /// an existing `Year`-headed file, else (re)create with the header. Sets
     /// `GlobalResult`/`@lastexportfile`/`@lastfile` to the produced path.
@@ -1351,6 +1371,7 @@ impl Dss {
         }
     }
 
+    // BUG(C2): takes all of `Dss` for the session output state, a part that has no type.
     /// The `/m` multi-file register writer (Pascal `WriteMultiple*MeterFiles`): one
     /// `<OutputDir><prefix><UPPER name>.csv` per enabled element (no `CaseName_`
     /// prefix), header written only when the file does not yet exist. Pascal's
@@ -1523,6 +1544,7 @@ impl Dss {
         }
     }
 
+    // BUG(C2): takes all of `Dss` for the session output state, a part that has no type.
     /// Resolve the report path, write `content`, and record the export-specific
     /// `@lastexportfile` (Pascal `DoExportCmd`: `SetLastResultFile` +
     /// `ParserVars.Add('@lastexportfile', …)`, `ExportOptions.pas:635-636`). The
@@ -1552,6 +1574,9 @@ impl Dss {
         }
     }
 
+    // BUG(C2): takes all of `Dss` to touch only `vars`, `last_result_file` and `errors`. With
+    // `output_directory` and `current_dir` that session output state is a part with no type;
+    // the file writers here should be its methods.
     /// Write a finished report to `path` and record it as the last result file
     /// (Pascal `SetLastResultFile`: `@lastfile` + `LastResultFile`). Returns
     /// whether the write succeeded (a failure is recorded, not swallowed). The
@@ -1673,6 +1698,8 @@ impl Dss {
                     } = self;
                     let ckt = circuit.as_ref().expect("post-circuit dispatch");
                     let sys = crate::solution::solution::sys_ctx(ckt);
+                    // BUG(C5): this arm and the arms below copy the node voltages only to read
+                    // them beside the shared circuit; `&ckt.solution.node_v` serves.
                     let node_v = ckt.solution.node_v.clone();
                     if code == 0 {
                         show::show_currents(classes, ckt, &sys, &node_v)
@@ -2325,6 +2352,7 @@ impl Dss {
         self.write_show_path(&format!("{case}_{default_name}"), content, set_last);
     }
 
+    // BUG(C2): takes all of `Dss` for the session output state, a part that has no type.
     /// Write a `Show` report to `<OutputDirectory><filename>` — the raw path, with
     /// **no** `<CircuitName_>` prefix (unlike [`Dss::write_show_named`]). The one
     /// report that needs this is `Show Yprim`, whose filename is
@@ -2529,6 +2557,9 @@ impl Dss {
             return;
         };
         let year = ckt.solution.year;
+        // BUG(C5): the meter list is copied before a loop that writes `vars`,
+        // `last_result_file` and `errors`, fields of `Dss` apart from `circuit`; the loop can
+        // read the list in place.
         let meters = ckt.energy_meters.clone();
         for r in meters {
             let obj = &self.classes[r.class_ord()].arena[r.index()];
@@ -2749,6 +2780,9 @@ impl Dss {
             }
             // Every CktElement in creation order, then every general DSSObj,
             // then the Solution options — all with Leaf=TRUE.
+            // BUG(C5): the element list and `dss_objs` below are copied so that the loops can
+            // call `dump_one_object`, which takes `&mut self`. Narrowed to the parts it changes,
+            // the call lets the loops read the lists in place.
             let ckt_elems = self
                 .circuit
                 .as_ref()
@@ -2867,6 +2901,8 @@ impl Dss {
             .is_some_and(|c| c.pc_elements.contains(&r));
 
         // The solved node voltages (if a circuit is present).
+        // BUG(C5): the node voltages are copied before the refresh below takes `&mut self`; the
+        // split borrow further down can read `&ckt.solution.node_v` in place.
         let node_v: Option<Vec<num_complex::Complex64>> =
             self.circuit.as_ref().map(|c| c.solution.node_v.clone());
 
@@ -2925,6 +2961,8 @@ impl Dss {
     }
 }
 
+// BUG(C2): a free function that reads the clock inside a formatter; the caller should pass the
+// time in, and the formatting belong to a type of the timestamp.
 /// The current UTC wall-clock as `DD.MM.YYYY HH:MM:SS` — the `Export Summary`
 /// timestamp (Pascal `DateTimeToStr(Now)`). Pure integer civil-from-days
 /// conversion (Howard Hinnant, "chrono-Compatible Low-Level Date Algorithms"),

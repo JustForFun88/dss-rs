@@ -16,6 +16,7 @@ pub(in crate::exec) mod refuse;
 
 use super::*;
 
+// BUG(C2): `Dss` gathers the operations of its parts; it should only coordinate them.
 impl Dss {
     /// Reduce the circuit to its positive-sequence equivalent. A circuit
     /// already positive-sequence is left as it is, with no message: the guard
@@ -46,6 +47,8 @@ impl Dss {
                 return;
             }
         };
+        // BUG(C2): `Dss` writes `Circuit::positive_sequence` itself; a `Circuit` method should
+        // flag the circuit.
         if let Some(ckt) = self.circuit.as_mut() {
             ckt.positive_sequence = true;
         }

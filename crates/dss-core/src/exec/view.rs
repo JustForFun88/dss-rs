@@ -2,6 +2,11 @@
 //! (monitor buffers, meter zones, element snapshots, system Y, ...).
 //! Split out of `exec/mod.rs`.
 
+// BUG(C2): the helpers of this module are free functions. Those over one bus belong to `Bus`,
+// those over the circuit to `Circuit` or the view type, those over the class list to the class
+// registry.
+// BUG(C5): element access checks the class at run time (`arena.get::<T>`, `arena.all::<T>`) to
+// reach an element from a bare handle; a typed handle should give it.
 use super::*;
 use crate::circuit::controls::{ControlCategory, control_category};
 use crate::report::export::json::{
@@ -29,6 +34,8 @@ pub struct MonitorView {
     pub flushed_records: usize,
 }
 
+// BUG(C5): `Dss::meter_zone` copies the meter's branch and zone lists into this struct only to
+// read them while it resolves the names; everything there reads, so a borrow of the meter serves.
 /// Raw `ElemId` lists copied out of an [`energymeter::EnergyMeter`] before
 /// resolving full names (avoids a long tuple type in [`Dss::meter_zone`]).
 struct MeterZoneRefs {
@@ -617,6 +624,8 @@ pub struct IncMatrixView {
     pub new_errors: usize,
 }
 
+// BUG(C2): a free function over the incidence state and the bus list of a circuit; it should be
+// a method of `Circuit`.
 /// `Solution.IncMatrixCols` as the API getters compute it (r4133
 /// `DSolution.pas:609-639`; capi `CAPI_Solution.pas:979-1020`): the hierarchical
 /// `Inc_Mat_Cols` when the last build was `CalcIncMatrix_O` (`IncMat_Ordered` —
@@ -705,6 +714,8 @@ fn upstream_row_index(classes: &[DssClass], ckt: &Circuit, rows: &[String]) -> V
         .collect()
 }
 
+// BUG(C2): a free function over the class list and one of the circuit's kind lists; it belongs
+// to `Circuit`.
 /// Sum `Get_Losses` over one of the circuit's `TPointerList` kind lists
 /// (`refs`), in list (= creation) order.
 ///
@@ -1247,6 +1258,8 @@ fn hit_slot(hits: &mut ElemBusHits, bus: usize) -> usize {
     }
 }
 
+// BUG(C2): a free function that builds a view from the circuit and the class list; it belongs
+// to `Circuit` or to the view type.
 /// Every bus's [`BusElementsView`] in `BusList` order, built in **one** pass
 /// over `CktElements` (`O(elements · Yorder + buses)`): both upstream walks are
 /// per-bus loops over every element, which would be `O(buses · elements)`.
@@ -1412,6 +1425,9 @@ fn bus_sc_view(ckt: &Circuit, bus_idx: usize) -> BusScView {
     }
 }
 
+// BUG(C2): `Dss` gathers the read operations of its parts. Most methods here read one part
+// (`transformer_taps`, `capacitor_states`, `monitor_view`, `meter_registers`, `load_alloc`,
+// `bus_voltages`) and belong to that element type or to `Circuit`.
 impl Dss {
     /// Snapshot every circuit element's terminal powers and currents in
     /// creation order (the oracle's `First/Next` order). Pascal
@@ -1422,6 +1438,8 @@ impl Dss {
         } = self;
         let ckt = circuit.as_ref().expect("snapshot needs a circuit");
         let sys = crate::solution::solution::sys_ctx(ckt);
+        // BUG(C5): the node voltages are copied only to be read beside the shared circuit;
+        // `&ckt.solution.node_v` serves.
         let node_v = ckt.solution.node_v.clone();
         let positive_seq = ckt.positive_sequence;
         // Per-terminal complex power below is formed as S = V*conj(I)
@@ -1462,9 +1480,10 @@ impl Dss {
         // (an order-dependent, stale-Iterminal OpenDSS bug this engine does not
         // reproduce).
         // `EnergyMeter` (`ElementSnapshot::energy_meter`) reports the *bare*
-        // meter name, so every `meter_obj` back-pointer has to be resolved
-        // against the EnergyMeter arena. That resolution happens once, here,
-        // before the element loop takes its own mutable borrow of `classes`.
+        // meter name of each `meter_obj` back-pointer.
+        // BUG(C5): the names of all meters are copied into a map so that the element loop can
+        // read them while it holds `classes` mutably; a disjoint borrow of the meter beside the
+        // element replaces the copy.
         let meter_names: std::collections::HashMap<ElemId, String> = ckt
             .energy_meters
             .iter()
@@ -1970,6 +1989,8 @@ impl Dss {
         } = self;
         let ckt = circuit.as_ref()?;
         let sys = crate::solution::solution::sys_ctx(ckt);
+        // BUG(C5): the node voltages are copied only to be read beside the shared circuit;
+        // `&ckt.solution.node_v` serves.
         let node_v = ckt.solution.node_v.clone();
         for class in classes.iter_mut() {
             let cn = class.props.class_name();
@@ -1988,6 +2009,8 @@ impl Dss {
         None
     }
 
+    // BUG(C5): takes `&mut self` and reaches the element through `obj_mut` and
+    // `try_ckt_elem_mut` only to call `&self` methods; a shared borrow is the access it needs.
     /// The 1-based variable NAMES of a circuit element — the dss-python
     /// `ActiveCktElement.AllVariableNames` surface (`TPCElement.VariableName`),
     /// aligned index-for-index with [`Dss::element_variables`]. `None` if no such
@@ -2665,6 +2688,8 @@ impl Dss {
             .get::<sensor::Sensor>(sensor_ref.index())?
             .metered_element()?;
         let sys = crate::solution::solution::sys_ctx(ckt);
+        // BUG(C5): the node voltages are copied only to be read beside the shared circuit;
+        // `&ckt.solution.node_v` serves.
         let node_v = ckt.solution.node_v.clone();
         let mut store = ClassStore { classes };
         let (s, m_obj) = store.typed_ckt_pair_mut::<sensor::Sensor>(sensor_ref, metered);
@@ -2686,6 +2711,8 @@ impl Dss {
         let mut out = Vec::with_capacity(ckt.transformers.len());
         for &r in &ckt.transformers {
             let obj = &self.classes[r.class_ord()].arena[r.index()];
+            // BUG(C5): the handle from the transformer list is checked again at run time, and a
+            // miss panics. The list should hold typed `Transformer` handles.
             let tr = self.classes[r.class_ord()]
                 .arena
                 .get::<transformer::Transformer>(r.index())
@@ -2822,6 +2849,8 @@ impl Dss {
         } = self;
         let ckt = circuit.as_ref().expect("line_losses needs a circuit");
         let sys = crate::solution::solution::sys_ctx(ckt);
+        // BUG(C5): the node voltages are copied only to be read beside the shared circuit;
+        // `&ckt.solution.node_v` serves.
         let node_v = ckt.solution.node_v.clone();
         let total = sum_list_losses(classes, &ckt.lines, &sys, &node_v);
         (total.re * 0.001, total.im * 0.001)
@@ -2843,6 +2872,8 @@ impl Dss {
         } = self;
         let ckt = circuit.as_ref().expect("substation_losses needs a circuit");
         let sys = crate::solution::solution::sys_ctx(ckt);
+        // BUG(C5): the node voltages are copied only to be read beside the shared circuit;
+        // `&ckt.solution.node_v` serves.
         let node_v = ckt.solution.node_v.clone();
         let subs: Vec<ElemId> = ckt
             .transformers
@@ -2874,6 +2905,8 @@ impl Dss {
             .as_ref()
             .expect("all_element_losses needs a circuit");
         let sys = crate::solution::solution::sys_ctx(ckt);
+        // BUG(C5): the node voltages are copied only to be read beside the shared circuit;
+        // `&ckt.solution.node_v` serves.
         let node_v = ckt.solution.node_v.clone();
         let mut out = Vec::with_capacity(ckt.ckt_elements.len());
         for &r in &ckt.ckt_elements {
@@ -3384,6 +3417,7 @@ pub struct MeterReliabilityView {
     pub sections: Vec<FeederSectionView>,
 }
 
+// BUG(C2): `Dss` gathers the operations of its parts; it should only coordinate them.
 impl Dss {
     /// The `Meters` reliability walk — one [`MeterReliabilityView`] per
     /// **enabled** EnergyMeter, in the circuit's `EnergyMeters` pointer-list
@@ -3611,6 +3645,7 @@ pub struct BusReliabilityView {
     pub total_miles: f64,
 }
 
+// BUG(C2): `Dss` gathers the operations of its parts; it should only coordinate them.
 impl Dss {
     /// Every bus's reliability columns in `Circuit::buses` order — the
     /// `BusList` order `Circuit.AllBusNames` reports and both oracle captures

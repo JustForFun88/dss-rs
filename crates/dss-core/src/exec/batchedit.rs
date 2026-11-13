@@ -23,6 +23,9 @@
 //! The edit itself and the model effect are unchanged from the pre-r4133 form
 //! (validated live against r4133 — see `tests/corpus/modes/batchedit`).
 
+// BUG(C2): the string helpers, the `where` parser and the number reader below are free
+// functions; the parser should be the constructor of `BatchConditionals` and the helpers
+// methods of the types they read.
 use super::*;
 
 /// A parsed `where` clause (Pascal globals `cond_arguments` / `cond_operators` /
@@ -128,6 +131,7 @@ fn parse_where_conditionals(cond_text: &str) -> Result<BatchConditionals, String
     })
 }
 
+// BUG(C2): `Dss` gathers the operations of its parts; it should only coordinate them.
 impl Dss {
     /// Pascal `DoBatchEditCmd` (`ExecHelper.pas` r4133):
     /// `BatchEdit class.pattern editstring [where …]` — replay the edit string
@@ -200,6 +204,9 @@ impl Dss {
             }
         };
 
+        // BUG(C2): the edit text reaches `edit_active` through `self.parser` and the object
+        // through a direct write of `DssClass::active` in the loop below; the edit should take
+        // the object and its text as arguments.
         // With a `where` clause, r4133 rebuilds the command string without the
         // conditionals so the ordinary Edit sees only the params. We instead load
         // the edit string (before `where`) directly and rewind to its start for

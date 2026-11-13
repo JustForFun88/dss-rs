@@ -1,6 +1,9 @@
 //! The `Set` option command (`DoSetCmd` and its no-circuit variant). Split out
 //! of `exec/set_get.rs`.
 
+// BUG(C2): the option arms write fields of `Circuit`, `Solution` and the elements directly, and
+// the free functions below work on the session paths, the Line class or one element; each
+// option should be applied through a method of the type whose data it changes.
 use num_complex::Complex64;
 
 use super::*;
@@ -46,6 +49,8 @@ fn apply_data_path(
     }
 }
 
+// BUG(C5): reaches each Line by a run-time class test on the class list, twice per handle; a
+// typed Line handle or a method of the Line class reaches the lines without the test.
 /// `Set %Normal=pct`: every Line's normal rating becomes `pct` percent of its
 /// emergency rating, read through [`crate::obj::Rating::from_number`], so it is
 /// not set where the emergency rating is not set or the percentage is not
@@ -135,6 +140,7 @@ fn apply_force_yprim(elem: &mut dyn CktElement, parser: &mut Parser, vars: &Pars
     true
 }
 
+// BUG(C2): `Dss` gathers the operations of its parts; it should only coordinate them.
 impl Dss {
     /// Pascal `DoSetCmd(SolveOption)`: parse `option=value` pairs, then run
     /// the solve when called from the `Solve` command.
@@ -143,12 +149,9 @@ impl Dss {
             self.do_set_cmd_no_circuit();
             return;
         }
-        // `Set Class=`/`Set Object=` (and their `Type=`/`Element=` aliases) touch
-        // whole-`self` state (`class_by_name`, `active_class`) not reachable inside
-        // the field-destructure below, so they are collected in encounter order
-        // here and applied right after the option loop (nothing else in a `Set`
-        // command reads the active class/object mid-parse). `true` = class (activate
-        // — Pascal `SetObjectClass`); `false` = object (select — `SetObject`).
+        // BUG(C5): `Set Class=`, `Set Object=` and the control-mode sync wait until the option
+        // loop ends, in encounter order (`true` = class), as their methods take all of `Dss`;
+        // with those methods on the parts they use, each arm applies its option at once.
         let mut pending_set_active: Vec<(bool, String)> = Vec::new();
         // Pascal `ADiakoptics and (ActiveActor = 1)` fans `GETCTRLMODE` to the
         // children after a `set controlmode=`/`set maxcontroliter=` (ExecOptions.pas
@@ -610,6 +613,9 @@ impl Dss {
                             sync_ctrl_mode = true;
                         }
                     }
+                    // BUG(C5): this arm and the yearly, duration and price arms below keep a clone
+                    // of the shape in the circuit, which a later edit of the shape does not reach,
+                    // and `%mean`/`%stddev` change the clone; the circuit should keep a handle.
                     opt::DEFAULT_DAILY => {
                         // Pascal: only replace when the shape is found.
                         if let Some(shape) = find_load_shape(classes, &param) {
@@ -1027,8 +1033,9 @@ impl Dss {
             self.ad_send_get_ctrl_mode();
         }
 
-        // `set ADiakoptics=yes` requested `ADiakopticsInit`, deferred here past
-        // the option-loop borrow (it needs `&mut Dss`, not just the circuit).
+        // BUG(C2): `set ADiakoptics=yes` parks its init request in `pending_ad_init`, read and
+        // cleared here after the option loop since `adiakoptics_init` needs all of `Dss`; the
+        // option should return the request to this method as a value.
         if self.circuit.as_ref().is_some_and(|c| c.ad.pending_ad_init) {
             if let Some(ckt) = self.circuit.as_mut() {
                 ckt.ad.pending_ad_init = false;

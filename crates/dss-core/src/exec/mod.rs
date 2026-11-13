@@ -92,11 +92,16 @@ pub use view::{
 /// is `Send` in practice.
 type PlotCallback = Box<dyn FnMut(&str) -> i32 + Send>;
 
+// BUG(C2): `Dss` holds the class registry, the circuit, the parsers, the session I/O and the
+// active handles, and its methods do the work of those parts (class lookup, element edits,
+// solution steps, reports); it should only coordinate them through their own methods.
 /// The DSS engine context (`TDSSContext`).
 pub struct Dss {
     /// The registered classes, each owning its objects in a typed
     /// [`ClassArena`] (`class.arena`).
     classes: Vec<DssClass>,
+    // BUG(C2): maps a class name to a bare position in `classes`; a typed class handle should
+    // name the class.
     /// Lowercased class name → index (Pascal `ClassNames`).
     class_by_name: HashMap<String, usize>,
     commands: CommandList,
@@ -118,6 +123,9 @@ pub struct Dss {
     enums: EnumRegistry,
     /// Accumulated `DoSimpleMsg` log (record-and-continue diagnostics).
     errors: crate::diag::ErrorLog,
+    // BUG(C2): `active_class` and `active_ckt_element` below are bare indices into `classes`
+    // and its arenas, so a stale or foreign index is not told from a good one; they should be
+    // typed handles.
     active_class: Option<usize>,
     /// `DSS.ActiveCircuit.ActiveCktElement` as `(class_idx, obj_idx)` — the circuit
     /// element the `Select` command (Pascal `DoSelectCmd`) made active, read by the
@@ -283,6 +291,8 @@ impl Dss {
         self.circuit.as_ref()
     }
 
+    // BUG(C2): hands any caller a `&mut` to the whole circuit, so code outside `Dss` changes
+    // its parts directly; callers should reach the parts through methods of `Circuit`.
     pub fn circuit_mut(&mut self) -> Option<&mut Circuit> {
         self.circuit.as_mut()
     }

@@ -2,8 +2,14 @@
 //! `Reset`, `AllocateLoads`, `RelCalc`, `Reduce`, `CalcVoltageBases`,
 //! `BuildY`, `BusCoords`, `Redirect`/`Compile`). Split out of `exec/mod.rs`.
 
+// BUG(C2): the commands write fields of `Solution`, `Circuit` and `Bus` directly; each change
+// should be a method of the type whose data it changes.
+// BUG(C5): each command builds a `SolveEnv` with the whole class store, the parser, the
+// variables and the error log for callees that use only some of them; each callee should
+// take only what it reads or changes.
 use super::*;
 
+// BUG(C2): `Dss` gathers the operations of its parts; it should only coordinate them.
 impl Dss {
     /// Pascal `DoSolveCmd`: `ActiveCircuit.Solution.Solve()`.
     pub(super) fn do_solve_cmd(&mut self) {
@@ -278,9 +284,8 @@ impl Dss {
             classes, circuit, ..
         } = self;
         let ckt = circuit.as_mut().expect("gated in command()");
-        // `ElemId` is `Copy`; snapshot the refs so the bus write below doesn't
-        // alias the element-list borrow (the store borrows `classes`, disjoint
-        // from `ckt`).
+        // BUG(C5): the capacitor and reactor handles are copied into a worklist before the bus
+        // writes; `ckt.buses` is disjoint from the two lists, so direct iteration borrows both.
         let refs: Vec<ElemId> = ckt
             .shunt_capacitors
             .iter()
@@ -340,6 +345,8 @@ impl Dss {
 
         if param.starts_with('A') {
             // All meters → ReduceZone on each.
+            // BUG(C5): the meter list is copied because `reduce_zone` takes all of `Dss`; with the
+            // reduction on the parts it changes, the loop borrows the list in place.
             let meters = self
                 .circuit
                 .as_ref()
@@ -865,6 +872,9 @@ impl Dss {
         let ckt = circuit.as_mut().expect("gated in command()");
         let mut store = ClassStore { classes };
 
+        // BUG(C5): each loop below walks a copy of a circuit list: the element list needs none,
+        // the store being disjoint from the circuit, and the meter list is copied only because
+        // `interpolate_coordinates` takes the whole circuit; it should take the parts it changes.
         // Initialize the Checked flag for all circuit elements.
         let refs: Vec<ElemId> = ckt.ckt_elements.clone();
         for r in refs {
@@ -971,6 +981,9 @@ impl Dss {
         }
 
         self.redirect_abort = false;
+        // BUG(C2): `in_redirect` and `cmd_origin` are set on `Dss` for the nested commands to
+        // read and restored after the loop; the nested script scope should reach `command` as
+        // an argument.
         let save_in_redirect = self.in_redirect; // nested Redirects stay "inside"
         self.in_redirect = true;
         // P5b: diagnostics raised inside the deck point at "<file>:<line-no>"
@@ -1029,6 +1042,8 @@ impl Dss {
     }
 }
 
+// BUG(C2): a free function over the circuit and the solve context; it should be a method of
+// `Circuit` that takes the class store as an argument.
 /// The prelude `Solve` runs before its power flow, where the step power flow
 /// needs it: while a bus redefinition is pending, or the node vectors do not
 /// hold the bus list (`MakeBusList`, `Show Isolated` or `Reduce` after a new

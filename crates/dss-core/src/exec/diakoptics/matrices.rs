@@ -23,6 +23,7 @@ use super::ad_find_element;
 use crate::exec::Dss;
 use crate::support::cmatrix::CMatrix;
 
+// BUG(C2): a free predicate of the ZCT build; it belongs with that build to `AdTearing`.
 /// NOTE(upstream-quirk): the ZCT keep test (Diakoptics.pas:274) is
 /// `(CTemp.re <> 0) and (CTemp.im <> 0)` — a solved column entry with **exactly
 /// one** zero part (`re=0 xor im=0`) is dropped. A-Diakoptics has no OpenDSS
@@ -32,6 +33,7 @@ fn zct_keep(v: Complex64) -> bool {
     v.re != 0.0 && v.im != 0.0
 }
 
+// BUG(C2): a free predicate of the Y4 build; it belongs with that build to `AdTearing`.
 /// NOTE(upstream-quirk): the Y4 keep test (Diakoptics.pas:201) is
 /// `(value.re <> 0) and (value.re <> 0)` — `.re` is tested **twice**, so `.im`
 /// is never consulted and a Y4 entry with `re=0, im≠0` is dropped. Reproduced
@@ -43,6 +45,8 @@ fn y4_keep(v: Complex64) -> bool {
     v.re != 0.0 && v.re != 0.0
 }
 
+// BUG(C2): `Dss` builds the matrices of `AdTearing` by writing its fields. The builders belong
+// to `AdTearing`, taking the Y system, the node names and the link elements as arguments.
 impl Dss {
     /// Pascal `Calc_C_Matrix(PLinks, NLinks)` (Diakoptics.pas:314): builds the
     /// coordinator's `Contours` matrix — one `±1` phase column per link,
@@ -235,6 +239,8 @@ impl Dss {
         if error_flag { 1 } else { 0 }
     }
 
+    // BUG(C5): takes all of `Dss` mutably to change only `AdTearing` and solve with the
+    // circuit's Y system; it should get only those two.
     /// Pascal `Calc_ZCC(Links)` (Diakoptics.pas:229): for each contour column,
     /// solve the **torn** coordinator system `Y·z = c` (the column of `Contours`)
     /// with the cached factorization, filter, and store into `ZCT`; then
@@ -293,6 +299,7 @@ impl Dss {
         ckt.ad.zcc = zcc.add(&ckt.ad.zll);
     }
 
+    // BUG(C5): takes all of `Dss` mutably and uses only `AdTearing`; it should get only that.
     /// Pascal `Calc_Y4()` (Diakoptics.pas:169): `Y4 = ZCC⁻¹` via the dense
     /// `TcMatrix.Invert`, then copied back into the sparse `Y4` with the
     /// double-`.re` drop quirk.

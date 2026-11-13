@@ -2,8 +2,16 @@
 //! editing (`New`/`Edit`/`~`/`Clear`/`?` and `TDSSClass.Edit`).
 //! Split out of `exec/mod.rs`.
 
+// BUG(C2): the free functions of this module work on one element, a shape save or the class
+// store, and the commands write fields of `CktElementData`, `Circuit` and `Solution` from
+// outside those types; each operation belongs to the type whose data it changes.
+// BUG(C5): elements are reached by run-time class tests (`get::<T>`, `get_mut::<T>` chains)
+// on bare (class, index) pairs; a typed handle or a method of the element trait reaches them
+// without the test.
 use super::*;
 
+// BUG(C5): picks the element's class by a chain of run-time `get_mut::<T>` tests to run its
+// recalc; a method of the element trait (a no-op by default) reaches each class directly.
 /// Run `RecalcElementData` against `sys` for the PC classes whose recalc consumes
 /// the live `ActiveCircuit.Solution` globals (Load/Generator/WindGen/Storage/
 /// PVSystem/IndMach012). Pascal `T<PC>Obj.Create` ends with this recalc; it is
@@ -31,6 +39,7 @@ pub(super) fn recalc_pc_create(
     }
 }
 
+// BUG(C2): `Dss` gathers the operations of its parts; it should only coordinate them.
 impl Dss {
     /// Process one command line entered **from outside** the engine — the
     /// library's public command entry, i.e. CAPI `Text_Set_Command`
@@ -472,6 +481,9 @@ impl Dss {
         st.laplacian = Some(laplacian);
     }
 
+    // BUG(C5): this method, `set_object_class` and `set_object` take all of `Dss` to use the
+    // parser, the class map and the error log; they belong to a command-session type that owns
+    // only those parts.
     /// Pascal `GetObjClassAndName`: read the `class.name` token (optionally
     /// prefixed `object=`) from the main parser.
     pub(super) fn get_obj_class_and_name(&mut self) -> (String, String) {
@@ -591,6 +603,8 @@ impl Dss {
             return;
         }
         let mut ckt = Circuit::new(name, self.default_base_freq);
+        // BUG(C5): the circuit keeps clones of `loadshape.default`, which a later edit of the
+        // shape does not reach; the circuit should keep a handle to the shape object.
         // Pascal `TDSSCircuit.Create`: both default shape refs resolve to the
         // built-in `loadshape.default` (created with the default DSS items).
         ckt.default_daily_shape_obj = find_load_shape(&self.classes, "default");
@@ -641,6 +655,8 @@ impl Dss {
             return; // Pascal: (DSSClassType and BASECLASSMASK) = 0 → nothing
         }
         if obj_name == "*" {
+            // BUG(C2): `set_enabled` parks the bus-redefined signal in a flag of the element,
+            // which this loop reads and clears; the setter should return the signal.
             let mut any_changed = false;
             for oi in 0..self.classes[ci].arena.len() {
                 if let Some(elem) = self.classes[ci].arena.try_ckt_elem_mut(oi) {
@@ -659,6 +675,8 @@ impl Dss {
                 ckt.set_bus_name_redefined(true);
             }
         } else {
+            // BUG(C2): the object and the text `Enabled=...` reach `edit_active` through the
+            // active cursor and the main parser; the edit should take them as arguments.
             self.active_class = Some(ci); // DSS.LastClassReferenced
             if !self.classes[ci].set_active(&obj_name) {
                 return; // Pascal EditObject: SetActive false → nothing
@@ -709,6 +727,9 @@ impl Dss {
         let idx = self.classes[ci]
             .active
             .expect("set_active set the active index");
+        // BUG(C2): the command writes `active_terminal` of `CktElementData` and
+        // `system_y_changed` of `Solution` directly and reads `yprim_invalid`; the element
+        // and the solution should make these changes in their own methods.
         let dirty = {
             let cd = self.classes[ci]
                 .arena
@@ -841,6 +862,8 @@ impl Dss {
             } else {
                 Some(self.parser.make_integer(&self.vars).unwrap_or(0))
             };
+            // BUG(C2): the command writes `active_terminal` of `CktElementData` directly; the
+            // element should own the terminal choice as a method.
             let cd = self.classes[ci]
                 .arena
                 .try_ckt_elem_mut(idx)
@@ -972,6 +995,9 @@ impl Dss {
         }
     }
 
+    // BUG(C2): registers the new name in `DssClass::name_to_idx` by hand and sets the
+    // per-class creation defaults (base and source frequency, earth model) by field writes;
+    // registration belongs to `DssClass` and the defaults to the element constructors.
     /// The object-creation half of [`Dss::add_object`] (Pascal `AddObject` up to
     /// but not including the `TDSSClass.Edit` of the remaining parameters):
     /// resolve/validate the class, create the object (or activate the existing
@@ -1132,6 +1158,8 @@ impl Dss {
         // (Line.pas:1085). Sync the flag and, in a `CktModel=Positive` circuit,
         // re-run the collapse so a defaults-only `New Line` shows collapsed
         // r0/x0/c0 at create time (readback-observable; probe-proven).
+        // BUG(C2): the circuit's positive-sequence flag is written into the new Line so that
+        // its recalc reads it; the recalc should take the flag as an argument.
         let positive_sequence = self
             .circuit
             .as_ref()
@@ -1235,6 +1263,9 @@ impl Dss {
         }
     }
 
+    // BUG(C2): the executive has the element cache `vterminal`, the RegControl tap snapshot and
+    // the live results so that a `&self` getter can render them; the getter should take the
+    // solution and the class store as arguments and compute the value itself.
     /// Refresh a `&self` getter's live-state dependencies before a `?`/`Dump`
     /// property render, exactly for the properties that declare the need — the
     /// Rust choke point for readers that Pascal backs with a live pointer the
@@ -1278,6 +1309,8 @@ impl Dss {
         };
         let marked = has_flag(PropFlags::READS_VTERMINAL);
         let renders_live_result = has_flag(PropFlags::RENDERS_LIVE_RESULT);
+        // BUG(C5): `node_v` is cloned only to be read while the element is changed; direct
+        // access borrows `circuit` and `classes` side by side.
         if marked
             && let Some(node_v) = self.circuit.as_ref().map(|c| c.solution.node_v.clone())
             && let Some(elem) = self.classes[ci].arena.try_ckt_elem_mut(oi)
@@ -1330,6 +1363,9 @@ impl Dss {
         }
     }
 
+    // BUG(C5): walks the store by index and calls a `&mut self` refresh per object because the
+    // refresh takes all of `Dss`; with the refresh on the element, an iterator over the arenas
+    // reaches each object directly.
     /// The whole-store form of [`Self::refresh_vterminal_if_marked`], for the
     /// **`Save` serializer** (`Save circuit` and `Save <class>`).
     ///
@@ -1366,6 +1402,9 @@ impl Dss {
         }
     }
 
+    // BUG(C2): the executive gathers live values for a StorageController or an IndMach012 and
+    // pushes them into the element's render cache; each element should compute the value from
+    // the store and the solution passed to its getter.
     /// The items-3-4 half of [`Self::refresh_vterminal_if_marked`]: recompute the
     /// object's live-result cache from the live store.
     ///
@@ -1393,6 +1432,9 @@ impl Dss {
         use crate::elements::pc::ind_mach012::IndMach012;
 
         if let Some(sc) = self.classes[ci].arena.get::<StorageController>(oi) {
+            // BUG(C5): the fleet list is copied and each member's state is copied into
+            // `FleetMemberLive` rows, then the controller is looked up again; direct access
+            // borrows the controller and the Storage arena side by side.
             let fleet: Vec<ElemId> = sc.fleet_refs().to_vec();
             let store = ClassStore {
                 classes: &mut self.classes,
@@ -1417,6 +1459,9 @@ impl Dss {
             return;
         }
 
+        // BUG(C5): a run-time class test is followed by a second lookup of the machine, and
+        // `node_v` is cloned only to be read; a method of the element trait reaches the
+        // machine without the test, beside a borrow of the circuit's solution.
         if self.classes[ci].arena.get::<IndMach012>(oi).is_some() {
             if let Some(ckt) = self.circuit.as_ref() {
                 let sys = crate::solution::solution::sys_ctx(ckt);
@@ -1497,6 +1542,11 @@ impl Dss {
         );
     }
 
+    // BUG(C2): after the property edit this method resolves the references of Fuse, Spectrum,
+    // Recloser, Relay, InvControl, ExpControl and GICsource itself; each element should resolve
+    // its own references through a method that takes the class registry.
+    // BUG(C5): it reaches each of those elements by run-time class tests on the active arena;
+    // a method of the element trait reaches each one without the test.
     fn edit_active_inner(&mut self, first: Option<(String, String, bool)>) {
         let Some(ci) = self.active_class else {
             self.errors
@@ -1543,11 +1593,9 @@ impl Dss {
             return;
         };
 
-        // Sync the live circuit context Pascal reads as globals inside
-        // `RecalcElementData` / `CalcY_Terminal` (the pos-seq edit-time collapse
-        // and the GIC `< 0.51 Hz` gate), so the side-effect recalcs run in this
-        // edit see the current flag/frequency exactly as upstream. `New` also
-        // routes here (create → edit_active), covering both parse and edit paths.
+        // BUG(C2): the circuit's positive-sequence flag and frequency (and, below, the resolved
+        // monitored bus and GIC line) are pushed into the element for the recalcs of this edit,
+        // which read them there; the recalc should take them as arguments.
         let live_positive_sequence = circuit.as_ref().is_some_and(|c| c.positive_sequence);
         let live_frequency = circuit.as_ref().map_or(60.0, |c| c.solution.frequency);
         if let Some(line) = active_arena.get_mut::<line::Line>(oi) {
@@ -1706,10 +1754,9 @@ impl Dss {
             param_was_quoted = parser.is_quoted();
         }
 
-        // Pascal `TFuseObj.Create` resolves `FuseCurve := Find('tlink')` in the
-        // constructor; our constructor cannot reach the registry, so resolve the
-        // (default or explicit) curve name here through the same foreign view the
-        // property edits use, cloning it into the Fuse for solve-time GetTCCTime.
+        // BUG(C5): the Fuse curve, the spectrum and the Recloser and Relay curves below are
+        // cloned into the holder at the end of each of its edits, so a later edit of the curve
+        // does not reach the holder; the holder should keep a handle to the curve object.
         if let Some(name) = active_arena
             .get::<fuse::Fuse>(oi)
             .map(|f| f.fuse_curve_name().to_string())
@@ -1829,6 +1876,9 @@ impl Dss {
         // every PVSystem then Storage for the first enabled one (matching
         // `MakeDERList`'s empty-list branch).
         if active_arena.get::<inv_control::InvControl>(oi).is_some() {
+            // BUG(C5): the control is looked up again after its run-time class test, and its DER
+            // list is copied only to be read; the ExpControl block below repeats both. One lookup
+            // borrows the list until the bus is resolved.
             let der_names: Vec<String> = active_arena
                 .get::<inv_control::InvControl>(oi)
                 .map(|ic| ic.der_name_list().to_vec())
@@ -1944,11 +1994,10 @@ impl Dss {
             }
         }
 
-        // Deferred file loads (Pascal runs `DoCSVFile` etc. in the property
-        // hook, which has the DSS context; our hook cannot reach the filesystem
-        // or the current directory, so it queues the request and we resolve it
-        // here — before `end_edit`, so derived state like `SetMaxPandQ` sees the
-        // loaded data). Paths resolve relative to `current_dir`, like Redirect;
+        // BUG(C2): the property hooks park file loads, user-model loads, array files, deferred
+        // actions, shape saves and debug traces on the object, drained here before `end_edit`
+        // (which must see their results); the hook should take the directories as arguments.
+        // Paths resolve relative to `current_dir`, like Redirect;
         // the literal `%result%` resolves to `LastResultFile` (Pascal
         // `InterpretDblArray`, `Utilities.pas:464-465`).
         let resolve = |filename: &str| -> std::path::PathBuf {
@@ -2110,6 +2159,9 @@ fn attach_source(
     }
 }
 
+// BUG(C2): drains the errors, the abort request, the signal flags and the ref-actions that the
+// edit parked on the object and applies them to the circuit and other elements; the edit
+// should return them as a value that its caller applies.
 /// The tail every property edit runs after `EndEdit`: the property setters
 /// queue the signal flags of the circuit (a bus list to rebuild, a system Y
 /// to rebuild), drained here once the edit finishes, with the deferred errors
@@ -2244,6 +2296,8 @@ pub(super) fn apply_edit_signal_tail(
     }
 }
 
+// BUG(C5): a free function that tests the class kind at run time on a bare (class, index)
+// pair to find a control; a typed control handle reaches the control without the test.
 /// The control half of an edit's recalc: it assigns the controlled element
 /// again, which takes the control off the previous element's control list and
 /// appends it to the new one's, so a re-edited control moves to the end of its

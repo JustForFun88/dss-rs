@@ -1,6 +1,9 @@
 //! The `Get` option command (`DoGetCmd` and its no-circuit variant). Split out
 //! of `exec/set_get.rs`.
 
+// BUG(C2): the free functions below format complex values and matrices, read back one
+// element's forced currents and render the circuit's voltage bases; each belongs as a method of
+// the type it reads (the value type, the element, `Circuit`).
 use num_complex::Complex64;
 
 use super::*;
@@ -23,6 +26,8 @@ fn cstr(c: Complex64) -> String {
     }
 }
 
+// BUG(C5): takes `&mut` to the whole class list for a readback that only reads the element's
+// fields; a shared borrow of the element is all it needs.
 /// Pascal `Get InjCurrent`/`ITerminal`/`YPrim` (ExecOptions.pas @ 0.15.0b4):
 /// render the active PCE's injection/terminal currents (over `NConds`) or its
 /// primitive Y. Non-PCE → the EPRI-compatible "not PCE" text; an
@@ -115,6 +120,7 @@ pub(crate) fn voltage_bases_result(ckt: &Circuit) -> String {
     result
 }
 
+// BUG(C2): `Dss` gathers the operations of its parts; it should only coordinate them.
 impl Dss {
     /// Pascal `DoGetCmd`: append the requested option values to
     /// `GlobalResult`, comma-separated.
@@ -137,6 +143,8 @@ impl Dss {
             class_by_name,
             ..
         } = self;
+        // BUG(C5): takes `&mut Circuit` for option readbacks that only read it; a shared
+        // borrow serves every arm.
         let ckt = circuit.as_mut().expect("gated in command()");
         let mut result = String::new();
 
@@ -505,6 +513,8 @@ impl Dss {
                                 abort = true;
                             } else if let Some(i) = found {
                                 let sys = sys_ctx(ckt);
+                                // BUG(C5): `node_v` is cloned only to be read; the circuit and
+                                // the class list are disjoint here, so a borrow of it serves.
                                 let node_v = ckt.solution.node_v.clone();
                                 let mut states = vec![0.0; nvars];
                                 classes[ci]

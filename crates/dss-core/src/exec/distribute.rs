@@ -4,6 +4,9 @@
 //! that places a distributed generator (or load) at every enabled load bus,
 //! sized per the `How=` rule.
 
+// BUG(C2): the line and script writers below are free functions over `LoadRow` slices, and the
+// random source is one more; they belong as methods of a distribute script type that owns the
+// rows and the output.
 use super::*;
 use crate::report::format;
 
@@ -48,6 +51,7 @@ fn entropy_random() -> f64 {
     bits as f64 / (1u64 << 53) as f64
 }
 
+// BUG(C2): `Dss` gathers the operations of its parts; it should only coordinate them.
 impl Dss {
     /// Pascal `TExecHelper.DoDistributeCmd` (`ExecHelper.pas:3755-3819`).
     pub(crate) fn do_distribute_cmd(&mut self) {
@@ -191,6 +195,8 @@ impl Dss {
         self.last_result_file = fname.to_string();
     }
 
+    // BUG(C5): finds the Load class by name and its loads by a run-time class test on the arena;
+    // a typed handle to the Load class reaches them without the test.
     /// Snapshot the Load class element list (creation order, 1-based indices —
     /// the `DG_%d` numbering).
     fn gather_load_rows(&self) -> Vec<LoadRow> {

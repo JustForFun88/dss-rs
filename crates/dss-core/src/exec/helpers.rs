@@ -2,8 +2,14 @@
 //! (split out of `exec/mod.rs`). Pascal helpers from `ExecHelper.pas`/
 //! `ExecOptions.pas`.
 
+// BUG(C2): a module of free functions: class lookups and `make_like` belong to `DssClass`, bus
+// and element lookups and the reduce options to `Circuit`, the token readers to `Parser`, and
+// the formatters to the value type they format; each should be a method of that type.
 use super::*;
 
+// BUG(C2): takes the active element as a bare (class, index) pair; a typed handle should name it.
+// BUG(C5): takes `&mut` to the whole class list and returns a `&mut` element to readbacks that
+// only read it; a shared borrow of the element serves them.
 /// The active circuit element as a mutable PC element, or its full name if the
 /// active element is not a PCE / not set (Pascal
 /// `(cktElem.DSSObjType and BASECLASSMASK) = PC_ELEMENT`). Used by the force hooks.
@@ -26,6 +32,7 @@ pub(crate) fn active_pce<'a>(
     }
 }
 
+// BUG(C2): takes the element as a bare (class, index) pair; a typed handle should name it.
 /// Whether the `(class, object)` pair is a PC element (Pascal
 /// `ActiveCktElement is TPCElement`). Used by the `Set/Get StateVar` guard
 /// (error 7103 "is not a valid PC element").
@@ -33,6 +40,7 @@ pub(crate) fn is_pce(ckt: &Circuit, ci: usize, oi: usize) -> bool {
     ckt.pc_elements.contains(&ElemId::new(ci, oi))
 }
 
+// BUG(C2): returns the element as a bare (class, index) pair; a typed handle should name it.
 /// Resolve `Class.Name` (or a bare name searched across circuit-element classes)
 /// to `(class idx, object idx)` (Pascal `TDSSCircuit.SetElementActive`).
 pub(crate) fn resolve_ckt_element(
@@ -119,6 +127,8 @@ pub(crate) fn interpret_time_step_size(
     }
 }
 
+// BUG(C5): this function and `find_price_shape` return a clone of the shape for the circuit to
+// keep, which a later edit of the shape does not reach; the circuit should keep a handle.
 /// `DSS.LoadShapeClass.Find(name)`, snapshot-cloned for the circuit defaults
 /// (same staleness semantics as the Load/VSource shape refs).
 pub(crate) fn find_load_shape(
@@ -385,6 +395,8 @@ pub(crate) fn yes_no(b: bool) -> &'static str {
     if b { "Yes" } else { "No" }
 }
 
+// BUG(C2): a free formatter that the JSON export writes a second time; one method of the
+// formatted value type should serve both.
 /// Pascal `IntArrayToString` (Utilities.pas): `[NULL]` when empty, else
 /// `[a, b, c]`.
 pub(crate) fn int_array_to_string(arr: &[i32]) -> String {
@@ -402,6 +414,8 @@ pub(crate) fn int_array_to_string(arr: &[i32]) -> String {
     s
 }
 
+// BUG(C2): takes `arena` and `name_to_idx`, two fields of `DssClass`, as loose arguments; it
+// should be a method of `DssClass`.
 /// Pascal `MakeLikeProperty` set path: find the source object by name in the
 /// same class, clone it, and copy its state onto the target.
 pub(crate) fn make_like(

@@ -6,6 +6,7 @@
 use super::*;
 use crate::cim::{Uuid, UuidChoice, get_or_create_uuid};
 
+// BUG(C2): `Dss` gathers the operations of its parts; it should only coordinate them.
 impl Dss {
     /// Pascal `TExecHelper.DoUuidsCmd` (`ExecHelper.pas:4465-4535`): read a
     /// comma-CSV of `<fullname>, <uuid>` lines and preload each object's UUID.
@@ -79,6 +80,8 @@ impl Dss {
             // `pName <> NIL`, so an unknown object skips the parse entirely.
             let (dev_class, dev_name) =
                 parse_object_class_and_name(&mut self.aux_parser, &self.vars, &name_val);
+            // BUG(C2): `Dss` writes `Circuit::uuid` and `Bus::uuid` itself in the two arms
+            // below. `Circuit` should set its own UUID and those of its buses by a method.
             if dev_class.eq_ignore_ascii_case("circuit") {
                 if let Some(ckt) = self.circuit.as_mut() {
                     match Uuid::parse(&uuid_val) {
@@ -149,6 +152,8 @@ impl Dss {
             self.cim
                 .start_uuid_list(ckt.buses.len() + 2 * ckt.num_devices);
         }
+        // BUG(C2): `Dss` creates the UUID of the circuit by writing `Circuit::uuid`; a method
+        // of `Circuit` should hand it out.
         let _fdr_id = get_or_create_uuid(&mut ckt.uuid);
         let _sub_id = self.cim.get_dev_uuid(UuidChoice::Station, "Station", 1);
         let _rgn_id = self.cim.get_dev_uuid(UuidChoice::GeoRgn, "GeoRgn", 1);
@@ -167,6 +172,8 @@ impl Dss {
         let mut out = String::new();
         {
             let ckt = self.circuit.as_mut().expect("post-circuit dispatch");
+            // BUG(C2): `Dss` creates the UUIDs of the circuit and of each bus by writing
+            // `Circuit::uuid` and `Bus::uuid`; methods of `Circuit` and `Bus` should hand them out.
             let id = get_or_create_uuid(&mut ckt.uuid);
             out.push_str(&format!("Circuit.{} {}\n", ckt.name, id.to_dss_string()));
             for bus in &mut ckt.buses {
@@ -174,6 +181,9 @@ impl Dss {
                 out.push_str(&format!("Bus.{} {}\n", bus.name, id.to_dss_string()));
             }
         }
+        // BUG(C5): the element list is copied so that the loop can borrow `classes` mutably.
+        // `circuit` and `classes` are disjoint fields of `Dss`, so the loop can read the list
+        // in place.
         let elems: Vec<ElemId> = self
             .circuit
             .as_ref()

@@ -13,6 +13,8 @@
 //! `FillObjFromJSON` port) under the same foreign-class view + post-edit signal
 //! tail every script edit uses.
 
+// BUG(C2): the JSON lookups at the end of this module are free functions over the JSON tree;
+// they belong as methods of `Json`.
 use crate::report::export::json::{Json, parse_json};
 use crate::report::save::dump::commands::PASCAL_CLASS_ORDER;
 
@@ -22,6 +24,7 @@ use super::*;
 /// √3 — Pascal `SQRT3` (`busFromJSON` divides `kVLL` by it).
 const SQRT3: f64 = 1.732_050_807_568_877_2;
 
+// BUG(C2): `Dss` gathers the operations of its parts; it should only coordinate them.
 impl Dss {
     /// Pascal `Circuit_FromJSON` / `Obj_Circuit_FromJSON_`: rebuild the whole
     /// circuit from an AltDSS JSON document. Returns `Err(msg)` for a malformed
@@ -70,6 +73,8 @@ impl Dss {
         if let Some(err) = self.run_command_array(&root, "PreCommands") {
             return Err(err);
         }
+        // BUG(C2): whether a step failed is read off the error log, here and after each class
+        // below, because the step returns `()`; each step should return its result.
         if !self.errors.is_empty() {
             return Ok(());
         }
@@ -139,6 +144,8 @@ impl Dss {
                 return Some(format!("\"{key}\" must be an array of strings."));
             };
             self.command(&cmd);
+            // BUG(C2): whether the command failed is read off the error log; `command` should
+            // return its result.
             if !self.errors.is_empty() {
                 break;
             }
@@ -172,6 +179,9 @@ impl Dss {
             if special_first {
                 special_first = false;
                 // Edit the existing element 1 (`cls.ElementList.Get(1)`).
+                // BUG(C2): the target object reaches `fill_active_from_json` through the active
+                // cursor, written here directly into `DssClass::active`; the fill should take
+                // the object as an argument.
                 self.active_class = Some(ci);
                 self.classes[ci].active = Some(0);
             } else {
@@ -187,6 +197,8 @@ impl Dss {
                 }
             }
             self.fill_active_from_json(ci, members);
+            // BUG(C2): whether the fill failed is read off the error log; the fill should return
+            // its result.
             if !self.errors.is_empty() {
                 return;
             }
@@ -251,16 +263,9 @@ impl Dss {
                 };
                 props.fill_from_json(&mut objects[oi], members, &mut eng);
             }
-            // Deferred debug-trace creates (Storage `DebugTrace=yes`). Pascal
-            // opens the file inside the property hook itself
-            // (`PropertySideEffects`, dss_capi `src/PCElements/Storage.pas:765`
-            // -> `:868-885`; r4133 `PCElements/Storage.pas:1073-1085`), so every
-            // write path reaches it — the JSON reader's `FillObjFromJSON`
-            // included. The port's hook cannot see `OutputDirectory`, so it
-            // queues the header and the executive drains it; this path must
-            // drain it too, or a Storage imported with `debugtrace=yes` keeps a
-            // queued header forever and traces nothing (the `exec/command.rs`
-            // twin).
+            // BUG(C2): the Storage `DebugTrace=yes` hook parks the trace header on the object and
+            // the executive drains it here; every edit path must drain it, or the header stays
+            // queued. The hook should take the output directory as an argument.
             objects[oi].open_debug_traces(output_directory, errors);
             // Pascal `RecalcElementData` (run by `EndEdit`) reads the live
             // `ActiveCircuit.Solution` globals; thread that snapshot in.
@@ -280,6 +285,8 @@ impl Dss {
         reattach_edited_control(classes, circuit, ci, oi);
     }
 
+    // BUG(C2): writes the fields of `Bus` directly; the coordinates, the keep flag and the base
+    // voltage should be set through methods of `Bus`.
     /// Pascal `busFromJSON` (`CAPI_Obj.pas:2865`): apply one `Bus` array entry's
     /// coordinates / base-kV / keep flag to the named bus. An unknown bus is
     /// silently skipped (`busIdx = 0 → Exit`). The `kVLN`+`kVLL` conflict raises,

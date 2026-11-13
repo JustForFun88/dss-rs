@@ -6,6 +6,7 @@
 
 use super::*;
 
+// BUG(C2): `Dss` gathers the operations of its parts; it should only coordinate them.
 impl Dss {
     /// Pascal `DoReconductorCmd`. Parameter table `ReconductorCommands =
     /// ['Line1', 'Line2', 'LineCode', 'Geometry', 'EditString', 'Nphases']`
@@ -203,6 +204,9 @@ impl Dss {
                 .map(|e| e.cd().nphases as i32)
                 .unwrap_or(0);
             if nphases == 0 || elem_nphases == nphases {
+                // BUG(C2): the traced line and the edit text reach `Dss::edit_active` by writing
+                // the parser, `active_class` and `DssClass::active`. The edit should take the
+                // object and the text as arguments.
                 self.parser.set_cmd_string(edit_str);
                 self.active_class = Some(r.class_ord());
                 self.classes[r.class_ord()].active = Some(r.index());

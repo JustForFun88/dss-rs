@@ -8,15 +8,16 @@ use crate::exec::command::apply_edit_signal_tail;
 use crate::exec::make_pos_seq::refuse::PosSeqRefusal;
 use crate::exec::*;
 
+// BUG(C2): `Dss` gathers the operations of its parts; it should only coordinate them.
 impl Dss {
     /// Resolve the read-only [`PosSeqCtx`] an element's conversion reads: this
     /// element's node numbers per terminal, parsed from its bus names, and the
     /// snapshots of the monitored and controlled elements a control or meter
     /// reads while it converts.
     pub(in crate::exec) fn build_pos_seq_ctx(&mut self, r: ElemId) -> PosSeqCtx {
-        // Clone this element's terminal bus names and its monitored and
-        // controlled refs up front, so the bus-name parser and the reads of
-        // other elements do not alias the element borrow.
+        // BUG(C5): this element's terminal bus names are copied out before the bus-name parser
+        // and the reads of other elements, though `aux_parser`, `vars` and `classes` are disjoint
+        // fields of `Dss` and every later read is shared. A borrow of the element serves them.
         let (bus_strs, mon_ref, ctrl_ref) = {
             let elem = self.classes[r.class_ord()]
                 .arena
@@ -278,6 +279,9 @@ impl TextWrites {
     }
 }
 
+// BUG(C2): a free function that takes the queued messages off the object, runs the step and
+// pushes the earlier ones back, to turn two parked results into a return value. The step
+// should return its messages.
 /// Runs `step` and returns its result with the messages it logged or queued
 /// on `obj`, taken off the log and the queue. The messages queued on `obj`
 /// before `step` stay queued.
@@ -297,6 +301,8 @@ fn with_messages<'a, T>(
     (out, added)
 }
 
+// BUG(C2): a free function over one object's edit; it belongs to `TextWrites`, whose refusal
+// it builds.
 /// The `end_edit()` recalc of a single edit or a block that holds the
 /// `SetText` writes `writes`: a message it logs or queues refuses them.
 fn end_edit_of(

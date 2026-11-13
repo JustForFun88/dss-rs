@@ -18,6 +18,8 @@
 //! has no OpenDSS comparison channel: the contract is the round-trip
 //! compile/solve gate.
 
+// BUG(C2): the helpers of this module are free functions. `contains_ci`, `redirect_target` and
+// `strip_prefix_ci` belong to a type of a saved script line, `element_bus` to the class registry.
 use super::*;
 
 /// The six substrings that mark a "global/support" line in the saved master
@@ -37,6 +39,7 @@ fn contains_ci(haystack: &str, needle_lower: &str) -> bool {
     haystack.to_ascii_lowercase().contains(needle_lower)
 }
 
+// BUG(C2): `Dss` gathers the operations of its parts; it should only coordinate them.
 impl Dss {
     /// Pascal `TDSSCircuit.Save_SubCircuits(AddISrc)` (Circuit.pas:1150): create a
     /// fresh `<CurrentDir>/Torn_Circuit`, `save circuit` the whole (now-torn)
@@ -133,6 +136,9 @@ impl Dss {
 
         // --- ISources at the zone-1 link edge, if requested (Circuit.pas:1039).
         if add_isrc {
+            // BUG(C5): the link branch name is cloned so that `append_isources` can take
+            // `&mut self`, which it needs only to push to `errors`. Narrowed to the parts it
+            // uses, the call reads the name in place.
             let link1 = self
                 .circuit
                 .as_ref()
@@ -154,6 +160,8 @@ impl Dss {
         self.write_zone_vsources(path, num_ckts);
     }
 
+    // BUG(C2): a stateless helper over the saved master lines, parked on `Dss` as an
+    // associated function; it belongs to a type of the saved master.
     /// The index just past the `New Circuit` header line in the saved master —
     /// the start of the reusable global/support section. Our save master's header
     /// differs from the official fixed `[Clear, New Circuit]` prefix (see module
@@ -167,6 +175,8 @@ impl Dss {
             .unwrap_or(0)
     }
 
+    // BUG(C2): a stateless helper over the saved master lines, parked on `Dss` as an
+    // associated function; it belongs to a type of the saved master.
     /// The saved-master lines strictly between `Clear` and `New Circuit` — our
     /// round-trip-fidelity `Set DefaultBaseFreq` (a `NOTE(subst-metis)` addition
     /// the official `SaveMasterFile` omits, save_circuit.rs). These configure the
@@ -265,6 +275,8 @@ impl Dss {
 
             // ISources at this zone's link edges (Circuit.pas:1095–1104).
             if add_isrc {
+                // BUG(C5): the link branch names are cloned so that `append_isources` can take
+                // `&mut self`, which it needs only to push to `errors`.
                 let (link_a, link_b) = {
                     let lb = self.circuit.as_ref().map(|c| &c.ad.link_branches);
                     (
@@ -302,6 +314,8 @@ impl Dss {
     /// case-insensitivity assumption is inherited verbatim from upstream and not
     /// "fixed" (changing the emitted case would diverge from official).
     fn write_zone_vsources(&mut self, path: &Path, num_ckts: usize) {
+        // BUG(C5): the boundary names and voltages are cloned, then only read by a loop that
+        // pushes to `errors`, a field of `Dss` apart from `circuit`; a shared borrow serves.
         let (pconn_names, pconn_voltages) = match self.circuit.as_ref() {
             Some(c) => (c.ad.pconn_names.clone(), c.ad.pconn_voltages.clone()),
             None => return,
@@ -443,6 +457,8 @@ fn strip_prefix_ci(line: &str, prefix_lower: &str) -> String {
     result
 }
 
+// BUG(C2): a free function that resolves an element by a name scan over all classes at each
+// use. Link branches should be kept as typed handles, resolved once.
 /// `SetElementActive(full_name); ActiveCktElement.GetBus(bus_num)` (1-based
 /// terminal) — the bus name at a PDE's terminal, or `None` when unresolved.
 fn element_bus(classes: &[DssClass], full_name: &str, bus_num: usize) -> Option<String> {

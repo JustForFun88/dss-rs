@@ -11,6 +11,9 @@
 //! (`MakeBusList`, `ComputekWLosses_EEN`, `Get_WeightedLosses`) are in
 //! `circuit/auto_add.rs`.
 
+// BUG(C2): free functions over the circuit write fields of `Circuit`, `Solution` and the AutoAdd
+// record from outside their types; the search belongs to the AutoAdd part of `Circuit`, and
+// each field change to a method of the type that holds the field.
 use std::path::Path;
 
 use num_complex::Complex64;
@@ -104,6 +107,9 @@ fn auto_add_search(
     let mut test_gen_kw = 0.0;
     let mut test_cap_kvar = 0.0;
 
+    // BUG(C5): the candidate bus list is copied so that the loops can pass `&mut Circuit` to the
+    // solve and the meters while they walk it; with those calls taking only the parts they
+    // change, the loops borrow the list in place.
     let bus_idx_list = ckt.auto_add_obj.bus_idx_list.clone();
     let gen_kw = ckt.auto_add_obj.gen_kw;
 
@@ -145,7 +151,9 @@ fn auto_add_search(
                         1000.0 * genkvar / phases as f64,
                     );
 
-                    // Publish the trial-device state for `AddCurrents`.
+                    // BUG(C2): the trial device reaches `AddCurrents` through fields of
+                    // `auto_add_obj` and `use_aux_currents`, here and in the capacitor loop; the
+                    // solve should take the trial device as an argument.
                     ckt.auto_add_obj.bus_index = bus_index;
                     ckt.auto_add_obj.phases = phases;
                     ckt.auto_add_obj.gen_va = gen_va;
@@ -270,6 +278,7 @@ fn append_log_row(
     ));
 }
 
+// BUG(C2): `Dss` gathers the operations of its parts; it should only coordinate them.
 impl Dss {
     /// Pascal `TAutoAdd.Solve` driver (`Solution.pas` `AUTOADDFLAG` arm): run the
     /// candidate search, write the `AutoAddLog`, instantiate the winner through

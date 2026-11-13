@@ -89,6 +89,7 @@ use crate::solution::ymatrix::{BuildOption, build_y_matrix, initialize_node_vbas
 use crate::solution::{SolveEnv, SolveMode, SolveResult};
 use crate::support::sparse_math::SparseComplex;
 
+// BUG(C2): a free parser of a bus name; it belongs to a type of the bus spec.
 /// OpenDSS `StripExtension`: the bus name is everything before the first `.`
 /// (the node-list suffix). Lowercased, matching `getPDEatBus`.
 fn strip_ext(bus: &str) -> String {
@@ -98,6 +99,9 @@ fn strip_ext(bus: &str) -> String {
     }
 }
 
+// BUG(C2): `Dss` does the bookkeeping of `Solution` and `AdTearing` by writing their fields
+// (iteration counters, solved and abort flags, the clock). Methods of those types should do it,
+// with `Dss` only lending the children.
 impl Dss {
     /// Pascal `SendIdx2Actors()` (Diakoptics.pas:123): assign each child its
     /// `VIndex` (the offset of its bus 1 in the interconnected node list) and
@@ -168,8 +172,9 @@ impl Dss {
     /// Diakoptics state — `Start_Diakoptics` (only actors > 2, i.e. children
     /// beyond zone 1) then `IndexBuses`.
     pub(crate) fn ad_init_actors(&mut self) {
-        // Snapshot the coordinator node names (SrcBus) + a clone of Contours for
-        // the child index build — disjoint from the per-child borrows below.
+        // The coordinator node names (SrcBus) feed the child index build.
+        // BUG(C5): `Contours` is cloned to be read by the children, though `circuit` and
+        // `ad_children` are disjoint fields of `Dss` and destructuring `self` lends both.
         let (src_bus, contours) = {
             let Some(coord) = self.circuit.as_ref() else {
                 return;
@@ -294,6 +299,8 @@ impl Dss {
             }
         }
 
+        // BUG(C2): `Dss` writes the child's index maps into fields of `Solution`; a method of
+        // `Solution` should take them.
         ckt.solution.local_bus_idx = local_bus_idx;
         ckt.solution.ad_ibus = ad_ibus;
         ckt.solution.ad_isrc_idx = ad_isrc_idx;
@@ -401,6 +408,9 @@ impl Dss {
                 .as_mut()
                 .ok_or("A-Diakoptics coordinator gone")?;
             let ncols = coord.ad.contours.ncols();
+            // BUG(C5): every pass of the fixed-point loop builds a new `vpartial` and two new
+            // product matrices. That working storage belongs to `AdTearing`, which keeps it and
+            // reuses it between passes.
             let mut vpartial = SparseComplex::new();
             vpartial.init(ncols, 1);
             let mut my_row = 0usize;
@@ -471,6 +481,8 @@ impl Dss {
                     .push("No circuit for A-Diakoptics solve.".to_string());
                 return;
             };
+            // BUG(C2): `Dss` resets the solve flags of `Solution` and `Circuit` here and on the
+            // error path below by writing their fields; methods of those types should.
             ckt.solution.adiak_init = false;
             ckt.is_solved = false;
             ckt.solution_was_attempted = true;
@@ -509,6 +521,8 @@ impl Dss {
     fn ad_solve_direct(&mut self) -> SolveResult {
         {
             let coord = self.circuit.as_mut().ok_or("no coordinator")?;
+            // BUG(C2): here and after the solve below `Dss` writes the counters and flags of
+            // `Solution` and `Circuit` itself; methods of those types should.
             coord.solution.solution_count += 1;
             coord.solution.loads_need_updating = true;
             coord.solution.adiak_pcinj = false;
@@ -543,6 +557,8 @@ impl Dss {
         loop {
             {
                 let coord = self.circuit.as_mut().ok_or("no coordinator")?;
+                // BUG(C2): through this loop and after it `Dss` steps the iteration counters
+                // of `Solution` and sets the solved flags by field writes; methods should.
                 coord.solution.control_iteration += 1;
             }
             // SolveCircuit → DoPFLOWsolution(1) on the coordinator.
@@ -631,6 +647,8 @@ impl Dss {
         };
         {
             let coord = self.circuit.as_mut().ok_or("no coordinator")?;
+            // BUG(C2): through this loop `Dss` steps `Solution::iteration` and sets its flags
+            // by field writes; a method of `Solution` should.
             coord.solution.iteration = 0;
         }
         loop {
@@ -809,6 +827,8 @@ impl Dss {
         // transcription is the coordinator's live ControlMode for both).
         for child in self.ad_children.iter_mut() {
             if let Some(ckt) = child.circuit.as_mut() {
+                // BUG(C2): `Dss` writes the control-mode fields of each child's `Solution`
+                // itself; a method of `Solution` should take them.
                 ckt.solution.control_mode = mode;
                 ckt.solution.default_control_mode = mode;
                 ckt.solution.max_control_iterations = max_iter;
@@ -832,6 +852,8 @@ impl Dss {
         };
         if is_peak {
             let coord = self.circuit.as_mut().ok_or("no coordinator")?;
+            // BUG(C2): `Dss` resets the clock of `Solution` and sets its interval below by
+            // field writes; methods of `Solution` should.
             coord.solution.t = 0.0;
             coord.solution.int_hour = 0;
             coord.solution.dbl_hour = 0.0;
@@ -883,6 +905,8 @@ impl Dss {
         } else {
             coord.default_daily_shape_obj.as_mut()
         };
+        // BUG(C2): `Dss` writes `Circuit::default_hour_mult` itself; a method of `Circuit`
+        // should set it from the shape.
         match shape {
             Some(s) => coord.default_hour_mult = s.get_mult_at_hour(dbl_hour),
             None => {

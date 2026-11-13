@@ -9,6 +9,7 @@ use crate::support::pstcalc::pst_rms;
 use crate::util::{fmt_g, interpret_dbl_array};
 use dss_parser::Parser;
 
+// BUG(C2): `Dss` gathers the operations of its parts; it should only coordinate them.
 impl Dss {
     /// Pascal `DoPstCalc`. Sub-command table `PstCalcCommands = ['Npts',
     /// 'Voltages', 'dt', 'Frequency', 'lamp']` (`ExecHelper.pas:5067`).

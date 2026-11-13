@@ -4,6 +4,7 @@
 
 use super::*;
 
+// BUG(C2): `Dss` gathers the operations of its parts; it should only coordinate them.
 impl Dss {
     pub fn new() -> Self {
         let enums = EnumRegistry::new();

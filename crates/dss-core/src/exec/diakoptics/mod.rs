@@ -49,6 +49,8 @@ pub(crate) enum AdMsg {
     GetCtrlMode,
 }
 
+// BUG(C2): a free function that resolves an element from its `Class.Name` text by a scan over
+// all classes at each use. Link branches should be kept as typed handles, resolved once.
 /// Look up a circuit element by `Class.Name` (Pascal `SetElementActive(myName)`
 /// then read `ActiveCktElement`). Case-insensitive; `None` on a miss.
 ///

@@ -15,7 +15,10 @@ pub(in crate::exec) struct PosSeqReduction {
     pub(in crate::exec) order: Vec<ElemId>,
 }
 
+// BUG(C2): `Dss` gathers the operations of its parts; it should only coordinate them.
 impl Dss {
+    // BUG(C5): takes `&mut self` for an analysis that only reads `circuit` and `classes`;
+    // `&self` is the access it needs.
     /// Analyse the circuit for MakePosSequence. Every circuit element is
     /// checked in creation order, disabled ones included: the reason its own
     /// solve refuses it, then for a Fault its phase count and the passivity of
@@ -34,6 +37,8 @@ impl Dss {
             if let Some(message) = elem.pos_seq_refusal() {
                 return Err(PosSeqRefusal::SolveRefuses { message });
             }
+            // BUG(C5): the kind is compared and then `get::<Fault>` checks the class again at run
+            // time. The handle of a Fault should be typed, or the check a method of the element.
             if class.kind == Some(ElemKind::Fault)
                 && let Some(fault) = class.arena.get::<Fault>(r.index())
             {
@@ -54,6 +59,7 @@ impl Dss {
     }
 }
 
+// BUG(C2): a free function over one `Fault`; it should be a method of `Fault`.
 /// A one- or two-phase fault has no positive-sequence form, and a fault whose
 /// conductance is not passive has no passive one. The phase count is read
 /// first, since passivity is a property of a form that exists.

@@ -18,8 +18,12 @@ pub(crate) struct DssClass {
     pub(crate) props: ClassProps,
     /// This class's live objects — one typed `Vec<T>` (Pascal `ElementList`).
     pub(crate) arena: ClassArena,
+    // BUG(C2): a name maps to a bare `usize` position in `arena`, so a stale position cannot
+    // be told from a good one. The map should give a typed handle of an object of this class.
     /// Lowercased object name → index (Pascal `ElementNameList`, THashList).
     pub(crate) name_to_idx: HashMap<String, usize>,
+    // BUG(C2): the active object is a bare `usize` position in `arena`; it should be a typed
+    // handle of an object of this class.
     /// Active object index (`ActiveElement`).
     pub(crate) active: Option<usize>,
     /// Pascal `TDSSClass.RequiresCircuit` (circuit-element classes).

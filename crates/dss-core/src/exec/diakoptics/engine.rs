@@ -15,6 +15,7 @@ use crate::exec::Dss;
 use crate::solution::SolveEnv;
 use crate::solution::ymatrix::{BuildOption, build_y_matrix};
 
+// BUG(C2): `Dss` gathers the operations of its parts; it should only coordinate them.
 impl Dss {
     /// Pascal `ADiakoptics_Tearing(AddISrc)` (Diakoptics.pas:506): tear the
     /// circuit, snapshot-mode + controls-off + rebuild Y, and (unless the solve
@@ -45,6 +46,8 @@ impl Dss {
             return 1;
         }
         self.save_sub_circuits(add_isrc);
+        // BUG(C2): `Dss` writes `AdTearing::num_sub_ckts` itself; a method of `AdTearing`
+        // should take the count.
         if let Some(ckt) = self.circuit.as_mut() {
             ckt.ad.num_sub_ckts = num_ckts;
         }
@@ -80,6 +83,9 @@ impl Dss {
         }
     }
 
+    // BUG(C2): finds the element by a name scan over all classes at each use and writes
+    // `Solution::system_y_changed` itself. A link branch should be a typed handle, and
+    // `Solution` should take the change by a method.
     /// Enable/disable a circuit element by `Class.Name` on `self` (direct field
     /// mutation, Pascal `ActiveCktElement.Enabled := …`), forcing a Y rebuild but
     /// NOT a bus redefinition (Diakoptics.pas:666–670 sets `BusNameRedefined :=
@@ -115,6 +121,9 @@ impl Dss {
     /// Disable every EnergyMeter whose name contains `zone_` (Diakoptics.pas:620–
     /// 626): the per-zone meters are turned off in the interconnected coordinator.
     fn disable_zone_meters(&mut self) {
+        // BUG(C5): the meter list is copied so that the loop can borrow `classes` mutably.
+        // `circuit` and `classes` are disjoint fields of `Dss`, so the loop can read the list
+        // in place.
         let meters = match self.circuit.as_ref() {
             Some(c) => c.energy_meters.clone(),
             None => return,
@@ -152,6 +161,8 @@ impl Dss {
         // requested value; the AD gates therefore assume ≥ 4 cores (the count
         // is fixed per test, never derived, but this hard cap is ported for
         // fidelity).
+        // BUG(C2): here and through the rest of this function `Dss` writes the fields of
+        // `AdTearing` and `Solution` itself. Methods of those types should change them.
         if let Some(ckt) = self.circuit.as_mut()
             && ckt.ad.num_sub_ckts > cpu_cores - 2
         {

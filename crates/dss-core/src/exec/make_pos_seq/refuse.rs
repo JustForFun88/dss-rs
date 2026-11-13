@@ -210,6 +210,7 @@ impl PosSeqRefusal {
     }
 }
 
+// BUG(C2): a free function that formats an angle; it belongs to a type of the angle value.
 /// An angle in degrees with one decimal, in `[0, 360)` after the rounding.
 fn degrees(deg: f64) -> String {
     let tenths = (deg * 10.0).round().rem_euclid(3600.0) + 0.0;

@@ -8,6 +8,11 @@
 //! partitioner substitution and file round-trip live in
 //! [`crate::support::partition`] (`NOTE(subst-metis)` there).
 
+// BUG(C2): the helpers of this module are free functions. Those over the class list belong to
+// the class registry, those over the tearing state to `AdTearing`, the rest to the types of the
+// values they read.
+// BUG(C2): the code here writes fields of `Circuit`, `AdTearing` and `Solution` from outside
+// them, worst in `try_set_ad_option` and `Dss::place_zone_meters`; their methods should.
 use crate::circuit::{AdTearing, Circuit};
 use crate::exec::Dss;
 use crate::exec::registry::DssClass;
@@ -158,6 +163,7 @@ pub enum TearError {
     NoGraph,
 }
 
+// BUG(C2): a free function that fills the zone lists of `AdTearing`; it should be its method.
 /// Pascal `TDSSCircuit.Create_MeTIS_Zones` (official Circuit.pas:1350): partition
 /// the graph (here in-process via `dss-metis`) and translate the
 /// per-vertex zone labels into the `Locations`/`BusZones` boundary lists.
@@ -239,6 +245,8 @@ fn parse_element_list(value: &str) -> Vec<String> {
         .collect()
 }
 
+// BUG(C2): a second yes/no token parser beside `crate::util::interpret_yes_no`, with another
+// rule; a type of the yes/no token should own the one parse.
 /// Interpret a boolean option value (`YES/TRUE/Y/1` => true), the Pascal
 /// `InterpretYesNo` truthy set.
 fn interpret_yes_no(value: &str) -> bool {
@@ -248,6 +256,8 @@ fn interpret_yes_no(value: &str) -> bool {
     )
 }
 
+// BUG(C2): a free function that writes the fields of `AdTearing` and `Solution` from the
+// option table; the options should be methods of those types.
 /// Handle `set` of an A-Diakoptics option not present in the vendored
 /// `EXEC_OPTIONS` table (they are compiled out of the pinned oracle build,
 /// so registering them is a deliberate, recorded departure and they
@@ -307,10 +317,12 @@ pub(crate) fn try_set_ad_option(
             true
         }
         "adiakoptics" => {
-            // Official ExecOptions.pas:1100–1112: set true → `ADiakopticsInit`
-            // (deferred to `do_set_cmd`, which has `&mut Dss`); clear → flag only.
+            // Official ExecOptions.pas:1100–1112: set true → `ADiakopticsInit`;
+            // clear → flag only.
             let _ = errors;
             if interpret_yes_no(param) {
+                // BUG(C2): the init request is parked in `AdTearing::pending_ad_init` for
+                // `Dss::do_set_cmd` to poll and clear; this function should return it.
                 ckt.ad.pending_ad_init = true;
             } else {
                 ckt.solution.adiakoptics = false; // clear = flag only
@@ -369,6 +381,7 @@ pub(crate) fn try_get_ad_option(ckt: &Circuit, param_name: &str, result: &mut St
     }
 }
 
+// BUG(C2): `Dss` gathers the operations of its parts; it should only coordinate them.
 impl Dss {
     /// Pascal command `Tear_Circuit` (`ExecCommand[111]`) → `ADiakoptics_Tearing(
     /// AddISrc=False)` (Diakoptics.pas:506): tear the circuit into sub-circuits
@@ -498,6 +511,8 @@ impl Dss {
             &mut self.classes,
             self.circuit.as_mut().ok_or(TearError::NoGraph)?,
         );
+        // BUG(C5): the link branch list is cloned, then only read by `&self` calls; a shared
+        // borrow serves.
         let link_branches = self
             .circuit
             .as_ref()
@@ -554,6 +569,8 @@ impl Dss {
             return Err(TearError::NoGraph);
         }
 
+        // BUG(C5): the location list is cloned, then only read by the loop below, whose calls
+        // take `&self`; a shared borrow serves.
         let locations = self
             .circuit
             .as_ref()
@@ -568,9 +585,9 @@ impl Dss {
 
         // Meter commands to issue after releasing the circuit borrow.
         let mut meter_cmds: Vec<String> = Vec::new();
-        // Deferred `get_Line_Bus` "Line not found" errors (Circuit.pas:1198,
-        // 5008) — collected here and flushed after the loop so the honest error
-        // surfaces for a non-Line link without a mid-loop `&mut self` borrow.
+        // `get_Line_Bus` "Line not found" errors (Circuit.pas:1198, 5008) for a non-Line link.
+        // BUG(C5): they are queued and flushed after the loop to keep `&mut self` out of it,
+        // though `errors` is a field of `Dss` apart from `circuit`; the loop can push each one.
         let mut line_errors: Vec<crate::diag::DssDiagnostic> = Vec::new();
 
         for (i, &loc) in locations.iter().enumerate() {
@@ -602,6 +619,8 @@ impl Dss {
                     None => String::new(),
                 }
             };
+            // BUG(C2): the link branch is kept as a name string and found again by a name scan
+            // over the classes at each use; it should be a typed handle.
             link_branches[i] = pde.clone();
 
             // Point of connection = bus 2 of the link **line**, dot-stripped
@@ -643,6 +662,8 @@ impl Dss {
         }
 
         // Write the captured arrays back (Circuit.pas fills them in place).
+        // BUG(C2): `Dss` writes the arrays of `AdTearing` and the abort flag of `Solution`
+        // itself; methods of those types should take them.
         if let Some(ckt) = self.circuit.as_mut() {
             ckt.ad.link_branches = link_branches;
             ckt.ad.pconn_names = pconn_names;
@@ -696,6 +717,9 @@ impl Dss {
     /// Disable every EnergyMeter (Circuit.pas:1941–1946: `EMeter.Enabled :=
     /// False`). Direct field mutation (no bus redefinition), like the Pascal.
     fn disable_all_energy_meters(&mut self) {
+        // BUG(C5): the meter list is copied so that the loop can borrow `classes` mutably.
+        // `circuit` and `classes` are disjoint fields of `Dss`, so the loop can read the list
+        // in place.
         let meters = match self.circuit.as_ref() {
             Some(c) => c.energy_meters.clone(),
             None => return,
@@ -733,6 +757,8 @@ impl Dss {
     }
 }
 
+// BUG(C2): a free function that finds the element by a name scan over all classes at each use;
+// link branches should be typed handles, resolved once.
 /// The dot-stripped **bus 2** name of a PDE by `Class.Name`
 /// (`SetElementActive(myPDE); ActiveCktElement.GetBus(2)`), or `None` when the
 /// element cannot be resolved. Used by `get_PDE_Bus1_Location` (the Pascal name
@@ -761,6 +787,8 @@ fn pde_bus2_name(classes: &[DssClass], full_name: &str) -> Option<String> {
     None
 }
 
+// BUG(C2): a free function that finds the Line by a name scan of the classes at each use;
+// the link branch should be a typed handle of the Line.
 /// Pascal `TDSSCircuit.get_Line_Bus(LName, NBus)` (Circuit.pas:1167): the bus
 /// name at terminal `nbus` (1-based) of the **Line** named `lname`. Searches only
 /// the `Line` class (like the Pascal `WITH ActiveCircuit.Lines DO` loop); returns

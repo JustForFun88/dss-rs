@@ -19,6 +19,11 @@
 //! - the matrix-parallel merge reproduces the upstream `Len/2` "assume equal"
 //!   TODO.
 
+// BUG(C2): the reduction writes fields of `Line`, `CktElementData` and `Circuit` from `Dss`, and
+// its helpers are free functions. The writes belong to methods of those types, the helpers to
+// the types they read.
+// BUG(C5): element access checks the class at run time (`arena.get::<T>`) to reach a `Line` or
+// an `EnergyMeter` from a bare handle; a typed handle should give the element.
 use super::*;
 use crate::circuit::ReductionStrategy;
 use crate::circuit::ckt_tree::CktTree;
@@ -38,6 +43,9 @@ fn get_node_string(bus_name: &str) -> &str {
     }
 }
 
+// BUG(C5): a copy of a `Line`'s fields, matrices included, taken only to be read while `Dss` is
+// borrowed mutably. A `Line` merge method that reads the other line through a shared borrow
+// replaces it.
 /// The subset of a `TLineObj`'s state `MergeWith` reads from either line.
 struct LineSnap {
     name: String,
@@ -63,6 +71,9 @@ struct LineSnap {
     geom_or_spacing: bool,
 }
 
+// BUG(C2): `Dss` does the network reduction itself: it merges lines, renames objects in
+// `DssClass` and walks the meter's branch tree. `Line`, the class registry and the meter zone
+// tree should own that work, with `Dss` only coordinating.
 impl Dss {
     // ------------------------------------------------------------------
     // Small element predicates/reads over the class registry.
@@ -128,6 +139,9 @@ impl Dss {
         self.red_drain_signal(r);
     }
 
+    // BUG(C2): reads and clears the signal flags an edit parks on `CktElementData` and writes
+    // `Circuit` and `Solution` fields itself, as `red_drain_all` does for every element. The
+    // edit should return its effects, and `Circuit` apply them by a method.
     /// Drain one element's `signal_bus_name_redefined` / yprim-invalid signals
     /// into the circuit (the `edit_active` tail, applied for direct mutations
     /// that bypass the edit loop).
@@ -157,11 +171,16 @@ impl Dss {
         let Some(ckt) = self.circuit.as_ref() else {
             return;
         };
+        // BUG(C5): the element list is copied because each drain takes `&mut self` and writes
+        // the circuit. With the drain returning its effects, the loop reads the list in place.
         for r in ckt.ckt_elements.clone() {
             self.red_drain_signal(r);
         }
     }
 
+    // BUG(C2): the element and the edit text reach `Dss::edit_active` by writing `active_class`,
+    // `DssClass::active` and the parser. The edit should take the object and the text as
+    // arguments.
     /// Edit the element at `r` with a property command string, reusing the
     /// executive edit path (Pascal `Parser.CmdString := …; Elem.Edit(Parser)` /
     /// `SetDouble`/`SetInteger` via `ParsePropertyValue`). The `edit_active`
@@ -421,6 +440,8 @@ impl Dss {
         } else {
             // Matrix model, series (r4133 Line.pas:1735, the `Else` of the branch
             // above).
+            // BUG(C5): `z` and `yc` of this line are copied, combined with the other line's and
+            // written back below. A `Line` merge method combines them in place.
             let (Some(mut zvals), Some(mut ycvals)) = (this.z.clone(), this.yc.clone()) else {
                 return false;
             };
@@ -448,6 +469,8 @@ impl Dss {
                 }
             }
 
+            // BUG(C2): `Dss` writes `Line::z`, `Line::yc` and `Line::len` directly; a merge
+            // method of `Line` should set them.
             if let Some(l) = self.red_as_line_mut(self_ref) {
                 l.z = Some(zvals);
                 l.yc = Some(ycvals);
@@ -569,6 +592,8 @@ impl Dss {
             return;
         };
         let new_full = self.red_full_name(new_ref);
+        // BUG(C5): the control list is copied so that the loop can call `&mut self` methods.
+        // Narrowed to the classes and the edit it needs, the loop reads the list in place.
         for cr in ckt.controls.clone() {
             let monitored = control_data_mut(&mut self.classes[cr.class_ord()].arena, cr.index())
                 .and_then(|ccd| ccd.monitored_element);
@@ -767,6 +792,8 @@ impl Dss {
             // of the same procedure (`:246-258`) spells the identical loop
             // with a single cursor is what makes the parent branch a slip
             // rather than a rule, so neither lane reproduces it (`issue-31`).
+            // BUG(C5): each shunt list in this function is copied, though the tree is an
+            // argument apart from `self` that nothing here changes; a borrow of the list serves.
             let parent_shunts = tree.node(parent).shunts.clone();
             if parent_shunts.iter().any(|&s| self.red_is_cap_or_reactor(s)) {
                 return false;
@@ -920,6 +947,8 @@ impl Dss {
                     loop {
                         let p = tree.present.expect("present set");
                         let cur = tree.node(p).elem;
+                        // BUG(C5): the shunt list is copied, though the tree is an argument
+                        // apart from `self`; a borrow of the list serves the edits.
                         let shunts = tree.node(p).shunts.clone();
                         for s in shunts {
                             let cmd = format!("Bus1={bus_name} kV={} ", fmt6(head_base_kv));
@@ -993,6 +1022,8 @@ impl Dss {
                 fmt_g(load_base_kv),
                 edit_str
             );
+            // BUG(C2): the property text reaches `Dss::add_object` through the parser; it should
+            // be an argument of the call.
             self.parser.set_cmd_string(&cmd);
             self.add_object("Load", &new_load_name);
         }
@@ -1001,6 +1032,8 @@ impl Dss {
         loop {
             let p = tree.present.expect("present set");
             let cur = tree.node(p).elem;
+            // BUG(C5): the shunt list is copied, though the tree is an argument apart from
+            // `self`; a borrow of the list serves the disables.
             let shunts = tree.node(p).shunts.clone();
             for s in shunts {
                 self.red_disable(s);
@@ -1129,6 +1162,8 @@ impl Dss {
             return Complex64::ZERO;
         };
         let sys = crate::solution::sys_ctx(ckt);
+        // BUG(C5): the node voltages are copied only to be read beside the element. `circuit`
+        // and `classes` are already split here, so `&ckt.solution.node_v` serves.
         let node_v = ckt.solution.node_v.clone();
         let Some(elem) = classes[r.class_ord()].arena.try_ckt_elem_mut(r.index()) else {
             return Complex64::ZERO;
@@ -1187,6 +1222,9 @@ impl Dss {
             }
         }
 
+        // BUG(C5): the branch tree is moved out of the `EnergyMeter` so that the strategies can
+        // take `&mut self`, and put back below unless the reprocess built a fresh one. The
+        // strategies should borrow the tree beside the other elements they change.
         let Some(mut tree) = self.take_meter_tree(meter_ref) else {
             return;
         };
@@ -1222,6 +1260,8 @@ impl Dss {
         }
     }
 
+    // BUG(C5): with `put_meter_tree`, a checkout that moves the branch tree out of its
+    // `EnergyMeter` and back; the callers should borrow the tree in place.
     fn take_meter_tree(&mut self, meter_ref: ElemId) -> Option<CktTree> {
         energymeter_mut(&mut self.classes, meter_ref).and_then(|m| m.take_branch_list())
     }
@@ -1326,6 +1366,9 @@ impl Dss {
             return;
         }
 
+        // BUG(C5): the branch tree is moved out of the `EnergyMeter` only so that
+        // `red_remove_branches` can take `&mut self`; the zone rebuild replaces it and the taken
+        // one is dropped. The removal should borrow the tree beside the elements it disables.
         let Some(mut tree) = self.take_meter_tree(meter_ref) else {
             return;
         };
@@ -1366,6 +1409,8 @@ fn energymeter_mut(
         .get_mut::<crate::elements::meter::energymeter::EnergyMeter>(r.index())
 }
 
+// BUG(C5): finds `ControlElemData` by trying each control class at run time, each arm probing
+// with a shared lookup before the mutable one. A control trait method should return it.
 /// Access a control element's [`ControlElemData`] for the `UpdateControlElements`
 /// repoint. Covers every control class that carries a `MonitoredElement`.
 fn control_data_mut(
@@ -1373,10 +1418,8 @@ fn control_data_mut(
     idx: usize,
 ) -> Option<&mut ControlElemData> {
     use crate::elements::control::*;
-    // The shared probe borrows immutably (ends immediately); the mutable
-    // `get_mut` only happens on the returning branch, so the borrows never
-    // overlap. Each arm is a static `ArenaClass` match on the arena variant, so
-    // at most one can hit.
+    // Each arm is a static `ArenaClass` match on the arena variant, so at most
+    // one can hit.
     macro_rules! try_ccd {
         ($($ty:path),* $(,)?) => {$(
             if arena.get::<$ty>(idx).is_some() {
@@ -1405,6 +1448,8 @@ fn fmt6(v: f64) -> String {
     crate::report::format::g(v, 6)
 }
 
+// BUG(C2): a second `%g` formatter beside `crate::util::fmt_g`; a type of the number text should
+// own the one format.
 /// Pascal `Format('%g', v)` for the equivalent-load kW/kvar/kV (FPC `%g`
 /// default precision = 15 significant digits — the `distribute` convention).
 fn fmt_g(v: f64) -> String {
