@@ -25,6 +25,8 @@ const UM: u64 = 0xFFFF_FFFF_8000_0000;
 /// Least significant 31 bits.
 const LM: u64 = 0x7FFF_FFFF;
 
+// BUG(C5): `Rng` derives `Clone` while every draw mutates its state; a type that owns
+// mutable state is not `Clone`.
 /// The MT19937-64 generator state (`random.c` `mt[NN]` + `mti`).
 #[derive(Clone)]
 pub struct Rng {

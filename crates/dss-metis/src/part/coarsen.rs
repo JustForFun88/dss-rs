@@ -9,6 +9,9 @@
 // rewrites clippy suggests would obscure the 1:1 correspondence.
 #![allow(clippy::needless_range_loop)]
 
+// BUG(C2): the routines of this module are free functions over `WGraph`, `Ctrl` and the
+// generator, with free helpers over their values; each is a method of the type whose data it
+// changes, the matching and contraction of the graph level they coarsen.
 use super::{Ctrl, WGraph};
 use crate::Idx;
 use crate::rng::Rng;
@@ -138,6 +141,8 @@ fn matching_preamble(rng: &mut Rng, graph: &WGraph) -> (Vec<Idx>, Vec<Idx>, Idx)
     (match_, perm, avgdegree)
 }
 
+// BUG(C5): takes `&mut Ctrl` to read `maxvwgt[0]` and pass it on to `finalize_matching`; it
+// gets the weight limit and the 2-hop switch by value.
 /// `Match_RM` (`coarsen.c:153`), `ncon == 1`: random (first-fit) matching.
 fn match_rm(ctrl: &mut Ctrl, rng: &mut Rng, graph: &mut WGraph) -> WGraph {
     let nvtxs = graph.nvtxs as usize;
@@ -189,6 +194,8 @@ fn match_rm(ctrl: &mut Ctrl, rng: &mut Rng, graph: &mut WGraph) -> WGraph {
     finalize_matching(ctrl, rng, graph, &mut match_, &perm, nunmatched)
 }
 
+// BUG(C5): takes `&mut Ctrl` to read `maxvwgt[0]` and pass it on to `finalize_matching`; it
+// gets the weight limit and the 2-hop switch by value.
 /// `Match_SHEM` (`coarsen.c:294`), `ncon == 1`: sorted heavy-edge matching.
 fn match_shem(ctrl: &mut Ctrl, rng: &mut Rng, graph: &mut WGraph) -> WGraph {
     let nvtxs = graph.nvtxs as usize;
@@ -244,6 +251,8 @@ fn match_shem(ctrl: &mut Ctrl, rng: &mut Rng, graph: &mut WGraph) -> WGraph {
     finalize_matching(ctrl, rng, graph, &mut match_, &perm, nunmatched)
 }
 
+// BUG(C5): takes `&mut Ctrl` to read `no2hop` and a generator it never uses; it gets the
+// 2-hop switch by value and no generator.
 /// The shared tail of `Match_RM`/`Match_SHEM` (`coarsen.c:260`): optional 2-hop
 /// matching, the self-match + cmap renumber pass, then `CreateCoarseGraph`.
 fn finalize_matching(

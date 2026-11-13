@@ -28,6 +28,9 @@
 //! the C's implicit-conversion order preserved (see the `_r`/`_i` helpers and
 //! the site comments), because `f32` rounding order is part of the contract.
 
+// BUG(C2): the functions of this module are free: `setup_ctrl_kmetis` is the constructor of
+// `Ctrl`, `setup_kway_bal_multipliers` a method of `Ctrl`, `part_graph_kway` a plain `pub fn`
+// in place of a method of a partitioner type, and the numeric helpers belong to their values.
 mod coarsen;
 mod kway;
 mod recursive;
@@ -44,6 +47,8 @@ pub(crate) struct CkrInfo {
     pub ed: Idx,
     /// Number of neighboring subdomains.
     pub nnbrs: Idx,
+    // BUG(C2): a bare offset into `Ctrl::cnbrpool`, a vector of another owner, valid only until
+    // the next pool reset; the neighbour list is a typed handle that the pool hands out.
     /// Index into [`Ctrl::cnbrpool`] of this vertex's `nnbrs` neighbor list,
     /// or `-1`.
     pub inbr: Idx,
@@ -56,6 +61,9 @@ pub(crate) struct Cnbr {
     pub ed: Idx,
 }
 
+// BUG(C2): every field is open to the crate, and the free functions of the submodules read and
+// rewrite them, reallocating whole vectors and the `nbnd` and `mincut` counters; the fields are
+// private and each change is a method of `WGraph` or of its parts.
 /// The internal CSR graph plus partition/refinement state (`struct graph_t`,
 /// `struct.h:82`), restricted to the fields the CUT/`ncon==1` path uses. The
 /// coarser/finer linked list is represented externally as the `Vec<WGraph>`
@@ -127,6 +135,9 @@ impl WGraph {
     }
 }
 
+// BUG(C2): the run parameters and the `cnbrpool` working storage share one open struct, and
+// code outside `Ctrl` resets the pool and moves its cursor by hand beside `cnbrpool_reset` and
+// `cnbrpool_get_next`; the pool is a part with private fields and its own methods.
 /// The run-parameter control block (`struct ctrl_t`, `struct.h:148`), reduced to
 /// the fields the CUT/`ncon==1` path reads. Built for either the k-way top level
 /// (`SetupCtrl(METIS_OP_KMETIS)`) or the recursive-bisection sub-invocation
@@ -193,6 +204,8 @@ fn gk_log2(mut a: Idx) -> Idx {
     i - 1
 }
 
+// BUG(C5): takes `&mut Rng` only to overwrite it with a generator seeded as its caller has
+// just seeded it; it gets no generator.
 /// `SetupCtrl(METIS_OP_KMETIS, ...)` (`options.c:17`) specialized to the default
 /// options and `tpwgts == NULL`, `ubvec == NULL`. Reseeds the RNG
 /// (`InitRandom(-1)` => `isrand(4321)`) exactly as the C does at every
@@ -279,6 +292,8 @@ pub fn part_graph_kway(
     graph.nvtxs = nvtxs;
     graph.nedges = nedges;
     graph.ncon = ncon;
+    // BUG(C5): the caller's CSR slices are copied into the finest `WGraph`, which only reads
+    // them; a `WGraph` that borrows its CSR reads the caller's arrays in place.
     graph.xadj = xadj.to_vec();
     graph.adjncy = adjncy.to_vec();
     graph.vwgt = match vwgt {

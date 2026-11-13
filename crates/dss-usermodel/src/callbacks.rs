@@ -228,6 +228,9 @@ pub(crate) enum Fault {
     },
 }
 
+// BUG(C2): `CallData` exposes every field to the crate, and the import closures, the fault
+// helpers and `Sandbox` change them from outside; its fields are private and each change is a
+// method of `CallData`.
 /// Per-instance store state: the pre-call context snapshot, the owned
 /// AuxParser (tier C — Pascal `CallBackParser`, a plain `TDSSParser`
 /// instance), the tier-B effect queue, the tier-C deferred DSS-command

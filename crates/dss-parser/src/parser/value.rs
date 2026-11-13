@@ -11,6 +11,8 @@ use super::error::ParserError;
 
 const VARIABLE_DELIMITER: char = '@';
 
+// BUG(C2): a free function that applies one token to an `RPNCalculator`; it is a method of
+// `RPNCalculator`.
 /// Apply one token to the RPN calculator (Pascal `ProcessRPNCommand`):
 /// numbers enter the X register, anything else must be a known operation.
 fn process_rpn_command(token: &str, rpn: &mut RPNCalculator) -> Result<(), ParserError> {
@@ -50,16 +52,22 @@ fn process_rpn_command(token: &str, rpn: &mut RPNCalculator) -> Result<(), Parse
     Ok(())
 }
 
+// BUG(C2): `Parser` does the work of its untyped parts here (scanner state, span record).
 impl Parser {
     /// Substitute an `@variable` token in place (the parser's own use of
     /// Pascal `CheckForVar`, operating on the current token buffer).
     pub(super) fn check_for_var(&mut self, vars: &ParserVars) -> bool {
+        // BUG(C5): the token is moved out of the parser and put back below so that
+        // `check_for_var_in`, which takes the whole parser, can change it; direct access is a
+        // substitution that borrows `token_buffer` and writes only the quoted flag.
         let mut token = std::mem::take(&mut self.token_buffer);
         let changed = self.check_for_var_in(vars, &mut token);
         self.token_buffer = token;
         changed
     }
 
+    // BUG(C5): takes the whole `Parser` mutably and writes only `is_quoted_string`; the
+    // scanner state it changes is a part of its own, and the substitution borrows only that.
     /// Substitute an `@variable` in a caller-provided token (the public
     /// Pascal `CheckforVar(var TokenBuffer_)`, used e.g. when resolving
     /// object names). The variable name runs to the first `.` — or `^`,
@@ -109,6 +117,9 @@ impl Parser {
     pub fn next_param(&mut self, vars: &ParserVars) -> String {
         if self.position < self.cmd_buffer.len() {
             self.last_delimiter = b' ';
+            // BUG(C5): the command line is moved out and put back below so that
+            // `get_token_at`, which takes the whole parser mutably, can read it; direct access
+            // is a scanner that borrows the line shared and the token and span fields mutably.
             let buf = std::mem::take(&mut self.cmd_buffer);
             let mut pos = self.position;
             self.token_buffer = self.get_token_at(&buf, &mut pos);
@@ -259,6 +270,8 @@ impl Parser {
         let mut pos = 0usize;
 
         self.skip_white_space(&parse_buffer, &mut pos);
+        // BUG(C2): each RPN token reaches `check_for_var` through `token_buffer`, which this
+        // function uses as its scratch; the token is an argument of the substitution.
         self.token_buffer = self.get_token_at(&parse_buffer, &mut pos);
         if self.check_for_var(vars) {
             cnt += 1;
@@ -272,7 +285,9 @@ impl Parser {
         }
 
         let result = self.rpn.get_x();
-        // prepare for the next trip (vector rows continue past RPN entries)
+        // BUG(C2): the unscanned rest is left in `token_buffer` as the input of the call for the
+        // next row (vector rows continue past RPN entries); it is the return value of this call
+        // and an argument of the next.
         self.token_buffer = parse_buffer.get(pos..).unwrap_or("").to_string();
         Ok((result, cnt > 1))
     }

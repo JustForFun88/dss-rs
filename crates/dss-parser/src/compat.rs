@@ -9,6 +9,8 @@
 #[cfg(test)]
 mod tests;
 
+// BUG(C2): the rounding kernels below are free functions over a bare number; a number type
+// of the deck language owns them as methods.
 /// Which lane this crate was compiled in, `true` in the parity lane. The tests
 /// read it to state a per-lane expectation.
 pub use dss_compat::OPENDSS_PARITY;

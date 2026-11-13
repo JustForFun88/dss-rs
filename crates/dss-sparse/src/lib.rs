@@ -87,6 +87,9 @@ struct AssembleCache {
     cell_vals: Vec<Complex64>,
 }
 
+// BUG(C2): `SparseSet` does the work of its parts: it checks, replays and builds the
+// `AssembleCache`, which has no operations, and keeps the row equilibration (`row_scale`,
+// `scaled`, `pattern_reused`) field by field; each part owns its fields and operations.
 /// A complex sparse matrix with LU factorization, sized at construction.
 ///
 /// Lifecycle mirrors how the DSS engine drives KLUSolve:
@@ -352,6 +355,8 @@ impl SparseSet {
         let mut parent: Vec<usize> = (0..self.n).collect();
         let mut rank = vec![0usize; self.n];
 
+        // BUG(C2): `find` and `union` are free functions over the loose `parent` and `rank`
+        // arrays; a disjoint-set type owns the arrays and both operations.
         // Iterative two-pass path compression (KLUSolve `FindIslands` uses a
         // loop): recursion would overflow the stack on a degenerate ~8500-node
         // chain where the union tree is a long path before compression.

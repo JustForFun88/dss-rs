@@ -6,6 +6,7 @@ use crate::vars::ParserVars;
 use super::Parser;
 use super::error::ParserError;
 
+// BUG(C2): `Parser` does the work of its untyped parts here (character classes, scanner state).
 impl Parser {
     /// Split `"busname.1.2.3"` into the bus name and its node numbers
     /// (Pascal `ParseAsBusName`). Without a dot the whole token is the name
@@ -23,6 +24,9 @@ impl Parser {
             return Ok((self.token_buffer.clone(), Vec::new()));
         };
         let name = self.token_buffer[..dot_pos].trim().to_string();
+        // BUG(C2): each node token and the `.` delimiter reach `get_token_at` and `make_integer`
+        // through `token_buffer` and `delim_chars`, which are overridden here and below and
+        // restored after the loop; they are arguments of those calls.
         let token_save = std::mem::take(&mut self.token_buffer);
         let node_buffer = format!("{} ", &token_save[dot_pos + 1..]);
 
@@ -71,6 +75,9 @@ impl Parser {
 
         let parse_buffer = format!("{} ", self.token_buffer);
         let mut pos = 0usize;
+        // BUG(C2): `|` is pushed onto `delim_chars` here and the set restored after the loop so
+        // that `get_token_at` stops at a row end, and each element reaches `make_double` through
+        // `token_buffer`; the delimiter set and the element are arguments of those calls.
         let delim_save = self.delim_chars.clone();
         self.delim_chars.push(self.matrix_row_terminator as char);
         let mut error = None;
@@ -97,7 +104,8 @@ impl Parser {
         }
 
         self.delim_chars = delim_save; // restore original delimiters
-        // prepare for the next trip (the following matrix row)
+        // BUG(C2): the unscanned rest is left in `token_buffer` as the input of the call for the
+        // following matrix row; it is the return value of this call and an argument of the next.
         self.token_buffer = parse_buffer.get(pos..).unwrap_or("").to_string();
         if do_round {
             let stored = num_elements.min(out.len());
@@ -128,6 +136,9 @@ impl Parser {
 
         let parse_buffer = format!("{} ", self.token_buffer);
         let mut pos = 0usize;
+        // BUG(C2): `|` is pushed onto `delim_chars` here and the set restored after the loop so
+        // that `get_token_at` stops at a row end, and each element reaches `make_complex` through
+        // `token_buffer`; the delimiter set and the element are arguments of those calls.
         let delim_save = self.delim_chars.clone();
         self.delim_chars.push(self.matrix_row_terminator as char);
 
@@ -147,7 +158,8 @@ impl Parser {
         }
 
         self.delim_chars = delim_save; // restore original delimiters
-        // prepare for the next trip (the following matrix row)
+        // BUG(C2): the unscanned rest is left in `token_buffer` as the input of the call for the
+        // following matrix row; it is the return value of this call and an argument of the next.
         self.token_buffer = parse_buffer.get(pos..).unwrap_or("").to_string();
         num_elements
     }

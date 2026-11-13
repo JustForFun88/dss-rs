@@ -65,6 +65,7 @@ pub(crate) struct FuncSpec {
     pub(crate) results: &'static [ValType],
 }
 
+// BUG(C2): a free function that builds a `FuncSpec`; it is the constructor of `FuncSpec`.
 const fn spec(
     name: &'static str,
     params: &'static [ValType],
@@ -298,6 +299,8 @@ impl UserModelHost {
     }
 }
 
+// BUG(C2): a free function that checks a module against an interface; it is an operation of
+// `InterfaceKind`.
 /// Export-set validation (ABI doc §1): `memory`, `dss_alloc`, then the
 /// interface functions in the Pascal binding order — the first missing name
 /// is reported exactly (the 569/1569 path). A present export with the wrong
@@ -332,6 +335,8 @@ fn validate_exports(
     Ok(())
 }
 
+// BUG(C2): a free function that checks one export against its spec; it is a method of
+// `FuncSpec`.
 /// Presence + exact-signature check of one required function export.
 fn check_func(model: &str, module: &wasmi::Module, spec: &FuncSpec) -> Result<(), UserModelError> {
     match module.get_export(spec.name) {

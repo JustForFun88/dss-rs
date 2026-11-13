@@ -13,6 +13,8 @@
 // Index-based loops mirror the C source operation-for-operation; see coarsen.rs.
 #![allow(clippy::needless_range_loop)]
 
+// BUG(C2): the routines of this module are free functions over `WGraph`, `Ctrl` and the level
+// chain, with free helpers over their parts; each is a method of the type whose data it changes.
 use super::coarsen::coarsen_graph;
 use super::{Ctrl, WGraph, i2rubfactor};
 use crate::pqueue::Rpq;
@@ -73,6 +75,8 @@ pub(super) fn init_kway_partitioning(ctrl: &Ctrl, rng: &mut Rng, cgraph: &mut WG
     pg.nvtxs = cgraph.nvtxs;
     pg.nedges = cgraph.nedges;
     pg.ncon = 1;
+    // BUG(C5): the coarsest graph's CSR arrays are cloned into a new `WGraph` that the
+    // bisection only reads; a `WGraph` that borrows its CSR reads the arrays of `cgraph`.
     pg.xadj = cgraph.xadj.clone();
     pg.adjncy = cgraph.adjncy.clone();
     pg.vwgt = cgraph.vwgt.clone();
@@ -85,7 +89,9 @@ pub(super) fn init_kway_partitioning(ctrl: &Ctrl, rng: &mut Rng, cgraph: &mut WG
     let mut part = vec![0 as Idx; n];
 
     // MlevelRecursiveBisection(pctrl, pg, nparts, part, pctrl.tpwgts, 0).
-    // tpwgts is scaled in place across the recursion; work on a local copy.
+    // BUG(C5): the target weights, scaled in place across the recursion, are cloned out of
+    // `pctrl` because the bisection takes `&mut Ctrl` beside them; nothing on that path reads
+    // `ctrl.tpwgts`, so it borrows `&mut pctrl.tpwgts` with the narrower parts of `Ctrl`.
     let mut tpwgts = pctrl.tpwgts.clone();
     mlevel_recursive_bisection(&mut pctrl, rng, pg, nparts, &mut part, &mut tpwgts, 0);
 
@@ -648,6 +654,7 @@ fn balance_2way(ctrl: &Ctrl, rng: &mut Rng, graph: &mut WGraph, ntpwgts: &[Real]
 
 /// `Bnd2WayBalance` (`balance.c:41`), `ncon == 1`.
 fn bnd_2way_balance(ctrl: &Ctrl, rng: &mut Rng, graph: &mut WGraph, ntpwgts: &[Real]) {
+    // BUG(C5): the function takes `ctrl` and discards it here; it gets no `Ctrl`.
     let _ = ctrl;
     let nvtxs = graph.nvtxs as usize;
     let mut moved = vec![-1 as Idx; nvtxs];
@@ -670,6 +677,9 @@ fn bnd_2way_balance(ctrl: &Ctrl, rng: &mut Rng, graph: &mut WGraph, ntpwgts: &[R
         }
     }
 
+    // BUG(C5): `mincut` and `nbnd` are copied out of the graph, updated and written back after
+    // the loop; the boundary calls borrow `graph.bndind` and `graph.bndptr` beside the count,
+    // so the loop changes `graph.mincut` and `graph.nbnd` in place.
     let mut mincut = graph.mincut;
     let mut nbnd = graph.nbnd;
     for _nswaps in 0..nvtxs {
@@ -735,6 +745,7 @@ fn bnd_2way_balance(ctrl: &Ctrl, rng: &mut Rng, graph: &mut WGraph, ntpwgts: &[R
 
 /// `General2WayBalance` (`balance.c:169`), `ncon == 1`.
 fn general_2way_balance(ctrl: &Ctrl, rng: &mut Rng, graph: &mut WGraph, ntpwgts: &[Real]) {
+    // BUG(C5): the function takes `ctrl` and discards it here; it gets no `Ctrl`.
     let _ = ctrl;
     let nvtxs = graph.nvtxs as usize;
     let mut moved = vec![-1 as Idx; nvtxs];
@@ -756,6 +767,9 @@ fn general_2way_balance(ctrl: &Ctrl, rng: &mut Rng, graph: &mut WGraph, ntpwgts:
         }
     }
 
+    // BUG(C5): `mincut` and `nbnd` are copied out of the graph, updated and written back after
+    // the loop; the boundary calls borrow `graph.bndind` and `graph.bndptr` beside the count,
+    // so the loop changes `graph.mincut` and `graph.nbnd` in place.
     let mut mincut = graph.mincut;
     let mut nbnd = graph.nbnd;
     for _nswaps in 0..nvtxs {
@@ -834,6 +848,7 @@ fn fm_2way_cut_refine(
     ntpwgts: &[Real],
     niter: Idx,
 ) {
+    // BUG(C5): the function takes `ctrl` and discards it here; it gets no `Ctrl`.
     let _ = ctrl;
     let nvtxs = graph.nvtxs as usize;
     let mut moved = vec![-1 as Idx; nvtxs];
@@ -867,6 +882,9 @@ fn fm_2way_cut_refine(
         let mut newcut = graph.mincut;
         let mut mindiff = (tpwgts[0] - graph.pwgts[0]).abs();
 
+        // BUG(C5): `nbnd` is copied out of the graph, updated and written back after the pass;
+        // the boundary calls borrow `graph.bndind` and `graph.bndptr` beside the count, so the
+        // pass changes `graph.nbnd` in place.
         let mut nbnd = graph.nbnd;
         rng.rand_array_permute(nbnd, &mut perm, nbnd, 1);
         for ii in 0..nbnd as usize {
@@ -1133,6 +1151,9 @@ fn split_graph_part(graph: &WGraph) -> (WGraph, WGraph) {
 
 //======================= small helpers =======================
 
+// BUG(C2): `bnd_insert` and `bnd_delete` are free functions over the boundary list (`nbnd`,
+// `bndind`, `bndptr`) of a `WGraph`, and the crate defines them twice; a boundary-list type
+// owns the three fields and both operations.
 /// `BNDInsert`/`ListInsert` (`macros.h:46`).
 #[inline]
 fn bnd_insert(nbnd: &mut Idx, bndind: &mut [Idx], bndptr: &mut [Idx], v: Idx) {

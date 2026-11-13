@@ -1,6 +1,8 @@
 //! FPC `Val`/`Round` number conversions used by the token converters, verified
 //! empirically against the reference engine (`tools/golden/probe_val.py`).
 
+// BUG(C2): the conversions below are free functions over a token string; a token type owns
+// them as methods, and `pascal_round_to_i32` only forwards to `crate::compat::round_i32`.
 /// FPC `Val` for doubles. Rust's `f64::from_str` matches it on every probed
 /// case except the verbose `infinity` spelling, which is rejected here.
 ///

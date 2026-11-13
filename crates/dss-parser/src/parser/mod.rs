@@ -39,6 +39,9 @@ mod value;
 pub use convert::{val_f64, val_i32};
 pub use error::ParserError;
 
+// BUG(C2): `Parser` keeps its character classes, its token span record and its scanner
+// state as loose fields and does their work itself; each is a part with a type that owns
+// its fields and its operations.
 /// The DSS command tokenizer (Pascal `TDSSParser`).
 ///
 /// Methods that can substitute `@variables` or evaluate inline RPN take the

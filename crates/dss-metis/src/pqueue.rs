@@ -36,6 +36,7 @@ pub struct Rpq {
     locator: Vec<isize>,
 }
 
+// BUG(C2): a free function; the priority order is an operation of the queue's key type.
 /// `KEY_LT(a, b)` for the `key_gt` comparator (`gklib.c:32`): the queue orders
 /// by "a has higher priority than b iff a > b", so the heap root is the max.
 #[inline]

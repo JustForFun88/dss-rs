@@ -352,6 +352,8 @@ impl Sandbox {
     }
 }
 
+// BUG(C2): a free function over the instance and store of a `Sandbox`; it is a method of
+// `Sandbox`.
 /// Fetch a typed export function (signatures were validated at module load,
 /// so a mismatch here is unreachable in practice but stays a typed error).
 fn typed_func<P, R>(
@@ -373,6 +375,8 @@ where
         })
 }
 
+// BUG(C2): a free function that repeats `imports::cplx_slice_bytes`; a complex image type
+// owns the codec in both directions.
 /// Complex slice → the packed LE image (element k at `(k-1)*16`).
 fn cplx_image(cs: &[Complex64]) -> Vec<u8> {
     let mut out = Vec::with_capacity(cs.len() * 16);
@@ -383,6 +387,7 @@ fn cplx_image(cs: &[Complex64]) -> Vec<u8> {
     out
 }
 
+// BUG(C2): a free function; the decoder is an operation of a complex image type.
 /// Packed LE image → complex slice.
 fn cplx_from_image(bytes: &[u8], out: &mut [Complex64]) {
     for (k, c) in out.iter_mut().enumerate() {
@@ -393,6 +398,9 @@ fn cplx_from_image(bytes: &[u8], out: &mut [Complex64]) {
     }
 }
 
+// BUG(C2): the guest buffers are bare `u32` pointers with their sizes in other fields or in
+// constants, and the grow-only reallocation is written out in each method that needs it; a
+// guest-buffer type owns the pointer, its capacity and the growth.
 /// One bound 15/13-function user model (Pascal `TGenUserModel` /
 /// `TWindGenUserModel` / `TStoreUserModel` / `TPVsystemUserModel` /
 /// `TStoreDynaModel`): a `Store` + instance + the guest buffers allocated once
@@ -645,6 +653,9 @@ impl UserModelInstance {
 
     /// Write the records + context in, refuel (start of every call).
     fn begin(&mut self, sh: &mut Parts<'_>) -> Result<(), UserModelError> {
+        // BUG(C5): the context is moved out of `Parts` and a placeholder left that nothing
+        // reads, because `begin` takes `&mut Parts` while it consumes the context; `begin`
+        // receives the context by value beside the records.
         let ctx = std::mem::replace(&mut sh.ctx, Box::new(NoCallbacks));
         self.sandbox.set_context(ctx);
         if sh.vars.record() != self.kind.vars_record() {
@@ -927,6 +938,8 @@ impl UserModelInstance {
     }
 }
 
+// BUG(C2): the edit buffer is a bare `u32` pointer beside its capacity, grown by hand in
+// `edit`; a guest-buffer type owns the pointer, its capacity and the growth.
 /// One bound 7-function CapControl user model (Pascal `TCapUserControl`,
 /// `CapUserControl.pas:26-66`): no boundary records — the model reads state
 /// via `dss_env` callbacks and schedules via `control_queue_push`.

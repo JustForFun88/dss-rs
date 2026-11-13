@@ -6,6 +6,8 @@
 // Index-based loops mirror the C source operation-for-operation; see coarsen.rs.
 #![allow(clippy::needless_range_loop)]
 
+// BUG(C2): the routines of this module are free functions over `WGraph`, `Ctrl` and the level
+// chain, with free helpers over their parts; each is a method of the type whose data it changes.
 use super::{CkrInfo, Cnbr, Ctrl, WGraph};
 use crate::pqueue::Rpq;
 use crate::rng::Rng;
@@ -163,6 +165,9 @@ fn is_balanced(ctrl: &Ctrl, graph: &WGraph, ffactor: Real) -> bool {
     compute_load_imbalance_diff(graph, ctrl.nparts, &ctrl.pijbm, &ctrl.ubfactors) <= ffactor
 }
 
+// BUG(C2): `bnd_insert` and `bnd_delete` are free functions over the boundary list (`nbnd`,
+// `bndind`, `bndptr`) of a `WGraph`, and the crate defines them twice; a boundary-list type
+// owns the three fields and both operations.
 /// `ListInsert`/`BNDInsert` (`macros.h:46`).
 #[inline]
 fn bnd_insert(nbnd: &mut Idx, bndind: &mut [Idx], bndptr: &mut [Idx], v: Idx) {
@@ -494,6 +499,9 @@ fn greedy_kway_cut_optimize(
         }
 
         let oldcut = graph.mincut;
+        // BUG(C5): the boundary count is copied out of the graph, changed through `&mut nbnd`
+        // by the update calls below and written back after the pass; those calls change
+        // `graph.nbnd` directly beside the rest of the boundary list.
         let mut nbnd = graph.nbnd;
         let mut nupd: Idx = 0;
 
@@ -739,6 +747,8 @@ fn update_moved_vertex_info_and_bnd(
     }
 }
 
+// BUG(C5): takes the whole `Ctrl` and the whole `WGraph` to change one vertex's refinement
+// info, the boundary list and the neighbour pool; it gets those parts only.
 /// `UpdateAdjacentVertexInfoAndBND` (`macros.h:103`).
 #[allow(clippy::too_many_arguments)]
 fn update_adjacent_vertex_info_and_bnd(
@@ -823,6 +833,8 @@ fn update_adjacent_vertex_info_and_bnd(
     }
 }
 
+// BUG(C2): a free function over the loose update tracker (`queue`, `vstatus`, `updind`,
+// `updptr`, `nupd`); a tracker type owns them and this operation.
 /// `UpdateQueueInfo` (`macros.h:173`).
 #[allow(clippy::too_many_arguments)]
 fn update_queue_info(

@@ -178,6 +178,9 @@ impl RealSparseSet {
 
     fn assemble(&mut self) -> Result<(), SparseError> {
         if self.matrix.is_none() {
+            // BUG(C5): the dedup map, the key, value and triplet lists and the matrix are built
+            // anew on every assembly, and `zero` drops the matrix and the symbolic analysis; the
+            // set keeps this storage between passes and refills it, as `SparseSet` does.
             // Sum duplicate (row,col) entries in INSERTION order, matching
             // KLUSolve/CSparse (`cs_dupl`) — see the module note. f64 addition
             // is not associative, so the order sets the last bit.
@@ -213,6 +216,8 @@ impl RealSparseSet {
     /// `scale=2`; see [`RealSparseSet::row_scale`].
     fn build_scaled(&mut self) -> Result<SparseColMat<usize, f64>, SparseError> {
         let matrix = self.matrix.as_ref().expect("assembled");
+        // BUG(C5): `row_max`, `row_scale` and the copy of the value buffer are built anew on
+        // every factorization and dropped after it; the set keeps them and refills them in place.
         let mut row_max = vec![0.0f64; self.n];
         for col in 0..self.n {
             let rows = matrix.row_idx_of_col_raw(col);

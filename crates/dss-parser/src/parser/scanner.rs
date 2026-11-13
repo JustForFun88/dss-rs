@@ -5,12 +5,15 @@ use super::Parser;
 
 const COMMENT_CHAR: u8 = b'!';
 
+// BUG(C2): a free function; the membership test is an operation of a character-set type
+// that owns the delimiter, whitespace and quote sets.
 /// True when `b` occurs in `set`, ASCII-only (a multi-byte char in `set` can
 /// never match, just as in the byte-based Pascal scanner).
 fn in_set(set: &str, b: u8) -> bool {
     b.is_ascii() && set.as_bytes().contains(&b)
 }
 
+// BUG(C2): `Parser` does the work of its untyped parts here (character classes, span record).
 impl Parser {
     fn is_white_space(&self, b: u8) -> bool {
         in_set(&self.white_space_chars, b)

@@ -18,6 +18,9 @@
 //! read/write linear memory directly, and record a typed fault in the store
 //! data before trapping on OOB (typst's `memory_error` pattern).
 
+// BUG(C2): the functions of this module are free: the guest-memory accessors belong to a
+// guest-memory type, `oob` and `unsupported` to `CallData`, the complex codecs to a complex
+// image type and `register_all` to a type for the `dss_env` import module.
 use num_complex::Complex64;
 use wasmi::{Caller, Extern, Linker, Memory};
 
@@ -32,6 +35,8 @@ fn memory(caller: &mut Caller<'_, CallData>) -> Result<Memory, wasmi::Error> {
         .ok_or_else(|| wasmi::Error::new("guest does not export `memory`"))
 }
 
+// BUG(C5): takes the whole `Caller` (store and instance exports) and writes only
+// `CallData::fault`; recording the fault borrows `CallData` alone.
 /// Record a typed OOB fault and produce the trap error (ABI doc §6:
 /// protocol violation, hard and loud).
 fn oob(caller: &mut Caller<'_, CallData>, import: &'static str, detail: String) -> wasmi::Error {
@@ -42,6 +47,8 @@ fn oob(caller: &mut Caller<'_, CallData>, import: &'static str, detail: String) 
     wasmi::Error::new(format!("dss_env.{import}: {detail}"))
 }
 
+// BUG(C5): takes the whole `Caller` (store and instance exports) and writes only
+// `CallData::fault`; recording the fault borrows `CallData` alone.
 /// Record the unsupported-import fault and produce the trap error
 /// (ABI doc §4 rows 7/30/32).
 fn unsupported(caller: &mut Caller<'_, CallData>, import: &'static str) -> wasmi::Error {
@@ -186,6 +193,8 @@ pub(crate) fn register_all(linker: &mut Linker<CallData>) {
         "get_int_value",
         |mut caller: Caller<'_, CallData>, ptr: i32| -> Result<(), wasmi::Error> {
             let data = caller.data_mut();
+            // BUG(C5): `parser_vars` is moved out of `CallData` and put back after the parser
+            // call; `data.parser` and `data.parser_vars` are disjoint fields and borrow directly.
             let vars = std::mem::take(&mut data.parser_vars);
             let v = data.parser.make_integer(&vars).unwrap_or(0);
             caller.data_mut().parser_vars = vars;
@@ -200,6 +209,8 @@ pub(crate) fn register_all(linker: &mut Linker<CallData>) {
         "get_dbl_value",
         |mut caller: Caller<'_, CallData>, ptr: i32| -> Result<(), wasmi::Error> {
             let data = caller.data_mut();
+            // BUG(C5): `parser_vars` is moved out of `CallData` and put back after the parser
+            // call; `data.parser` and `data.parser_vars` are disjoint fields and borrow directly.
             let vars = std::mem::take(&mut data.parser_vars);
             let v = data.parser.make_double(&vars).unwrap_or(0.0);
             caller.data_mut().parser_vars = vars;
@@ -221,6 +232,9 @@ pub(crate) fn register_all(linker: &mut Linker<CallData>) {
             let data = caller.data_mut();
             let keep = (maxlen.max(0) as usize).min(data.last_param_value.len());
             data.last_param_value.truncate(keep);
+            // BUG(C5): the value is copied out of the store data so that `str_lcopy`, which
+            // takes `&mut Caller`, can run; a guest write that borrows memory and store data
+            // together (`Memory::data_and_store_mut`) reads it in place.
             let s = data.last_param_value.clone();
             str_lcopy(&mut caller, "get_str_value", ptr, maxlen, &s)?;
             Ok(())
@@ -250,6 +264,8 @@ pub(crate) fn register_all(linker: &mut Linker<CallData>) {
          maxlen: i32|
          -> Result<i32, wasmi::Error> {
             let data = caller.data_mut();
+            // BUG(C5): `parser_vars` is moved out of `CallData` and put back after the parser
+            // calls; `data.parser` and `data.parser_vars` are disjoint fields and borrow directly.
             let vars = std::mem::take(&mut data.parser_vars);
             let name = data.parser.next_param(&vars);
             let value = data.parser.make_string(&vars);
@@ -296,6 +312,9 @@ pub(crate) fn register_all(linker: &mut Linker<CallData>) {
          l2: i32|
          -> Result<(), wasmi::Error> {
             let (n1, n2) = caller.data().ctx.active_element_bus_names();
+            // BUG(C5): the bus names are copied out of the store data so that `str_lcopy`, which
+            // takes `&mut Caller`, can run; a guest write that borrows memory and store data
+            // together (`Memory::data_and_store_mut`) reads them in place.
             let (n1, n2) = (n1.to_string(), n2.to_string());
             str_lcopy(&mut caller, "get_active_element_bus_names", p1, l1, &n1)?;
             str_lcopy(&mut caller, "get_active_element_bus_names", p2, l2, &n2)?;
@@ -318,6 +337,9 @@ pub(crate) fn register_all(linker: &mut Linker<CallData>) {
             let avail = vs.len();
             let n = read_i32(&mut caller, IMPORT, num_ptr)?;
             let n = (n.max(0) as usize).min(avail);
+            // BUG(C5): the voltages are looked up again after `read_i32`, which takes the whole
+            // `Caller`, released the first borrow; with the guest memory and the store data
+            // borrowed apart one lookup serves.
             let bytes =
                 cplx_slice_bytes(&caller.data().ctx.active_element_voltages().expect("Some")[..n]);
             write_guest(&mut caller, IMPORT, v_ptr, &bytes)?;
@@ -338,6 +360,9 @@ pub(crate) fn register_all(linker: &mut Linker<CallData>) {
             let avail = cs.len();
             let n = read_i32(&mut caller, IMPORT, num_ptr)?;
             let n = (n.max(0) as usize).min(avail);
+            // BUG(C5): the currents are looked up again after `read_i32`, which takes the whole
+            // `Caller`, released the first borrow; with the guest memory and the store data
+            // borrowed apart one lookup serves.
             let bytes =
                 cplx_slice_bytes(&caller.data().ctx.active_element_currents().expect("Some")[..n]);
             write_guest(&mut caller, IMPORT, i_ptr, &bytes)?;
@@ -410,6 +435,8 @@ pub(crate) fn register_all(linker: &mut Linker<CallData>) {
             };
             let n = refs.len().min(maxsize.max(0) as usize);
             let mut bytes = Vec::with_capacity(n * 4);
+            // BUG(C5): the node refs are looked up a second time though nothing borrows `caller`
+            // mutably in between; the first lookup serves the loop.
             for r in &caller.data().ctx.active_element_node_refs().expect("Some")[..n] {
                 bytes.extend_from_slice(&r.to_le_bytes());
             }
@@ -461,6 +488,8 @@ pub(crate) fn register_all(linker: &mut Linker<CallData>) {
                 .node_voltages()
                 .len()
                 .min(max.max(0) as usize);
+            // BUG(C5): the node voltages are looked up a second time though nothing borrows
+            // `caller` mutably in between; the first lookup serves the copy.
             let bytes = cplx_slice_bytes(&caller.data().ctx.node_voltages()[..n]);
             write_guest(&mut caller, "get_node_voltages", dest, &bytes)?;
             Ok(n as i32)
@@ -580,6 +609,9 @@ pub(crate) fn register_all(linker: &mut Linker<CallData>) {
         "dss_env",
         "get_public_data",
         |mut caller: Caller<'_, CallData>, dest: i32, max: i32| -> Result<i32, wasmi::Error> {
+            // BUG(C5): the public data is looked up twice and its bytes copied out so that
+            // `write_guest`, which takes `&mut Caller`, can run; one lookup and a guest write that
+            // borrows memory and store data together (`Memory::data_and_store_mut`) serve.
             let n = caller
                 .data()
                 .ctx
@@ -602,6 +634,9 @@ pub(crate) fn register_all(linker: &mut Linker<CallData>) {
             let Some(name) = caller.data().ctx.active_element_name() else {
                 return Ok(0);
             };
+            // BUG(C5): the name is copied out of the store data so that `str_lcopy`, which takes
+            // `&mut Caller`, can run; a guest write that borrows memory and store data together
+            // (`Memory::data_and_store_mut`) reads it in place.
             let name = name.to_string();
             str_lcopy(&mut caller, "get_active_element_name", ptr, maxlen, &name)
         },
@@ -658,6 +693,9 @@ pub(crate) fn register_all(linker: &mut Linker<CallData>) {
             if !caller.data().dss_commands_enabled {
                 return Err(unsupported(&mut caller, "get_result_str"));
             }
+            // BUG(C5): the result is copied out of the store data so that `str_lcopy`, which
+            // takes `&mut Caller`, can run; a guest write that borrows memory and store data
+            // together (`Memory::data_and_store_mut`) reads it in place.
             let result = caller.data().last_result.clone();
             str_lcopy(&mut caller, "get_result_str", ptr, maxlen, &result)?;
             Ok(())

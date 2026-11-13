@@ -22,12 +22,14 @@ pub struct Ikv {
 /// `_GKQSORT_MAX_THRESH` (`gk_mksort.h:108`).
 const MAX_THRESH: usize = 8;
 
+// BUG(C2): a free `pub fn` over a slice of `Ikv`; the sort is an operation of an `Ikv` list.
 /// `ikvsorti(n, base)` (`gklib.c:78`) — ascending sort of `ikv_t` by `.key`
 /// using `GK_MKQSORT` with `ikey_lt(a,b) = a->key < b->key`.
 pub fn ikvsorti(base: &mut [Ikv]) {
     gk_qsort(base, |a, b| a.key < b.key);
 }
 
+// BUG(C2): a free `pub fn`; the sort is a method of a sort trait implemented for slices.
 /// `GK_MKQSORT(TYPE, base, n, LT)` (`gk_mksort.h:118`), generic over the
 /// element type and the strict-less-than comparator. Mirrors the glibc
 /// quicksort + insertion-sort finisher operation for operation.

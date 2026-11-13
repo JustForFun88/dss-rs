@@ -7,6 +7,8 @@
 
 use std::collections::HashMap;
 
+// BUG(C5): `ParserVars` owns the variable table that `add` and `set_value` change and
+// derives `Clone`; a type that owns mutable state is not `Clone`.
 #[derive(Debug, Clone)]
 pub struct ParserVars {
     /// Names (lowercased, with `@`) in insertion order.
