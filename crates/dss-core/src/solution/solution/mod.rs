@@ -28,6 +28,9 @@
 //!   loop, `IntegratePCStates`, `calcInitialMachineStates`).
 //! - `dispatch` — the top-level `Solve` mode dispatcher and `SetVoltageBases`.
 
+// BUG(C2): the submodules are free functions over `Circuit` and `SolveEnv`, as the module
+// doc describes. They belong to the smallest common owner of the circuit and the element
+// store, as methods that only coordinate; the work on solver state belongs to `Solution`.
 mod dispatch;
 mod dynamics;
 mod fault_study;

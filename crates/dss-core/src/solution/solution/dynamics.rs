@@ -4,6 +4,9 @@
 //! state in the present run (the dynamics step, the FaultStudy and MonteFault
 //! solves and the step-solution commands share it).
 
+// BUG(C2): the dynamics entry, step loop and refusal are free functions over `Circuit` and
+// `SolveEnv`. They belong to the smallest common owner of the circuit and the element
+// store, as methods that only coordinate and call methods of the elements.
 use crate::circuit::Circuit;
 use crate::elements::ckt::DynamicsSeed;
 use crate::support::dynamics::IterationFlag;
@@ -46,6 +49,8 @@ pub(crate) fn calc_initial_machine_states(ckt: &mut Circuit, env: &mut SolveEnv)
     let mut errs = crate::diag::ErrorLog::new();
     for &r in &ckt.pc_elements {
         let elem = env.store.ckt_elem_mut(r);
+        // BUG(C2): this loop writes the open `dynamics_seed` field of `CktElementData` from
+        // outside it; the element should record its own seed in a method.
         elem.cd_mut().dynamics_seed = DynamicsSeed::Unseeded;
         if !elem.cd().enabled {
             continue;
@@ -66,6 +71,8 @@ pub(crate) fn calc_initial_machine_states(ckt: &mut Circuit, env: &mut SolveEnv)
             }
         }
         elem.cd_mut().dynamics_seed = seed;
+        // BUG(C2): `init_state_vars` returns nothing, so its errors and its abort are parked
+        // in the element and drained below; it should return them.
         elem.init_state_vars(&sys, &ckt.solution.node_v);
         errs.extend(elem.cd_mut().obj.take_errors());
         if elem.cd_mut().obj.take_abort() {
@@ -118,6 +125,7 @@ pub(crate) fn dynamics_mode_word(mode: SolveMode) -> Option<&'static str> {
     }
 }
 
+// BUG(C5): takes the whole `SolveEnv` and uses only its `store`; it should take the store.
 /// Why a solve in a dynamics-model mode cannot run: the first enabled PC
 /// element, in list order, that has dynamic state but no state in the present
 /// run. An `integrating` solve (the dynamics step) also refuses an element
@@ -231,6 +239,9 @@ fn solve_dynamic_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         }
         ckt.solution.increment_time();
         let dbl_hour = ckt.solution.dbl_hour;
+        // BUG(C5): the default shape read below is a copy kept in `Circuit` of an object the
+        // store owns, so an edit of the source in the store misses it; the step should read
+        // the shape from the store.
         match ckt.default_daily_shape_obj.as_mut() {
             Some(shape) => ckt.default_hour_mult = shape.get_mult_at_hour(dbl_hour),
             None => return Err("Default daily load shape not found.".to_string()),

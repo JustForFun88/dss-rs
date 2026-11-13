@@ -37,6 +37,11 @@
 //! (the `dss_sparse` real-module note), which the diagonal `Y_ii + g'_ii`
 //! relies on.
 
+// BUG(C2): the NCIM solve is free functions over `Circuit`, `Solution` and `SolveEnv`. The
+// NCIM vectors and Jacobian belong to a type held by `Solution` that owns their operations,
+// and the element walks to the coordinator of the circuit and the store.
+// BUG(C2): the generator and PC lists hold untyped handles, so each walk narrows the class
+// again with `typed_mut::<Generator>` and an `expect`; the lists should hold typed handles.
 use num_complex::Complex64;
 
 use dss_sparse::RealSparseSet;
@@ -54,10 +59,14 @@ use crate::elements::traits::TypedStore;
 
 const ZERO: Complex64 = Complex64::ZERO;
 
+// BUG(C2): a second copy of `util::sqrt3`, a constant written as a free function; it should
+// be one `const`.
 fn sqrt3() -> f64 {
     3.0_f64.sqrt()
 }
 
+// BUG(C5): takes the whole circuit and uses only `ckt.solution`, and the same helper is
+// written again in the power-flow and Y-matrix modules. It is one method of `Solution`.
 /// `DSS.LogThisEvent(name)` with the solution clock (caller gates on `LogEvents`).
 fn log_event(ckt: &mut Circuit, name: &str) {
     let sol = &mut ckt.solution;
@@ -70,6 +79,8 @@ fn log_event(ckt: &mut Circuit, name: &str) {
     );
 }
 
+// BUG(C2): works only on the NCIM Jacobian and mismatch of `Solution`; it is a method of an
+// NCIM state type held by `Solution`.
 /// Pascal `NCIM_DoZBus` (`NCIMSolutionHelper.pas` l.289): stamp a constant-
 /// impedance node's YPrim diagonal `y00` into the Jacobian diagonal 2×2 block and
 /// add its `I = V·y00` into the mismatch. `y00` is the `[0][0]` entry of the
@@ -87,6 +98,8 @@ fn do_zbus(sol: &mut Solution, i: usize, v: Complex64, y00: Complex64) {
     sol.ncim_delta_f[base + 1] += curr.re;
 }
 
+// BUG(C2): works only on the NCIM Jacobian and mismatch of `Solution`; it is a method of an
+// NCIM state type held by `Solution`.
 /// Pascal `NCIM_DoPQBus` (l.246): stamp a PQ node's power-injection derivative
 /// into the Jacobian diagonal block and add its current mismatch.
 fn do_pqbus(sol: &mut Solution, i: usize, v: Complex64, power: Complex64) {
@@ -105,6 +118,8 @@ fn do_pqbus(sol: &mut Solution, i: usize, v: Complex64, power: Complex64) {
     sol.ncim_delta_f[base + 1] += curr.re;
 }
 
+// BUG(C2): reads only the PV-bus index of the NCIM state in `Solution`; it is a method of an
+// NCIM state type held by `Solution`.
 /// The 0-based Jacobian row of `node`'s voltage-regulation equation, r4133's
 /// `GCoord = 2·NumNodes + PVBusIdx[node] - 1` (1-based, `Common/Solution.pas`
 /// l.1426; `PVBusIdx` is stored here one higher, see
@@ -121,6 +136,8 @@ fn pv_reg_row(sol: &Solution, num_nodes: usize, node: usize) -> Option<usize> {
     Some(num_nodes * 2 + idx.checked_sub(2)?)
 }
 
+// BUG(C2): works only on the node voltages and the NCIM fields of `Solution`; it is a method
+// of an NCIM state type held by `Solution`.
 /// Pascal `NCIM_DoPVBus` (l.171): stamp a PV node's power-injection derivative
 /// (negated, since a generator injects) plus the voltage-regulation coupling
 /// cells `Z`/`X` that tie the node voltage to the PV-bus Q equation. `num_nodes`
@@ -160,6 +177,8 @@ fn do_pvbus(sol: &mut Solution, num_nodes: usize, i: usize, vtarget: f64, power:
     jac.set_element(base + 1, gz, v.conj().im / den);
 }
 
+// BUG(C5): takes the whole circuit for `num_nodes` and the NCIM fields of `ckt.solution`;
+// it is a method of the NCIM state that takes the node count.
 /// Pascal `NCIM_InitVectors` (l.326): (re)allocate the per-node NCIM arrays,
 /// 1-based with a dummy slot 0 (`NodeType[0] = -1` "ignore").
 fn ncim_init_vectors(ckt: &mut Circuit) {
@@ -199,6 +218,8 @@ fn ncim_do_force_flat_start(ckt: &mut Circuit) {
     }
 }
 
+// BUG(C5): takes the whole circuit for its first element and the whole `SolveEnv` for its
+// `store`; it should take the handle and the store.
 /// Read the first circuit element's VSource `(kVBase, PerUnit, Angle)`.
 fn read_first_vsource(ckt: &Circuit, env: &SolveEnv) -> Option<(f64, f64, f64)> {
     let r = *ckt.ckt_elements.first()?;
@@ -333,6 +354,8 @@ fn ncim_get_num_generators(ckt: &mut Circuit, env: &mut SolveEnv, init_q: bool) 
     }
     // `bus_refs[row] = node`: one voltage-regulation row per distinct PV node.
     let mut bus_refs: Vec<usize> = Vec::new();
+    // BUG(C5): the generator list is copied as a worklist, though the loop writes only
+    // `env.store` and `ckt.solution`; it walks `&ckt.generators` in place.
     let gens = ckt.generators.clone();
     for r in gens {
         let gobj = env
@@ -401,6 +424,8 @@ fn ncim_get_num_generators(ckt: &mut Circuit, env: &mut SolveEnv, init_q: bool) 
             add2limits = gobj.gen_model == 4;
         }
         if add2limits {
+            // BUG(C5): the node refs are copied out of the generator, which lives in the
+            // store apart from `ckt`; the loop borrows `gobj.cd.node_ref` in place.
             let refs: Vec<usize> = gobj.cd.node_ref[..nphases].to_vec();
             for nr in refs {
                 ckt.solution.ncim_node_limits[nr] += Complex64::new(qmax, qmin);
@@ -422,6 +447,8 @@ fn ncim_get_num_generators(ckt: &mut Circuit, env: &mut SolveEnv, init_q: bool) 
 fn ncim_calc_inj_curr(ckt: &mut Circuit, env: &mut SolveEnv, init_gen_q: bool) {
     let gsize =
         ckt.solution.ncim_nodes * 2 + ncim_get_num_generators(ckt, env, init_gen_q) as usize;
+    // BUG(C5): both NCIM vectors are allocated anew on every iteration; the NCIM state
+    // should resize and zero its kept vectors in place.
     ckt.solution.ncim_delta_f = vec![0.0; gsize];
     ckt.solution.ncim_delta_z = vec![0.0; gsize];
     let ylen = ckt.solution.ncim_y.len();
@@ -448,8 +475,12 @@ fn ncim_get_powers(ckt: &mut Circuit, env: &mut SolveEnv) {
     // `FAULTOBJECT` branch of the PCElements loop is unreachable there and here;
     // a fault's admittance is already in the PDE-only Y. Only Loads and
     // Generators appear in `pc_elements`.
+    // BUG(C5): the PC list is copied as a worklist, though the loop writes only `env.store`
+    // and `ckt.solution`; it walks `&ckt.pc_elements` in place.
     let pcs = ckt.pc_elements.clone();
     for r in pcs {
+        // BUG(C5): each arm tests the class with `typed` and then looks the element up again
+        // with `typed_mut` and an `expect`; one `if let` on `typed_mut` serves both.
         if env.store.typed::<Load>(r).is_some() {
             let load = env.store.typed_mut::<Load>(r).expect("checked above");
             if !load.cd.enabled {
@@ -488,6 +519,8 @@ fn ncim_get_powers(ckt: &mut Circuit, env: &mut SolveEnv) {
             let p_nom = gobj.p_nominal_per_phase;
             let q_nom = gobj.q_nominal_per_phase;
             let v_target = gobj.v_target;
+            // BUG(C5): the generator's ΔQ registry is copied on every pass and only read; the
+            // loop writes disjoint fields, so it borrows `gobj.delta_q_nom` in place.
             let delta_q = gobj.delta_q_nom.clone();
             let y00 = gobj.cd.yprim.as_ref().map(|m| m.get(0, 0)).unwrap_or(ZERO);
             for p in 0..nphases {
@@ -542,6 +575,8 @@ fn ncim_get_powers(ckt: &mut Circuit, env: &mut SolveEnv) {
     }
 }
 
+// BUG(C5): takes the whole circuit for `num_nodes` and the NCIM fields of `ckt.solution`;
+// it is a method of the NCIM state that takes the node count.
 /// Pascal `NCIM_ApplyCurr` (l.53): apply each node's accumulated power injection
 /// to the Jacobian + mismatch (PV via `NCIM_DoPVBus`, else `NCIM_DoPQBus`).
 fn ncim_apply_curr(ckt: &mut Circuit) {
@@ -562,12 +597,16 @@ fn ncim_apply_curr(ckt: &mut Circuit) {
     }
 }
 
+// BUG(C2): a free function over the circuit and the store that builds the NCIM Jacobian;
+// the assembly is a method of the NCIM state, called by the coordinator with the generators.
 /// Pascal `NCIM_BuildJacobian` (l.904): assemble a fresh Jacobian from the PDE-
 /// only Y network blocks (`[B, G; G, −B]`, identity on the swing), reserve the
 /// PV-bus voltage-regulation cells (`NCIM_InitPVBusJac`), and clear the per-node
 /// power/type accumulators for the next `NCIM_GetPowers`.
 fn ncim_build_jacobian(ckt: &mut Circuit, env: &mut SolveEnv) {
     let n = ckt.solution.ncim_delta_f.len();
+    // BUG(C5): a new sparse set is built on every NCIM iteration and replaces the kept one;
+    // the NCIM state should keep its Jacobian set and zero it between passes.
     let mut jac = RealSparseSet::new(n);
     let ylen = ckt.solution.ncim_y.len();
     for k in 0..ylen {
@@ -593,6 +632,8 @@ fn ncim_build_jacobian(ckt: &mut Circuit, env: &mut SolveEnv) {
     // enabled model-3 generator, so the sparsity pattern is stable before
     // `NCIM_DoPVBus` fills the real values.
     let num_nodes = ckt.num_nodes;
+    // BUG(C5): the generator list is copied though nothing in the loop is borrowed mutably;
+    // it walks `&ckt.generators` in place.
     let gens = ckt.generators.clone();
     for r in gens {
         let gobj = env
@@ -625,6 +666,8 @@ fn ncim_build_jacobian(ckt: &mut Circuit, env: &mut SolveEnv) {
     }
 }
 
+// BUG(C5): takes the whole circuit to read the generator list and the whole `SolveEnv` for
+// its `store`; it should take the list and the store.
 /// Pascal `TSolutionObj.InitPQGen` (**r4133** `Common/Solution.pas`
 /// l.1662-1684; `NCIM_InitPQGen` l.419 in the retired capi015 refactor): seed
 /// the enabled non-PV (`GenModel <> 3`) generators' `deltaQNom` with their
@@ -671,6 +714,8 @@ fn ncim_build_jacobian(ckt: &mut Circuit, env: &mut SolveEnv) {
 /// every reader of the scalar form takes `[0]` (l.1326 model-4 power, l.2305
 /// the ELSE arm's current stamp), which this leaves bit-identical.
 fn ncim_init_pq_gen(ckt: &mut Circuit, env: &mut SolveEnv, init_gen_q: bool) {
+    // BUG(C5): the generator list is copied though the loop touches only `env.store`; it
+    // walks `&ckt.generators` in place.
     let gens = ckt.generators.clone();
     for r in gens {
         let gobj = env
@@ -694,6 +739,8 @@ fn ncim_init_pq_gen(ckt: &mut Circuit, env: &mut SolveEnv, init_gen_q: bool) {
     }
 }
 
+// BUG(C2): a free function over the circuit and the store that updates the generators from
+// the NCIM state; it is a method of the coordinator that calls `Generator` methods.
 /// Pascal `TSolutionObj.UpdateGenQ` (**r4133** `Common/Solution.pas` l.1993-2322;
 /// byte-identical in r4088 apart from commented-out debug I/O): update every
 /// generator's reactive-power delta from the solved `NCIM_deltaZ` gen-section,
@@ -710,6 +757,8 @@ fn ncim_update_gen_q(ckt: &mut Circuit, env: &mut SolveEnv) {
     }
     let num_nodes = ckt.num_nodes;
     let gen_idx = num_nodes * 2;
+    // BUG(C5): `qdelta` and the three node lists below are allocated on every NCIM
+    // iteration; the NCIM state should keep them and clear them between passes.
     // QDelta[0] is a dummy zero; QDelta[k] = -deltaZ[gen_idx + k - 1].
     let mut qdelta: Vec<f64> = vec![0.0];
     for i in gen_idx..ckt.solution.ncim_delta_z.len() {
@@ -722,6 +771,8 @@ fn ncim_update_gen_q(ckt: &mut Circuit, env: &mut SolveEnv) {
     let mut q_node_ref_pq: Vec<usize> = Vec::new();
     let mut pq_checked: Vec<usize> = Vec::new();
 
+    // BUG(C5): the generator list is copied though the loop writes only `env.store`; it
+    // walks `&ckt.generators` in place.
     let gens = ckt.generators.clone();
     for r in gens {
         let gobj = env
@@ -732,6 +783,8 @@ fn ncim_update_gen_q(ckt: &mut Circuit, env: &mut SolveEnv) {
             continue;
         }
         let nphases = gobj.cd.nphases;
+        // BUG(C5): the node refs are copied out of the generator and only read while its
+        // disjoint fields are written; the loop borrows `gobj.cd.node_ref` in place.
         let node_refs: Vec<usize> = gobj.cd.node_ref[..nphases].to_vec();
 
         if gobj.gen_model == 3 {
@@ -891,6 +944,7 @@ fn ncim_update_gen_q(ckt: &mut Circuit, env: &mut SolveEnv) {
     }
 }
 
+// BUG(C5): takes the whole `SolveEnv` and uses only its `store`; it should take the store.
 /// Pascal `TVsourceObj.CalcInjCurrAtBus` (r4133 `PCElements/VSource.pas` l.1085),
 /// reached from `TVsourceObj.GetCurrents` (l.1194-1195) when `Algorithm =
 /// NCIMSOLVE` and `NodeRef[1] = 1`: the swing source's NCIM-reported terminal
@@ -1075,6 +1129,8 @@ fn ncim_stamp_swing_source_currents(ckt: &Circuit, env: &mut SolveEnv) {
     src.ncim_swing_stamped_at = Some(sys.solution_count);
 }
 
+// BUG(C2): a free function that drives the NCIM loop over the circuit and the store; it is
+// a method of their coordinator that calls methods of the NCIM state and of the elements.
 /// Pascal `TSolutionObj.DoNCIMSolution` (**r4133** `Common/Solution.pas`
 /// l.1095-1161; `DoNCIMSolution` l.981 in the retired capi015 refactor): the
 /// NCIM Newton loop. `V ← V − ΔV` each iteration until `Converged()` (the
@@ -1126,6 +1182,9 @@ pub(crate) fn do_ncim_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveRe
         // Solve J·deltaZ = deltaF.
         {
             let sol = &mut ckt.solution;
+            // BUG(C5): the mismatch is copied as the right-hand side and the solution goes to
+            // a fresh vector on every iteration; the solve borrows `ncim_delta_f`,
+            // `ncim_jacobian` and `ncim_delta_z` as disjoint fields and writes in place.
             let rhs = sol.ncim_delta_f.clone();
             let mut dz = vec![0.0; rhs.len()];
             let jac = sol

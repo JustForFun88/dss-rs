@@ -4,6 +4,9 @@ use crate::circuit::Circuit;
 
 use super::{ControlMode, LoadSolutionModel, SolveMode};
 
+// BUG(C2): a free function that sets the fields of `Solution` one by one from outside it.
+// The mode defaults should be a method of `Solution`, called by a method of `Circuit` that
+// sets its own flags.
 /// Pascal `TSolutionObj.Set_Mode` (`Solution.pas` l.2010): reset the clock,
 /// revert control/load models, apply per-mode defaults. Returns whether the
 /// mode was actually changed (the `OK_for_Dynamics`/`OK_for_Harmonics` guards

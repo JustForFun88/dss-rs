@@ -10,6 +10,10 @@
 //! effect (exactly as Pascal does). The `Show Isolated`/`Show Topology` reports call
 //! it, so those two reports are not read-only over the circuit.
 
+// BUG(C2): the topology walk is free functions over `Circuit` and the element store; the
+// walk belongs to `CktTree`, as methods that take the lists and the store they read.
+// BUG(C2): the walk writes the open fields of `CktElementData`, `Bus` and the `CktTree`
+// nodes from outside those types; each type should set its own walk marks in a method.
 use crate::circuit::Circuit;
 use crate::circuit::ckt_tree::{
     BusAdjLists, CktTree, all_terminals_closed, build_active_bus_adjacency_lists, is_shunt_element,
@@ -19,11 +23,15 @@ use crate::elements::pd::line::Line;
 use crate::elements::traits::TypedStore;
 use crate::elements::traits::{ElemId, ElemStore};
 
+// BUG(C2): a free predicate written again in the meter zone build, which probes the class
+// with `typed::<Line>` though `ElemId` carries it; it is one method of `ElemId`.
 /// Whether the element at `r` is a Line (Pascal `IsLineElement`).
 fn is_line(store: &dyn ElemStore, r: ElemId) -> bool {
     store.typed::<Line>(r).is_some()
 }
 
+// BUG(C2): a free function written again in the meter zone build; the test of two shared
+// terminal buses is one method of `CktElementData`.
 /// Pascal `CheckParallel`: two lines share both terminal buses (either orientation).
 fn check_parallel(store: &dyn ElemStore, a: ElemId, b: ElemId) -> bool {
     let bus = |r: ElemId, t: usize| store.ckt_elem(r).cd().terminals.get(t).map(|x| x.bus_ref);
@@ -32,6 +40,7 @@ fn check_parallel(store: &dyn ElemStore, a: ElemId, b: ElemId) -> bool {
     (a1 == b1 && a2 == b2) || (a1 == b2 && a2 == b1)
 }
 
+// BUG(C5): takes the whole circuit and reads only its source list; it should take the list.
 /// Pascal `GetSourcesConnectedToBus`: attach every enabled source whose terminal-1
 /// bus is `bus_num` as a shunt object; clear `IS_ISOLATED` + `IsDangling` when
 /// analysing.
@@ -61,6 +70,8 @@ fn get_sources_connected_to_bus(
                     .cd_mut()
                     .flags
                     .exclude(ElemFlags::IS_ISOLATED);
+                // BUG(C2): writes the open `is_dangling` field of a `CktTree` node from outside
+                // the tree; `CktTree` should clear it in a method of its own.
                 tree.present_node_mut().is_dangling = false;
             }
             if !checked {
@@ -183,6 +194,8 @@ fn find_all_child_branches(
                     .exclude(ElemFlags::IS_ISOLATED);
                 tree.present_node_mut().is_dangling = false;
                 if checked && tree.level() > 0 {
+                    // BUG(C2): the loop and parallel fields of the present `CktTree` node are
+                    // written from outside the tree; `CktTree` should mark the loop itself.
                     let node = tree.present_node_mut();
                     node.is_looped = true;
                     node.loop_elem = Some(p);
@@ -208,6 +221,8 @@ fn find_all_child_branches(
     }
 }
 
+// BUG(C5): takes `&mut Circuit` and uses only the `bus_checked` marks of its buses and its
+// source list; it should take those two parts.
 /// Pascal `GetIsolatedSubArea` (`CktTree.pas:624`): build a `CktTree` rooted at
 /// `start`, walking the bus-adjacency lists breadth-first. `analyze` clears
 /// `IS_ISOLATED` on every reached element (used by `GetTopology`; `ShowIsolated`

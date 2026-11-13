@@ -4,11 +4,17 @@
 //! and its metered element are borrowed disjointly via
 //! [`TypedStore::typed_metered_pair_mut`].
 
+// BUG(C2): the monitor sweeps are free functions over `Circuit` and `SolveEnv`; they belong
+// to the Monitor class, as methods that walk its objects and take the solution parts they use.
+// BUG(C2): the monitor list holds untyped handles, so every access narrows the class again
+// with an `expect`; the list should hold typed `Monitor` handles.
 use crate::circuit::Circuit;
 use crate::elements::meter::monitor::{Monitor, MonitorSampleCtx};
 use crate::elements::traits::TypedStore;
 use crate::solution::solution::{SolveEnv, sys_ctx};
 
+// BUG(C5): copies solution values into a fresh `MonitorSampleCtx` on every sample pass; the
+// monitors should borrow these values from `Solution`.
 /// Build the per-sample solution context from the current solution state.
 fn sample_ctx(ckt: &Circuit) -> MonitorSampleCtx {
     let s = &ckt.solution;
@@ -65,6 +71,8 @@ pub(crate) fn sample_all_monitors(ckt: &mut Circuit, env: &mut SolveEnv, mode5_o
     }
 }
 
+// BUG(C5): takes `&mut Circuit` only to read the monitor list and the whole `SolveEnv` for
+// its `store`; it should take the list shared and the store.
 /// Pascal `TDSSMonitor.SaveAll` (`Meters/Monitor.pas:422`): flush every
 /// enabled monitor's pending buffer (`TMonitorObj.Save`) — no mode filter
 /// (unlike `SampleAll`, which skips mode-5 monitors). Called by every ported
@@ -84,6 +92,8 @@ pub(crate) fn save_all_monitors(ckt: &mut Circuit, env: &mut SolveEnv) {
     }
 }
 
+// BUG(C5): takes `&mut Circuit` only to read the monitor list and one flag, and the whole
+// `SolveEnv` for its `store`; it should take the list shared, the flag and the store.
 /// Pascal `TDSSMonitor.ResetAll`: clear every enabled monitor's buffer and
 /// rebuild its header. `IsHarmonicModel` selects the time-column labels
 /// (`Freq`/`Harmonic` vs `hour`/`t(sec)`), so entering harmonics mode (the

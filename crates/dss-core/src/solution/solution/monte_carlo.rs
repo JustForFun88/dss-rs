@@ -16,6 +16,9 @@
 //! freshly-drawn `RandomMult` (the net per-case effect and the engine-global RNG
 //! stream both match — see the `Monte1` arm in `load/nominal.rs`).
 
+// BUG(C2): the Monte Carlo drivers are free functions over `Circuit` and `SolveEnv`. They
+// belong to the smallest common owner of the circuit and the element store, as methods
+// that only coordinate the draws, the solve and the samplers.
 use crate::circuit::Circuit;
 use crate::elements::pc::load::Load;
 use crate::elements::pd::fault::Fault;
@@ -33,7 +36,11 @@ use crate::elements::traits::TypedStore;
 /// arm would otherwise perform inline. One draw per load (except `random=none`,
 /// which draws nothing), from the shared engine RNG.
 fn randomize_all_loads(ckt: &mut Circuit, env: &mut SolveEnv, random_type: RandomType) {
+    // BUG(C5): the load list is copied as a worklist, though the loop uses only `env.store`
+    // and `ckt.rng`; it walks `&ckt.loads` beside `&mut ckt.rng`.
     for r in ckt.loads.clone() {
+        // BUG(C2): the load list holds untyped handles, so each use narrows the class again;
+        // the list should hold typed `Load` handles.
         if let Some(load) = env.store.typed_mut::<Load>(r)
             && load.cd().enabled
         {
@@ -123,6 +130,9 @@ fn solve_monte2_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         for _ in 1..=ndaily {
             ckt.solution.increment_time();
             let dbl_hour = ckt.solution.dbl_hour;
+            // BUG(C5): the default shape read below is a copy kept in `Circuit` of an object
+            // the store owns, so an edit of the source in the store misses it; the step
+            // should read the shape from the store.
             match ckt.default_daily_shape_obj.as_mut() {
                 Some(shape) => ckt.default_hour_mult = shape.get_mult_at_hour(dbl_hour),
                 None => return Err("Default daily load shape not found.".to_string()),
@@ -147,6 +157,9 @@ pub(super) fn solve_monte3(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult
     }
     // Time must be set before entering this routine (the deck's `Set time=`).
     let dbl_hour = ckt.solution.dbl_hour;
+    // BUG(C5): the default shape and the price curve read below are copies kept in
+    // `Circuit` of objects the store owns, so an edit of the source in the store misses
+    // them; they should be read from the store.
     match ckt.default_daily_shape_obj.as_mut() {
         Some(shape) => ckt.default_hour_mult = shape.get_mult_at_hour(dbl_hour),
         None => return Err("Default daily load shape not found.".to_string()),
@@ -186,6 +199,9 @@ fn draw_load_multiplier(ckt: &mut Circuit, random_type: RandomType, allow_lognor
     match random_type {
         RandomType::Uniform => ckt.load_multiplier = ckt.rng.next_f64(),
         RandomType::Gaussian => {
+            // BUG(C5): this arm and the next read the statistics of a copy kept in `Circuit`
+            // of a shape the store owns, so an edit of the source misses it; they should
+            // read the shape from the store.
             let (mean, std_dev) = ckt
                 .default_daily_shape_obj
                 .as_ref()
@@ -216,6 +232,9 @@ fn draw_load_multiplier(ckt: &mut Circuit, random_type: RandomType, allow_lognor
 /// fault a rebuild left out is mapped before it is stamped
 /// (`monte_fault_maps_a_fault_a_rebuild_left_out`).
 fn pick_a_fault(ckt: &mut Circuit, env: &mut SolveEnv) -> Option<ElemId> {
+    // BUG(C5): the fault list is copied as a worklist because the loop calls
+    // `Circuit::set_bus_name_redefined`, which takes the whole circuit to set its flags;
+    // with that access narrowed the loop walks `&ckt.faults` in place.
     let faults = ckt.faults.clone();
     let num_faults = faults.len();
     if num_faults == 0 {
@@ -227,9 +246,13 @@ fn pick_a_fault(ckt: &mut Circuit, env: &mut SolveEnv) -> Option<ElemId> {
     let mut active = None;
     for (i, &r) in faults.iter().enumerate() {
         let enable = (i as i64 + 1) == whichone;
+        // BUG(C2): the fault list holds untyped handles, so each use narrows the class again;
+        // the list should hold typed `Fault` handles.
         if let Some(fault) = env.store.typed_mut::<Fault>(r) {
             let cd = fault.cd_mut();
             cd.set_enabled(enable);
+            // BUG(C2): the element's request to the circuit is parked in a flag that the
+            // caller reads and clears; `set_enabled` should return it.
             if cd.signal_bus_name_redefined {
                 cd.signal_bus_name_redefined = false;
                 ckt.set_bus_name_redefined(true);
@@ -277,6 +300,8 @@ fn solve_monte_fault_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult 
         ckt.solution.int_hour += 1;
         let picked = pick_a_fault(ckt, env); // Randomly enable one of the faults
         if let Some(r) = picked {
+            // BUG(C2): the picked handle is untyped, so the class is narrowed again here; the
+            // pick should return a typed `Fault` handle.
             // ActiveFaultObj.Randomize() — jitter the fault resistance.
             if let Some(fault) = env.store.typed_mut::<Fault>(r) {
                 fault.randomize(random_type, &mut ckt.rng);

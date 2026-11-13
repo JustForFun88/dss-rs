@@ -8,6 +8,9 @@
 //! the resulting node voltages off the already-factored system Y — i.e. each
 //! column of `Zsc` is a column of `Y⁻¹` restricted to the bus's own nodes.
 
+// BUG(C2): the fault-study driver and its helpers are free functions over `Circuit` and
+// `SolveEnv`. The per-bus steps are methods of `Bus`, and the driver belongs to the smallest
+// common owner of the circuit and the element store, as a method that only coordinates.
 use num_complex::Complex64;
 
 use crate::circuit::Circuit;
@@ -47,7 +50,11 @@ pub(super) fn solve_fault_study(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveR
 /// system. Disabling an enabled element invalidates the system Y (Pascal
 /// `Set_Enabled` → `Set_YprimInvalid`).
 fn disable_all_faults(ckt: &mut Circuit, env: &mut SolveEnv) {
+    // BUG(C5): the fault list is copied as a worklist, though the loop writes only
+    // `env.store` and `ckt.solution`; it walks `&ckt.faults` in place.
     for r in ckt.faults.clone() {
+        // BUG(C2): the fault list holds untyped handles, so each use narrows the class
+        // again; the list should hold typed `Fault` handles.
         if let Some(fault) = env.store.typed_mut::<Fault>(r)
             && fault.cd.enabled
         {
@@ -65,6 +72,8 @@ fn allocate_all_sc_parms(ckt: &mut Circuit) {
     }
 }
 
+// BUG(C2): a free function written a second time in the Y-matrix module; the copy of the
+// node voltages into a bus is one method of `Bus`, called once per bus by its owner.
 /// Pascal `TSolutionObj.UpdateVBus`: copy the present `NodeV` solution into each
 /// bus's `VBus` (`NodeV[RefNo[j]]`; a ground ref is index 0 → zero).
 fn update_v_bus(ckt: &mut Circuit) {
@@ -128,6 +137,8 @@ fn compute_ysc(ckt: &mut Circuit, bus_idx: usize) -> SolveResult {
 /// Pascal `TSolutionAlgs.ComputeIsc`: `BusCurrent = Ysc · VBus` per bus.
 fn compute_isc(ckt: &mut Circuit) {
     for b in ckt.buses.iter_mut() {
+        // BUG(C5): `ysc` is moved out of the bus and put back, though `mv_mult` takes
+        // `&self`; direct access borrows `&b.ysc` beside `&mut b.bus_current` and `&b.vbus`.
         if let Some(ysc) = b.ysc.take() {
             // `bus_current` and `vbus` are disjoint fields — no copy of `vbus`.
             ysc.mv_mult(&mut b.bus_current, &b.vbus);

@@ -1,6 +1,9 @@
 //! Port of `Common/Ymatrix.pas`: `BuildYMatrix` (full-rebuild path),
 //! `InitializeNodeVbase`, and `CheckYMatrixforZeroes`-lite diagnostics.
 
+// BUG(C2): the Y-matrix build is free functions over `Circuit` and `SolveEnv`. The Y sets,
+// their reuse and the node-voltage bases belong to a Y-matrix part of `Solution` that owns
+// these operations, and `build_y_matrix` coordinates that part with the elements.
 use num_complex::Complex64;
 
 use dss_sparse::SparseSet;
@@ -36,6 +39,8 @@ fn reuse_or_new_sparse(slot: &mut Option<SparseSet>, n: usize) {
     }
 }
 
+// BUG(C5): takes the whole circuit and uses only `ckt.solution`, and the same helper is
+// written again in the power-flow and NCIM modules. It is one method of `Solution`.
 /// `DSS.LogThisEvent` with the solution's clock/iteration fields (callers
 /// gate on `ckt.LogEvents`, like the Pascal call sites in `Ymatrix.pas`).
 fn log_event(ckt: &mut Circuit, name: &str) {
@@ -58,6 +63,8 @@ pub fn initialize_node_vbase(ckt: &mut Circuit) {
     ckt.solution.voltage_base_changed = false;
 }
 
+// BUG(C2): a free function written a second time in the fault-study module; the copy of
+// the node voltages into a bus is one method of `Bus`, called once per bus by its owner.
 /// Pascal `TSolutionObj.UpdateVBus` (`Common/Solution.pas` l.2377): snapshot the
 /// present node-voltage vector into each bus's saved `VBus` slots, so a
 /// subsequent Y rebuild that renumbers nodes can restore them. Guarded by
@@ -193,6 +200,9 @@ pub fn build_y_matrix(
         if elem.cd().flags.contains(ElemFlags::FORCE_YPRIM) {
             continue;
         }
+        // BUG(C2): `calc_yprim` returns nothing, so its errors and its refusal are parked in
+        // the element and drained below, and `yprim_invalid` is cleared from outside the
+        // element; `calc_yprim` should return its result and clear its own flag.
         elem.calc_yprim(&sys);
         elem.cd_mut().yprim_invalid = false;
         // A `CalcYPrim` that fails (e.g. a `LineGeometry` impedance error)
@@ -246,8 +256,10 @@ pub fn build_y_matrix(
         // Pascal iterates all `CktElements` and filters; PD/source membership is
         // disjoint, so iterating `pd_elements` then `sources` visits exactly the
         // qualifying set once each (order is irrelevant — the assembled matrix
-        // sums duplicates). Build the ref list up front to drop the `ckt` borrow
-        // before the mutable `y_series`/`y_system` borrow below.
+        // sums duplicates).
+        // BUG(C5): the element list is copied, or collected, only to end the `ckt` borrow
+        // before `y_series` or `y_system` is borrowed mutably. The lists and the Y sets are
+        // disjoint fields, so the loop iterates the lists in place beside the set.
         let refs: Vec<crate::elements::traits::ElemId> = match option {
             BuildOption::WholeMatrix | BuildOption::SeriesOnly => ckt.ckt_elements.clone(),
             BuildOption::PdeOnly => ckt

@@ -4,6 +4,10 @@
 //! disjoint `Solution` fields (`node_v`/`event_log`) are borrowed from the
 //! circuit (the control-sweep borrow split).
 
+// BUG(C2): the fault sweeps are free functions over `Circuit` and `SolveEnv`; they belong to
+// the Fault class, as methods that walk its objects and take the solution parts they use.
+// BUG(C2): the fault list holds untyped handles, so each sweep narrows the class again with
+// `typed_mut::<Fault>`; the list should hold typed `Fault` handles.
 use crate::circuit::Circuit;
 use crate::elements::pd::fault::{Fault, FaultStatusCtx};
 use crate::elements::traits::TypedStore;
@@ -14,6 +18,8 @@ use crate::solution::solution::{Solution, SolveEnv, SolveResult, sys_ctx};
 /// YPrim, which (Pascal `Set_YprimInvalid`, when enabled) flags the system Y for
 /// a rebuild.
 pub(crate) fn check_fault_status(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+    // BUG(C5): the fault list is copied as a worklist on every control iteration, though
+    // the loop writes only `ckt.solution` and `env.store`; it walks `&ckt.faults` in place.
     let faults = ckt.faults.clone();
     if faults.is_empty() {
         return Ok(());
@@ -53,9 +59,13 @@ pub(crate) fn check_fault_status(ckt: &mut Circuit, env: &mut SolveEnv) -> Solve
     Ok(())
 }
 
+// BUG(C5): takes `&mut Circuit` and the whole `SolveEnv` to read the fault list and reach
+// the store; it should take the list and the store.
 /// Pascal `Utilities.DoResetFaults`: `Reset()` (clear the self-cleared latch) on
 /// every Fault. Invoked by `Set mode=` (`Set_Mode` tail) and the `Reset` command.
 pub(crate) fn reset_faults(ckt: &mut Circuit, env: &mut SolveEnv) {
+    // BUG(C5): the fault list is copied though the loop touches only `env.store`; it walks
+    // `&ckt.faults` in place.
     let faults = ckt.faults.clone();
     for r in faults {
         if let Some(fault) = env.store.typed_mut::<Fault>(r) {

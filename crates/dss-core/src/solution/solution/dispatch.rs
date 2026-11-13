@@ -1,6 +1,9 @@
 //! The top-level `TSolutionObj.Solve` mode dispatcher and `SetVoltageBases`
 //! (the `CalcVoltageBases` command).
 
+// BUG(C2): the dispatcher and the voltage-base pass are free functions over `Circuit` and
+// `SolveEnv`. They belong to the smallest common owner of the circuit and the element
+// store, as methods that only coordinate.
 use crate::circuit::Circuit;
 use crate::compat;
 use crate::solution::ymatrix::initialize_node_vbase;
@@ -16,6 +19,8 @@ use super::time_series::{
 };
 use super::{SolveEnv, SolveMode, SolveResult};
 
+// BUG(C2): the mode dispatcher is a free function over the circuit and the store; it is a
+// method of their coordinator.
 /// Pascal `TSolutionObj.Solve`: the mode dispatcher.
 pub fn solve(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     ckt.is_solved = false;
@@ -102,6 +107,8 @@ pub(crate) fn report_solve_error(ckt: &mut Circuit, env: &mut SolveEnv, e: &str)
     ckt.solution.solution_abort = true;
 }
 
+// BUG(C2): writes only a flag of `Circuit` and one of its solution, written as a free
+// function; it is a method of `Circuit`.
 /// A solve that failed at any step is neither solved nor converged, whatever
 /// an earlier step of the same run found (pinned by
 /// `exec::tests::rating_refusals::the_dc_power_of_an_efficiency_curve_is_solved_on_the_segment_that_holds_it`).
@@ -132,10 +139,9 @@ fn nearest_base_kv(legal_bases: &[f64], kv: f64) -> f64 {
 /// Pascal `SetVoltageBases` (the `CalcVoltageBases` command): zero-load
 /// solve, then assign each bus the nearest legal base.
 pub fn set_voltage_bases(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
-    // Pascal `SetVoltageBases` (Solution.pas l.1083): suppress the meter-zone
-    // auto-build during the zero-load snapshot — the voltage bases are not
-    // available yet — by forcing both gate flags TRUE, then rebuild the zones
-    // explicitly once `kVBase` is set, so `AddToVoltBaseList` sees valid bases.
+    // BUG(C2): both zone gate flags are forced true so that the zero-load snapshot skips the
+    // meter-zone build, whose voltage bases are not set yet, and are restored after; the `?`
+    // below returns with both left true. The snapshot should take the skip as an argument.
     let saved_zones_computed = ckt.meter_zones_computed;
     let saved_zones_locked = ckt.zones_locked;
     ckt.meter_zones_computed = true;
@@ -154,6 +160,8 @@ pub fn set_voltage_bases(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         let vref = ckt.buses[b].get_ref(0);
         let kv_est = ckt.solution.node_v[vref].norm() * compat::kv_base_search_scale();
         let base = nearest_base_kv(&ckt.legal_voltage_bases, kv_est);
+        // BUG(C2): writes the open `kv_base` field of `Bus` from outside it; `Bus` should set
+        // its base in a method of its own.
         ckt.buses[b].kv_base = base / sqrt3();
     }
 

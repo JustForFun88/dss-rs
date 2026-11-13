@@ -30,11 +30,19 @@
 #[cfg(test)]
 mod tests;
 
+// BUG(C2): the incidence-matrix build is free functions; the walks belong to `FlatBuilder`,
+// the lookups to `SparseInt`, and the two builds and the level pass to `IncMatrixState`.
+// BUG(C2): the functions take the class registry and index its arenas by the raw class
+// ordinal and index of a handle; they should resolve handles through the store's methods.
 use crate::circuit::Circuit;
 use crate::exec::registry::{ClassStore, DssClass};
 use crate::solution::topology::get_topology;
 use crate::support::sparse_math::SparseInt;
 
+// BUG(C2): every field is public and the type has no methods; `calc_inc_matrix` and
+// `calc_inc_matrix_org` set the fields from outside. The builds should be its methods.
+// BUG(C5): derives `Clone` though it owns state kept across commands; it should not
+// implement `Clone`.
 /// The incidence-matrix state hung off `Solution` (Pascal `TSolutionObj` fields
 /// `IncMat`, `Laplacian`, `Inc_Mat_Rows`, `Inc_Mat_Cols`, `Inc_Mat_levels`, plus
 /// `DSS.IncMat_Ordered`).
@@ -142,6 +150,8 @@ fn elem_bus_stripped(
     strip_bus(cd.get_bus(term)).to_string()
 }
 
+// BUG(C2): this walk and the three `add_*` walks below are free functions that take
+// `&mut FlatBuilder`; they are methods of `FlatBuilder`.
 /// Pascal `AddLines2IncMatrix`: one row per enabled Line, `+1`/`-1` at its two
 /// terminal buses.
 fn add_lines(b: &mut FlatBuilder, classes: &[DssClass]) {
@@ -188,6 +198,8 @@ fn add_series_caps(b: &mut FlatBuilder, classes: &[DssClass]) {
         let (enabled, _nterms, full_name) = elem_info(classes, r);
         // Pascal `elem.NumTerminals` is the Capacitor `NumTerm` flag (2 only when
         // bus2 was explicitly defined = a series cap), NOT the generic Nterms.
+        // BUG(C2): the capacitor list holds untyped handles, so the class is narrowed again
+        // with an `expect`; the list should hold typed `Capacitor` handles.
         let num_terminals = classes[r.class_ord()]
             .arena
             .get::<crate::elements::pd::capacitor::Capacitor>(r.index())
@@ -260,6 +272,10 @@ fn add_series_reactors(b: &mut FlatBuilder, classes: &[DssClass]) {
     }
 }
 
+// BUG(C2): this build and `calc_inc_matrix_org` are free functions that fill the fields
+// of `IncMatrixState`; they are methods of `IncMatrixState`.
+// BUG(C5): takes `&mut Circuit` though it only reads the circuit and writes
+// `ckt.solution.inc_matrix`; it should read the circuit shared and write only that state.
 /// Pascal `TSolutionObj.Calc_Inc_Matrix` (`Solution.pas:1507`): build the flat
 /// branch-to-node incidence matrix (Lines, Transformers, series Caps, series
 /// Reactors, in that order) into `ckt.solution.inc_matrix`. Populates `IncMat`
@@ -288,6 +304,8 @@ pub(crate) fn calc_inc_matrix(classes: &[DssClass], ckt: &mut Circuit) {
     st.ordered = false;
 }
 
+// BUG(C2): this lookup and `get_inc_matrix_col` are free functions over a `SparseInt`;
+// they are its methods.
 /// Pascal `get_IncMatrix_Row(Col)` (`Solution.pas:1530`): the row of the first
 /// stored non-zero (scanning **from index 1**) whose column equals `col`, else
 /// `-1`.
@@ -399,6 +417,8 @@ pub(crate) fn calc_inc_matrix_org(classes: &mut [DssClass], ckt: &mut Circuit) {
     st.ordered = true;
 }
 
+// BUG(C2): a free function over the matrix and the levels of the incidence state; it is a
+// method of `IncMatrixState`.
 /// Pascal `Calc_Inc_Matrix_Org`'s level-normalization tail (`Solution.pas:
 /// 1671–1736`): collapse the continuous backbone path to level 0, then normalize
 /// each between-zero-level branch subset to start at 1, then repair any trailing

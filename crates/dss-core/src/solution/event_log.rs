@@ -16,6 +16,8 @@
 
 use crate::util::fmt_g;
 
+// BUG(C5): derives `Clone` though it accumulates event lines across the session; it should
+// not implement `Clone`.
 /// `DSS.EventStrings` (`TStringList`) — the accumulated event-log lines.
 #[derive(Debug, Clone, Default)]
 pub struct EventLog {

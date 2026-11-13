@@ -3,6 +3,9 @@
 //! dQ/dV seed, `DoPFLOWsolution`, `SolveCircuit`, the live `CheckControls`,
 //! `SolveSnap` and `SolveDirect`.
 
+// BUG(C2): the power-flow path is free functions over `Circuit` and `SolveEnv`. They belong
+// to the smallest common owner of the circuit and the element store, as methods that only
+// coordinate and call methods of `Solution` and of the elements.
 use num_complex::Complex64;
 
 use crate::circuit::{AddType, Circuit};
@@ -29,9 +32,10 @@ fn add_in_aux_currents(ckt: &mut Circuit, solve_type: SolveAlgorithm) {
     if bus_index == 0 {
         return;
     }
-    // Snapshot the node refs first (drops the `ckt.buses` borrow) so the
-    // `ckt.solution.currents` write below doesn't alias it. Pascal `GetRef(i)`
-    // is 1-based; the Rust accessor is 0-based, and `BusIndex` is Pascal 1-based.
+    // BUG(C5): the bus node refs are copied into a list only so that the loop can write
+    // `ckt.solution.currents`; `ckt.buses` is a disjoint field and is read in place.
+    // Pascal `GetRef(i)` is 1-based; the Rust accessor is 0-based, and `BusIndex` is
+    // Pascal 1-based.
     let nrefs: Vec<usize> = (1..=phases as usize)
         .map(|i| ckt.buses[bus_index - 1].get_ref(i - 1))
         .collect();
@@ -65,6 +69,8 @@ fn add_in_aux_currents(ckt: &mut Circuit, solve_type: SolveAlgorithm) {
     }
 }
 
+// BUG(C5): takes the whole circuit and uses only `ckt.solution`, and the same helper is
+// written again in the Y-matrix and NCIM modules. It is one method of `Solution`.
 /// `DSS.LogThisEvent(name)` with the solution's clock/iteration fields (the
 /// callers gate on `ckt.LogEvents` themselves, like the Pascal call sites).
 fn log_event(ckt: &mut Circuit, name: &str) {
@@ -194,6 +200,8 @@ fn do_normal_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     }
 }
 
+// BUG(C2): a free function that walks the elements of the store into `Solution` currents;
+// it is a method of the coordinator of the circuit and the store.
 /// Pascal `TSolutionObj.SumAllCurrents`: every circuit element sums its
 /// terminal currents into the system `Currents` array (`TDSSCktElement.
 /// SumCurrents`: `ComputeIterminal`, then `Currents[NodeRef[i]] += Iterminal[i]`
@@ -212,6 +220,9 @@ fn do_normal_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
 /// newton_after_a_direct_solve_matches_a_fresh_newton_solve`). An upstream bug the port
 /// never reproduces. The flag itself keeps r4133's lifecycle: only this sum ignores it.
 fn sum_all_currents(ckt: &mut Circuit, env: &mut SolveEnv) {
+    // BUG(C5): the `SysCtx` copy is edited, so the elements see a `last_solution_was_direct`
+    // that `Solution` does not hold. The elements should borrow the context and take the
+    // override as an explicit argument of `compute_iterminal`.
     let mut sys = sys_ctx(ckt);
     sys.last_solution_was_direct = false;
     let sol = &mut ckt.solution;
@@ -314,6 +325,8 @@ pub fn solve_zero_load_snapshot(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveR
     result
 }
 
+// BUG(C2): reads and writes only fields of `Circuit` and its solution mode, written as a
+// free function. It is a method of `Circuit`.
 /// Pascal `TSolutionObj.SetGeneratorDispRef`: the global generator dispatch
 /// reference per solve mode (generator.pas LOADMODE/PRICEMODE compare their
 /// `DispValue` against it).
@@ -342,16 +355,22 @@ pub(crate) fn set_generator_disp_ref(ckt: &mut Circuit) {
     };
 }
 
+// BUG(C2): a free function over the circuit and the store; it is a method of their
+// coordinator that calls `Generator` methods and the zero-load solve.
 /// Pascal `TSolutionObj.SetGeneratordQdV`: for model-3 (PV) generators, seed
 /// the `dQ/dV` slope from the system Y diagonal, then re-establish the
 /// zero-load snapshot if any was found.
 pub(crate) fn set_generator_dqdv(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+    // BUG(C5): the generator list is copied as a worklist, though the loop touches only
+    // `env.store` and `ckt.solution`; it walks `&ckt.generators` in place.
     let gens: Vec<ElemId> = ckt.generators.clone();
     let gen_disp_save = ckt.generator_dispatch_reference;
     ckt.generator_dispatch_reference = 1000.0; // turn all generators on
     let mut did_one = false;
 
     for r in gens {
+        // BUG(C2): the generator list holds untyped handles, so each use narrows the class
+        // again with an `expect`; the list should hold typed `Generator` handles.
         // Read the model/enabled/node first (immutable view).
         let node0 = {
             let g = env
@@ -415,6 +434,9 @@ pub(crate) fn do_pflow_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveR
     Ok(())
 }
 
+// BUG(C5): takes the whole `SolveEnv` and uses only its `store`; it should take the store.
+// BUG(C2): writes the open fields of `CktElementData` from outside it; the element data
+// should set its power-flow mark in a method of its own.
 /// Record which PC elements the power flow just solved holds: every enabled
 /// element with a node map, outside the dynamics-model and harmonic solves
 /// (those are no power flow). The dynamics entry seeds only these
@@ -579,6 +601,9 @@ pub(crate) fn solve_ad(
     Ok(())
 }
 
+// BUG(C5): takes the whole circuit and touches only `ckt.solution`.
+// BUG(C2): a free function over the A-Diakoptics fields of `Solution`; it is a method of
+// `Solution`, or of an A-Diakoptics part of it.
 /// Pascal `UpdateISrc` (Solution.pas:3116): for each of this child's AD injection
 /// buses, add the negated coordinator `Ic` boundary current into `Currents`.
 ///
@@ -669,6 +694,8 @@ fn update_isrc(ckt: &mut Circuit, parent_ic: &SparseComplex) {
 #[allow(dead_code)] // called by `solve_ad`.
 fn ad_solve_into_parent(ckt: &mut Circuit, parent_node_v: &mut [Complex64]) -> SolveResult {
     let n = ckt.num_nodes;
+    // BUG(C5): the solve buffer is allocated on every child solve and has no owner between
+    // passes; the A-Diakoptics part of `Solution` should keep it and reuse it.
     let mut x = vec![Complex64::ZERO; n];
     ckt.solution.solve_system_into(&mut x)?;
     let idx = &ckt.solution.local_bus_idx;
@@ -718,6 +745,9 @@ pub(crate) fn solve_direct(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult
     Ok(())
 }
 
+// BUG(C5): takes the whole `SolveEnv` and uses only its `store`; it should take the store.
+// BUG(C2): writes the open fields of `CktElementData` from outside it; the element data
+// should drop its own stamp in a method.
 /// Drop the `Iterminal` stamps the Newton loop's last `SumAllCurrents` left on
 /// every element whose terminal current is not its own model state — the
 /// Newton stale `Iterminal` upstream bug, repaired at its root so that no

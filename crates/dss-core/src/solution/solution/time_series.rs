@@ -2,6 +2,9 @@
 //! `SolveDuty`/`SolvePeakDay`) plus their per-step monitor/meter sampling and
 //! `EndOfTimeStepCleanup`.
 
+// BUG(C2): the time-series drivers are free functions over `Circuit` and `SolveEnv`. They
+// belong to the smallest common owner of the circuit and the element store, as methods
+// that only coordinate the solution clock, the solve and the samplers.
 use crate::circuit::Circuit;
 use crate::elements::pc::storage::Storage;
 
@@ -27,8 +30,12 @@ fn update_all_storage(ckt: &mut Circuit, env: &mut SolveEnv) {
     let sys = sys_ctx(ckt);
     let interval_hrs = ckt.solution.interval_hrs;
     let mut y_changed = false;
+    // BUG(C5): the storage list is copied as a worklist on every step, though the loop only
+    // reads `ckt.solution` and writes `env.store`; it walks `&ckt.storages` in place.
     for r in ckt.storages.clone() {
         let node_v = &ckt.solution.node_v;
+        // BUG(C2): the storage list holds untyped handles, so each use narrows the class
+        // again; the list should hold typed `Storage` handles.
         if let Some(st) = env.store.typed_mut::<Storage>(r)
             && st.cd.enabled
         {
@@ -101,6 +108,9 @@ fn solve_daily_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         }
         ckt.solution.increment_time();
         let dbl_hour = ckt.solution.dbl_hour;
+        // BUG(C5): the default shape and the price curve read below are copies kept in
+        // `Circuit` of objects the store owns, so an edit of the source in the store misses
+        // them; the step should read the shapes from the store.
         match ckt.default_daily_shape_obj.as_mut() {
             Some(shape) => ckt.default_hour_mult = shape.get_mult_at_hour(dbl_hour),
             None => return Err("Default daily load shape not found.".to_string()),
@@ -152,6 +162,9 @@ fn solve_yearly_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         }
         ckt.solution.increment_time();
         let dbl_hour = ckt.solution.dbl_hour;
+        // BUG(C5): the default shape and the price curve read below are copies kept in
+        // `Circuit` of objects the store owns, so an edit of the source in the store misses
+        // them; the step should read the shapes from the store.
         match ckt.default_yearly_shape_obj.as_mut() {
             Some(shape) => ckt.default_hour_mult = shape.get_mult_at_hour(dbl_hour),
             None => return Err("Default yearly load shape not found.".to_string()),
@@ -192,6 +205,9 @@ fn solve_duty_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         }
         ckt.solution.increment_time();
         let dbl_hour = ckt.solution.dbl_hour;
+        // BUG(C5): the default shape read below is a copy kept in `Circuit` of an object the
+        // store owns, so an edit of the source in the store misses it; the step should read
+        // the shape from the store.
         match ckt.default_daily_shape_obj.as_mut() {
             Some(shape) => ckt.default_hour_mult = shape.get_mult_at_hour(dbl_hour),
             None => return Err("Default daily load shape not found.".to_string()),
@@ -250,6 +266,9 @@ fn solve_ld1_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     for _ in 1..=ndaily {
         ckt.solution.increment_time();
         let dbl_hour = ckt.solution.dbl_hour;
+        // BUG(C5): the default shape, the load-duration curve and the price curve read below
+        // are copies kept in `Circuit` of objects the store owns, so an edit of the source
+        // in the store misses them; the step should read them from the store.
         match ckt.default_daily_shape_obj.as_mut() {
             Some(shape) => ckt.default_hour_mult = shape.get_mult_at_hour(dbl_hour),
             None => return Err("Default daily load shape not found.".to_string()),
@@ -298,6 +317,9 @@ pub(super) fn solve_ld2(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     }
     // Time must be set before entering this routine.
     let dbl_hour = ckt.solution.dbl_hour;
+    // BUG(C5): the default shape read below is a copy kept in `Circuit` of an object the
+    // store owns, so an edit of the source in the store misses it; it should be read from
+    // the store.
     match ckt.default_daily_shape_obj.as_mut() {
         Some(shape) => ckt.default_hour_mult = shape.get_mult_at_hour(dbl_hour),
         None => return Err("Default daily load shape not found.".to_string()),
@@ -323,6 +345,9 @@ fn solve_ld2_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         env.errors.push("Solution Aborted.".to_string());
         return Ok(());
     }
+    // BUG(C5): the load-duration curve and the price curve read below are copies kept in
+    // `Circuit` of objects the store owns, so an edit of the source in the store misses
+    // them; the sweep should read them from the store.
     let num_points = ckt
         .load_dur_curve_obj
         .as_ref()
@@ -363,6 +388,9 @@ pub(super) fn solve_general_time(ckt: &mut Circuit, env: &mut SolveEnv) -> Solve
         // Compute basic multiplier from Default loadshape to use in generator
         // dispatch, if any.
         let dbl_hour = ckt.solution.dbl_hour;
+        // BUG(C5): the default shape read below is a copy kept in `Circuit` of an object the
+        // store owns, so an edit of the source in the store misses it; the step should read
+        // the shape from the store.
         match ckt.default_daily_shape_obj.as_mut() {
             Some(shape) => ckt.default_hour_mult = shape.get_mult_at_hour(dbl_hour),
             None => return Err("Default daily load shape not found.".to_string()),

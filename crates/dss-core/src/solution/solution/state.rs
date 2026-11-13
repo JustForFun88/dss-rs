@@ -228,6 +228,9 @@ pub enum ActiveY {
     Series,
 }
 
+// BUG(C5): the solver functions take this whole context, while most use only `store` and
+// `errors`, and `parser` and `vars` only pass through to the bus rebuild. Each operation
+// should take the parts it uses.
 /// The solve environment: everything outside the circuit that the solution
 /// flow needs (the disjoint-borrow context).
 pub struct SolveEnv<'a> {
@@ -241,6 +244,9 @@ pub struct SolveEnv<'a> {
 /// `ESolveError`-style hard abort.
 pub type SolveResult = Result<(), String>;
 
+// BUG(C2): `Solution` is one flat record whose public fields free functions write: the clock,
+// the Y sets and their solve, the NCIM state and the A-Diakoptics state are parts with no
+// type. Each part should be a type that keeps its fields private and owns its operations.
 /// Pascal `TSolutionObj` state.
 pub struct Solution {
     pub mode: SolveMode,
@@ -313,6 +319,8 @@ pub struct Solution {
     /// `Currents[0..num_nodes]`, slot 0 absorbs ground injections.
     pub currents: Vec<Complex64>,
     pub aux_currents: Vec<Complex64>,
+    // BUG(C5): this buffer exists only for the take-and-put-back in `solve_system_into`;
+    // with direct access the solve reads `currents[1..]` in place and the field goes.
     /// Reusable right-hand-side scratch for [`Solution::solve_system_into`] — the
     /// `Currents[1..]` copy the sparse solve consumes. Kept as a field so the
     /// per-fixed-point-iteration solve does not allocate a fresh vector each call
@@ -577,9 +585,9 @@ impl Solution {
     /// node `k+1`). `DoNormalSolution` passes `NodeV`; `DoNewtonSolution` passes
     /// the delta-V work array `dV`.
     pub(crate) fn solve_system_into(&mut self, out: &mut [Complex64]) -> SolveResult {
-        // Reuse the RHS scratch field (P15 item 5). `mem::take` swaps its buffer
-        // out so the `&mut self` borrow the active sparse set needs does not
-        // alias it; the buffer (and its capacity) is put back before returning.
+        // BUG(C5): the RHS buffer is moved out of `self`, filled with a copy of
+        // `currents[1..]` and put back, only because `active_sparse` borrows all of `self`.
+        // Direct access borrows the active Y set beside `currents` and solves from it.
         let mut b = std::mem::take(&mut self.solve_rhs);
         b.clear();
         b.extend_from_slice(&self.currents[1..]);
@@ -604,6 +612,8 @@ impl Solution {
     /// Pascal `SolveSystem(NodeV)`: solve directly into the node-voltage array.
     pub fn solve_system(&mut self) -> SolveResult {
         let n = self.node_v.len() - 1;
+        // BUG(C5): a fresh vector is allocated on every solve and copied into `node_v`; the
+        // solve should write into `node_v[1..]` directly, beside the borrowed Y set.
         let mut x = vec![Complex64::ZERO; n];
         self.solve_system_into(&mut x)?;
         self.node_v[1..].copy_from_slice(&x);
@@ -614,6 +624,8 @@ impl Solution {
     /// for the voltage delta into a scratch `dV` and subtract it from `NodeV`.
     pub(super) fn solve_system_newton_step(&mut self) -> SolveResult {
         let num_nodes = self.node_v.len() - 1;
+        // BUG(C5): the Newton work array is allocated on every iteration; `Solution` should
+        // keep it between passes and reuse it.
         let mut dv = vec![Complex64::ZERO; num_nodes];
         self.solve_system_into(&mut dv)?;
         for i in 1..=num_nodes {
@@ -698,6 +710,10 @@ impl Solution {
     }
 }
 
+// BUG(C5): every call copies circuit and solution values into a fresh `SysCtx` that no one
+// owns, and a caller may edit the copy so the elements see a value the owner does not hold.
+// The elements should borrow these values from their owners.
+// BUG(C2): a free function over the circuit; it is a method of `Circuit`.
 /// Snapshot of circuit/solution scalars for the elements (built fresh
 /// whenever flags may have changed).
 pub fn sys_ctx(ckt: &Circuit) -> SysCtx {

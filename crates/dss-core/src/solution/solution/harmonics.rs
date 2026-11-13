@@ -10,6 +10,9 @@
 //! injection runs through the shared `init_harmonics` / `inj_currents` hooks; no
 //! solve-mode-level special-casing remains.
 
+// BUG(C2): the harmonics drivers and the frequency sweep are free functions over `Circuit`
+// and `SolveEnv`. They belong to the smallest common owner of the circuit and the element
+// store, as methods that only coordinate; `add_frequency` belongs to a frequency-list type.
 use crate::circuit::Circuit;
 use crate::util::EPSILON;
 
