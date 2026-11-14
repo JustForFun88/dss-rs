@@ -126,12 +126,14 @@ History is read without our plans, so a commit message must be clear without the
 - **M3.** Stage files by name, never `git add -A`. Deck droppings are never staged. Once no test run is in flight (the gate queue is empty), whoever left them, delete them by name in the tracked deck families and run `python tools/corpus/vendor.py` for the fetched OpenDSS test suite.
 
 ## Launching agents and workflows
-Agents share one machine. Past its capacity every run slows down and the OpenDSS runs time out.
+Agents share one machine and spend the user's token limit. Past the machine's capacity every run slows down and the OpenDSS runs time out.
 - **L1. Check the machine before every launch, also when the user has just asked for the work**: workflows and work branches in flight, the gate queue (`tools/gate/gatelock.py`, waiting tickets mean full), CPU, memory, `cargo`/`rustc` processes. Ceiling: about three workflows and three to four worktrees in flight.
 - **L2.** Free: launch. Short: wait or queue, and report the decision in one line. Ask the user only when the launch widens the scope. A freed slot is not a reason to launch.
 - **L3.** After stopping a workflow, check that its scripts no longer queue builds.
 - **L4. Briefs and compaction.** An agent that writes code or audits gets its brief as a file its prompt names, and re-reads it after a compaction before the next action. An auditor appends each finding to its audit file the moment it confirms it, since a compaction keeps only a summary of what is not on disk. The harness refuses a subagent's write of a `.md` file whose name begins with `report` or `findings`, so the audit file is named otherwise (`fa_code_1.md`).
 - **L5. Short waits.** An agent waiting on a background run returns from each wait within 4 minutes and checks again. Its prompt cache expires after 5 minutes of silence, and the next turn then rewrites the whole context at the cache-write price.
+- **L6. The smallest launch that does the work.** Before every launch, weigh how many agents the work needs and launch that many. An agent beyond the first is there for a part that is independent and does not fit one context, or as a second reader where a mistake is costly, never because the machine is free, a tool allows more or a keyword turns workflows on.
+- **L7. A launch in flight is paid for.** It is not stopped on a doubt about its size. Read what it has done, let the agents at work finish and cut the stages not yet started. Stop all of it only on the user's word, or when what runs is itself wrong, and say first what is lost.
 
 ## Git worktrees
 Worktrees under `.claude/worktrees/` hold a Windows directory junction to the worktree's cargo target. A new worktree runs `python tools/corpus/vendor.py` once (the tarball is cached). `git worktree remove` and any recursive delete (`rm -rf`, `Remove-Item -Recurse`, `rmdir /s`) follow a junction and delete what it points at: this has wiped a shared directory twice. **Never batch-remove.** For each worktree, in PowerShell only (under Git Bash `cmd /c rmdir` does nothing and exits 0):
